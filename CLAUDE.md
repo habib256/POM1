@@ -28,7 +28,7 @@ Windows: `setup_pom1.bat` + vcpkg + `cmake --build . --config Release`. `compile
 
 **WASM:** `source emsdk_env.sh && emcmake cmake .. && emmake make && emrun POM1.html`. MEMFS preloads `roms/ pic/ fonts/ software/ sdcard/ cassettes/ cfcard/cfcard.po` (other `.po` are desktop-only, >140 MB). Rebuild after any change under those trees or `build-wasm/shell.html`.
 
-**cc65:** per-project Makefiles call `ca65`+`ld65`, then `python3 emit_*_txt.py` lands `.bin`+Woz-hex `.txt` under `software/<dir>/`. `make -C dev/projects` is the CI gate. Linker configs in `dev/cc65/`. The gen2c runtime is split into per-family C modules (`gen2_init.c`, `gen2_pixel.c`, `gen2_rect.c`, `gen2_text.c`, `gen2_sprites.c`, `gen2_geom.c`, `gen2_lores.c` — see `dev/lib/gen2c/gen2c.mk`) so ld65 dead-strips per family; hot paths stay in `gen2_blit.s`, which any project linking those modules must also assemble.
+**cc65:** per-project Makefiles call `ca65`+`ld65`, then `python3 emit_*_txt.py` lands `.bin`+Woz-hex `.txt` under `software/<dir>/`. `make -C dev/projects` is the CI gate. Linker configs in `dev/cc65/`. The gen2c runtime is split into per-family C modules (`gen2_init.c`, `gen2_pixel.c`, `gen2_rect.c`, `gen2_text.c`, `gen2_sprites.c`, `gen2_preshift.c`, `gen2_sprengine.c`, `gen2_geom.c`, `gen2_lores.c` — see `dev/lib/gen2c/gen2c.mk`) so ld65 dead-strips per family; hot paths stay in `gen2_blit.s` (+ the masked save-under sprite kernels in `gen2_sprmask.s`, pinned by `gen2_sprengine_roundtrip`), which any project linking those modules must also assemble.
 
 ## Architecture
 

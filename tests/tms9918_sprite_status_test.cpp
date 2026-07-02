@@ -6,17 +6,20 @@
 // this test landed:
 //
 //   - Status bit 6 ($40) — fifth-sprite-on-scanline overflow flag.
-//     Set when any scanline contains >4 sprites. Bits 0..4 latch the SAT
-//     index of the fifth sprite. Re-derived by the sprite scan every frame
-//     and NOT cleared by a status read (pinned by T9).
+//     Set when any scanline contains >4 sprites AND F (bit 7) is still
+//     clear (TMS9918A datasheet: "5th sprite detection is only active when
+//     F flag is zero"; openMSX SpriteChecker: `(status & 0xC0) == 0`).
+//     Bits 0..4 latch the SAT index of the fifth sprite. Sticky until a
+//     status read (pinned by T9/T10).
 //   - Status bit 5 ($20) — sprite-sprite collision. Set on any opaque
 //     pattern-bit overlap, even when one (or both) sprites have color = 0
 //     (a real TMS9918A collides on pattern bits, not on rendered color).
 //     Sticky until read.
-//   - Reading $CC01 latch-clears ONLY F (bit 7) and C (bit 5), via the
-//     ~0xA0 mask — BiFi/Sean Young §2.2. The 5S flag (bit 6) and its index
-//     survive the read; clearing them too (the old ~0xE0 mask) made a second
-//     in-frame read wrongly report no overflow.
+//   - Reading $CC01 latch-clears F (bit 7), 5S (bit 6) AND C (bit 5) — the
+//     ~0xE0 mask. TI datasheet §2.2, Nouspikel ("the first 3 bits are
+//     automatically reset when the register is read") and openMSX
+//     (readStatusReg case 0 → statusReg0 & 0x1F) all agree. Bits 0..4
+//     survive the read.
 //
 // Each test runs in a fresh TMS9918 to avoid sticky-flag bleed.
 
@@ -106,13 +109,25 @@ void pokeSAT(TMS9918& vdp, int idx, uint8_t y, uint8_t x, uint8_t name, uint8_t 
 }
 
 // Drive enough cycles to complete the active-display sprite scan and enter
-// VBlank WITHOUT rolling into the next frame's active region (which would
-// reset the per-frame 5S flag — see TMS9918::advanceCycles). 15000 sits in
+// VBlank without rolling into the next frame's active region. 15000 sits in
 // the NTSC VBlank window [~12505, 17062): full scan done, F raised, 5S + its
-// index stable for the read that follows.
+// index stable for the read that follows. (Status bits are sticky-until-read
+// on silicon — nothing resets at frame rollover — but staying inside one
+// frame keeps each test's timeline easy to reason about.)
 void tickFrame(TMS9918& vdp)
 {
     vdp.advanceCycles(15000);
+}
+
+// Fine-grained frame advance for the sticky-flag phases (T9/T10): 18000
+// cycles in 1000-cycle steps, mimicking the per-instruction granularity the
+// real emulation loop uses. A single oversized advanceCycles() that spans
+// the frame rollover scans the next frame's lines on a LATER call — after
+// that frame's F-flag edge — which inverts the scan-before-F ordering the
+// F-gated 5S latch depends on. Stepped advance preserves silicon ordering.
+void tickFrameStepped(TMS9918& vdp)
+{
+    for (int i = 0; i < 18; ++i) vdp.advanceCycles(1000);
 }
 
 // Read status without disturbing latch state for subsequent control writes
@@ -284,11 +299,11 @@ int main()
     }
 
     // -----------------------------------------------------------------
-    // T9 — a status read does NOT clear the 5S overflow flag (bit 6) or its
-    // SAT index (bits 0..4); only F (bit 7) and collision (bit 5) latch-clear
-    // on read (BiFi §2.2). 5S is re-derived per frame, so within one frame two
-    // consecutive reads must both report the overflow. Regression guard for
-    // the ~0xE0 → ~0xA0 readControl fix.
+    // T9 — a status read latch-clears F (bit 7), 5S (bit 6) AND collision
+    // (bit 5); the index bits 0..4 are NOT cleared. TI datasheet §2.2 ("The
+    // 5S bit is cleared to 0 after the status register is read"), Nouspikel,
+    // and openMSX (statusReg0 & 0x1F on read) all agree. Regression guard
+    // for the silicon-fidelity restore of the ~0xE0 read-clear mask.
     // -----------------------------------------------------------------
     {
         TMS9918 vdp;
@@ -300,13 +315,45 @@ int main()
         uint8_t s1 = readStatus(vdp);
         mustBeTrue((s1 & 0x40) != 0, "T9: 5S set after the frame scan");
         mustBeTrue((s1 & 0x1F) == 4, "T9: 5S index = SAT idx 4");
-        // Second read, same frame (no advanceCycles in between): 5S + index
-        // must persist — the read does not clear them. The old ~0xE0 wiped 5S.
+        // Second read, same frame: 5S must be GONE (cleared by the first
+        // read), while the index bits keep their last latched value.
         uint8_t s2 = readStatus(vdp);
-        mustBeTrue((s2 & 0x40) != 0, "T9: 5S NOT cleared by a status read (only F+C clear)");
-        mustBeTrue((s2 & 0x1F) == 4, "T9: 5S index preserved across the read too");
+        mustBeTrue((s2 & 0x40) == 0, "T9: 5S cleared by the status read (F+5S+C clear)");
+        mustBeTrue((s2 & 0x1F) == 4, "T9: index bits 0..4 survive the read");
+        // Next frame re-latches 5S: the read above cleared F, so the sprite
+        // comparator is re-armed ((status & 0xC0) == 0 holds again).
+        tickFrameStepped(vdp);                // fine-grained roll into the next frame
+        uint8_t s3 = readStatus(vdp);
+        mustBeTrue((s3 & 0x40) != 0, "T9: 5S re-latches on the next scanned frame");
     }
 
-    std::printf("tms9918_sprite_status: all 9 tests passed\n");
+    // -----------------------------------------------------------------
+    // T10 — F-gated 5S latch (TMS9918A datasheet: "5th sprite detection is
+    // only active when F flag is zero"; openMSX `(status & 0xC0) == 0`).
+    // Frame 0 scans with only 4 sprites → no 5S; F rises at VBlank and is
+    // NOT read. A 5th sprite is then added: frame 1's scan must NOT latch
+    // 5S because F is still pending. After a status read clears F, the
+    // following frame latches 5S normally.
+    // -----------------------------------------------------------------
+    {
+        TMS9918 vdp;
+        initVdp(vdp);
+        for (int i = 0; i < 4; i++)
+            pokeSAT(vdp, i, 49, (uint8_t)(i * 16), 1, 0x0F);
+        pokeSAT(vdp, 4, 0xD0, 0, 0, 0);
+        tickFrameStepped(vdp);                // frame 0: 4 sprites, F rises, unread
+        pokeSAT(vdp, 4, 49, 64, 1, 0x0F);     // 5th sprite appears
+        pokeSAT(vdp, 5, 0xD0, 0, 0, 0);
+        tickFrameStepped(vdp);                // frame 1 scanned with F still set
+        uint8_t s1 = readStatus(vdp);
+        mustBeTrue((s1 & 0x80) != 0, "T10: F pending from the unread frames");
+        mustBeTrue((s1 & 0x40) == 0, "T10: 5S NOT latched while F was set (F-gated)");
+        tickFrameStepped(vdp);                // F cleared by the read → re-armed
+        uint8_t s2 = readStatus(vdp);
+        mustBeTrue((s2 & 0x40) != 0, "T10: 5S latches again once F was consumed");
+        mustBeTrue((s2 & 0x1F) == 4, "T10: 5S index = SAT idx 4");
+    }
+
+    std::printf("tms9918_sprite_status: all 10 tests passed\n");
     return 0;
 }

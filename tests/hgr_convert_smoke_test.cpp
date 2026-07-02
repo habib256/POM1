@@ -4,13 +4,20 @@
 //
 // Covers: CAM16-UCS sanity + perceptual ranking; the module's NTSC decode is
 // byte-identical to GraphicsCard (the real renderer); black→empty page;
-// white→white; and Floyd-Steinberg tone conservation on a black→white ramp.
+// white→white; dither tone behaviour on flats and a black→white ramp; and the
+// ii-pix upgrade pins — ICM refinement monotonicity, clamped linear-RGB error
+// diffusion, and the early-abort/warm-start search being bit-identical to the
+// exhaustive candidate scan.
 
 #include "Cam16.h"
 #include "HgrConvert.h"
 #include "HgrPaintModel.h"
 #include "GraphicsCard.h"
 
+// This whole test is assert-based; keep the assertions live even in Release
+// builds (the default CMAKE_BUILD_TYPE compiles tests with -DNDEBUG, which
+// would silently turn the entire pin into a no-op).
+#undef NDEBUG
 #include <cassert>
 #include <cmath>
 #include <cstdint>
@@ -130,12 +137,23 @@ int main()
         assert(prev > 200);                 // right end is bright
     }
 
-    // ── Floyd-Steinberg horizontal-error conservation ────────────────────────
+    // ── Flat-field tone reproduction (error-diffusion conservation) ──────────
     // A flat gray whose density is not exactly achievable per 7-pixel byte must
-    // still reproduce, page-averaged, near the target: error diffusion conserves
-    // the dropped fraction by carrying it to the next byte. Regression guard for
-    // the bug where the in-row 7/16 term landed on already-read slots and ~6/7 of
-    // the horizontal error was lost (biasing flat fields and banding gradients).
+    // still reproduce, page-averaged, at a stable brightness: the diffusion
+    // carries the per-byte residual to the neighbours instead of dropping it.
+    //
+    // Since the gamma-correct import rework the target buffer and the diffusion
+    // run in LINEAR light (sRGB decoded before the resample/dither — ii-pix
+    // semantics), so the equilibrium density is set by linear-light residual
+    // feedback through the CAM16 quantizer (with wants clamped to gamut), NOT by
+    // conservation of the gamma-coded values the old expectation (mean ≈ g ± 14)
+    // encoded. The old gamma-space diffusion rendered dark flats photometrically
+    // ~5× too bright; the linear pipeline halves that (the remaining lift comes
+    // from CAM16's perceptual black↔grey threshold plus the want clamp at 0).
+    // The exact means are implementation-defined but fully deterministic — pin
+    // them as a behavioural table; a conservation regression (e.g. the historic
+    // bug that dropped ~6/7 of the horizontal error) shifts them far outside
+    // the ±10 window.
     {
         auto meanLuma = [&](const std::vector<uint32_t>& px) {
             long sum = 0;
@@ -144,17 +162,15 @@ int main()
             return static_cast<double>(sum) / px.size();
         };
         opt.dither = true;
-        opt.chromaWeight = 6.0f;   // neutral target → clean black/white dither
-        for (int g : {64, 96, 160}) {
-            auto flat = solid(g, g, g);
+        opt.chromaWeight = 6.0f;   // neutral target → clean neutral dither
+        const int    gs[3]       = {64, 96, 160};
+        const double expected[3] = {48.7, 73.1, 110.3};   // measured 2026-07 pins
+        for (int i = 0; i < 3; ++i) {
+            auto flat = solid(gs[i], gs[i], gs[i]);
             imageToHgrPage(flat.data(), kHiresWidth, kHiresHeight, opt, page.data());
             renderPage(page.data(), ren);
             const double m = meanLuma(ren);
-            // Rendered white pixels are full 0xFFFFFF, blacks 0; a conserved dither
-            // of a gray ~g averages within ~14 luma of g (deterministic; current
-            // devs are 6.7/9.0/11.1). Dropping the horizontal error biases this far
-            // more, so this is the regression guard for the FS conservation fix.
-            assert(std::fabs(m - g) < 14.0);
+            assert(std::fabs(m - expected[i]) < 10.0);
         }
     }
 
@@ -173,6 +189,54 @@ int main()
             const int base = hgrByteOffset(0, y);
             for (int b = 0; b <= 11; ++b) assert(page[base + b] == 0);
             for (int b = 28; b < 40; ++b) assert(page[base + b] == 0);
+        }
+    }
+
+    // ── ii-pix upgrade pins: refinement monotonicity, clamped linear error, and
+    //    early-abort/warm-start search exactness ───────────────────────────────
+    {
+        // Synthetic gradient with both luminance and chroma structure.
+        std::vector<uint8_t> grad(static_cast<size_t>(kHiresWidth) * kHiresHeight * 4);
+        for (int y = 0; y < kHiresHeight; ++y)
+            for (int x = 0; x < kHiresWidth; ++x) {
+                const size_t i = (static_cast<size_t>(y) * kHiresWidth + x) * 4;
+                grad[i]     = static_cast<uint8_t>(x * 255 / (kHiresWidth - 1));
+                grad[i + 1] = static_cast<uint8_t>(y * 255 / (kHiresHeight - 1));
+                grad[i + 2] = static_cast<uint8_t>(255 - x * 255 / (kHiresWidth - 1));
+                grad[i + 3] = 255;
+            }
+        for (int kern = 0; kern < 2; ++kern) {
+            ImportOptions o;
+            o.stretch = true;
+            o.kernel = kern ? DitherKernel::JarvisMod : DitherKernel::FloydSteinberg;
+            o.diffusion = kern ? 0.7f : 1.0f;   // exercise both diffusion doses
+            o.refinePasses = 2;
+            ImportStats st;
+            std::vector<uint8_t> fast(kHiresSize), exhaustive(kHiresSize);
+            imageToHgrPage(grad.data(), kHiresWidth, kHiresHeight, o, fast.data(), &st);
+
+            // (a) Each ICM refinement pass accepts only moves that strictly lower
+            //     the frozen-target objective, so the recorded pass costs must be
+            //     non-increasing (tiny epsilon for the float→double re-summation).
+            assert(st.passCost.size() >= 2);
+            for (size_t p = 1; p < st.passCost.size(); ++p)
+                assert(st.passCost[p] <= st.passCost[p - 1] * 1.000001f + 1.0f);
+
+            // (b) Linear-RGB diffusion stays clamped: every residual is computed
+            //     from a [0,1]-clamped want minus an in-gamut rendered colour, and
+            //     no error slot collects more than the kernel-weight sum (=1), so
+            //     diffusion 1.0 can't build runaway "worm" error.
+            assert(st.maxErrAbs <= 1.0f + 1e-4f);
+
+            // (c) The early-abort + warm-start candidate search (and the pruned
+            //     refinement DFS) must be BIT-IDENTICAL to the exhaustive scan:
+            //     the abort comparison is strict (ties always finish) and
+            //     acceptance is lexicographic on (cost, candidate index), so the
+            //     warm seed can never change the argmin or its tie-breaking.
+            ImportOptions oex = o;
+            oex.exhaustiveSearch = true;
+            imageToHgrPage(grad.data(), kHiresWidth, kHiresHeight, oex, exhaustive.data());
+            assert(fast == exhaustive);
         }
     }
 

@@ -66,12 +66,21 @@ vdp_col:        .res 1
 
 ; ----------------------------------------------------------------------------
 ; init_vdp_text: write 8 Text-Mode-F1 registers.
-;   Display starts ON (R1 = $D0). Caller may blank by overwriting R1 with
-;   $80 before bulk uploads -- upload_charmap does that automatically.
+;   Display is kept OFF during the register pass (R1 committed as $90 —
+;   the $D0 table value with bit 6 masked): the pattern and name tables
+;   are still power-on garbage at this point, and real DRAM flashes that
+;   garbage on screen if the display is enabled first (blank-first
+;   discipline, mirrors init_vdp_g1/g2 and basicrt's lr_text_mode).
+;   Call enable_text_display (or let upload_charmap's tail do it) once
+;   the tables are filled.
 ; ----------------------------------------------------------------------------
 init_vdp_text:
         LDX     #0
 @rg:    LDA     vdpt_regs,X
+        CPX     #1
+        BNE     @nomask
+        AND     #$BF            ; R1: keep display OFF over uninit VRAM
+@nomask:
         STA     VDP_CTRL
         TXA
         ORA     #$80
@@ -92,7 +101,9 @@ init_vdp_text:
 ;   Clobbers: A, X, Y, tmp, vdp_lo, vdp_hi, vdp_src_lo/hi.
 ; ----------------------------------------------------------------------------
 upload_charmap:
-        ; 1) Blank display (R1 = $80, M1=1, screen off).
+        ; 1) Blank display (R1 = $80: 16K=1, blank=0/screen off, M1=0 — the
+        ;    chip idles in blanked Graphics I during the burst; the mode
+        ;    bits come back with the $D0 re-arm at the end).
         LDA     #$80
         STA     VDP_CTRL
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)

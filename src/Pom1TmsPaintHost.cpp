@@ -7,6 +7,7 @@
 
 #include "EmulationController.h"
 #include "TmsPaintModel.h"        // tmspaint:: geometry constants
+#include "TmsSpriteAsmExport.h"   // shared ca65 sprite parser (round-trips Export ASM)
 #include "NativeFileDialog.h"     // OS-native file picker for Load/Save/Import
 #include "PomRenderer.h"          // shared graphics backend (GL or Metal)
 #include "third_party/stb/stb_image_write.h"   // decl only; impl lives in main_imgui.cpp
@@ -16,6 +17,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <system_error>
 
 Pom1TmsPaintHost::Pom1TmsPaintHost(EmulationController* emu,
@@ -46,34 +48,11 @@ bool Pom1TmsPaintHost::nativeFilePickerAvailable() const
 // The SCROLL-O-SPRITES catalogue ships as ca65 sources: each 16×16 sprite is 32
 // `.byte` values under a `; slot NN/MM ... -- name` comment / `xxx_pat:` label
 // (left half col 0..7 = 16 B, then right half col 8..15 = 16 B — the native
-// $3800+patNum*8 stream). Parsed once and cached. Mirror of
+// $3800+patNum*8 stream). tmssprite::parseSpritesAsm (the same portable parser
+// the sprite editor's "Export ASM" targets, so exports round-trip) turns those
+// into raw byte blobs; parsed once and cached. Mirror of
 // Pom1HgrPaintHost::devSprites (48 B / row-major there vs 32 B here).
 namespace {
-
-void parseByteLine(const std::string& line, std::vector<uint8_t>& out)
-{
-    for (size_t i = 0; i + 1 < line.size(); ++i) {
-        if (line[i] != '$') continue;
-        auto hex = [](char c) -> int {
-            if (c >= '0' && c <= '9') return c - '0';
-            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-            return -1;
-        };
-        const int hi = hex(line[i + 1]);
-        if (hi < 0) continue;
-        const int lo = (i + 2 < line.size()) ? hex(line[i + 2]) : -1;
-        out.push_back(static_cast<uint8_t>(lo < 0 ? hi : (hi * 16 + lo)));
-    }
-}
-
-std::string trim(const std::string& s)
-{
-    size_t a = 0, b = s.size();
-    while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
-    while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
-    return s.substr(a, b - a);
-}
 
 tmspaint::DevSpriteCategory parseSpriteFile(const std::filesystem::path& file)
 {
@@ -84,59 +63,14 @@ tmspaint::DevSpriteCategory parseSpriteFile(const std::filesystem::path& file)
 
     std::ifstream in(file);
     if (!in) return cat;
-    tmspaint::DevSprite cur;
-    bool haveCur = false;
-    std::string pendingName;
-    auto flush = [&]() {
-        if (haveCur && cur.bytes.size() >= 32) {
-            cur.bytes.resize(32);                          // 16×16 native pattern
-            cat.sprites.push_back(std::move(cur));
-        }
-        cur = tmspaint::DevSprite{};
-        haveCur = false;
-    };
-    auto isLabel = [](const std::string& code, std::string& label) {
-        if (code.size() < 2 || code.back() != ':') return false;
-        for (size_t i = 0; i + 1 < code.size(); ++i) {
-            const char c = code[i];
-            if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '_')) return false;
-        }
-        const char c0 = code[0];
-        if (!(std::isalpha(static_cast<unsigned char>(c0)) || c0 == '_')) return false;
-        label = code.substr(0, code.size() - 1);
-        return true;
-    };
-    std::string line;
-    while (std::getline(in, line)) {
-        std::string t = trim(line);
-        if (t.empty()) continue;
-        if (t[0] == ';') {
-            const size_t dash = t.find("--");
-            if (t.find("slot") != std::string::npos && dash != std::string::npos) {
-                pendingName = trim(t.substr(dash + 2));
-                const size_t paren = pendingName.find('(');
-                if (paren != std::string::npos) pendingName = trim(pendingName.substr(0, paren));
-            }
-            continue;
-        }
-        const size_t sc = t.find(';');
-        std::string code = trim(sc == std::string::npos ? t : t.substr(0, sc));
-        std::string label;
-        if (isLabel(code, label)) {
-            flush();
-            if (!pendingName.empty()) { cur.name = pendingName; pendingName.clear(); }
-            else {
-                if (label.size() > 4 && label.compare(label.size() - 4, 4, "_pat") == 0)
-                    label.resize(label.size() - 4);
-                cur.name = label;
-            }
-            haveCur = true;
-            continue;
-        }
-        if (haveCur && code.find(".byte") != std::string::npos)
-            parseByteLine(code, cur.bytes);
+    std::ostringstream text;
+    text << in.rdbuf();
+    for (auto& s : tmssprite::parseSpritesAsm(text.str(), 32)) {   // 16×16 native pattern
+        tmspaint::DevSprite d;
+        d.name = std::move(s.name);
+        d.bytes = std::move(s.bytes);
+        cat.sprites.push_back(std::move(d));
     }
-    flush();
     return cat;
 }
 

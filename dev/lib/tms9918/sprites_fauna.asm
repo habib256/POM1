@@ -10,7 +10,9 @@
 ; Layout: each 16x16 sprite occupies 32 bytes -- the first 16 bytes are
 ; the left half (column 0..7), the next 16 the right half (column 8..15).
 ; Native TMS9918 16x16 sprite layout: stream the 32 bytes into a
-; sprite-pattern slot starting at base $3800 + slot*32.
+; sprite-pattern slot starting at the ACTIVE MODE'S sprite-pattern table
+; + slot*32 (asm Mode-1 init_vdp_g1: R6=$07 -> $3800; C lib SCREEN1/SCREEN2
+; tables: R6=$03 -> $1800 — on those layouts $3800 is the NAME table!).
 ; ============================================================================
 ; Symbols with _ prefix for cc65 / C linkage.
 .export _fauna_dog_pat, _fauna_rabbit_pat, _fauna_spider_pat, _fauna_octopus_pat, _fauna_cat_pat

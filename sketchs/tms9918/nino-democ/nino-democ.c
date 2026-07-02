@@ -90,6 +90,11 @@ void main(void) {
 
         if (k == '0') {
             woz_puts((const unsigned char *)"BYE!\r");
+            /* Blessed exit: blank the display so the next hand-poked
+             * program's init burst runs in the free window (the lib's own
+             * inits blank unconditionally, but Wozmon-loaded raw programs
+             * may not). */
+            tms_write_reg(1, 0x80U);
             woz_mon();
         } else if (k == '1') {
             screen1_demo();

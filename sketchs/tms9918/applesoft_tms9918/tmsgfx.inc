@@ -958,10 +958,16 @@ SCRN_PARSE:
         jmp     SNGFLT
 
 ; ============================================================================
-; VDP primitives (silicon-strict: JSR vpad = 12c gap between back-to-back VDP
-; stores, matching dev/lib/tms9918/tms9918_pad.asm's pad12 contract)
+; VDP primitives (silicon-strict: JSR vpad = 18c gap → 22c STA→STA, matching
+; dev/lib/tms9918/tms9918_pad.asm's pad18 contract. The old 12c body gave a
+; 16c STA→STA gap — EXACTLY at the ~16c real-silicon floor validated on
+; Parmigiani's Replica-1, zero margin — and matched the retired pad12
+; contract; migrated juillet 2026.)
 ; ============================================================================
-vpad:   rts                     ; JSR vpad = 6c + 6c = 12c, flag-transparent
+vpad:   nop                     ; +2c
+        nop                     ; +2c
+        nop                     ; +2c — NOP-only body: flag-transparent
+        rts                     ; JSR vpad = 6c + 6c NOP + 6c = 18c
 
 ; vdp_waddr -- set the VRAM auto-increment WRITE address from GVL:GVH.
 vdp_waddr:

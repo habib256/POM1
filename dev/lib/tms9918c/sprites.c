@@ -8,21 +8,38 @@
 #include "sprites.h"
 
 void tms_set_total_sprites(unsigned char num) {
-    unsigned addr = TMS_SPRITE_ATTRS + (unsigned)num * SIZEOF_SPRITE;
+    unsigned addr;
+    if (num >= 32U) {
+        /* All 32 sprites active = no terminator needed (legal); writing one
+         * would land PAST the SAT at $3B80 — silent VRAM corruption. */
+        return;
+    }
+    addr = TMS_SPRITE_ATTRS + (unsigned)num * SIZEOF_SPRITE;
     tms_set_vram_write_addr(addr);
     TMS_WRITE_DATA_PORT(SPRITE_OFF_MARKER);
 }
 
 void tms_set_sprite(unsigned char sprite_num, const tms_sprite *s) {
     unsigned addr = TMS_SPRITE_ATTRS + (unsigned)sprite_num * SIZEOF_SPRITE;
+    unsigned char y = (unsigned char)s->y;
+    if (y == 0xD0U) {
+        /* y = -48 casts to exactly $D0 — the SAT chain TERMINATOR. A sprite
+         * animated off the top edge silently blanks every higher-numbered
+         * sprite while it holds that value (miserable to debug on real
+         * hardware). $D1 is one line lower and equally off-screen. */
+        y = 0xD1U;
+    }
     tms_set_vram_write_addr(addr);
-    TMS_WRITE_DATA_PORT((unsigned char)s->y);
+    TMS_WRITE_DATA_PORT(y);
     TMS_IO_DELAY();
     TMS_WRITE_DATA_PORT(s->x);
     TMS_IO_DELAY();
     TMS_WRITE_DATA_PORT(s->name);
     TMS_IO_DELAY();
-    TMS_WRITE_DATA_PORT(s->color);
+    /* Mask to colour + deliberate EARLY_CLOCK only: stray bits 4-6 are
+     * undefined on silicon, and an accidental bit 7 shifts the sprite
+     * 32 px left (best-practices §3 defensive mask). */
+    TMS_WRITE_DATA_PORT((unsigned char)(s->color & 0x8FU));
     TMS_IO_DELAY();
 }
 

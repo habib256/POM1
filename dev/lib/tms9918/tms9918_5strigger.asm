@@ -31,9 +31,12 @@
 ;      side-effect-wise on every read.
 ;
 ;   2. The 5S flag latches on the FIRST line where the 5th sprite is
-;      found. If your 5 sprites all share Y, that's the trigger line.
-;      Subsequent lines that still have 5+ sprites do NOT raise it
-;      again — it's already set.
+;      found, and ONLY while F (bit 7) is clear — the silicon gates the
+;      5th-sprite comparator on F (TI datasheet; openMSX). The read that
+;      observes 5S also clears it (with F and C — a status read latch-
+;      clears all three), so wait_5s_trigger's own poll both keeps F
+;      drained and consumes the flag it returns on. If the 5 sprites
+;      stay armed, later lines with 5+ sprites simply re-latch it.
 ;
 ;   3. The chip checks Y first; X-position and pattern do NOT matter for
 ;      counting. We use early-clock + colour 0 (transparent) so the

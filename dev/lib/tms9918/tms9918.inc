@@ -113,6 +113,24 @@ VDP_CTRL = $CC01        ; VDP register / address port (write twice = setup)
 .endmacro
 
 ; ---------------------------------------------------------------------------
+; IRQ caveat — control-port pair atomicity.
+;
+; The P-LAB card wires /INT -> /IRQ (trace verified). If a program enables
+; the frame IRQ (R1 bit 5 + CLI) and its handler touches $CC01 or $CC00,
+; the interrupt can fire BETWEEN the two bytes of a control pair in the
+; main line: the handler's accesses re-phase the byte flip-flop (any data
+; access or status read resets it, a control write advances it), so the
+; main line's second byte decodes as a first byte. The chip itself never
+; drops control bytes (internal latch) — the desync is purely a software
+; protocol hazard. Rules: (a) preferred — poll with WAIT_VBLANK and keep
+; IRQs masked (every shipped program does this); (b) if an IRQ handler is
+; used, it must not touch the VDP, or the main line must wrap every
+; control pair in SEI/CLI (and the handler must read $CC01 FIRST to reset
+; the flip-flop, then restore nothing — it cannot know the main line's
+; phase).
+; ---------------------------------------------------------------------------
+
+; ---------------------------------------------------------------------------
 ; Mid-frame raster trap via 5th-sprite-overflow flag (bit 6 of $CC01).
 ;
 ; Pre-conditions (caller responsibility):

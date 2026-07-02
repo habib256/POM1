@@ -1,6 +1,20 @@
 # Smoke tests for POM1. Enabled by default on native builds; skipped for
 # Emscripten (ctest runs the executable on the host, not in the browser).
 
+# assert() must stay LIVE in every test. The top-level Release build compiles
+# with -DNDEBUG (CMAKE_CXX_FLAGS_RELEASE), which silently turned every
+# <cassert>-based pin in this directory into a no-op — the binaries ran and
+# "passed" while checking nothing (discovered juillet 2026 via the convert
+# smoke tests). Directory-level compile options are emitted AFTER the
+# per-config flags on the compiler command line, so the undef wins for the
+# test translation units only; the emulator itself keeps its NDEBUG Release
+# build. (Tests using custom must()/mustBeTrue() helpers were never affected.)
+if(MSVC)
+    add_compile_options(/UNDEBUG)
+else()
+    add_compile_options(-UNDEBUG)
+endif()
+
 # -- Klaus Dormann 6502 functional test ---------------------------------------
 # Downloads the pre-assembled test binary once at configure time, builds a
 # minimal runner that links against POM1's M6502 + Memory + peripheral core,
@@ -1019,6 +1033,23 @@ target_include_directories(test_hgr_sprite_blit PRIVATE
 add_test(NAME hgr_sprite_blit_smoke COMMAND test_hgr_sprite_blit)
 set_tests_properties(hgr_sprite_blit_smoke PROPERTIES TIMEOUT 5)
 
+# -- Sprite ASM export round-trip smoke test -----------------------------------
+# Pins the "Export ASM" feature of both sprite editors: hgrsprite/tmssprite::
+# formatSpriteAsm must emit exactly the ca65 dev-catalogue format that
+# parseSpritesAsm — the parser behind Pom1HgrPaintHost::devSprites /
+# Pom1TmsPaintHost::devSprites — reads back (name + byte-for-byte payload),
+# plus the [a-z0-9_] name sanitizer. No GL/ImGui/emulator dependency.
+add_executable(test_sprite_asm_export
+    sprite_asm_export_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/hgrsprite/HgrSpriteAsmExport.cpp
+    ${CMAKE_SOURCE_DIR}/tmssprite/TmsSpriteAsmExport.cpp
+)
+target_include_directories(test_sprite_asm_export PRIVATE
+    ${CMAKE_SOURCE_DIR}/hgrsprite
+    ${CMAKE_SOURCE_DIR}/tmssprite)
+add_test(NAME sprite_asm_export_smoke COMMAND test_sprite_asm_export)
+set_tests_properties(sprite_asm_export_smoke PROPERTIES TIMEOUT 5)
+
 # -- TMS9918 image-import smoke test ------------------------------------------
 # Pins the Cam16 metric + the TmsConvert image→VRAM pipeline (tmspaint::
 # imageToTmsVram) cross-checked against the real TMS9918 renderer: solid-palette-
@@ -1365,3 +1396,43 @@ if(Python3_FOUND)
                          TIMEOUT 60 SKIP_RETURN_CODE 77)
 endif()
 
+
+# ── GEN2 masked sprite engine — draw/restore round trip (cc65-gated) ─────────
+# Builds sketchs/gen2/demo_sprengine's phased SELFTEST binary with the real
+# cc65 toolchain (gen2_sprmask.s kernels + gen2_sprengine.c engine +
+# build_preshift_sprites.py --masked banks), runs it headless and captures the
+# GEN2 framebuffer at three deterministic --dump-after-cycles points: the
+# decor must be non-uniform, the masked sprites visible, and the save-under +
+# masked-draw + restore round trip must leave the frame SHA-identical to the
+# pre-draw background (palette bit included). Skips (77) without cc65 or the
+# POM1 binary.
+if(Python3_FOUND)
+    add_test(NAME gen2_sprengine_roundtrip
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/test_sprengine_gen2.py"
+                     --pom1 "$<TARGET_FILE:pom1_imgui>"
+                     --repo "${CMAKE_SOURCE_DIR}"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(gen2_sprengine_roundtrip PROPERTIES
+                         TIMEOUT 180 SKIP_RETURN_CODE 77)
+endif()
+
+# ── CodeTank burn-readiness — the "Claudio gate" ─────────────────────────────
+# Every CodeTank ROM bank is exercised under the harshest real-silicon
+# conditions POM1 can model (--silicon-strict + --vram-noise + --dram-refresh),
+# driven through boot/menu/gameplay with deterministic key injection, and must
+# show ZERO VDP drops and a live (non-uniform) framebuffer at each checkpoint.
+# Rationale: these .rom files get burned into a 28c256 and tested on Claudio
+# Parmigiani's Replica-1 1:1 with a real NMOS TMS9918A — a regression that
+# slips through here becomes a real-hardware disappointment. --quick runs the
+# first checkpoint of each of the 10 scenarios (~90 s); the full sweep is
+# `python3 tools/verify_codetank_roms.py` before an actual EPROM burn.
+if(Python3_FOUND)
+    add_test(NAME codetank_claudio_gate
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/verify_codetank_roms.py"
+                     --pom1 "$<TARGET_FILE:pom1_imgui>" --quick
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(codetank_claudio_gate PROPERTIES
+                         TIMEOUT 600 SKIP_RETURN_CODE 77)
+endif()

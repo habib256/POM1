@@ -11,7 +11,10 @@
  */
 #include "screen2.h"
 
-unsigned char screen2_plot_mode = PLOT_MODE_SET;
+/* BSS (crt0 has no copydata — a DATA initializer here was never applied).
+ * PLOT_MODE_SET is defined as 0 precisely so the zerobss-cleared BSS IS the
+ * documented default on every entry. */
+unsigned char screen2_plot_mode;
 
 static const unsigned char pow2_table_reversed[8] = {
     128U, 64U, 32U, 16U, 8U, 4U, 2U, 1U

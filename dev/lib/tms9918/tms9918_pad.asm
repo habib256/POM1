@@ -98,6 +98,12 @@ tms9918_pad40:
 ; LDA #$80 of vdp_display_off (BIT abs is 3 bytes, $2C opcode + 2 byte addr).
 ; Both paths converge on the shared STA / pad / STA / pad / RTS tail.
 ; Saves ~12 bytes vs two independent helpers.
+;
+; SILICON WARNING (openMSX/dvik, modelled by POM1 since juillet 2026): an R1
+; register write ALSO loads the VRAM address counter (1st byte → low bits,
+; register-write 2nd byte → high bits). NEVER call these between a
+; vdp_set_write/vdp_set_read and the data stream it primes — always re-set
+; the VRAM address after the display flip.
 vdp_display_on:
         LDA     #$C0
         .byte   $2C             ; BIT abs — opcode-swallows the next LDA #imm

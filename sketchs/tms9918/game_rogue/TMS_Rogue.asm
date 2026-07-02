@@ -4364,6 +4364,9 @@ place_all_sprites:
         ASL
         WRT_DATA_REG
         LDA     monsters+MON_NAME,X
+        AND     #$FC            ; defensive (best-practices §4): 16x16 sprite
+                                ; names must be multiples of 4 — a corrupted
+                                ; pool byte would fetch a skewed quadrant set
         WRT_DATA_REG
         ; Monster colour: COL_HURT if MON_HURT,X set, else MON_COLOR,X.
         LDA     monsters+MON_HURT,X
@@ -4373,6 +4376,9 @@ place_all_sprites:
 @m_normal:
         LDA     monsters+MON_COLOR,X
 @m_write:
+        AND     #$0F            ; defensive (best-practices §3): bit 7 = Early
+                                ; Clock → a value >15 shifts the sprite 32 px
+                                ; left on real silicon
         WRT_DATA_REG
         JMP     @mon_skip
 @boss_paint:
@@ -4403,6 +4409,7 @@ place_all_sprites:
 @boss_normal:
         LDA     monsters+MON_COLOR,X
 @boss_color_done:
+        AND     #$0F                    ; defensive EC mask (best-practices §3)
         STA     pak_byte+1              ; cached boss colour byte
         ; Cache row * 16 (top y) and col * 16 (left x) — used by all
         ; four quadrant SAT writes plus the +16 px sibling rows.

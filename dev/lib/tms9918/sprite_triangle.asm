@@ -553,6 +553,10 @@ sprite_attr_write:
         SEC
         LDA tri_y
         SBC #9                   ; center -> top-left, then -1 for hardware
+        CMP #$D0                 ; tri_y = 217 (drifting off the bottom edge)
+        BNE @y_safe              ;   would compute Y = $D0 = the SAT chain
+        LDA #$D1                 ;   TERMINATOR — every higher slot would
+@y_safe:                         ;   vanish. Nudge to $D1 (off-screen, inert).
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         STA VDP_DATA
         SEC
@@ -567,5 +571,8 @@ sprite_attr_write:
         STA VDP_DATA
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA zp/abs bridge)
         LDA tri_color
+        AND #$0F                 ; defensive mask (best-practices §3): a RAM-
+                                 ; sourced value >15 would set EC (bit 7) and
+                                 ; shift the sprite 32 px left on real silicon
         STA VDP_DATA
         RTS

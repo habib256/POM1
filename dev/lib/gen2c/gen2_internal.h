@@ -66,6 +66,17 @@ extern unsigned char gen2_xs_y;
 extern const gen2_sprite_t *gen2_xs_spr;
 extern void gen2_xs_run(void);
 
+/* Masked pre-shifted sprite kernels (gen2_sprmask.s -- the SPRMASK family).
+ * The sprite engine (gen2_sprengine.c) only stores these zp args and JSRs. */
+extern unsigned gen2_ms_x;
+extern unsigned char gen2_ms_y;
+extern const gen2_mspr_t *gen2_ms_spr;
+extern unsigned char *gen2_ms_under;
+extern void gen2_ms_run(void);          /* masked draw: dst = (dst & mask) | data */
+extern void gen2_ms_save_run(void);     /* framebuffer rect -> under buffer       */
+extern void gen2_ms_restore_run(void);  /* under buffer -> framebuffer rect       */
+extern void gen2_msu_run(void);         /* save-under + masked draw, one pass     */
+
 #pragma zpsym("gen2_g_glyph")
 #pragma zpsym("gen2_g_col")
 #pragma zpsym("gen2_g_mask")
@@ -112,6 +123,10 @@ extern void gen2_xs_run(void);
 #pragma zpsym("gen2_xs_x")
 #pragma zpsym("gen2_xs_y")
 #pragma zpsym("gen2_xs_spr")
+#pragma zpsym("gen2_ms_x")
+#pragma zpsym("gen2_ms_y")
+#pragma zpsym("gen2_ms_spr")
+#pragma zpsym("gen2_ms_under")
 
 /* --- Cross-module globals (defined in gen2_init.c) -------------------------- */
 extern unsigned char gen2_rowlo[192];          /* HIRES scanline base low byte  */

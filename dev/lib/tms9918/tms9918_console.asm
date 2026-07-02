@@ -212,7 +212,10 @@ console_scroll:
         STA     scroll_buf,Y
         INY
         CPY     #40
-        BNE     @rd
+        JSR     tms9918_pad18   ; +18c — reads share the VRAM access window
+        BNE     @rd             ;   (16c raw loop sat exactly at the silicon
+                                ;   floor; a too-fast read returns the stale
+                                ;   read-ahead byte on real hardware)
         ; --- write to destination row (con_tmp - 1) ---
         LDA     con_tmp
         SEC

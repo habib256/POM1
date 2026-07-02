@@ -45,10 +45,22 @@ OUTPUT:
                             plus `static const gen2_sprite_t NAME = {...}`.
     --lang asm           -> a ca65 .s (label `_NAME_ps`/`NAME_ps:` + .byte data)
                             and a .inc with NAME_STRIDE / NAME_H constants.
+    --masked             -> ALSO bake a 7-phase pre-shifted MASK bank per sprite
+                            and emit `gen2_mspr_t NAME = {NAME_ps, NAME_mk, ...}`
+                            instead of the gen2_sprite_t (C only). The mask ABI
+                            (gen2.h): a 1-bit KEEPS the background; mask bytes =
+                            ~coverage with bit 7 FORCED 1 so the background's
+                            HIRES palette-group bit always survives; data bit 7
+                            stays 0. coverage = the sprite's ON pixels, dilated
+                            by --halo N px (8-neighbour, N passes, clipped to
+                            the WxH box) for a black outline around the sprite.
+                            Consumed by the gen2_sprmask.s kernels / the
+                            gen2_spr_* engine (dst = (dst & mask) | data).
 
 USAGE:
     python3 tools/build_preshift_sprites.py SHEET.txt -o OUT.h
     python3 tools/build_preshift_sprites.py SHEET.txt --lang asm -o OUT.s
+    python3 tools/build_preshift_sprites.py SHEET.txt --masked -o OUT.h
     python3 tools/build_preshift_sprites.py --selftest      # no input needed
 """
 from __future__ import annotations
@@ -125,6 +137,71 @@ def bake(sprite: Sprite) -> Tuple[int, int, List[int]]:
     return stride, h, bank
 
 
+def dilate(rows: List[int], w: int, h: int, n: int) -> List[int]:
+    """8-neighbour dilation, n passes, clipped to the w x h box (the halo cannot
+    grow the sprite's byte rectangle -- stride/h are fixed by the source)."""
+    box = (1 << w) - 1
+    cov = list(rows)
+    for _ in range(n):
+        new = []
+        for r in range(h):
+            bits = cov[r] | (cov[r] << 1) | (cov[r] >> 1)
+            if r > 0:
+                bits |= cov[r - 1] | (cov[r - 1] << 1) | (cov[r - 1] >> 1)
+            if r + 1 < h:
+                bits |= cov[r + 1] | (cov[r + 1] << 1) | (cov[r + 1] >> 1)
+            new.append(bits & box)
+        cov = new
+    return cov
+
+
+def bake_mask(sprite: Sprite, halo: int) -> Tuple[int, int, List[int]]:
+    """Return (stride, h, mask-bank-bytes): 7 pre-shifted phase blocks of
+    ~coverage with bit 7 forced 1 (a 1-bit KEEPS the background -- gen2.h
+    gen2_mspr_t ABI). Derived by baking the (dilated) coverage exactly like the
+    data bank, then complementing the low 7 bits of every byte."""
+    name, w, h, rows = sprite
+    cov = dilate(rows, w, h, halo)
+    stride, _h, cov_bank = bake((name, w, h, cov))
+    mask_bank = [0x80 | (~b & 0x7F) for b in cov_bank]
+    return stride, h, mask_bank
+
+
+def verify_masked(sprite: Sprite, halo: int,
+                  data_bank: List[int], mask_bank: List[int],
+                  stride: int, h: int) -> None:
+    """Masked-bank invariants (gen2.h ABI): every mask byte has bit 7 set, every
+    data byte has bit 7 clear, and no data bit falls where the mask KEEPS the
+    background (data & mask & 0x7F == 0 -- the draw could not deposit it)."""
+    name = sprite[0]
+    if len(mask_bank) != len(data_bank):
+        raise AssertionError(f"{name}: mask/data bank size mismatch")
+    for i, (d, m) in enumerate(zip(data_bank, mask_bank)):
+        if not (m & 0x80):
+            raise AssertionError(f"{name}: mask byte {i} bit7 clear ({m:#x})")
+        if d & 0x80:
+            raise AssertionError(f"{name}: data byte {i} bit7 set ({d:#x})")
+        if d & m & 0x7F:
+            raise AssertionError(
+                f"{name}: data bit outside coverage at byte {i} "
+                f"(data={d:#x} mask={m:#x})")
+    # the coverage bank obeys the same 7-phase shift law as the data bank
+    cov_bank = [(~m) & 0x7F for m in mask_bank]
+    covered = decode_phase(stride, h, cov_bank, 0)
+    for phase in range(1, NPHASE):
+        pp = decode_phase(stride, h, cov_bank, phase)
+        for r in range(h):
+            if pp[r] != (covered[r] << phase):
+                raise AssertionError(
+                    f"{name}: mask phase {phase} row {r} is not phase0<<{phase}")
+    if halo == 0:
+        # without a halo, coverage == the sprite pixels exactly
+        p0d = decode_phase(stride, h, data_bank, 0)
+        for r in range(h):
+            if covered[r] != p0d[r]:
+                raise AssertionError(f"{name}: halo-0 coverage != data, row {r}")
+
+
 def decode_phase(stride: int, h: int, bank: List[int], phase: int) -> List[int]:
     """Re-read one phase block back into per-row source bitmasks (LSB=screen col)."""
     base = phase * h * stride
@@ -175,22 +252,37 @@ def _byte_rows(data: List[int], per_line: int = 12) -> List[str]:
     return out
 
 
-def emit_c(sprites, baked, title: str) -> str:
+def emit_c(sprites, baked, title: str, masks=None) -> str:
     guard = "PRESHIFT_" + re.sub(r"[^A-Za-z0-9]", "_", title).upper() + "_H"
-    L = [f"/* {title} -- 7-phase pre-shifted GEN2 HGR sprite bank.",
+    if masks is None:
+        use = "Use with gen2_hgr_sprite() (dev/lib/gen2c, link GEN2C_PRESHIFT_SRCS)."
+    else:
+        use = ("Use with the gen2_spr_* engine (dev/lib/gen2c, link "
+               "GEN2C_SPRENGINE_SRCS + GEN2C_SPRMASK_SRCS).")
+    L = [f"/* {title} -- 7-phase pre-shifted GEN2 HGR sprite bank"
+         f"{' (masked)' if masks is not None else ''}.",
          " * Auto-generated by tools/build_preshift_sprites.py -- DO NOT EDIT.",
-         " * Use with gen2_hgr_sprite() (dev/lib/gen2c, link GEN2C_PRESHIFT_SRCS). */",
+         f" * {use} */",
          f"#ifndef {guard}", f"#define {guard}", "",
          '#include "gen2.h"', ""]
-    for (name, w, h, _), (stride, _h, bank) in zip(sprites, baked):
+    for idx, ((name, w, h, _), (stride, _h, bank)) in enumerate(zip(sprites, baked)):
         L.append(f"/* {name}: {w}x{h} px, stride={stride} B/row, "
                  f"7 phases, {len(bank)} B total */")
         L.append(f"static const unsigned char {name}_ps[{len(bank)}] = {{")
         for line in _byte_rows(bank):
             L.append(f"    {line},")
         L.append("};")
-        L.append(f"static const gen2_sprite_t {name} = "
-                 f"{{ {name}_ps, {stride}, {h} }};")
+        if masks is None:
+            L.append(f"static const gen2_sprite_t {name} = "
+                     f"{{ {name}_ps, {stride}, {h} }};")
+        else:
+            mbank = masks[idx][2]
+            L.append(f"static const unsigned char {name}_mk[{len(mbank)}] = {{")
+            for line in _byte_rows(mbank):
+                L.append(f"    {line},")
+            L.append("};")
+            L.append(f"static const gen2_mspr_t {name} = "
+                     f"{{ {name}_ps, {name}_mk, {stride}, {h} }};")
         L.append("")
     L.append(f"#endif /* {guard} */")
     return "\n".join(L) + "\n"
@@ -249,12 +341,26 @@ def selftest() -> int:
             for phase in range(NPHASE):
                 blk = bank[phase * h * stride:(phase + 1) * h * stride]
                 assert blk[0] == (1 << phase), (phase, blk)
-    # round-trip an emitter (syntactic only)
+        # masked twin: bank + mask must satisfy the gen2_mspr_t invariants
+        for halo in (0, 1):
+            ms, mh, mbank = bake_mask(sp, halo)
+            assert (ms, mh) == (stride, h)
+            verify_masked(sp, halo, bank, mbank, stride, h)
+        # spot-check t_dot masked, halo 0: mask byte 0 of phase p keeps
+        # everything BUT bit p, and bit 7 is forced 1
+        if sp[0] == "t_dot":
+            _s, _h, mbank = bake_mask(sp, 0)
+            for phase in range(NPHASE):
+                assert mbank[phase] == (0xFF ^ (1 << phase)), (phase, mbank)
+    # round-trip the emitters (syntactic only)
     baked = [bake(sp) for sp in sprites]
+    masks = [bake_mask(sp, 0) for sp in sprites]
     _ = emit_c(sprites, baked, "selftest")
+    _ = emit_c(sprites, baked, "selftest_masked", masks)
     _a, _i = emit_asm(sprites, baked, "selftest")
     print(f"selftest OK: {len(sprites)} sprites, "
-          f"{sum(len(b[2]) for b in baked)} bank bytes, 7-phase shift verified")
+          f"{sum(len(b[2]) for b in baked)} bank bytes, "
+          f"7-phase shift + masked invariants verified")
     return 0
 
 
@@ -265,6 +371,11 @@ def main(argv: List[str]) -> int:
     ap.add_argument("-o", "--out", help="output file (default: stdout)")
     ap.add_argument("--lang", choices=("c", "asm"), default="c")
     ap.add_argument("--name", help="bank title (default: input stem)")
+    ap.add_argument("--masked", action="store_true",
+                    help="also bake pre-shifted masks; emit gen2_mspr_t (C only)")
+    ap.add_argument("--halo", type=int, default=0, metavar="N",
+                    help="dilate the mask coverage by N px (black outline; "
+                         "clipped to the sprite box; default 0)")
     ap.add_argument("--selftest", action="store_true",
                     help="run built-in correctness checks and exit")
     args = ap.parse_args(argv)
@@ -273,16 +384,25 @@ def main(argv: List[str]) -> int:
         return selftest()
     if not args.sheet:
         ap.error("need a SHEET (or --selftest)")
+    if args.masked and args.lang != "c":
+        ap.error("--masked emits gen2_mspr_t C banks only (use --lang c)")
+    if args.halo < 0:
+        ap.error("--halo must be >= 0")
 
     path = pathlib.Path(args.sheet)
     sprites = parse_sheet(path.read_text())
     baked = [bake(sp) for sp in sprites]
     for sp, bk in zip(sprites, baked):
         verify(sp, *bk)                  # always self-verify before emitting
+    masks = None
+    if args.masked:
+        masks = [bake_mask(sp, args.halo) for sp in sprites]
+        for sp, bk, mk in zip(sprites, baked, masks):
+            verify_masked(sp, args.halo, bk[2], mk[2], bk[0], bk[1])
     title = args.name or path.stem
 
     if args.lang == "c":
-        out = emit_c(sprites, baked, title)
+        out = emit_c(sprites, baked, title, masks)
         if args.out:
             pathlib.Path(args.out).write_text(out)
             print(f"wrote {args.out}: {len(sprites)} sprites")

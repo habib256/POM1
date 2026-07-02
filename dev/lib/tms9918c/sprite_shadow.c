@@ -13,26 +13,42 @@ unsigned char tms_sprite_shadow[TMS_SHADOW_BYTES];
 
 void tms_shadow_init(void) {
     unsigned char i;
-    /* Wipe all 128 bytes, then set the first Y to 0xD0 so the VDP scan
-     * terminates immediately on flush. Per TI spec only entry 0 needs the
-     * terminator, but wiping the tail keeps debug dumps readable. */
+    /* Wipe all 128 bytes, then park every entry off-screen: Y=$D0 at slot 0
+     * (chain terminator) and Y=$D1 for slots 1..31. The old zero-fill left
+     * slots 1-31 at Y=0: invisible (colour 0) but LIVE — they'd count toward
+     * the 4-per-line scan limit on lines 1-8 and pollute 5S the moment a
+     * program moves the terminator past them without rewriting every slot
+     * (same rationale as the $D0+$D1 gold standard in screen*_prepare). */
     for (i = 0; i < TMS_SHADOW_BYTES; ++i) {
         tms_sprite_shadow[i] = 0;
+    }
+    for (i = 1; i < TMS_SHADOW_SPRITES; ++i) {
+        tms_sprite_shadow[(unsigned)i * SIZEOF_SPRITE] = 0xD1U;
     }
     tms_sprite_shadow[0] = SPRITE_OFF_MARKER;
 }
 
+/* $D0 dodge shared by set/move: y = -48 casts to exactly $D0 — the SAT
+ * chain TERMINATOR. A sprite animated off the top edge would silently
+ * blank every higher-numbered sprite while it holds that value. $D1 is
+ * one line lower and equally off-screen. */
+static unsigned char shadow_safe_y(unsigned char y) {
+    return (y == 0xD0U) ? 0xD1U : y;
+}
+
 void tms_shadow_set(unsigned char sprite_num, const tms_sprite *s) {
     unsigned char *p = &tms_sprite_shadow[(unsigned)sprite_num * SIZEOF_SPRITE];
-    p[0] = (unsigned char)s->y;
+    p[0] = shadow_safe_y((unsigned char)s->y);
     p[1] = s->x;
     p[2] = s->name;
-    p[3] = s->color;
+    /* Colour + deliberate EARLY_CLOCK only (best-practices §3): stray bits
+     * 4-6 are undefined on silicon; an accidental bit 7 = 32 px left shift. */
+    p[3] = (unsigned char)(s->color & 0x8FU);
 }
 
 void tms_shadow_move(unsigned char sprite_num, signed char y, unsigned char x) {
     unsigned char *p = &tms_sprite_shadow[(unsigned)sprite_num * SIZEOF_SPRITE];
-    p[0] = (unsigned char)y;
+    p[0] = shadow_safe_y((unsigned char)y);
     p[1] = x;
 }
 

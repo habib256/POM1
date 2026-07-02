@@ -10,15 +10,22 @@
 #include "vsync.h"
 #include "tms9918.h"
 
-unsigned int vsync_frames = 0;
+/* BSS (crt0 has no copydata — `= 0` in DATA was never applied; BSS-zero
+ * re-zeroes the counter on every 4000R entry, which is what we want). */
+unsigned int vsync_frames;
 
 void vsync_reset(void) {
     vsync_frames = 0;
 }
 
-void vsync_wait(void) {
-    tms_wait_end_of_frame();
+unsigned char vsync_wait(void) {
+    /* Propagates tms_wait_end_of_frame()'s status snapshot (fresh F +
+     * C/5S collected across the drain and terminal reads) so callers can
+     * test COLLISION_BIT/FIVESPR_BIT without a second, self-defeating
+     * status read (reading clears all three flags atomically). */
+    unsigned char s = tms_wait_end_of_frame();
     ++vsync_frames;
+    return s;
 }
 
 void vsync_wait_n(unsigned char n) {

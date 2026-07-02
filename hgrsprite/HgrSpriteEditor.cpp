@@ -9,7 +9,9 @@
 #include "IconsFontAwesome6.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
+#include <filesystem>
 #include <vector>
 
 using hgrpaint::HgrColor;
@@ -97,6 +99,7 @@ void HgrSpriteEditor::commitStroke()
 {
     if (stroke.empty()) return;
     undo.push_back(stroke);
+    if (undo.size() > 64) undo.erase(undo.begin());   // cap history (matches paint editor)
     redo.clear();
     stroke.clear();
 }
@@ -132,6 +135,7 @@ void HgrSpriteEditor::doRedo()
     auto ops = redo.back(); redo.pop_back();
     applyOps(ops, true);
     undo.push_back(ops);
+    if (undo.size() > 64) undo.erase(undo.begin());
     status = "Redo";
 }
 
@@ -139,10 +143,15 @@ void HgrSpriteEditor::doRedo()
 
 std::vector<std::pair<uint16_t, uint8_t>> HgrSpriteEditor::snapshotRegion() const
 {
+    return snapshotRegion(wBytes_, hRows_);
+}
+
+std::vector<std::pair<uint16_t, uint8_t>> HgrSpriteEditor::snapshotRegion(int wB, int hR) const
+{
     std::vector<std::pair<uint16_t, uint8_t>> out;
-    out.reserve(static_cast<size_t>(wBytes_) * hRows_);
-    for (int r = 0; r < hRows_; ++r)
-        for (int b = 0; b < wBytes_; ++b) {
+    out.reserve(static_cast<size_t>(wB) * hR);
+    for (int r = 0; r < hR; ++r)
+        for (int b = 0; b < wB; ++b) {
             const int off = hgrpaint::hgrByteOffset(b * 7, r);
             if (off >= 0) out.emplace_back(static_cast<uint16_t>(off), scratch[off]);
         }
@@ -155,7 +164,11 @@ void HgrSpriteEditor::commitRegionDiff(const std::vector<std::pair<uint16_t, uin
     for (const auto& p : before)
         if (scratch[p.first] != p.second)
             stroke.push_back({p.first, p.second, scratch[p.first]});
-    if (!stroke.empty()) { undo.push_back(stroke); redo.clear(); }
+    if (!stroke.empty()) {
+        undo.push_back(stroke);
+        if (undo.size() > 64) undo.erase(undo.begin());   // cap history (matches paint editor)
+        redo.clear();
+    }
     stroke.clear();
 }
 
@@ -274,6 +287,38 @@ void HgrSpriteEditor::transformShift(int dx, int dy)
     status = "Shifted";
 }
 
+// Rotate 90° clockwise. Unlike TMS sprites the geometry is not square, so W and
+// H swap: new width = ceil(H px / 7) bytes, new height = old width in px. Only
+// allowed while the rotated height fits the page (button disabled otherwise).
+// Like loadDevSprite, the geometry change itself is not undoable — undo restores
+// the bytes of the union of the old + new regions.
+void HgrSpriteEditor::transformRotateCW()
+{
+    const int W = wpx(), H = hRows_;
+    const int nW = (H + 6) / 7;          // new byte width  = ceil(H px / 7)
+    const int nH = W;                    // new height (rows) = old width (px)
+    if (nW > kByteCols || nH > kRows) return;
+    std::vector<HgrColor> src(static_cast<size_t>(W) * H);
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x)
+            src[static_cast<size_t>(y) * W + x] = hgrpaint::colorAt(scratch.data(), x, y);
+    auto before = snapshotRegion(std::max(wBytes_, nW), std::max(hRows_, nH));
+    for (const auto& p : before) scratch[p.first] = 0;
+    wBytes_ = nW;
+    hRows_  = nH;
+    clampGeom();
+    // dest(x,y) = src(y, H-1-x); columns past H-1 are the rounded-up byte padding.
+    for (int y = 0; y < nH; ++y)
+        for (int x = 0; x < nW * 7; ++x) {
+            const int sx = y, sy = H - 1 - x;
+            if (sy < 0) continue;
+            const HgrColor c = src[static_cast<size_t>(sy) * W + sx];
+            if (c != HgrColor::Black) hgrpaint::plotPage(scratch.data(), x, y, c);
+        }
+    commitRegionDiff(before);
+    status = "Rotated 90\xC2\xB0";
+}
+
 // ── Live-card actions + files ───────────────────────────────────────────────
 
 void HgrSpriteEditor::stampToPage()
@@ -296,61 +341,227 @@ void HgrSpriteEditor::stampToPage()
     status = mag2_ ? "Stamped to HGR page (\xC3\x97""2)" : "Stamped to HGR page";
 }
 
-void HgrSpriteEditor::doSaveSprite()
+// Inverse of Stamp: extract the wBytes×hRows rectangle at (Byte X, Row Y) from
+// the live HGR page into the scratch canvas — grab from screen, edit as sprite.
+void HgrSpriteEditor::grabFromPage(const std::vector<uint8_t>& memory)
 {
-    if (!host) return;
-    if (!host->nativeFilePickerAvailable()) { status = "No native file picker"; return; }
-    std::string path;
-    if (!host->pickFilePath(true, "Save HGR sprite", "HGR sprite bytes",
-                            "hgrspr,bin", "", "sprite.hgrspr", path))
-        return;
+    const uint16_t base = pageBase();
+    const size_t need = static_cast<size_t>(base) + hgrpaint::kHiresSize;
+    if (memory.size() < need) { status = "Page out of RAM"; return; }
     std::vector<uint8_t> spr(static_cast<size_t>(wBytes_) * hRows_, 0);
-    extract(scratch.data(), 0, 0, wBytes_, hRows_, spr.data());
-    std::FILE* f = std::fopen(path.c_str(), "wb");
-    if (!f) { status = "Cannot write file"; return; }
-    const size_t n = std::fwrite(spr.data(), 1, spr.size(), f);
-    std::fclose(f);
-    status = (n == spr.size()) ? "Saved sprite" : "Short write";
-}
-
-void HgrSpriteEditor::doLoadSprite()
-{
-    if (!host) return;
-    if (!host->nativeFilePickerAvailable()) { status = "No native file picker"; return; }
-    std::string path;
-    if (!host->pickFilePath(false, "Load HGR sprite", "HGR sprite bytes",
-                            "hgrspr,bin", "", "", path))
-        return;
-    std::FILE* f = std::fopen(path.c_str(), "rb");
-    if (!f) { status = "Cannot open file"; return; }
-    std::vector<uint8_t> spr(static_cast<size_t>(wBytes_) * hRows_, 0);
-    const size_t got = std::fread(spr.data(), 1, spr.size(), f);   // short files zero-pad
-    std::fclose(f);
-    (void)got;
+    extract(memory.data() + base, destByteCol_, destRow_, wBytes_, hRows_, spr.data());
     auto before = snapshotRegion();
     for (const auto& p : before) scratch[p.first] = 0;
     stamp(spr.data(), wBytes_, hRows_, 0, 0,
           [&](int off, uint8_t v) { scratch[off] = v; });
     commitRegionDiff(before);
-    status = "Loaded sprite (current W\xC3\x97H)";
+    status = "Grabbed from HGR page";
 }
 
-void HgrSpriteEditor::doSavePng()
+// ── Files (native picker first; ImGui browser fallback — mirrors the paint
+//    editor's openFileBrowser / performFileAction / renderFileBrowser split) ──
+
+void HgrSpriteEditor::openFileBrowser(FileAction a)
 {
-    if (!host) return;
-    if (!host->nativeFilePickerAvailable()) { status = "No native file picker"; return; }
-    std::string path;
-    if (!host->pickFilePath(true, "Export sprite PNG", "PNG image", "png", "", "sprite.png", path))
+    browserAction = a;
+    if (browserDir.empty()) {
+        std::error_code ec;
+        browserDir = std::filesystem::current_path(ec).string();
+        if (ec || browserDir.empty()) browserDir = ".";
+    }
+    const bool forSave = (a != FileAction::LoadSprite);
+    std::string title, desc, defName;
+    switch (a) {
+    case FileAction::LoadSprite:
+        title = "Load HGR sprite";   desc = "HGR sprite bytes"; browserExts = "hgrspr,bin"; break;
+    case FileAction::SaveSprite:
+        title = "Save HGR sprite";   desc = "HGR sprite bytes"; browserExts = "hgrspr,bin";
+        defName = "sprite.hgrspr"; break;
+    case FileAction::SavePng:
+        title = "Export sprite PNG"; desc = "PNG image";        browserExts = "png";
+        defName = "sprite.png"; break;
+    case FileAction::ExportAsm:
+        title = "Export ca65 sprite"; desc = "ca65 assembly";   browserExts = "asm";
+        defName = sanitizeAsmName(asmName_) + ".asm"; break;
+    }
+    if (host) {
+        std::string picked;
+        if (host->pickFilePath(forSave, title, desc, browserExts, browserDir, defName, picked)) {
+            // Track where the user went so the next pick starts there too.
+            const std::string dir = std::filesystem::path(picked).parent_path().string();
+            if (!dir.empty()) browserDir = dir;
+            performFileAction(a, picked);
+            return;
+        }
+        // A native picker that returned false means the user CANCELLED — stay
+        // put. Only fall back to the ImGui browser when the host has no native
+        // picker at all (WASM, Linux without zenity/kdialog).
+        if (host->nativeFilePickerAvailable()) return;
+    }
+    std::snprintf(browserSaveName, sizeof(browserSaveName), "%s", defName.c_str());
+    browserOpen = true;
+}
+
+// Shared by the native picker and the ImGui browser. Returns false only on a
+// failed save (so the ImGui browser keeps its popup open); true otherwise.
+bool HgrSpriteEditor::performFileAction(FileAction a, const std::string& fullPath)
+{
+    switch (a) {
+    case FileAction::LoadSprite: {
+        std::FILE* f = std::fopen(fullPath.c_str(), "rb");
+        if (!f) { status = "Cannot open file"; return true; }
+        std::vector<uint8_t> spr(static_cast<size_t>(wBytes_) * hRows_, 0);
+        const size_t got = std::fread(spr.data(), 1, spr.size(), f);   // short files zero-pad
+        std::fclose(f);
+        (void)got;
+        auto before = snapshotRegion();
+        for (const auto& p : before) scratch[p.first] = 0;
+        stamp(spr.data(), wBytes_, hRows_, 0, 0,
+              [&](int off, uint8_t v) { scratch[off] = v; });
+        commitRegionDiff(before);
+        status = "Loaded sprite (current W\xC3\x97H)";
+        return true;
+    }
+    case FileAction::SaveSprite: {
+        std::vector<uint8_t> spr(static_cast<size_t>(wBytes_) * hRows_, 0);
+        extract(scratch.data(), 0, 0, wBytes_, hRows_, spr.data());
+        std::FILE* f = std::fopen(fullPath.c_str(), "wb");
+        if (!f) { status = "Cannot write file"; return false; }
+        const size_t n = std::fwrite(spr.data(), 1, spr.size(), f);
+        std::fclose(f);
+        const bool ok = (n == spr.size());
+        status = ok ? "Saved sprite" : "Short write";
+        return ok;
+    }
+    case FileAction::SavePng: {
+        const int W = wpx(), H = hRows_;
+        std::vector<uint32_t> rgba(static_cast<size_t>(W) * H, 0);
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x)
+                rgba[static_cast<size_t>(y) * W + x] =
+                    swatchU32(hgrpaint::colorAt(scratch.data(), x, y));
+        std::string err;
+        const bool ok = host && host->savePng(fullPath, rgba.data(), W, H, err);
+        status = ok ? "Saved PNG" : (std::string("PNG failed: ") + err);
+        return ok;
+    }
+    case FileAction::ExportAsm: {
+        // Write the dev-catalogue ca65 format — parseable back by the host's
+        // dev-sprite library loader (round-trip pinned by sprite_asm_export_smoke).
+        std::vector<uint8_t> spr(static_cast<size_t>(wBytes_) * hRows_, 0);
+        extract(scratch.data(), 0, 0, wBytes_, hRows_, spr.data());
+        const std::string text =
+            formatSpriteAsm(sanitizeAsmName(asmName_), wBytes_, hRows_, spr.data());
+        std::FILE* f = std::fopen(fullPath.c_str(), "wb");
+        if (!f) { status = "Cannot write file"; return false; }
+        const size_t n = std::fwrite(text.data(), 1, text.size(), f);
+        std::fclose(f);
+        const bool ok = (n == text.size());
+        status = ok ? "Exported ca65 sprite" : "Short write";
+        return ok;
+    }
+    }
+    return true;
+}
+
+void HgrSpriteEditor::renderFileBrowser()
+{
+    namespace fs = std::filesystem;
+    if (browserOpen) { ImGui::OpenPopup("HGR Sprite File##browser"); browserOpen = false; }
+
+    const ImVec2 vpCenter = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(vpCenter, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(600, 460), ImGuiCond_Appearing);
+    if (!ImGui::BeginPopupModal("HGR Sprite File##browser", nullptr, ImGuiWindowFlags_NoCollapse))
         return;
-    const int W = wpx(), H = hRows_;
-    std::vector<uint32_t> rgba(static_cast<size_t>(W) * H, 0);
-    for (int y = 0; y < H; ++y)
-        for (int x = 0; x < W; ++x)
-            rgba[static_cast<size_t>(y) * W + x] =
-                swatchU32(hgrpaint::colorAt(scratch.data(), x, y));
-    std::string err;
-    status = host->savePng(path, rgba.data(), W, H, err) ? "Saved PNG"
-                                                         : (std::string("PNG failed: ") + err);
+
+    const bool forSave = (browserAction != FileAction::LoadSprite);
+    switch (browserAction) {
+    case FileAction::LoadSprite: ImGui::TextUnformatted("Load raw HGR sprite bytes (current W\xC3\x97H)"); break;
+    case FileAction::SaveSprite: ImGui::TextUnformatted("Save raw HGR sprite bytes"); break;
+    case FileAction::SavePng:    ImGui::TextUnformatted("Export sprite PNG"); break;
+    case FileAction::ExportAsm:  ImGui::TextUnformatted("Export ca65 sprite (.byte block, dev-library format)"); break;
+    }
+    ImGui::TextDisabled("%s", browserDir.c_str());
+    ImGui::Separator();
+
+    // ── Directory + file listing ─────────────────────────────────────────────
+    ImGui::BeginChild("##fblist", ImVec2(0, -ImGui::GetFrameHeightWithSpacing() * 2.0f), true);
+    if (ImGui::Selectable("../", false)) {
+        fs::path up = fs::path(browserDir).parent_path();
+        if (!up.empty()) browserDir = up.string();
+    }
+    std::vector<fs::directory_entry> dirs, files;
+    try {
+        for (const auto& e : fs::directory_iterator(browserDir,
+                 fs::directory_options::skip_permission_denied)) {
+            std::error_code ec;
+            if (e.is_directory(ec)) dirs.push_back(e);
+            else if (e.is_regular_file(ec)) files.push_back(e);
+        }
+    } catch (...) {
+        ImGui::TextDisabled("(cannot read this directory)");
+    }
+    auto byName = [](const fs::directory_entry& a, const fs::directory_entry& b) {
+        return a.path().filename().string() < b.path().filename().string();
+    };
+    std::sort(dirs.begin(), dirs.end(), byName);
+    std::sort(files.begin(), files.end(), byName);
+
+    for (const auto& d : dirs) {
+        const std::string name = d.path().filename().string();
+        if (ImGui::Selectable((name + "/").c_str(), false))
+            browserDir = d.path().string();
+    }
+    // Highlight files whose extension matches the pending action's filter.
+    auto extRelevant = [this](std::string ext) {
+        if (!ext.empty() && ext[0] == '.') ext.erase(0, 1);
+        for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        size_t pos = 0;
+        while (pos <= browserExts.size()) {
+            const size_t comma = browserExts.find(',', pos);
+            const std::string tok = browserExts.substr(pos, comma - pos);
+            if (tok == ext) return true;
+            if (comma == std::string::npos) break;
+            pos = comma + 1;
+        }
+        return false;
+    };
+    for (const auto& f : files) {
+        std::error_code ec;
+        const std::uintmax_t sz = f.file_size(ec);
+        const std::string name = f.path().filename().string();
+        const bool relevant = extRelevant(f.path().extension().string());
+        char label[320];
+        std::snprintf(label, sizeof(label), "%-28s %8llu B", name.c_str(),
+                      static_cast<unsigned long long>(sz));
+        if (!relevant) ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(150, 150, 150, 255));
+        if (ImGui::Selectable(label, false)) {
+            if (forSave) {
+                std::snprintf(browserSaveName, sizeof(browserSaveName), "%s", name.c_str());
+            } else {                       // Load: act immediately
+                performFileAction(browserAction, f.path().string());
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        if (!relevant) ImGui::PopStyleColor();
+    }
+    ImGui::EndChild();
+
+    // ── Action row ───────────────────────────────────────────────────────────
+    if (forSave) {
+        ImGui::SetNextItemWidth(-160);
+        ImGui::InputText("##fbname", browserSaveName, sizeof(browserSaveName));
+        ImGui::SameLine();
+        if (ImGui::Button("Save", ImVec2(70, 0)) && browserSaveName[0]) {
+            const std::string full = (fs::path(browserDir) / browserSaveName).string();
+            if (performFileAction(browserAction, full))
+                ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+    }
+    if (ImGui::Button("Cancel", ImVec2(70, 0))) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
 }
 
 // ── Dev sprite library (dev/lib/gen2/sprites via the host) ──────────────────
@@ -469,6 +680,15 @@ void HgrSpriteEditor::renderTopBar()
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Flip horizontally");
     ImGui::SameLine(); if (ImGui::Button(ICON_FA_ARROWS_UP_DOWN "##fv")) transformFlipV();
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Flip vertically");
+    // Rotate swaps W and H, so the rotated height (old width in px) must fit.
+    const bool rotOk = (wpx() <= kRows);
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!rotOk);
+    if (ImGui::Button(ICON_FA_ROTATE "##rot")) transformRotateCW();
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip(rotOk ? "Rotate 90\xC2\xB0 clockwise (W and H swap)"
+                                : "Too wide to rotate (rotated height would exceed 192 rows)");
     ImGui::SameLine(0, 12);
     if (ImGui::ArrowButton("##sl", ImGuiDir_Left))  transformShift(-1, 0);
     ImGui::SameLine(); if (ImGui::ArrowButton("##sr", ImGuiDir_Right)) transformShift(1, 0);
@@ -483,7 +703,7 @@ void HgrSpriteEditor::renderTopBar()
     ImGui::SliderInt("Zoom", &zoom_, 6, 32);
 }
 
-void HgrSpriteEditor::renderToolPanel()
+void HgrSpriteEditor::renderToolPanel(const std::vector<uint8_t>& memory)
 {
     const char* toolIcon[3] = { ICON_FA_PENCIL, ICON_FA_ERASER, ICON_FA_FILL_DRIP };
     const char* toolName[3] = { "Pencil (B)", "Eraser (E)", "Fill (G)" };
@@ -532,11 +752,26 @@ void HgrSpriteEditor::renderToolPanel()
     if (ImGui::Button(ICON_FA_STAMP " Stamp to page")) stampToPage();
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Write the sprite bytes onto the live HGR page (destructive)");
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_EYE_DROPPER " Grab")) grabFromPage(memory);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Copy the W\xC3\x97H rectangle at Byte X / Row Y from the live page\n"
+                          "into the canvas (inverse of Stamp \xE2\x80\x94 grab from screen, edit as sprite)");
 
     ImGui::Separator();
-    if (ImGui::Button("Load")) doLoadSprite();
-    ImGui::SameLine(); if (ImGui::Button("Save")) doSaveSprite();
-    ImGui::SameLine(); if (ImGui::Button("PNG"))  doSavePng();
+    if (ImGui::Button("Load")) openFileBrowser(FileAction::LoadSprite);
+    ImGui::SameLine(); if (ImGui::Button("Save")) openFileBrowser(FileAction::SaveSprite);
+    ImGui::SameLine(); if (ImGui::Button("PNG"))  openFileBrowser(FileAction::SavePng);
+    // ca65 export: label + Export ASM (round-trips through the dev-library parser).
+    ImGui::SetNextItemWidth(110);
+    ImGui::InputText("##asmname", asmName_, sizeof(asmName_));
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("ca65 label for the ASM export (sanitized to [a-z0-9_])");
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_FILE_EXPORT " Export ASM")) openFileBrowser(FileAction::ExportAsm);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Write the sprite as a ca65 .byte block\n"
+                          "(the dev sprite library format \xE2\x80\x94 loadable back by POM1)");
 
     // Built-in GEN2 HGR sprite library (dev/lib/gen2/sprites).
     if (ImGui::CollapsingHeader("Dev sprite library", ImGuiTreeNodeFlags_DefaultOpen))
@@ -683,9 +918,11 @@ void HgrSpriteEditor::render(const std::vector<uint8_t>& memory)
 
     ImGui::SameLine();
     ImGui::BeginChild("##hgrsidepane", ImVec2(0, 0));
-    renderToolPanel();
+    renderToolPanel(memory);
     renderPreview(memory);
     ImGui::EndChild();
+
+    renderFileBrowser();
 
     if (!status.empty()) {
         ImGui::Separator();

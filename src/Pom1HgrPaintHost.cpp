@@ -7,6 +7,7 @@
 
 #include "EmulationController.h"
 #include "HgrPaintModel.h"        // hgrpaint:: geometry constants
+#include "HgrSpriteAsmExport.h"   // shared ca65 sprite parser (round-trips Export ASM)
 #include "NativeFileDialog.h"     // OS-native file picker for Load/Save/Import
 #include "PomRenderer.h"          // shared graphics backend (GL or Metal)
 #include "third_party/stb/stb_image_write.h"   // decl only; impl lives in main_imgui.cpp
@@ -16,6 +17,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <system_error>
 
 Pom1HgrPaintHost::Pom1HgrPaintHost(EmulationController* emu,
@@ -45,37 +47,12 @@ bool Pom1HgrPaintHost::nativeFilePickerAvailable() const
 // ── Built-in HGR sprite library (dev/lib/gen2/sprites/*.asm) ─────────────────
 // The GEN2 HGR SCROLL-O-SPRITES catalogue is shipped as ca65 sources: each
 // sprite is 16 rows × 3 bytes emitted as `.byte $xx, ...` under a per-sprite
-// `; slot NN/MM ... -- <name>` comment. We parse those into raw byte blobs the
-// sprite editor can drop onto its canvas. Parsed once and cached (the tree is
-// bundled next to POM1 in release packages, and lives at the repo root in a
-// source build).
+// `; slot NN/MM ... -- <name>` comment. hgrsprite::parseSpritesAsm (the same
+// portable parser the sprite editor's "Export ASM" targets, so exports round-
+// trip) turns those into raw byte blobs the sprite editor can drop onto its
+// canvas. Parsed once and cached (the tree is bundled next to POM1 in release
+// packages, and lives at the repo root in a source build).
 namespace {
-
-// Append every "$xx" hex byte on a `.byte` line to `out`.
-void parseByteLine(const std::string& line, std::vector<uint8_t>& out)
-{
-    for (size_t i = 0; i + 1 < line.size(); ++i) {
-        if (line[i] != '$') continue;
-        auto hex = [](char c) -> int {
-            if (c >= '0' && c <= '9') return c - '0';
-            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-            return -1;
-        };
-        const int hi = hex(line[i + 1]);
-        if (hi < 0) continue;
-        const int lo = (i + 2 < line.size()) ? hex(line[i + 2]) : -1;
-        out.push_back(static_cast<uint8_t>(lo < 0 ? hi : (hi * 16 + lo)));
-    }
-}
-
-std::string trim(const std::string& s)
-{
-    size_t a = 0, b = s.size();
-    while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
-    while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
-    return s.substr(a, b - a);
-}
 
 hgrpaint::DevSpriteCategory parseSpriteFile(const std::filesystem::path& file)
 {
@@ -89,65 +66,16 @@ hgrpaint::DevSpriteCategory parseSpriteFile(const std::filesystem::path& file)
 
     std::ifstream in(file);
     if (!in) return cat;
-    hgrpaint::DevSprite cur;
-    bool haveCur = false;
-    std::string pendingName;        // from the most recent "; slot ... -- name" comment
-    auto flush = [&]() {
-        if (haveCur && cur.bytes.size() >= 48) {
-            cur.bytes.resize(48);                           // 16 rows × 3 bytes
-            cur.wBytes = 3; cur.hRows = 16;
-            cat.sprites.push_back(std::move(cur));
-        }
-        cur = hgrpaint::DevSprite{};
-        haveCur = false;
-    };
-    // True + fills `label` when the trimmed, comment-stripped line is a bare ca65
-    // label "ident:". A per-sprite pattern label (e.g. `creat_wolf_pat:`,
-    // `normal_pat:`) starts a new sprite; the `<cat>_hgr_data:` base label starts
-    // an empty one that the next label flushes away.
-    auto isLabel = [](const std::string& code, std::string& label) {
-        if (code.size() < 2 || code.back() != ':') return false;
-        for (size_t i = 0; i + 1 < code.size(); ++i) {
-            const char c = code[i];
-            if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '_')) return false;
-        }
-        const char c0 = code[0];
-        if (!(std::isalpha(static_cast<unsigned char>(c0)) || c0 == '_')) return false;
-        label = code.substr(0, code.size() - 1);
-        return true;
-    };
-    std::string line;
-    while (std::getline(in, line)) {
-        std::string t = trim(line);
-        if (t.empty()) continue;
-        if (t[0] == ';') {                                  // comment: catch slot name
-            const size_t dash = t.find("--");
-            if (t.find("slot") != std::string::npos && dash != std::string::npos) {
-                pendingName = trim(t.substr(dash + 2));
-                const size_t paren = pendingName.find('(');   // drop trailing "(renamed …)"
-                if (paren != std::string::npos) pendingName = trim(pendingName.substr(0, paren));
-            }
-            continue;
-        }
-        // Strip any inline comment before inspecting the code.
-        const size_t sc = t.find(';');
-        std::string code = trim(sc == std::string::npos ? t : t.substr(0, sc));
-        std::string label;
-        if (isLabel(code, label)) {
-            flush();
-            if (!pendingName.empty()) { cur.name = pendingName; pendingName.clear(); }
-            else {
-                if (label.size() > 4 && label.compare(label.size() - 4, 4, "_pat") == 0)
-                    label.resize(label.size() - 4);
-                cur.name = label;
-            }
-            haveCur = true;
-            continue;
-        }
-        if (haveCur && code.find(".byte") != std::string::npos)
-            parseByteLine(code, cur.bytes);
+    std::ostringstream text;
+    text << in.rdbuf();
+    for (auto& s : hgrsprite::parseSpritesAsm(text.str(), 48)) {   // 16 rows × 3 bytes
+        hgrpaint::DevSprite d;
+        d.name = std::move(s.name);
+        d.wBytes = 3;
+        d.hRows = 16;
+        d.bytes = std::move(s.bytes);
+        cat.sprites.push_back(std::move(d));
     }
-    flush();
     return cat;
 }
 

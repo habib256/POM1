@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "TmsSpriteModel.h"
+#include "TmsSpriteAsmExport.h"   // pure ca65 export (round-trips the dev-library parser)
 #include "ITmsPaintHost.h"        // shared seam with the paint editor
 
 namespace tmssprite {
@@ -96,6 +97,19 @@ private:
 
     std::string status;
 
+    // ca65 export label (sanitized to [a-z0-9_] on export).
+    char asmName_[64] = "sprite";
+
+    // File actions + ImGui file-browser fallback state (mirrors the paint
+    // editor's browser — used when the host has no native picker: WASM, Linux
+    // without zenity/kdialog).
+    enum class FileAction : uint8_t { LoadVram = 0, SaveVram, SavePng, ExportAsm };
+    bool browserOpen = false;          // OpenPopup requested this frame
+    FileAction browserAction = FileAction::LoadVram;
+    std::string browserDir;            // directory currently shown
+    std::string browserExts;           // CSV extension filter of the pending action
+    char browserSaveName[256] = {0};   // editable filename (save actions)
+
     // Built-in TMS9918 sprite library (dev/lib/tms9918 via the host), lazily
     // fetched + cached; the browser drops a ready-made 16×16 sprite into VRAM.
     std::vector<tmspaint::DevSpriteCategory> devCats_;
@@ -128,11 +142,10 @@ private:
     void transformRotateCW();
     void writeGrid(const std::vector<uint8_t>& grid);   // grid[nDim*nDim] → shadow+chip
 
-    // File I/O (native picker only; the shared VRAM is also reachable from the
-    // TMS9918 Paint editor's Load/Save on hosts without a native picker).
-    void doLoadVram();
-    void doSaveVram();
-    void doSavePng();
+    // Files: native picker first, ImGui browser fallback (mirrors the paint editor).
+    void openFileBrowser(FileAction a);
+    bool performFileAction(FileAction a, const std::string& fullPath);
+    void renderFileBrowser();
 
     void setSize(Size s);
     void clampPattern();

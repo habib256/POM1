@@ -7,6 +7,10 @@ VCTL = $CC01
 .segment "CODE"
 
 start:
+    sei                 ; canonical preamble: mask IRQs, clear a possibly
+    cld                 ; stale decimal flag (Wozmon 4000R re-entry does NOT
+    ldx #$ff            ; CLD), and give ourselves a fresh stack — mirrors
+    txs                 ; TMS_Split/TMS_Vague.
     ldx #0
 load_regs:
     lda regs,x

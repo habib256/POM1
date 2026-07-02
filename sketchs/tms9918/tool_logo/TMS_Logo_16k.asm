@@ -4376,8 +4376,9 @@ arrow_io_bbox:
         STA arrow_bg_pat,X
         INX
         DEY
-        BNE @s_b
-        BEQ @next_col
+        JSR tms9918_pad18   ; +18c — reads share the VRAM access window; the
+        BNE @s_b            ;   raw 16c loop sat AT the silicon floor (a too-
+        BEQ @next_col       ;   fast read returns the stale read-ahead byte)
 @restore_cell:
         ; --- restore 8 bytes: arrow_bg_pat[X..X+7] -> VDP_DATA ---
         JSR vdp_set_write

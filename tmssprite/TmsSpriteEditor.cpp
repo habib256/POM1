@@ -11,8 +11,10 @@
 // destroyTexture so this portable module stays backend-agnostic.
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <vector>
 
 namespace {
@@ -140,6 +142,7 @@ void TmsSpriteEditor::commitStroke()
 {
     if (stroke.empty()) return;
     undo.push_back(stroke);
+    if (undo.size() > 64) undo.erase(undo.begin());   // cap history (matches paint editor)
     redo.clear();
     stroke.clear();
 }
@@ -216,6 +219,7 @@ void TmsSpriteEditor::doRedo()
     auto ops = redo.back(); redo.pop_back();
     applyOps(ops, true);
     undo.push_back(ops);
+    if (undo.size() > 64) undo.erase(undo.begin());
     status = "Redo";
 }
 
@@ -300,44 +304,193 @@ void TmsSpriteEditor::transformRotateCW()
     status = "Rotated 90\xC2\xB0";
 }
 
-// ── File I/O (native picker only) ───────────────────────────────────────────
+// ── Files (native picker first; ImGui browser fallback — mirrors the paint
+//    editor's openFileBrowser / performFileAction / renderFileBrowser split) ──
 
-void TmsSpriteEditor::doLoadVram()
+void TmsSpriteEditor::openFileBrowser(FileAction a)
 {
-    if (!host) return;
-    if (!host->nativeFilePickerAvailable()) { status = "No native file picker (use TMS Paint editor)"; return; }
-    std::string path;
-    if (!host->pickFilePath(false, "Load TMS9918 VRAM", "TMS9918 VRAM",
-                            "tms,vram,bin", "", "", path))
-        return;
-    std::string err;
-    if (host->loadVram(path, err)) { status = "Loaded VRAM"; satValid = false; }
-    else status = std::string("Load failed: ") + err;
+    browserAction = a;
+    if (browserDir.empty()) {
+        std::error_code ec;
+        browserDir = std::filesystem::current_path(ec).string();
+        if (ec || browserDir.empty()) browserDir = ".";
+    }
+    const bool forSave = (a != FileAction::LoadVram);
+    std::string title, desc, defName;
+    switch (a) {
+    case FileAction::LoadVram:
+        title = "Load TMS9918 VRAM"; desc = "TMS9918 VRAM"; browserExts = "tms,vram,bin"; break;
+    case FileAction::SaveVram:
+        title = "Save TMS9918 VRAM"; desc = "TMS9918 VRAM"; browserExts = "tms";
+        defName = "sprites.tms"; break;
+    case FileAction::SavePng:
+        title = "Export screen PNG"; desc = "PNG image";    browserExts = "png";
+        defName = "sprites.png"; break;
+    case FileAction::ExportAsm:
+        title = "Export ca65 sprite"; desc = "ca65 assembly"; browserExts = "asm";
+        defName = sanitizeAsmName(asmName_) + ".asm"; break;
+    }
+    if (host) {
+        std::string picked;
+        if (host->pickFilePath(forSave, title, desc, browserExts, browserDir, defName, picked)) {
+            // Track where the user went so the next pick starts there too.
+            const std::string dir = std::filesystem::path(picked).parent_path().string();
+            if (!dir.empty()) browserDir = dir;
+            performFileAction(a, picked);
+            return;
+        }
+        // A native picker that returned false means the user CANCELLED — stay
+        // put. Only fall back to the ImGui browser when the host has no native
+        // picker at all (WASM, Linux without zenity/kdialog).
+        if (host->nativeFilePickerAvailable()) return;
+    }
+    std::snprintf(browserSaveName, sizeof(browserSaveName), "%s", defName.c_str());
+    browserOpen = true;
 }
 
-void TmsSpriteEditor::doSaveVram()
+// Shared by the native picker and the ImGui browser. Returns false only on a
+// failed save (so the ImGui browser keeps its popup open); true otherwise.
+bool TmsSpriteEditor::performFileAction(FileAction a, const std::string& fullPath)
 {
-    if (!host) return;
-    if (!host->nativeFilePickerAvailable()) { status = "No native file picker (use TMS Paint editor)"; return; }
-    std::string path;
-    if (!host->pickFilePath(true, "Save TMS9918 VRAM", "TMS9918 VRAM",
-                            "tms", "", "sprites.tms", path))
-        return;
-    std::string err;
-    status = host->saveVram(path, err) ? "Saved VRAM" : (std::string("Save failed: ") + err);
+    if (!host) return true;
+    switch (a) {
+    case FileAction::LoadVram: {
+        std::string err;
+        if (host->loadVram(fullPath, err)) { status = "Loaded VRAM"; satValid = false; }
+        else status = std::string("Load failed: ") + err;
+        return true;
+    }
+    case FileAction::SaveVram: {
+        std::string err;
+        const bool ok = host->saveVram(fullPath, err);
+        status = ok ? "Saved VRAM" : (std::string("Save failed: ") + err);
+        return ok;
+    }
+    case FileAction::SavePng: {
+        if (!host->liveFramebuffer(previewRgba.data())) { status = "No live framebuffer"; return false; }
+        std::string err;
+        const bool ok = host->savePng(fullPath, previewRgba.data(), 256, 192, err);
+        status = ok ? "Saved PNG" : (std::string("PNG failed: ") + err);
+        return ok;
+    }
+    case FileAction::ExportAsm: {
+        // Write the current sprite's pattern bytes (8 = 8×8, 32 = 16×16 native
+        // quadrant stream) in the dev-catalogue ca65 format — parseable back by
+        // the host's library loader (round-trip pinned by sprite_asm_export_smoke).
+        const int pat = patNum_ & (size_ == Size::S16 ? 0xFC : 0xFF);
+        const int nBytes = slotsPerSprite(size_) * 8;
+        const std::string text = formatSpriteAsm(sanitizeAsmName(asmName_), nBytes,
+                                                 &shadow[kSpritePatternBase + pat * 8]);
+        std::FILE* f = std::fopen(fullPath.c_str(), "wb");
+        if (!f) { status = "Cannot write file"; return false; }
+        const size_t n = std::fwrite(text.data(), 1, text.size(), f);
+        std::fclose(f);
+        const bool ok = (n == text.size());
+        status = ok ? "Exported ca65 sprite" : "Short write";
+        return ok;
+    }
+    }
+    return true;
 }
 
-void TmsSpriteEditor::doSavePng()
+void TmsSpriteEditor::renderFileBrowser()
 {
-    if (!host) return;
-    if (!host->nativeFilePickerAvailable()) { status = "No native file picker"; return; }
-    std::string path;
-    if (!host->pickFilePath(true, "Export screen PNG", "PNG image", "png", "", "sprites.png", path))
+    namespace fs = std::filesystem;
+    if (browserOpen) { ImGui::OpenPopup("TMS Sprite File##browser"); browserOpen = false; }
+
+    const ImVec2 vpCenter = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(vpCenter, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(600, 460), ImGuiCond_Appearing);
+    if (!ImGui::BeginPopupModal("TMS Sprite File##browser", nullptr, ImGuiWindowFlags_NoCollapse))
         return;
-    if (!host->liveFramebuffer(previewRgba.data())) { status = "No live framebuffer"; return; }
-    std::string err;
-    status = host->savePng(path, previewRgba.data(), 256, 192, err)
-                 ? "Saved PNG" : (std::string("PNG failed: ") + err);
+
+    const bool forSave = (browserAction != FileAction::LoadVram);
+    switch (browserAction) {
+    case FileAction::LoadVram:  ImGui::TextUnformatted("Load TMS9918 VRAM (16 KB)"); break;
+    case FileAction::SaveVram:  ImGui::TextUnformatted("Save TMS9918 VRAM (16 KB)"); break;
+    case FileAction::SavePng:   ImGui::TextUnformatted("Export screen PNG"); break;
+    case FileAction::ExportAsm: ImGui::TextUnformatted("Export ca65 sprite (.byte block, dev-library format)"); break;
+    }
+    ImGui::TextDisabled("%s", browserDir.c_str());
+    ImGui::Separator();
+
+    // ── Directory + file listing ─────────────────────────────────────────────
+    ImGui::BeginChild("##fblist", ImVec2(0, -ImGui::GetFrameHeightWithSpacing() * 2.0f), true);
+    if (ImGui::Selectable("../", false)) {
+        fs::path up = fs::path(browserDir).parent_path();
+        if (!up.empty()) browserDir = up.string();
+    }
+    std::vector<fs::directory_entry> dirs, files;
+    try {
+        for (const auto& e : fs::directory_iterator(browserDir,
+                 fs::directory_options::skip_permission_denied)) {
+            std::error_code ec;
+            if (e.is_directory(ec)) dirs.push_back(e);
+            else if (e.is_regular_file(ec)) files.push_back(e);
+        }
+    } catch (...) {
+        ImGui::TextDisabled("(cannot read this directory)");
+    }
+    auto byName = [](const fs::directory_entry& a, const fs::directory_entry& b) {
+        return a.path().filename().string() < b.path().filename().string();
+    };
+    std::sort(dirs.begin(), dirs.end(), byName);
+    std::sort(files.begin(), files.end(), byName);
+
+    for (const auto& d : dirs) {
+        const std::string name = d.path().filename().string();
+        if (ImGui::Selectable((name + "/").c_str(), false))
+            browserDir = d.path().string();
+    }
+    // Highlight files whose extension matches the pending action's filter.
+    auto extRelevant = [this](std::string ext) {
+        if (!ext.empty() && ext[0] == '.') ext.erase(0, 1);
+        for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        size_t pos = 0;
+        while (pos <= browserExts.size()) {
+            const size_t comma = browserExts.find(',', pos);
+            const std::string tok = browserExts.substr(pos, comma - pos);
+            if (tok == ext) return true;
+            if (comma == std::string::npos) break;
+            pos = comma + 1;
+        }
+        return false;
+    };
+    for (const auto& f : files) {
+        std::error_code ec;
+        const std::uintmax_t sz = f.file_size(ec);
+        const std::string name = f.path().filename().string();
+        const bool relevant = extRelevant(f.path().extension().string());
+        char label[320];
+        std::snprintf(label, sizeof(label), "%-28s %8llu B", name.c_str(),
+                      static_cast<unsigned long long>(sz));
+        if (!relevant) ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(150, 150, 150, 255));
+        if (ImGui::Selectable(label, false)) {
+            if (forSave) {
+                std::snprintf(browserSaveName, sizeof(browserSaveName), "%s", name.c_str());
+            } else {                       // Load: act immediately
+                performFileAction(browserAction, f.path().string());
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        if (!relevant) ImGui::PopStyleColor();
+    }
+    ImGui::EndChild();
+
+    // ── Action row ───────────────────────────────────────────────────────────
+    if (forSave) {
+        ImGui::SetNextItemWidth(-160);
+        ImGui::InputText("##fbname", browserSaveName, sizeof(browserSaveName));
+        ImGui::SameLine();
+        if (ImGui::Button("Save", ImVec2(70, 0)) && browserSaveName[0]) {
+            const std::string full = (fs::path(browserDir) / browserSaveName).string();
+            if (performFileAction(browserAction, full))
+                ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+    }
+    if (ImGui::Button("Cancel", ImVec2(70, 0))) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
 }
 
 // ── Small helpers ───────────────────────────────────────────────────────────
@@ -502,11 +655,21 @@ void TmsSpriteEditor::renderToolPanel()
     if (ImGui::Checkbox("Early Clock (-32px)", &earlyClock_)) { if (modeApplied) updateSat(); }
 
     ImGui::Separator();
-    if (ImGui::Button("Load VRAM")) doLoadVram();
+    if (ImGui::Button("Load VRAM")) openFileBrowser(FileAction::LoadVram);
     ImGui::SameLine();
-    if (ImGui::Button("Save VRAM")) doSaveVram();
+    if (ImGui::Button("Save VRAM")) openFileBrowser(FileAction::SaveVram);
     ImGui::SameLine();
-    if (ImGui::Button("Save PNG")) doSavePng();
+    if (ImGui::Button("Save PNG")) openFileBrowser(FileAction::SavePng);
+    // ca65 export: label + Export ASM (round-trips through the dev-library parser).
+    ImGui::SetNextItemWidth(110);
+    ImGui::InputText("##asmname", asmName_, sizeof(asmName_));
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("ca65 label for the ASM export (sanitized to [a-z0-9_])");
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_FILE_EXPORT " Export ASM")) openFileBrowser(FileAction::ExportAsm);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Write the current sprite's pattern bytes as a ca65 .byte block\n"
+                          "(the dev sprite library format \xE2\x80\x94 loadable back by POM1)");
 
     // Built-in TMS9918 sprite library (dev/lib/tms9918) — loads into VRAM at the
     // current pattern slot group (16×16).
@@ -788,6 +951,8 @@ void TmsSpriteEditor::render()
     renderToolPanel();
     renderPreview();
     ImGui::EndChild();
+
+    renderFileBrowser();
 
     if (modeApplied) updateSat();
 

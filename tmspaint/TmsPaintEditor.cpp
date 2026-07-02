@@ -1060,6 +1060,8 @@ void tmspaint::TmsPaintEditor::renderImportPreview()
         opt.contrast   = importContrast;
         opt.gamma      = importGamma;
         opt.chromaWeight = 6.0f - importColourNoise * 5.2f;   // 0→6 clean, 1→0.8 vivid
+        opt.kernel = importKernel ? hgrpaint::DitherKernel::JarvisMod
+                                  : hgrpaint::DitherKernel::FloydSteinberg;
         if ((importCropActive || importCropDragging) && cropUsable()) {
             opt.cropX0 = importCropX0; opt.cropY0 = importCropY0;
             opt.cropX1 = importCropX1; opt.cropY1 = importCropY1;
@@ -1163,6 +1165,14 @@ void tmspaint::TmsPaintEditor::renderImportPreview()
     importDirty |= ImGui::SliderFloat("Gamma", &importGamma, 0.4f, 2.5f, "%.2f");
     ImGui::SetNextItemWidth(-180);
     importDirty |= ImGui::SliderFloat("Diffusion (grain)", &importDiffusion, 0.0f, 1.0f, "%.2f");
+    ImGui::SetNextItemWidth(-180);
+    {
+        const char* kKernelNames[] = { "Floyd-Steinberg", "Jarvis-mod" };
+        importDirty |= ImGui::Combo("Diffusion kernel", &importKernel, kKernelNames, 2);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Floyd-Steinberg: classic grain (default).\n"
+                              "Jarvis-mod: error pushed 4 pixels forward - smoother.");
+    }
     importDirty |= ImGui::Checkbox("Dither", &importDither);
     ImGui::SameLine();
     importDirty |= ImGui::Checkbox("Serpentine", &importSerpentine);
@@ -1172,7 +1182,8 @@ void tmspaint::TmsPaintEditor::renderImportPreview()
     if (ImGui::SmallButton("Reset")) {
         importColourNoise = 0.30f; importBrightness = 1.0f; importContrast = 1.0f;
         importGamma = 1.0f; importDiffusion = 1.0f; importDither = true;
-        importSerpentine = true; importStretch = false; importDirty = true;
+        importSerpentine = true; importStretch = false; importKernel = 0;
+        importDirty = true;
         importCropActive = false; importCropDragging = false;
     }
     ImGui::Separator();

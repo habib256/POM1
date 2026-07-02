@@ -71,25 +71,42 @@ extern unsigned char tms_reverse;
 
 void tms_set_vram_write_addr(unsigned addr);
 void tms_set_vram_read_addr(unsigned addr);
+
+/* SILICON WARNING (openMSX/dvik, modelled by POM1 since juillet 2026): a VDP
+ * register write ALSO loads the VRAM address counter's high bits, and the
+ * first control byte lands in its low bits immediately. NEVER call
+ * tms_write_reg / tms_set_color / tms_set_blank / tms_set_interrupt_bit /
+ * tms_set_external_video (or the sprite size/mag setters) between
+ * tms_set_vram_*_addr() and the data-port stream it primes — re-set the
+ * address after any register write. */
 void tms_write_reg(unsigned char regnum, unsigned char val);
 void tms_set_color(unsigned char col);
 void tms_init_regs(const unsigned char *table);
 void tms_set_interrupt_bit(unsigned char val);
 void tms_set_blank(unsigned char val);
 void tms_set_external_video(unsigned char val);
-void tms_wait_end_of_frame(void);
+/* Blocks until the NEXT VBlank edge (drain-then-poll — a stale F cannot
+ * satisfy it). Returns a status snapshot: fresh F, plus C/5S observed on
+ * either the drain or the terminal read (a status read clears all three
+ * atomically, so this return value is the one chance to see them). */
+unsigned char tms_wait_end_of_frame(void);
 void tms_copy_to_vram(const unsigned char *source, unsigned size, unsigned dest);
 
+/* SILICON WARNING: reading the status port latch-clears F (bit 7), 5S (bit 6)
+ * AND C (bit 5) atomically — TI datasheet §2.2. Read ONCE per frame, snapshot
+ * the byte, and test FRAME_BIT/FIVESPR_BIT/COLLISION_BIT on the copy. */
 #define tms_read_status() ((unsigned char)TMS_READ_CTRL_PORT)
 
 /* --- ca65 fast paths (tms_fast.s) --------------------------------------- */
 
-/* Burst-fill VRAM with `val` for `count` bytes. No per-byte IO delay. */
+/* Burst-fill VRAM with `val` for `count` bytes. Silicon-safe: blanks the
+ * display around the burst when it was enabled (backdrop shows for the rest
+ * of the current frame), restores it after. */
 void tms_fill_vram(unsigned addr, unsigned char val, unsigned count);
 
-/* Burst-copy from host (RAM/ROM) to VRAM. No per-byte IO delay.
- * ~3-4x faster than the C tms_copy_to_vram() above; use when destination
- * tolerates back-to-back writes (POM1 burst-safe outside VBLANK contention). */
+/* Burst-copy from host (RAM/ROM) to VRAM. Same display-blank bracket as
+ * tms_fill_vram. For tear-free incremental updates prefer the VBlank-chunked
+ * helpers (screen1_scroll_up) or tms_shadow_flush. */
 void tms_copy_to_vram_fast(const void *src, unsigned size, unsigned dest);
 
 #endif

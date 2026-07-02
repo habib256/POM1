@@ -9,8 +9,15 @@
  */
 #include "random.h"
 
-unsigned char rand8_state  = 0xACU;
-unsigned int  rand16_state = 0xACE1U;
+/* BSS, deliberately NOT initialized: the cc65 `-t none` crt0 has NO
+ * copydata, so DATA-segment initializers are NEVER copied to RAM (load =
+ * ROM, run = RAM) — the old `= 0xAC` initializers silently left the LFSRs
+ * holding power-on garbage, and a garbage value of 0 ZERO-LOCKS both LFSRs
+ * (state 0 shifts to 0 forever). BSS *is* zeroed by crt0's zerobss on every
+ * entry, so the states start at a known 0 and rand8()/rand16() auto-seed
+ * from it below. Call srand8()/srand16() for a specific sequence. */
+unsigned char rand8_state;
+unsigned int  rand16_state;
 
 void srand8(unsigned char seed) {
     rand8_state = seed ? seed : 1U;
@@ -23,7 +30,11 @@ void srand16(unsigned int seed) {
 /* 8-bit LFSR: taps at bits 7,5,4,3 (x^8 + x^6 + x^5 + x^4 + 1). */
 unsigned char rand8(void) {
     unsigned char s   = rand8_state;
-    unsigned char lsb = (unsigned char)(s & 1U);
+    unsigned char lsb;
+    if (s == 0U) {
+        s = 0xACU;   /* auto-seed: zero state would lock the LFSR at 0 */
+    }
+    lsb = (unsigned char)(s & 1U);
     s = (unsigned char)(s >> 1);
     if (lsb) {
         s = (unsigned char)(s ^ 0xB8U);
@@ -35,7 +46,11 @@ unsigned char rand8(void) {
 /* 16-bit Galois LFSR, polynomial 0xB400 (maximal period 65535). */
 unsigned int rand16(void) {
     unsigned int s = rand16_state;
-    unsigned char lsb = (unsigned char)(s & 1U);
+    unsigned char lsb;
+    if (s == 0U) {
+        s = 0xACE1U; /* auto-seed: zero state would lock the LFSR at 0 */
+    }
+    lsb = (unsigned char)(s & 1U);
     s >>= 1;
     if (lsb) {
         s ^= 0xB400U;

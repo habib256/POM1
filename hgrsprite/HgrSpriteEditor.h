@@ -26,6 +26,7 @@
 #include "HgrPaintModel.h"     // hgrpaint::HgrColor + per-pixel model
 #include "IHgrPaintHost.h"     // shared seam with the paint editor
 #include "HgrSpriteBlit.h"     // pure byte extract/stamp
+#include "HgrSpriteAsmExport.h" // pure ca65 export (round-trips the dev-library parser)
 
 namespace hgrsprite {
 
@@ -82,6 +83,19 @@ private:
 
     std::string status;
 
+    // ca65 export label (sanitized to [a-z0-9_] on export).
+    char asmName_[64] = "sprite";
+
+    // File actions + ImGui file-browser fallback state (mirrors the paint
+    // editor's browser — used when the host has no native picker: WASM, Linux
+    // without zenity/kdialog).
+    enum class FileAction : uint8_t { LoadSprite = 0, SaveSprite, SavePng, ExportAsm };
+    bool browserOpen = false;          // OpenPopup requested this frame
+    FileAction browserAction = FileAction::LoadSprite;
+    std::string browserDir;            // directory currently shown
+    std::string browserExts;           // CSV extension filter of the pending action
+    char browserSaveName[256] = {0};   // editable filename (save actions)
+
     // Built-in HGR sprite library (dev/lib/gen2/sprites via the host), lazily
     // fetched + cached; the browser lets you drop a ready-made sprite on the canvas.
     std::vector<hgrpaint::DevSpriteCategory> devCats_;
@@ -105,7 +119,10 @@ private:
 
     // Region-diff helpers for bulk ops (fill / transforms): snapshot the sprite's
     // byte region, run the mutation, then push the changed bytes as one undo group.
+    // The (wB, hR) overload covers a caller-chosen rectangle (rotate spans the
+    // union of the old + new geometry).
     std::vector<std::pair<uint16_t, uint8_t>> snapshotRegion() const;
+    std::vector<std::pair<uint16_t, uint8_t>> snapshotRegion(int wB, int hR) const;
     void commitRegionDiff(const std::vector<std::pair<uint16_t, uint8_t>>& before);
 
     // Whole-sprite transforms (pixel-level; chromatic colour snaps to HGR parity).
@@ -114,19 +131,23 @@ private:
     void transformFlipH();
     void transformFlipV();
     void transformShift(int dx, int dy);
+    void transformRotateCW();     // 90° clockwise — W and H swap (see .cpp)
 
     // Dev sprite library browser + loader.
     void renderDevSprites();
     void loadDevSprite(const hgrpaint::DevSprite& s);
 
-    // Live-card actions + files (native picker only).
+    // Live-card actions.
     void stampToPage();
-    void doSaveSprite();
-    void doLoadSprite();
-    void doSavePng();
+    void grabFromPage(const std::vector<uint8_t>& memory);   // inverse of Stamp
+
+    // Files: native picker first, ImGui browser fallback (mirrors the paint editor).
+    void openFileBrowser(FileAction a);
+    bool performFileAction(FileAction a, const std::string& fullPath);
+    void renderFileBrowser();
 
     void renderTopBar();
-    void renderToolPanel();
+    void renderToolPanel(const std::vector<uint8_t>& memory);
     void renderCanvas();
     void renderPreview(const std::vector<uint8_t>& memory);
     void handleShortcuts();

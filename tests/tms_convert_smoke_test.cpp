@@ -14,8 +14,13 @@
 #include "Cam16.h"
 #include "TMS9918.h"
 
-#include <array>
+// This whole test is assert-based; keep the assertions live even in Release
+// builds (the default CMAKE_BUILD_TYPE compiles tests with -DNDEBUG, which
+// would silently turn the entire pin into a no-op).
+#undef NDEBUG
 #include <cassert>
+
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -149,6 +154,34 @@ int main()
         assert(pixelAt(fb, 8, 96)   == TMS9918::kPalette[1]);    // left bar = backdrop
         assert(pixelAt(fb, 248, 96) == TMS9918::kPalette[1]);    // right bar = backdrop
         assert(pixelAt(fb, 128, 96) == TMS9918::kPalette[15]);   // centre = white image
+    }
+
+    // ── Early-abort + warm-start pair search == exhaustive scan (bit-exact) ──
+    // The 120-pair Graphics II search accumulates its walked cost pixel by pixel
+    // and aborts strictly above the best-so-far, seeded by the previous row's
+    // pair; ties are always evaluated to completion and resolve by pair index,
+    // so the result must be bit-identical to the exhaustive scan.
+    {
+        std::vector<uint8_t> img(256 * 192 * 4);
+        for (int y = 0; y < 192; ++y)
+            for (int x = 0; x < 256; ++x) {
+                const size_t i = (static_cast<size_t>(y) * 256 + x) * 4;
+                img[i]   = static_cast<uint8_t>(x);
+                img[i+1] = static_cast<uint8_t>(255 - x);
+                img[i+2] = static_cast<uint8_t>(y);
+                img[i+3] = 255;
+            }
+        for (int kern = 0; kern < 2; ++kern) {
+            tmspaint::ImportOptions fastOpt;
+            fastOpt.kernel = kern ? hgrpaint::DitherKernel::JarvisMod
+                                  : hgrpaint::DitherKernel::FloydSteinberg;
+            tmspaint::ImportOptions exOpt = fastOpt;
+            exOpt.exhaustiveSearch = true;
+            std::vector<uint8_t> va(tmspaint::kVramSize, 0), vb(tmspaint::kVramSize, 0);
+            tmspaint::imageToTmsVram(img.data(), 256, 192, Mode::GraphicsII, fastOpt, va.data());
+            tmspaint::imageToTmsVram(img.data(), 256, 192, Mode::GraphicsII, exOpt, vb.data());
+            assert(va == vb);
+        }
     }
 
     std::printf("tms_convert_smoke: OK\n");

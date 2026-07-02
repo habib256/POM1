@@ -451,7 +451,6 @@ void TMS9918::executeCpuVramAccess()
             readAheadBuffer = vram[vramAddr & mask];
             vramAddr = (vramAddr + 1) & mask;
             break;
-        case PendingKind::Barrier:                     // $CC01 bus-occupier: no VRAM op
         case PendingKind::None:
             break;
     }
@@ -508,72 +507,96 @@ uint8_t TMS9918::readData()
 // --------------------------------------------------------------------------
 void TMS9918::writeControl(uint8_t value)
 {
-    // Control-port gating is a deliberate POM1 divergence kept on top of the
-    // openMSX model (openMSX does not slot-gate $99 register/address writes).
-    // A control write arriving while a VRAM access is still pending is dropped.
-    if (!canAcceptAccess()) {
-        noteDroppedAccess('C', value);
-        return;
-    }
-    // The control port itself touches no VRAM (register/address are internal),
-    // so it executes immediately; the read-address-setup case schedules a
-    // prefetch like openMSX. A Barrier occupies one slot so back-to-back
-    // control writes are gated (retained POM1 behaviour, pinned by Phase J).
+    // SILICON: the control port is an INTERNAL latch. Register writes,
+    // address setups and the byte flip-flop involve no VRAM cycle, so the
+    // chip accepts them at ANY rate — they are NEVER dropped (openMSX applies
+    // $99 register/address writes immediately too; the TI datasheet has no
+    // inter-access constraint for them). POM1 used to gate them behind the
+    // VRAM slot machinery ("Barrier", the old Phase J pin), which was
+    // STRICTER than silicon — and worse: a dropped first byte desynced the
+    // emulated flip-flop from the real chip's, so every later control pair
+    // decoded differently from hardware (a false-pass/false-fail machine).
+    // Removed juillet 2026. Only the read-address-setup's VRAM PREFETCH
+    // below is slot-scheduled, exactly as openMSX; data-port gating is
+    // unchanged (that IS a VRAM access).
     if (!latchIsSecond) {
-        // First byte — store in latch
+        // First byte. On the TMS99x8 there is NO latch on the low address
+        // byte — it lands in the address counter IMMEDIATELY, before the
+        // second byte arrives (openMSX VDP.cc writeIO port 1: "on MSX1 there
+        // seems to be no latch used, but VDP address writes are done
+        // directly. Thanks to hap for finding this out."). A program that
+        // writes a single byte then touches the data port sees the updated
+        // low address bits, exactly as on silicon.
         controlLatch  = value;
+        vramAddr      = (uint16_t)((vramAddr & 0x3F00) | value);
         latchIsSecond = true;
-        if (siliconStrictMode) beginPendingAccess(PendingKind::Barrier);
         return;
     }
 
     // Second byte — decode command
     latchIsSecond = false;
 
-    uint8_t cmd = value & 0xC0;
-
-    if (cmd == 0x00) {
-        // Set VRAM read address + prefetch first byte into the read-ahead buffer.
+    if (value & 0x80) {
+        // Register write. The TMS99x8 decodes bit 7 ONLY — $C0-$FF (bits 7+6
+        // set) is a register write too (openMSX: `!(value & 0x40) ||
+        // isMSX1VDP()`; MAME tms9928a agrees). The old POM1 code ignored
+        // $C0-$FF entirely.
+        uint8_t regNum = value & 0x07;
+        regs[regNum] = controlLatch;
+        snapshotDirty = true;             // register change alters rendering
+        // MSX1 quirk: a register write ALSO loads the address counter's high
+        // bits (openMSX: "the VRAM pointer is modified when writing to VDP
+        // registers ... Thanks to dvik" — Planet of the Epas / Utopia /
+        // Waves 1.2 depend on it). Note the cascade this implies: a still-
+        // pending data-port access will fire at the NEW address (openMSX
+        // executeCpuVramAccess uses the live pointer; so does ours).
+        vramAddr = (uint16_t)(((uint16_t)(value & 0x3F) << 8) | (vramAddr & 0xFF));
+    }
+    else if (value & 0x40) {
+        // Set VRAM write address — internal, immediate, never gated.
+        vramAddr = ((uint16_t)(value & 0x3F) << 8) | controlLatch;
+    }
+    else {
+        // Set VRAM read address + prefetch first byte into the read-ahead
+        // buffer. The address load is internal (immediate); the PREFETCH is a
+        // real VRAM read and rides the slot machinery like any data-port
+        // access: newest-wins if something is still pending (openMSX).
         vramAddr = ((uint16_t)(value & 0x3F) << 8) | controlLatch;
         if (!siliconStrictMode) {
             const uint16_t mask = liveVramMask();
             readAheadBuffer = vram[vramAddr & mask];
             vramAddr = (vramAddr + 1) & mask;
+        } else if (pendingCpuAccess) {
+            noteDroppedAccess('r', 0);               // prefetch overwrites pending
+            pendingKind = PendingKind::Read;
         } else {
             beginPendingAccess(PendingKind::Read);   // deferred prefetch (openMSX)
         }
     }
-    else if (cmd == 0x40) {
-        // Set VRAM write address
-        vramAddr = ((uint16_t)(value & 0x3F) << 8) | controlLatch;
-        if (siliconStrictMode) beginPendingAccess(PendingKind::Barrier);
-    }
-    else if (cmd == 0x80) {
-        // Write to register
-        uint8_t regNum = value & 0x07;
-        regs[regNum] = controlLatch;
-        snapshotDirty = true;             // register change alters rendering
-        if (siliconStrictMode) beginPendingAccess(PendingKind::Barrier);
-    }
-    // cmd == 0xC0 is undefined on TMS9918, ignored
 }
 
 uint8_t TMS9918::readControl()
 {
-    if (!canAcceptAccess()) return statusReg;
-    if (siliconStrictMode) beginPendingAccess(PendingKind::Barrier);
+    // A status read is an INTERNAL register access — it never touches the
+    // VRAM bus, so silicon accepts it at any time. openMSX does not gate
+    // status reads either; the old canAcceptAccess()/Barrier gating here was
+    // a POM1-only divergence (removed juillet 2026, silicon fidelity).
     latchIsSecond = false;
     uint8_t result = statusReg;
-    // Reading the status register latch-clears ONLY the frame flag (bit 7)
-    // and the collision flag (bit 5) — BiFi/Sean Young §2.2: "after reading
-    // it, bit 7 (INT) and bit 5 (C) are reset". The 5th-sprite flag (bit 6)
-    // and its SAT index (bits 0..4) are NOT cleared on read; they are
-    // recomputed from scratch each frame by the sprite scan (see the frame-top
-    // reset in advanceCycles + scanSpritesForLine / scanSpritesForStatus).
-    // The old ~0xE0 mask also cleared bit 6, so a second status read in the
-    // same frame wrongly reported "no overflow" — a silent divergence from
-    // the chip the document cites as canonical.
-    statusReg &= ~0xA0;
+    // Reading the status register latch-clears the frame flag (bit 7), the
+    // 5th-sprite flag (bit 6) AND the collision flag (bit 5). Bits 0..4
+    // (5th-sprite index / last-walked slot) keep their value until the sprite
+    // scanner rewrites them. Sources, all in agreement:
+    //   - TI datasheet §2.2: "The 5S bit is cleared to 0 after the status
+    //     register is read or the VDP is externally reset."
+    //   - Nouspikel: "The first 3 bits of this register are automatically
+    //     reset as 0 when the register is read."
+    //   - openMSX VDP::readStatusReg case 0: SpriteChecker::resetStatus()
+    //     masks statusReg0 & 0x1F, then statusReg0 &= ~0x80.
+    // (History: POM1 used ~0xE0, switched to ~0xA0 in mai 2026 on a
+    // misreading of BiFi/Sean Young §2.2, reverted juillet 2026 after
+    // cross-checking datasheet + Nouspikel + openMSX.)
+    statusReg &= ~0xE0;
     return result;
 }
 
@@ -677,6 +700,7 @@ void TMS9918::copySnapshot(Snapshot& out)
     // Status register changes on every frame tick, so always mirror it.
     out.statusReg = statusReg;
     out.siliconStrictMode = siliconStrictMode;
+    out.chipType = chipType;
     // VRAM (16 KB) + register file + 288×216 framebuffer (~243 KB) only move
     // when the card is actually touched by software — a dirty flag avoids
     // unnecessary memcpy on idle frames. The framebuffer is the silicon-
@@ -739,7 +763,7 @@ void TMS9918::renderToBuffer(uint32_t* pixels, const Snapshot& snap)
 
         if (!m1) {
             renderSpritesLineRaw(line, lineBuf, snap.vram.data(), snap.regs.data(), mask);
-            if (isCloningActive(snap.regs.data(), ChipType::TMS9918A)) {
+            if (isCloningActive(snap.regs.data(), snap.chipType)) {
                 renderCloneSpritesLineRaw(line, lineBuf, snap.vram.data(), snap.regs.data(), mask);
             }
         }
@@ -1339,14 +1363,13 @@ void TMS9918::renderBeamCatchUp(int inFlightCycles)
 void TMS9918::advanceSpriteScanTo(int activeNow)
 {
     if (activeNow <= lastScanlineProcessed) return;
-    if (lastScanlineProcessed == -1) {
-        // New frame: the sprite comparator re-derives the 5th-sprite flag
-        // (bit 6) + index (bits 0..4) from scratch. Reading $CC01 does NOT
-        // reset them (only F + collision latch-clear on read — BiFi §2.2), so
-        // the per-frame reset lives here. Bit 7 (F) + bit 5 (collision) stay
-        // sticky-until-read.
-        statusReg &= ~0x5F;
-    }
+    // New frame: NOTHING resets on silicon. F (bit 7), 5S (bit 6) and C
+    // (bit 5) are sticky latches cleared ONLY by a status-register read
+    // (TI datasheet; openMSX SpriteChecker::frameStart resets no status
+    // bits either). Bits 0..4 keep updating per line while 5S is clear.
+    // (POM1 cleared 5S + index here every frame until juillet 2026 —
+    // removed for silicon fidelity, together with the ~0xE0 read-clear
+    // restore in readControl and the F-gated 5S latch below.)
     for (int line = lastScanlineProcessed + 1; line < activeNow; ++line)
         scanSpritesForLine(line);
     lastScanlineProcessed = (activeNow - 1 < kScreenHeight - 1) ? activeNow - 1
@@ -1713,11 +1736,13 @@ void TMS9918::scanSpritesForLine(int line)
 
         // Visible on this line.
         if (visible == 4) {
-            if (!fiveAlreadyLatched) {
-                // 5S (fifth-sprite) and F (frame) are independent status
-                // latches on real silicon — the per-line sprite comparator
-                // does not gate on F. (Matches scanSpritesForStatus, the
-                // VBlank fallback, which never checked F either.)
+            // 5S latches only while F (bit 7) is still clear AND 5S itself
+            // is not already set — TMS9918A datasheet ("5th sprite detection
+            // is only active when F flag is zero"); openMSX SpriteChecker::
+            // checkSprites1: `if ((status & 0xC0) == 0)`. Once F rises at
+            // VBlank and the program hasn't read status yet, later 5th-sprite
+            // conditions are NOT recorded, exactly as silicon.
+            if ((statusReg & 0xC0) == 0) {
                 statusReg = (uint8_t)((statusReg & 0xE0) | (i & 0x1F));
                 statusReg |= 0x40;
                 fiveAlreadyLatched = true;
@@ -1818,11 +1843,12 @@ void TMS9918::scanSpritesForStatus(const uint8_t* vram, const uint8_t* regs,
     struct SpriteInfo { int y, x; uint8_t name; bool earlyClock; };
     SpriteInfo sprites[32];
     int spriteCount = 0;
+    int lastWalked  = 31;                 // openMSX: min(sprite, 31) — 31 when no terminator
 
     for (int i = 0; i < 32; i++) {
         uint16_t attrAddr = (sprAttrBase + i * 4) & vramMask;
         uint8_t yRaw = vram[attrAddr];
-        if (yRaw == 0xD0) break;
+        if (yRaw == 0xD0) { lastWalked = i; break; }
 
         int y = (int)yRaw - ((yRaw > 0xD0) ? 256 : 0) + 1;
         int x = vram[(attrAddr + 1) & vramMask];
@@ -1833,12 +1859,9 @@ void TMS9918::scanSpritesForStatus(const uint8_t* vram, const uint8_t* regs,
         sprites[spriteCount++] = { y, x, name, earlyClock };
     }
 
-    // One-shot full-frame recompute: the 5th-sprite flag (bit 6) + index
-    // (bits 0..4) start fresh, exactly as the per-line scan resets them at the
-    // top of each frame. F (bit 7) and collision (bit 5) are preserved — they
-    // latch-clear only on a status read (BiFi §2.2).
-    statusOut &= ~0x5F;
-
+    // One-shot full-frame recompute. NO status bits reset here: F / 5S / C
+    // are sticky-until-read on silicon (TI datasheet; openMSX resets nothing
+    // at frame start either). The 5S latch below gates on F, as the chip does.
     bool fiveAlreadyLatched = (statusOut & 0x40) != 0;
     bool collisionAlreadyLatched = (statusOut & 0x20) != 0;
 
@@ -1852,7 +1875,9 @@ void TMS9918::scanSpritesForStatus(const uint8_t* vram, const uint8_t* regs,
             if (sy < spr.y || sy >= spr.y + spriteH) continue;
 
             if (visible == 4) {
-                if (!fiveAlreadyLatched) {
+                // F-gated 5S latch — TMS9918A datasheet + openMSX
+                // (`(status & 0xC0) == 0`), same rule as scanSpritesForLine.
+                if (!fiveAlreadyLatched && (statusOut & 0x80) == 0) {
                     statusOut = (statusOut & 0xE0) | (uint8_t)(i & 0x1F);
                     statusOut |= 0x40;
                     fiveAlreadyLatched = true;
@@ -1908,6 +1933,13 @@ void TMS9918::scanSpritesForStatus(const uint8_t* vram, const uint8_t* regs,
             }
         }
     }
+
+    // Bug N°6: when 5S never latched, bits 0..4 = last SAT slot the chip
+    // walked (terminator index, or 31 without terminator) — openMSX
+    // checkSprites1: `status = (status & 0x20) | min(sprite, 31)`.
+    if (!fiveAlreadyLatched) {
+        statusOut = (uint8_t)((statusOut & 0xE0) | (lastWalked & 0x1F));
+    }
 }
 
 void TMS9918::serialize(pom1::SnapshotWriter& w) const
@@ -1949,6 +1981,19 @@ void TMS9918::deserialize(pom1::SnapshotReader& r)
     siliconStrictMode     = r.readU8() != 0;
     irqStrapped           = r.readU8() != 0;
     chipType              = static_cast<ChipType>(r.readU8());
+    // Re-seat the transient beam-render cursor at the position implied by the
+    // restored frameCycleCounter. Leaving it at the pre-restore value stalled
+    // the progressive raster for up to a frame after a snapshot/rewind load
+    // (renderUpToBeam only advances forward, so a cursor ahead of the restored
+    // beam ignored every line until the next frame rollover).
+    {
+        const int totalScanlineNow =
+            (int)((int64_t)frameCycleCounter * 262 / kCyclesPerFrame);
+        beamRenderLine = std::min(totalScanlineNow, (int)kScreenHeight);
+        beamRenderX    = 0;
+        topBorderPainted    = true;   // rebuild below repaints all borders
+        bottomBorderPainted = beamRenderLine >= kScreenHeight;
+    }
     // The framebuffer was intentionally not snapshotted (derived state, would
     // inflate the .snap by ~300 KB). Rebuild it now from the restored VRAM so a
     // save-state load OR a paused rewind preview shows the correct image

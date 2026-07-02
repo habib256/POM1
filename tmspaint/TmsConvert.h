@@ -22,19 +22,26 @@
 #include <string>
 #include <vector>
 
+#include "ImportCommon.h"    // hgrpaint::DitherKernel + shared linear-RGB resampler
 #include "TmsPaintModel.h"   // Mode + geometry
 
 namespace tmspaint {
 
 struct ImportOptions {
     bool  stretch = false;     // false = fit + letterbox (keep aspect), true = stretch
-    bool  dither  = true;      // Floyd-Steinberg error diffusion
-    bool  serpentine = false;  // alternate FS scan direction per row
-    float diffusion = 1.0f;    // fraction of FS error propagated (1 = full grain)
+    bool  dither  = true;      // error diffusion (kernel selectable below)
+    bool  serpentine = false;  // alternate dither scan direction per row
+    float diffusion = 1.0f;    // fraction of error propagated (1 = full grain)
     float brightness = 1.0f;   // multiply the source (1 = none)
     float contrast   = 1.0f;   // contrast around mid-grey (1 = none)
     float gamma      = 1.0f;   // mid-tone gamma (>1 brightens)
     float chromaWeight = 2.4f; // perceptual chroma penalty: low → vivid, high → clean greys
+    // Error-diffusion kernel (Floyd-Steinberg default; jarvis-mod available for a
+    // smoother, forward-weighted grain — see hgrpaint/ImportCommon.h).
+    hgrpaint::DitherKernel kernel = hgrpaint::DitherKernel::FloydSteinberg;
+    // Test/debug: disable the early-abort + warm-start pair search. The fast
+    // search is pinned bit-identical to this exhaustive one in tms_convert_smoke.
+    bool exhaustiveSearch = false;
     // Optional source crop rectangle in source pixels, [x0,x1) × [y0,y1).
     // Degenerate (x1<=x0 or y1<=y0) → use the whole image.
     int cropX0 = 0, cropY0 = 0, cropX1 = 0, cropY1 = 0;

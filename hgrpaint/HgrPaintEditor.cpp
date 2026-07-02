@@ -1173,12 +1173,16 @@ void hgrpaint::HgrPaintEditor::renderImportPreview()
         hgrpaint::ImportOptions opt;
         opt.stretch    = importStretch;
         opt.dither     = importDither;
-        opt.serpentine = importSerpentine;
+        // opt.serpentine is deliberately NOT set: it is deprecated for HGR (the
+        // NTSC decode is physically left-to-right; the converter's refinement
+        // passes replace what serpentine papered over) — see HgrConvert.h.
         opt.diffusion  = importDiffusion;
         opt.brightness = importBrightness;
         opt.contrast   = importContrast;
         opt.gamma      = importGamma;
         opt.chromaWeight = 6.0f - importColourNoise * 5.2f;   // 0→6 clean, 1→0.8 vivid
+        opt.kernel = importKernel ? hgrpaint::DitherKernel::JarvisMod
+                                  : hgrpaint::DitherKernel::FloydSteinberg;
         // Apply the crop both when committed AND while dragging (importCropActive is
         // only set on release), so the FIRST crop drag shows a live cropped preview
         // instead of the uncropped page. A sub-minimum rect falls through to whole.
@@ -1309,19 +1313,39 @@ void hgrpaint::HgrPaintEditor::renderImportPreview()
     ImGui::SetNextItemWidth(-180);
     importDirty |= ImGui::SliderFloat("Diffusion (grain)", &importDiffusion, 0.0f, 1.0f, "%.2f");
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Floyd-Steinberg strength.\n"
-                          "1 = full dithering/grain, lower = smoother but flatter.");
+        ImGui::SetTooltip("Error-diffusion strength.\n"
+                          "1 = full dithering/grain, lower = smoother but flatter.\n"
+                          "0.7 is ii-pix's HGR default.");
+    ImGui::SetNextItemWidth(-180);
+    {
+        const char* kKernelNames[] = { "Floyd-Steinberg", "Jarvis-mod" };
+        importDirty |= ImGui::Combo("Diffusion kernel", &importKernel, kKernelNames, 2);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Jarvis-mod pushes the error 4 pixels forward - the same\n"
+                              "reach as an NTSC sliding-window transition (ii-pix's HGR\n"
+                              "choice, smoother). Floyd-Steinberg is the classic grain.");
+    }
     importDirty |= ImGui::Checkbox("Dither", &importDither);
     ImGui::SameLine();
-    importDirty |= ImGui::Checkbox("Serpentine", &importSerpentine);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Alternate dither scan direction per row\n(reduces diagonal artefacts)");
+    // Serpentine is deprecated for HGR (the converter ignores it): the NTSC
+    // half-dot carry + sliding window are physically left-to-right, so a
+    // right-to-left dither row would score against a fabricated left word. The
+    // refinement passes fix the diagonal smear it used to hide.
+    ImGui::BeginDisabled(true);
+    ImGui::Checkbox("Serpentine", &importSerpentine);
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("Not applicable to HGR: the NTSC decode is physically\n"
+                          "left-to-right, so alternating the scan direction would\n"
+                          "dither against a fabricated left context.");
     ImGui::SameLine();
     importDirty |= ImGui::Checkbox("Stretch", &importStretch);
     ImGui::SameLine();
     if (ImGui::SmallButton("Reset")) {
         importColourNoise = 0.30f; importBrightness = 1.0f; importContrast = 1.0f;
-        importGamma = 1.0f; importDiffusion = 1.0f; importDither = true;
-        importSerpentine = true; importStretch = false; importDirty = true;
+        importGamma = 1.0f; importDiffusion = 0.7f; importDither = true;
+        importSerpentine = true; importStretch = false; importKernel = 1;
+        importDirty = true;
         importCropActive = false; importCropDragging = false;
     }
     ImGui::Separator();

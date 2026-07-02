@@ -13,6 +13,7 @@
 #include "tms9918.h"
 #include "screen2.h"
 #include "sprites.h"
+#include "apple1.h"
 
 #define FAUNA_PAT_BYTES 32U
 
@@ -62,8 +63,19 @@ void main(void) {
     signed int px, py;
     signed char dx, dy;
 
-    tms_init_regs(SCREEN2_TABLE);
+    tms_init_regs(SCREEN2_TABLE);           /* ships display OFF (R1=$80) */
     tms_set_color(FG_BG(COLOR_DARK_GREEN, COLOR_BLACK));
+
+    /* Sprite patterns FIRST, while the display is still off: the unpaced
+     * tms_copy_to_vram bursts ride the free ScreenOff window (they used to
+     * run display-ON after init, paced only by cc65 codegen luck). They
+     * live at $1800+ (R6=$03), just past the $0000-$17FF pattern table
+     * that screen2_init_bitmap clears, so they survive the init below. */
+    upload_fauna_slot(0U, fauna_dog_pat);
+    upload_fauna_slot(1U, fauna_octopus_pat);
+    upload_fauna_slot(2U, fauna_bat_pat);
+    upload_fauna_slot(3U, fauna_lion_pat);
+
     screen2_init_bitmap(FG_BG(COLOR_DARK_GREEN, COLOR_BLACK));
 
     screen2_puts((const char *)"Fauna  dog oct bat lion", 1U, 1U, FG_BG(COLOR_WHITE, COLOR_DARK_GREEN));
@@ -72,11 +84,6 @@ void main(void) {
     tms_set_sprite_double_size(1U);
     tms_set_sprite_magnification(0U);
     tms_clear_collisions();
-
-    upload_fauna_slot(0U, fauna_dog_pat);
-    upload_fauna_slot(1U, fauna_octopus_pat);
-    upload_fauna_slot(2U, fauna_bat_pat);
-    upload_fauna_slot(3U, fauna_lion_pat);
 
     s[0].name = 0U;
     s[0].color = (unsigned char)(COLOR_WHITE & 15U);
@@ -87,12 +94,17 @@ void main(void) {
     s[3].name = 12U;
     s[3].color = (unsigned char)(COLOR_DARK_YELLOW & 15U);
 
+    /* Terminator FIRST: writing sprite 0 overwrites the $D0 the screen2
+     * init parked at SAT[0]; on real silicon the SAT would then run
+     * unterminated over slots 1..31 until the loop completes — ghost
+     * sprites for a frame. Placing the slot-4 terminator before touching
+     * slot 0 keeps the SAT well-formed at every instant. */
+    tms_set_total_sprites(4U);
     for (i = 0U; i < 4U; ++i) {
         s[i].y = (signed char)(36 + (signed char)(i * 26));
         s[i].x = (unsigned char)(32 + i * 52U);
         tms_set_sprite(i, &s[i]);
     }
-    tms_set_total_sprites(4U);
 
     for (;;) {
         phase = (unsigned char)(t >> 2);
@@ -124,11 +136,26 @@ void main(void) {
         s[3].x = clamp_x(px);
         s[3].y = (signed char)clamp_y(py);
 
+        /* VBlank discipline (best-practices §6): compute above in active
+         * display, then wait for the frame flag and flush the 4 SAT entries
+         * inside the retrace window — the old order (flush, then wait)
+         * landed the 16 SAT bytes mid-frame after the ~5-8k-cycle compute
+         * phase, tearing sprite positions (Y updated before the raster
+         * passed, X after). */
+        tms_wait_end_of_frame();
         for (i = 0U; i < 4U; ++i) {
             tms_set_sprite(i, &s[i]);
         }
 
         ++t;
-        tms_wait_end_of_frame();
+
+        /* ESC exits to Wozmon (repo convention) with the blessed quiet-chip
+         * state: SAT parked, display blanked — apple1_readkey() is
+         * non-blocking (0 when no key), so the animation is unaffected. */
+        if (apple1_readkey() == 27U) {
+            tms_set_total_sprites(0);
+            tms_write_reg(1, 0x80U);
+            woz_mon();
+        }
     }
 }

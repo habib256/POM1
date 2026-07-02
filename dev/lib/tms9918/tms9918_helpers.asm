@@ -14,9 +14,10 @@
 ;                       write with NOP padding.
 ;
 ; Both helpers integrate the silicon-strict NOP padding so callers don't
-; have to. The JSR/RTS round-trip plus the helper's internal NOPs guarantees
-; ≥ 8 cycles between the helper's last STA VDP_* latch and the caller's
-; next VDP store (cf. sketchs/doc/Programming_TMS9918.md §17, §25).
+; have to. Contract (pad18 era): the helper's internal NOPs + the JSR/RTS
+; round-trips of the canonical caller pattern give a ≥ 20c STA→STA gap —
+; above the ~16c active-display floor validated on real silicon (cf.
+; sketchs/doc/Programming_TMS9918.md §17, §25 and tms9918_pad.asm).
 ;
 ; Sized to ~12 bytes total in ROM. ~204 sites across all TMS9918 projects
 ; refactor through these two entries (tools/silicon_strict_refactor.py).
@@ -36,11 +37,15 @@
 ;       JSR vdp_write_a    (6c, 3 bytes)  ← 5 bytes total, vs 7 inline.
 ;   Inputs:  A = byte to push to VDP_DATA.
 ;   Output:  A preserved (STA doesn't change it). X, Y preserved.
-;   Cycle accounting: STA (4c) + NOP (2c) + RTS (6c) = 12c — the caller's
-;   next VDP store sees ≥ 8c since this latch.
+;   Cycle accounting: STA (4c) + NOP×2 (4c) + RTS (6c) = 14c; with the
+;   canonical caller pattern (LDA #imm + JSR) the next VDP store sees a
+;   22c STA→STA gap — the pad18 contract, clearing the ~16c silicon floor
+;   with margin. (Was a single NOP = 20c gap, above the floor but below
+;   the repo contract.)
 ; ----------------------------------------------------------------------------
 vdp_write_a:
         STA     VDP_DATA
+        NOP
         NOP
         RTS
 

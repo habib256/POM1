@@ -2,12 +2,22 @@
 // Copyright (C) 2000-2026 Verhille Arnaud
 //
 // Image → TMS9918 conversion — see TmsConvert.h. Scores candidate palette colours
-// in CAM16-UCS (shared hgrpaint::Cam16) and Floyd-Steinberg-dithers; no NTSC
-// synthesis (the TMS palette is 15 fixed RGB colours).
+// in CAM16-UCS (shared hgrpaint::Cam16) and error-diffuses in LINEAR RGB; no NTSC
+// synthesis (the TMS palette is 15 fixed RGB colours). ii-pix-style upgrades:
+//   • resample + diffusion in linear light (gamma-space averaging darkened thin
+//     bright detail; gamma-space diffusion let out-of-gamut error snowball),
+//   • clamped effective targets: want = clamp(target + err) — diffusion 1.0 safe,
+//   • in-candidate sequential walk (apply_one_line): pixel k's residual feeds
+//     pixel k+1.. of the SAME candidate pair before they are scored, and the
+//     bit-assignment reuses the identical walk so scoring and commit agree,
+//   • early abort + warm start (previous row's pair) in the 120-pair search,
+//     pinned bit-identical to the exhaustive scan in tms_convert_smoke,
+//   • selectable kernel (Floyd-Steinberg / jarvis-mod).
 
 #include "TmsConvert.h"
 
 #include "Cam16.h"           // hgrpaint::Cam16 (shared, pure)
+#include "ImportCommon.h"    // shared linear-RGB resampler + kernels
 #include "TmsPaintModel.h"
 
 #include <algorithm>
@@ -19,8 +29,15 @@ namespace tmspaint {
 namespace {
 
 using hgrpaint::Cam16Ucs;
-using hgrpaint::srgbToCam16Ucs;
+using hgrpaint::DitherKernel;
+using hgrpaint::KernelSpec;
+using hgrpaint::LinRgb;
+using hgrpaint::clamp01;
+using hgrpaint::kernelSpec;
+using hgrpaint::linearSrgbToCam16Ucs;
+using hgrpaint::resampleToLinearRgb;
 using hgrpaint::srgb8ToCam16Ucs;
+using hgrpaint::srgb8ToLinearF;
 
 // The 16 TMS9918 palette colours (index 0 = transparent → treated as black for
 // the distance metric). Byte-identical to TMS9918::kPalette / the editor swatch.
@@ -34,13 +51,6 @@ const Rgb kTmsRgb[16] = {
 // Candidate inks: every opaque colour 1..15 (0 is just black again).
 const int kInk[15] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
 
-inline Cam16Ucs operator+(const Cam16Ucs& a, const Cam16Ucs& b)
-{ return {a.J + b.J, a.a + b.a, a.b + b.b}; }
-inline Cam16Ucs operator-(const Cam16Ucs& a, const Cam16Ucs& b)
-{ return {a.J - b.J, a.a - b.a, a.b - b.b}; }
-inline Cam16Ucs scale(const Cam16Ucs& a, float s) { return {a.J * s, a.a * s, a.b * s}; }
-inline float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
-
 // Perceptual cost with weighted chroma axes (see HgrConvert: the "colour noise"
 // knob makes inventing chroma expensive so neutral targets dither clean B/W).
 inline float perceptualCost(const Cam16Ucs& got, const Cam16Ucs& want, float cw)
@@ -49,84 +59,36 @@ inline float perceptualCost(const Cam16Ucs& got, const Cam16Ucs& want, float cw)
     return dJ * dJ + cw * (da * da + db * db);
 }
 
-// Resample the (cropped) source into a W×H CAM16-UCS target buffer with optional
-// fit+letterbox, brightness/contrast/gamma. Reports the active (non-letterbox)
-// rect [ox0,ox0+ow) × [oy0,oy0+oh).
-void resampleToCam(const uint8_t* rgba, int srcW, int srcH, int W, int H,
-                   const ImportOptions& opt, std::vector<Cam16Ucs>& tcam,
-                   int& ox0, int& oy0, int& ow, int& oh)
-{
-    const Cam16Ucs kBlackCam = srgb8ToCam16Ucs(0, 0, 0);
-    tcam.assign(static_cast<size_t>(W) * H, kBlackCam);
-
-    int cx0 = opt.cropX0, cy0 = opt.cropY0, cx1 = opt.cropX1, cy1 = opt.cropY1;
-    if (cx1 <= cx0 || cy1 <= cy0) { cx0 = 0; cy0 = 0; cx1 = srcW; cy1 = srcH; }
-    cx0 = std::max(0, std::min(cx0, srcW - 1));
-    cy0 = std::max(0, std::min(cy0, srcH - 1));
-    cx1 = std::max(cx0 + 1, std::min(cx1, srcW));
-    cy1 = std::max(cy0 + 1, std::min(cy1, srcH));
-    const int cropW = cx1 - cx0, cropH = cy1 - cy0;
-
-    ox0 = 0; oy0 = 0; ow = W; oh = H;
-    if (!opt.stretch) {
-        const double s = std::min(static_cast<double>(W) / cropW,
-                                  static_cast<double>(H) / cropH);
-        ow = std::max(1, static_cast<int>(std::lround(cropW * s)));
-        oh = std::max(1, static_cast<int>(std::lround(cropH * s)));
-        ox0 = (W - ow) / 2;
-        oy0 = (H - oh) / 2;
-    }
-
-    auto sample = [&](float u, float v, float& r, float& g, float& b) {
-        u = clampf(u, static_cast<float>(cx0), cx1 - 1.0f);
-        v = clampf(v, static_cast<float>(cy0), cy1 - 1.0f);
-        const int x0 = static_cast<int>(u), y0 = static_cast<int>(v);
-        const int x1 = std::min(x0 + 1, cx1 - 1), y1 = std::min(y0 + 1, cy1 - 1);
-        const float fx = u - x0, fy = v - y0;
-        auto px = [&](int x, int y, int c) {
-            return rgba[(static_cast<size_t>(y) * srcW + x) * 4 + c] / 255.0f;
-        };
-        auto lerp2 = [&](int c) {
-            const float a = px(x0, y0, c) * (1 - fx) + px(x1, y0, c) * fx;
-            const float bb = px(x0, y1, c) * (1 - fx) + px(x1, y1, c) * fx;
-            return a * (1 - fy) + bb * fy;
-        };
-        r = lerp2(0); g = lerp2(1); b = lerp2(2);
-    };
-
-    for (int oy = 0; oy < oh; ++oy)
-        for (int ox = 0; ox < ow; ++ox) {
-            const float u = (ox + 0.5f) / ow * cropW - 0.5f + cx0;
-            const float v = (oy + 0.5f) / oh * cropH - 0.5f + cy0;
-            float r, g, b;
-            sample(u, v, r, g, b);
-            if (opt.contrast != 1.0f || opt.brightness != 1.0f || opt.gamma != 1.0f) {
-                auto adj = [&](float c) {
-                    c = (c - 0.5f) * opt.contrast + 0.5f;
-                    c = clampf(c * opt.brightness, 0.0f, 1.0f);
-                    if (opt.gamma != 1.0f) c = std::pow(c, 1.0f / opt.gamma);
-                    return c;
-                };
-                r = adj(r); g = adj(g); b = adj(b);
-            }
-            tcam[static_cast<size_t>(oy0 + oy) * W + (ox0 + ox)] = srgbToCam16Ucs(r, g, b);
-        }
-}
-
-// ── Graphics II: 2-colours-per-8×1-cell, Floyd-Steinberg ─────────────────────
-void convertGfxII(const std::vector<Cam16Ucs>& tcam, int ox0, int ow,
-                  const ImportOptions& opt, const Cam16Ucs cam[16], uint8_t* outVram)
+// ── Graphics II: 2-colours-per-8×1-cell ──────────────────────────────────────
+void convertGfxII(const std::vector<LinRgb>& tlin, int ox0, int ow,
+                  const ImportOptions& opt, const Cam16Ucs cam[16],
+                  const LinRgb lin[16], uint8_t* outVram)
 {
     constexpr int W = kGfx2Width, H = kGfx2Height;
+    const KernelSpec& ker = kernelSpec(opt.kernel);
     const float cw = opt.chromaWeight;
-    std::vector<Cam16Ucs> errCur(W, {0,0,0}), errNext(W, {0,0,0});
+    const float walkScale = opt.dither ? opt.diffusion : 0.0f;
+    const float kInf = std::numeric_limits<float>::max();
+
+    // Linear-RGB error rows (jarvis-mod reaches two rows down).
+    std::vector<LinRgb> errRow[3];
+    for (auto& e : errRow) e.assign(W, LinRgb{0, 0, 0});
     const int colActiveLo = ox0, colActiveHi = ox0 + ow;
-    auto add = [&](std::vector<Cam16Ucs>& buf, int xx, const Cam16Ucs& d) {
-        if (xx >= colActiveLo && xx < colActiveHi) { buf[xx].J += d.J; buf[xx].a += d.a; buf[xx].b += d.b; }
+    auto addErr = [&](std::vector<LinRgb>& buf, int xx, const LinRgb& d) {
+        if (xx >= colActiveLo && xx < colActiveHi) buf[xx] = buf[xx] + d;
+    };
+    auto rotateErrRows = [&] {
+        std::swap(errRow[0], errRow[1]);
+        std::swap(errRow[1], errRow[2]);
+        std::fill(errRow[2].begin(), errRow[2].end(), LinRgb{0, 0, 0});
     };
 
+    // Warm-start seeds: the pair chosen for this cell on the previous row.
+    uint8_t prevFg[32], prevBg[32];
+    std::fill(prevFg, prevFg + 32, uint8_t{1});
+    std::fill(prevBg, prevBg + 32, uint8_t{1});
+
     for (int y = 0; y < H; ++y) {
-        std::fill(errNext.begin(), errNext.end(), Cam16Ucs{0,0,0});
         const bool ltr = !opt.serpentine || ((y & 1) == 0);
         const int dir = ltr ? 1 : -1;
         for (int n = 0; n < 32; ++n) {
@@ -134,84 +96,181 @@ void convertGfxII(const std::vector<Cam16Ucs>& tcam, int ox0, int ow,
             const int px0 = cellCol * 8;
             if (px0 + 8 <= colActiveLo || px0 >= colActiveHi) continue;   // letterbox
 
-            Cam16Ucs want[8];
-            for (int k = 0; k < 8; ++k)
-                want[k] = tcam[static_cast<size_t>(y) * W + px0 + k] + errCur[px0 + k];
-
-            // Pick the (fg,bg) pair minimising the summed nearest-of-two cost.
-            float bestCost = std::numeric_limits<float>::max();
-            int bestFg = 1, bestBg = 1;
-            for (int fi = 0; fi < 15; ++fi) {
-                const int fg = kInk[fi];
-                for (int bi = fi; bi < 15; ++bi) {
-                    const int bg = kInk[bi];
-                    float cost = 0.0f;
-                    for (int k = 0; k < 8; ++k) {
-                        const float cf = perceptualCost(cam[fg], want[k], cw);
-                        const float cb = perceptualCost(cam[bg], want[k], cw);
-                        cost += std::min(cf, cb);
-                    }
-                    if (cost < bestCost) { bestCost = cost; bestFg = fg; bestBg = bg; }
-                }
-            }
-
-            uint8_t pat = 0;
+            // Effective per-pixel targets: clamp(target + err) in linear RGB,
+            // converted to CAM16 once per cell (NOT per candidate pair), plus
+            // the local CAM16 Jacobian used to score walked offsets.
+            LinRgb   wantLin[8];
+            Cam16Ucs wantCam[8];
+            const hgrpaint::Cam16Jac* jac[8];
             for (int k = 0; k < 8; ++k) {
-                const float cf = perceptualCost(cam[bestFg], want[k], cw);
-                const float cb = perceptualCost(cam[bestBg], want[k], cw);
-                const bool useFg = (cf <= cb);
-                const int chosen = useFg ? bestFg : bestBg;
-                if (useFg) pat |= static_cast<uint8_t>(0x80u >> k);
-                if (opt.dither) {
-                    const Cam16Ucs res = scale(want[k] - cam[chosen], opt.diffusion);
+                wantLin[k] = clamp01(tlin[static_cast<size_t>(y) * W + px0 + k]
+                                     + errRow[0][px0 + k]);
+                wantCam[k] = linearSrgbToCam16Ucs(wantLin[k].r, wantLin[k].g,
+                                                  wantLin[k].b);
+                jac[k] = &hgrpaint::cam16JacobianAt(wantLin[k].r, wantLin[k].g,
+                                                    wantLin[k].b);
+            }
+
+            // Pick the (fg,bg) pair minimising the walked nearest-of-two cost.
+            // ii-pix apply_one_line semantics: pixel k's residual is diffused
+            // into the following pixels of the SAME pair before they are scored
+            // (scan order), so a pair is credited for compensating its own early
+            // error. The walk stays in LINEAR RGB — the same space as the
+            // committed diffusion (walking in CAM16 would over-credit dark-pixel
+            // compensation and break tone conservation); the walked offset is
+            // mapped into CAM16 for scoring via the local Jacobian:
+            // cam(want + d) ≈ cam(want) + J·d. The cost accumulates pixel by
+            // pixel and bails out as soon as it strictly exceeds the best (ties
+            // must finish so tie-breaking stays identical to the exhaustive scan
+            // — pinned in the smoke test).
+            float bestCost = kInf;
+            int bestFg = 1, bestBg = 1, bestPair = -1;
+            uint8_t bestPat = 0;
+            auto consider = [&](int fi, int bi) {
+                const int pairIdx = fi * 15 + bi;
+                if (pairIdx == bestPair) return;   // warm seed: don't score twice
+                const int fg = kInk[fi], bg = kInk[bi];
+                const float bound = opt.exhaustiveSearch ? kInf : bestCost;
+                LinRgb fw[4] = {};   // rolling forward residuals (scan order)
+                float cost = 0.0f;
+                uint8_t pat = 0;
+                for (int j = 0; j < 8; ++j) {
+                    const int k = ltr ? j : 7 - j;
+                    // Zero-offset fast path (always at the first pixel, and
+                    // everywhere when dither is off) — bit-exact shortcut.
+                    const bool walked = fw[0].r != 0.0f || fw[0].g != 0.0f
+                                        || fw[0].b != 0.0f;
+                    LinRgb wlLin;
+                    Cam16Ucs wl;
+                    if (walked) {
+                        wlLin = clamp01(wantLin[k] + fw[0]);
+                        const LinRgb d = wlLin - wantLin[k];
+                        const float* M = jac[k]->m;
+                        wl = {wantCam[k].J + M[0] * d.r + M[1] * d.g + M[2] * d.b,
+                              wantCam[k].a + M[3] * d.r + M[4] * d.g + M[5] * d.b,
+                              wantCam[k].b + M[6] * d.r + M[7] * d.g + M[8] * d.b};
+                    } else {
+                        wlLin = wantLin[k];   // already clamped at cell start
+                        wl = wantCam[k];
+                    }
+                    const float cf = perceptualCost(cam[fg], wl, cw);
+                    const float cb = perceptualCost(cam[bg], wl, cw);
+                    const bool useFg = (cf <= cb);
+                    cost += useFg ? cf : cb;
+                    if (cost > bound) return;      // early abort: can't win or tie
+                    if (useFg) pat |= static_cast<uint8_t>(0x80u >> k);
+                    if (walkScale != 0.0f && j < 7) {
+                        const LinRgb res = scale(wlLin - lin[useFg ? fg : bg], walkScale);
+                        fw[0] = fw[1] + scale(res, ker.fwd[0]);
+                        if (ker.fwdReach > 1) {    // FS keeps fw[1..3] at zero
+                            fw[1] = fw[2] + scale(res, ker.fwd[1]);
+                            fw[2] = fw[3] + scale(res, ker.fwd[2]);
+                            fw[3] = scale(res, ker.fwd[3]);
+                        }
+                    }
+                }
+                // Accept strictly better costs; on an exact tie keep the LOWEST
+                // pair index — exactly what the plain (fi,bi) scan produces, so
+                // the warm start can never change tie-breaking.
+                if (cost < bestCost ||
+                    (cost == bestCost && (bestPair < 0 || pairIdx < bestPair))) {
+                    bestCost = cost; bestFg = fg; bestBg = bg;
+                    bestPair = pairIdx; bestPat = pat;
+                }
+            };
+            // Warm start: images are vertically coherent, so the previous row's
+            // pair for this cell seeds a tight abort bound (kInk[i] == i+1).
+            if (!opt.exhaustiveSearch)
+                consider(prevFg[cellCol] - 1, prevBg[cellCol] - 1);
+            for (int fi = 0; fi < 15; ++fi)
+                for (int bi = fi; bi < 15; ++bi)
+                    consider(fi, bi);
+
+            // COMMIT: the bit pattern was fixed during scoring (bestPat), so the
+            // bit choice and the scoring walk agree by construction. Redo the
+            // walk in LINEAR RGB to emit the residuals: in-cell forward taps feed
+            // the walk itself; taps past the cell land on errRow[0] (read by the
+            // next cell's wants); below-row taps go to errRow[1..2].
+            outVram[tmspaint::gfx2PatternAddr(px0, y)] = bestPat;
+            outVram[tmspaint::gfx2ColorAddr(px0, y)] =
+                static_cast<uint8_t>((bestFg << 4) | bestBg);
+            prevFg[cellCol] = static_cast<uint8_t>(bestFg);
+            prevBg[cellCol] = static_cast<uint8_t>(bestBg);
+
+            if (opt.dither) {
+                LinRgb wl[8];   // in scan order
+                for (int j = 0; j < 8; ++j) wl[j] = wantLin[ltr ? j : 7 - j];
+                for (int j = 0; j < 8; ++j) {
+                    const int k = ltr ? j : 7 - j;
                     const int x = px0 + k;
-                    add(errNext, x - dir, scale(res, 3.0f / 16.0f));
-                    add(errNext, x,       scale(res, 5.0f / 16.0f));
-                    add(errNext, x + dir, scale(res, 1.0f / 16.0f));
-                    add(errCur,  x + dir, scale(res, 7.0f / 16.0f));   // ahead, same row
+                    wl[j] = clamp01(wl[j]);   // walked wants stay in gamut too
+                    const int chosen = (bestPat & (0x80u >> k)) ? bestFg : bestBg;
+                    const LinRgb res = scale(wl[j] - lin[chosen], opt.diffusion);
+                    for (int d = 1; d <= ker.fwdReach; ++d) {
+                        const LinRgb t = scale(res, ker.fwd[d - 1]);
+                        if (j + d < 8) wl[j + d] = wl[j + d] + t;
+                        else           addErr(errRow[0], x + dir * d, t);
+                    }
+                    for (int r = 1; r <= ker.belowRows; ++r)
+                        for (int dx = -2; dx <= 4; ++dx) {
+                            const float wgt = ker.below[r - 1][dx + 2];
+                            if (wgt != 0.0f)
+                                addErr(errRow[r], x + dir * dx, scale(res, wgt));
+                        }
                 }
             }
-            const int patAddr = tmspaint::gfx2PatternAddr(px0, y);
-            const int colAddr = tmspaint::gfx2ColorAddr(px0, y);
-            outVram[patAddr] = pat;
-            outVram[colAddr] = static_cast<uint8_t>((bestFg << 4) | bestBg);
         }
-        std::swap(errCur, errNext);
+        rotateErrRows();
     }
 }
 
-// ── Multicolor: nearest colour per 4×4 block, Floyd-Steinberg ────────────────
-void convertMulticolor(const std::vector<Cam16Ucs>& tcam, int ox0, int oy0, int ow, int oh,
-                       const ImportOptions& opt, const Cam16Ucs cam[16], uint8_t* outVram)
+// ── Multicolor: nearest colour per 4×4 block ─────────────────────────────────
+void convertMulticolor(const std::vector<LinRgb>& tlin, int ox0, int oy0, int ow, int oh,
+                       const ImportOptions& opt, const Cam16Ucs cam[16],
+                       const LinRgb lin[16], uint8_t* outVram)
 {
     constexpr int W = kMcWidth, H = kMcHeight;
+    const KernelSpec& ker = kernelSpec(opt.kernel);
     const float cw = opt.chromaWeight;
-    std::vector<Cam16Ucs> errCur(W, {0,0,0}), errNext(W, {0,0,0});
+    std::vector<LinRgb> errRow[3];
+    for (auto& e : errRow) e.assign(W, LinRgb{0, 0, 0});
     const int colLo = ox0, colHi = ox0 + ow;
-    auto add = [&](std::vector<Cam16Ucs>& buf, int xx, const Cam16Ucs& d) {
-        if (xx >= colLo && xx < colHi) { buf[xx].J += d.J; buf[xx].a += d.a; buf[xx].b += d.b; }
+    auto addErr = [&](std::vector<LinRgb>& buf, int xx, const LinRgb& d) {
+        if (xx >= colLo && xx < colHi) buf[xx] = buf[xx] + d;
+    };
+    auto rotateErrRows = [&] {
+        std::swap(errRow[0], errRow[1]);
+        std::swap(errRow[1], errRow[2]);
+        std::fill(errRow[2].begin(), errRow[2].end(), LinRgb{0, 0, 0});
     };
 
     for (int by = 0; by < H; ++by) {
-        std::fill(errNext.begin(), errNext.end(), Cam16Ucs{0,0,0});
-        if (by < oy0 || by >= oy0 + oh) { std::swap(errCur, errNext); continue; }
+        if (by < oy0 || by >= oy0 + oh) { rotateErrRows(); continue; }
         const bool ltr = !opt.serpentine || ((by & 1) == 0);
         const int dir = ltr ? 1 : -1;
         for (int n = 0; n < W; ++n) {
             const int bx = ltr ? n : (W - 1 - n);
             if (bx < colLo || bx >= colHi) continue;   // letterbox
-            const Cam16Ucs want = tcam[static_cast<size_t>(by) * W + bx] + errCur[bx];
-            int best = 1; float bestCost = std::numeric_limits<float>::max();
-            for (int i = 0; i < 15; ++i) {
-                const float c = perceptualCost(cam[kInk[i]], want, cw);
+            // Clamped effective target in linear RGB, scored in CAM16.
+            const LinRgb want = clamp01(tlin[static_cast<size_t>(by) * W + bx]
+                                        + errRow[0][bx]);
+            const Cam16Ucs wantCam = linearSrgbToCam16Ucs(want.r, want.g, want.b);
+            int best = 1;
+            float bestCost = std::numeric_limits<float>::max();
+            for (int i = 0; i < 15; ++i) {   // 15 candidates: no abort needed
+                const float c = perceptualCost(cam[kInk[i]], wantCam, cw);
                 if (c < bestCost) { bestCost = c; best = kInk[i]; }
             }
             if (opt.dither) {
-                const Cam16Ucs res = scale(want - cam[best], opt.diffusion);
-                add(errCur, bx + dir, scale(res, 7.0f / 16.0f));
-                add(errNext, bx - dir, scale(res, 3.0f / 16.0f));
-                add(errNext, bx,       scale(res, 5.0f / 16.0f));
-                add(errNext, bx + dir, scale(res, 1.0f / 16.0f));
+                const LinRgb res = scale(want - lin[best], opt.diffusion);
+                for (int d = 1; d <= ker.fwdReach; ++d)
+                    addErr(errRow[0], bx + dir * d, scale(res, ker.fwd[d - 1]));
+                for (int r = 1; r <= ker.belowRows; ++r)
+                    for (int dx = -2; dx <= 4; ++dx) {
+                        const float wgt = ker.below[r - 1][dx + 2];
+                        if (wgt != 0.0f)
+                            addErr(errRow[r], bx + dir * dx, scale(res, wgt));
+                    }
             }
             const int addr = tmspaint::mcBlockAddr(bx, by);
             if (tmspaint::mcHighNibble(bx))
@@ -219,7 +278,7 @@ void convertMulticolor(const std::vector<Cam16Ucs>& tcam, int ox0, int oy0, int 
             else
                 outVram[addr] = static_cast<uint8_t>((outVram[addr] & 0xF0) | best);
         }
-        std::swap(errCur, errNext);
+        rotateErrRows();
     }
 }
 
@@ -233,17 +292,25 @@ void imageToTmsVram(const uint8_t* rgba, int srcW, int srcH,
     if (!rgba || srcW <= 0 || srcH <= 0) return;
 
     Cam16Ucs cam[16];
-    for (int i = 0; i < 16; ++i)
+    LinRgb   lin[16];
+    for (int i = 0; i < 16; ++i) {
         cam[i] = srgb8ToCam16Ucs(kTmsRgb[i].r, kTmsRgb[i].g, kTmsRgb[i].b);
+        lin[i] = {srgb8ToLinearF(kTmsRgb[i].r), srgb8ToLinearF(kTmsRgb[i].g),
+                  srgb8ToLinearF(kTmsRgb[i].b)};
+    }
 
-    std::vector<Cam16Ucs> tcam;
+    // Shared linear-light resampler (ImportCommon.h): the bilinear average and
+    // the diffusion below both run on linear RGB (gamma-correct).
+    std::vector<LinRgb> tlin;
     int ox0, oy0, ow, oh;
     if (mode == Mode::Multicolor) {
-        resampleToCam(rgba, srcW, srcH, kMcWidth, kMcHeight, opt, tcam, ox0, oy0, ow, oh);
-        convertMulticolor(tcam, ox0, oy0, ow, oh, opt, cam, outVram);
+        resampleToLinearRgb(rgba, srcW, srcH, kMcWidth, kMcHeight, opt, tlin,
+                            ox0, oy0, ow, oh);
+        convertMulticolor(tlin, ox0, oy0, ow, oh, opt, cam, lin, outVram);
     } else {
-        resampleToCam(rgba, srcW, srcH, kGfx2Width, kGfx2Height, opt, tcam, ox0, oy0, ow, oh);
-        convertGfxII(tcam, ox0, ow, opt, cam, outVram);
+        resampleToLinearRgb(rgba, srcW, srcH, kGfx2Width, kGfx2Height, opt, tlin,
+                            ox0, oy0, ow, oh);
+        convertGfxII(tlin, ox0, ow, opt, cam, lin, outVram);
     }
 }
 

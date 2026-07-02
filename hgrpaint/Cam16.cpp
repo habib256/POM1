@@ -82,59 +82,155 @@ const ViewingConditions& vc()
     return kVc;
 }
 
+// Float-precision constants derived from the viewing conditions, with the
+// linear-sRGB→XYZ and CAT16 matrices folded together (and the per-cone
+// discounting + fl/100 of the adaptation folded into the matrix rows), so the
+// hot conversion below runs on floats with four powf calls. The importers call
+// this ~50k times per conversion; double precision buys nothing perceptually.
+struct FloatVc {
+    float m[9];        // folded cone matrix: cone_i' = fl/100 · rgbD_i · CAT16 · XYZ
+    float aw, nbb, cz, fLRoot, p1c, alphaK;
+};
+
+FloatVc makeFloatVc()
+{
+    const ViewingConditions& v = vc();
+    // linear sRGB → XYZ (D65, Y=100) — same coefficients as srgbToCam16Ucs's.
+    const double xyz[9] = {
+        0.41233895, 0.35762064, 0.18051042,
+        0.21263901, 0.71516868, 0.07219232,
+        0.01933082, 0.11919478, 0.95053215,
+    };
+    const double cat[9] = {
+        0.401288, 0.650173, -0.051461,
+        -0.250268, 1.204414, 0.045854,
+        -0.002079, 0.048952, 0.953127,
+    };
+    FloatVc f;
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j) {
+            double s = 0.0;
+            for (int k = 0; k < 3; ++k) s += cat[i * 3 + k] * xyz[k * 3 + j];
+            // ×100 (Y scale) × rgbD (discounting) × fl/100 (adaptation input)
+            f.m[i * 3 + j] = static_cast<float>(s * 100.0 * v.rgbD[i] * v.fl / 100.0);
+        }
+    f.aw = static_cast<float>(v.aw);
+    f.nbb = static_cast<float>(v.nbb);
+    f.cz = static_cast<float>(v.c * v.z);
+    f.fLRoot = static_cast<float>(v.fLRoot);
+    f.p1c = static_cast<float>((50000.0 / 13.0) * v.nc * v.ncb);
+    f.alphaK = static_cast<float>(std::pow(1.64 - std::pow(0.29, v.n), 0.73));
+    return f;
+}
+
+const FloatVc& fvc()
+{
+    static const FloatVc kFvc = makeFloatVc();
+    return kFvc;
+}
+
 } // namespace
 
 Cam16Ucs srgbToCam16Ucs(float r, float g, float b)
 {
-    const double lr = srgbToLinear(r), lg = srgbToLinear(g), lb = srgbToLinear(b);
-    // linear sRGB → XYZ (D65), Y scaled to 100.
-    const double X = (0.41233895 * lr + 0.35762064 * lg + 0.18051042 * lb) * 100.0;
-    const double Y = (0.21263901 * lr + 0.71516868 * lg + 0.07219232 * lb) * 100.0;
-    const double Z = (0.01933082 * lr + 0.11919478 * lg + 0.95053215 * lb) * 100.0;
+    return linearSrgbToCam16Ucs(static_cast<float>(srgbToLinear(r)),
+                                static_cast<float>(srgbToLinear(g)),
+                                static_cast<float>(srgbToLinear(b)));
+}
 
-    const ViewingConditions& v = vc();
+Cam16Ucs linearSrgbToCam16Ucs(float r, float g, float b)
+{
+    const FloatVc& v = fvc();
 
-    // CAT16 cone responses, chromatic adaptation, post-adaptation nonlinearity.
-    const double rC =  0.401288 * X + 0.650173 * Y - 0.051461 * Z;
-    const double gC = -0.250268 * X + 1.204414 * Y + 0.045854 * Z;
-    const double bC = -0.002079 * X + 0.048952 * Y + 0.953127 * Z;
-    const double rD = v.rgbD[0] * rC, gD = v.rgbD[1] * gC, bD = v.rgbD[2] * bC;
-
-    auto adapt = [&](double x) {
-        const double af = std::pow(v.fl * std::fabs(x) / 100.0, 0.42);
-        return (x < 0 ? -1.0 : 1.0) * 400.0 * af / (af + 27.13);
+    // Folded linear-sRGB → discounted CAT16 cone responses (already scaled for
+    // the adaptation nonlinearity), then the post-adaptation compression.
+    const float rD = v.m[0] * r + v.m[1] * g + v.m[2] * b;
+    const float gD = v.m[3] * r + v.m[4] * g + v.m[5] * b;
+    const float bD = v.m[6] * r + v.m[7] * g + v.m[8] * b;
+    auto adapt = [](float x) {
+        const float af = std::pow(std::fabs(x), 0.42f);
+        return (x < 0 ? -1.0f : 1.0f) * 400.0f * af / (af + 27.13f);
     };
-    const double rA = adapt(rD), gA = adapt(gD), bA = adapt(bD);
+    const float rA = adapt(rD), gA = adapt(gD), bA = adapt(bD);
 
-    const double a = (11.0 * rA - 12.0 * gA + bA) / 11.0;
-    const double bb = (rA + gA - 2.0 * bA) / 9.0;
-    const double u = (20.0 * rA + 20.0 * gA + 21.0 * bA) / 20.0;
-    const double p2 = (40.0 * rA + 20.0 * gA + bA) / 20.0;
+    const float a = (11.0f * rA - 12.0f * gA + bA) / 11.0f;
+    const float bb = (rA + gA - 2.0f * bA) / 9.0f;
+    const float u = (20.0f * rA + 20.0f * gA + 21.0f * bA) / 20.0f;
+    const float p2 = (40.0f * rA + 20.0f * gA + bA) / 20.0f;
 
-    double hr = std::atan2(bb, a);
-    if (hr < 0) hr += 2.0 * kPi;
+    float hr = std::atan2(bb, a);
+    if (hr < 0) hr += 2.0f * static_cast<float>(kPi);
 
-    const double ac = p2 * v.nbb;
-    const double J = 100.0 * std::pow(ac / v.aw, v.c * v.z);
+    const float ac = p2 * v.nbb;
+    const float J = 100.0f * std::pow(ac / v.aw, v.cz);
 
-    const double eHue = 0.25 * (std::cos(hr + 2.0) + 3.8);
-    const double p1 = (50000.0 / 13.0) * v.nc * v.ncb * eHue;
-    const double t = p1 * std::hypot(a, bb) / (u + 0.305);
-    const double alpha = std::pow(t, 0.9) * std::pow(1.64 - std::pow(0.29, v.n), 0.73);
-    const double C = alpha * std::sqrt(J / 100.0);
-    const double M = C * v.fLRoot;
+    const float eHue = 0.25f * (std::cos(hr + 2.0f) + 3.8f);
+    const float t = v.p1c * eHue * std::hypot(a, bb) / (u + 0.305f);
+    const float alpha = std::pow(t, 0.9f) * v.alphaK;
+    const float C = alpha * std::sqrt(J / 100.0f);
+    const float M = C * v.fLRoot;
 
     Cam16Ucs out;
-    out.J = static_cast<float>((1.0 + 100.0 * 0.007) * J / (1.0 + 0.007 * J));
-    const double mstar = (1.0 / 0.0228) * std::log1p(0.0228 * M);
-    out.a = static_cast<float>(mstar * std::cos(hr));
-    out.b = static_cast<float>(mstar * std::sin(hr));
+    out.J = 1.7f * J / (1.0f + 0.007f * J);
+    const float mstar = (1.0f / 0.0228f) * std::log1p(0.0228f * M);
+    out.a = mstar * std::cos(hr);
+    out.b = mstar * std::sin(hr);
     return out;
 }
 
 Cam16Ucs srgb8ToCam16Ucs(int r, int g, int b)
 {
     return srgbToCam16Ucs(r / 255.0f, g / 255.0f, b / 255.0f);
+}
+
+namespace {
+
+// 17³ Jacobian lattice over linear sRGB, indexed on a sqrt scale (u = √lin) so
+// the nodes crowd toward black where the CAM16 response curves hardest. Central
+// finite differences of the (float) forward model, one-sided at the cube faces.
+constexpr int kJacN = 17;
+
+struct JacLattice {
+    Cam16Jac node[kJacN * kJacN * kJacN];
+};
+
+JacLattice makeJacLattice()
+{
+    JacLattice lat;
+    const float h = 0.02f;
+    auto clamp01 = [](float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); };
+    for (int i = 0; i < kJacN; ++i)
+        for (int j = 0; j < kJacN; ++j)
+            for (int k = 0; k < kJacN; ++k) {
+                const float u[3] = {i / float(kJacN - 1), j / float(kJacN - 1),
+                                    k / float(kJacN - 1)};
+                const float c[3] = {u[0] * u[0], u[1] * u[1], u[2] * u[2]};
+                Cam16Jac& J = lat.node[(i * kJacN + j) * kJacN + k];
+                for (int ch = 0; ch < 3; ++ch) {
+                    float lo[3] = {c[0], c[1], c[2]}, hi[3] = {c[0], c[1], c[2]};
+                    lo[ch] = clamp01(c[ch] - h);
+                    hi[ch] = clamp01(c[ch] + h);
+                    const float d = hi[ch] - lo[ch];
+                    const Cam16Ucs a = linearSrgbToCam16Ucs(lo[0], lo[1], lo[2]);
+                    const Cam16Ucs b = linearSrgbToCam16Ucs(hi[0], hi[1], hi[2]);
+                    J.m[0 + ch] = (b.J - a.J) / d;
+                    J.m[3 + ch] = (b.a - a.a) / d;
+                    J.m[6 + ch] = (b.b - a.b) / d;
+                }
+            }
+    return lat;
+}
+
+} // namespace
+
+const Cam16Jac& cam16JacobianAt(float r, float g, float b)
+{
+    static const JacLattice kLat = makeJacLattice();
+    auto idx = [](float v) {
+        v = v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
+        return static_cast<int>(std::sqrt(v) * (kJacN - 1) + 0.5f);
+    };
+    return kLat.node[(idx(r) * kJacN + idx(g)) * kJacN + idx(b)];
 }
 
 } // namespace hgrpaint

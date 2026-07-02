@@ -5,7 +5,8 @@
 ;
 ;   apply_sprite_size     Derive spr_xoff / spr_yoff / spr_r1 from spr_size.
 ;                         spr_size must be 8 (8x8 sprites) or 32 (16x16).
-;                         Anything else falls back to 16x16 (defensive).
+;                         Anything else falls back to 8x8 (defensive;
+;                         the CMP #32 path only matches exactly 32).
 ;                           16x16: xoff=8, yoff=9, R1=$C2  (16K|DISP|spr-16)
 ;                           8x8:   xoff=4, yoff=5, R1=$C0  (16K|DISP|spr-8)
 ;                         Call after writing spr_size, then upload R1 to

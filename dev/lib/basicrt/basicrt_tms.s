@@ -473,6 +473,10 @@ vdpt_regs:
 ; Multicolor: R1=$C8 MC/on, R2=$02 name $0800, R4=$00 pattern $0000, R5=$16
 ;             sprite attr $0B00 (clear of $0000 pattern + $0800 name), R7=$01
 ;             black border.
+; R6=$00 puts the (unused) sprite-pattern table at $0000 — INSIDE the
+; Multicolor pattern area. Safe only because lr_parksat terminates the SAT
+; at slot 0 ($D0 + $D1 scrub); if sprites are ever added to the lo-res
+; runtime, move R6 to a free window first.
 mc_regs:
         .byte $00,$C8,$02,$00,$00,$16,$00,$01
 .endif  ; RT_LR

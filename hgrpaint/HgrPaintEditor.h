@@ -145,9 +145,10 @@ private:
     // Image-import (ii-pix-style) options + interactive preview dialog (decode the
     // source once, then live-reconvert as the sliders move).
     bool  importStretch = false;       // false = fit + letterbox (keep aspect)
-    bool  importDither  = true;        // Floyd-Steinberg error diffusion
-    bool  importSerpentine = true;     // alternate FS scan direction per row
-    float importDiffusion  = 1.0f;     // FS error-diffusion strength (grain dose)
+    bool  importDither  = true;        // error diffusion
+    bool  importSerpentine = true;     // greyed out for HGR (NTSC decode is left-to-right only)
+    float importDiffusion  = 0.7f;     // diffusion strength (ii-pix HGR error_fraction)
+    int   importKernel = 1;            // 0 = Floyd-Steinberg, 1 = Jarvis-mod (HGR default)
     float importBrightness = 1.0f;
     float importContrast   = 1.0f;
     float importGamma      = 1.0f;

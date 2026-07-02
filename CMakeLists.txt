@@ -181,8 +181,10 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsImageDecode.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tmssprite/TmsSpriteModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tmssprite/TmsSpriteEditor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tmssprite/TmsSpriteAsmExport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrsprite/HgrSpriteBlit.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrsprite/HgrSpriteEditor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrsprite/HgrSpriteAsmExport.cpp
 )
 
 set(HEADERS
@@ -208,8 +210,10 @@ set(HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsConvert.h
     ${CMAKE_CURRENT_SOURCE_DIR}/tmssprite/TmsSpriteModel.h
     ${CMAKE_CURRENT_SOURCE_DIR}/tmssprite/TmsSpriteEditor.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/tmssprite/TmsSpriteAsmExport.h
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrsprite/HgrSpriteBlit.h
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrsprite/HgrSpriteEditor.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrsprite/HgrSpriteAsmExport.h
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintEditor.h
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrFont.h
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintModel.h

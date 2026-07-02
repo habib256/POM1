@@ -18,13 +18,19 @@ typedef unsigned long dword;
 #define HIBYTE(c) ((unsigned char)(((unsigned)(c)) >> 8))
 #define LOBYTE(c) ((unsigned char)(((unsigned)(c)) & 0xFF))
 
-/* Inter-access pacing read of the VDP status port ($CC01). On real TMS9918
- * silicon this gives the VDP time to finish its VRAM cycle between back-to-back
- * accesses; POM1 tolerates burst writes so it is functionally optional here.
- * The read is stored into tms_io_sink rather than cast to void: cc65 -Oirs
- * ELIDES a volatile read whose value is discarded by (void), which silently
- * turned this macro into a no-op (same trap fixed in gen2c via gen2_ss_sink). */
+/* Inter-access pacing delay between back-to-back VDP accesses.
+ *
+ * Historically this READ THE STATUS PORT ($CC01) as a spacer. On real TMS9918
+ * silicon (and in POM1 since juillet 2026) a status read latch-clears the
+ * F (frame), 5S (5th sprite) AND C (collision) sticky flags — TI datasheet
+ * §2.2 — so pacing-by-status-read silently destroyed every flag the program
+ * might poll later (tms_wait_end_of_frame, COLLISION_BIT, FIVESPR_BIT).
+ * Re-implemented as a status-NEUTRAL volatile read-modify-write of a RAM
+ * sink: comparable cycle cost (LDA abs / ADC / STA abs + cc65 overhead),
+ * zero VDP side effects. tms_clear_collisions() keeps its deliberate status
+ * read. The volatile sink also defeats cc65 -Oirs read-elision (same trap
+ * fixed in gen2c via gen2_ss_sink). */
 extern volatile unsigned char tms_io_sink;
-#define TMS_IO_DELAY() (tms_io_sink = *(volatile unsigned char *)0xCC01)
+#define TMS_IO_DELAY() (tms_io_sink = (unsigned char)(tms_io_sink + 1U))
 
 #endif

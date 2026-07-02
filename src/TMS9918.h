@@ -46,11 +46,30 @@ public:
     static constexpr int kFullWidth    = kScreenWidth  + kBorderLeft + kBorderRight;  // 288
     static constexpr int kFullHeight   = kScreenHeight + kBorderTop  + kBorderBottom; // 216
 
+    // Chip-type dispatch — POM1 emulates one of several silicon
+    // variants. Default is TMS9918A (NTSC, what the P-LAB Apple-1
+    // Graphic Card carries). Toshiba clones (T7937A / T6950) have
+    // factory-fixed addressing that suppresses Bug N°8 sprite cloning;
+    // V9938 / V9958 (Yamaha MSX2+) likewise. The dispatch is currently
+    // limited to controlling cloning behaviour — frame timing stays
+    // NTSC across types because POM1's host machine is a 1.022 MHz
+    // 6502 Apple-1, not a Z80 MSX.
+    enum class ChipType : uint8_t {
+        TMS9918A = 0,   // TI NTSC (default — Apple-1 + P-LAB Graphic Card)
+        TMS9929A,       // TI PAL (313 lines — POM1 frame timer is NTSC, label only)
+        TMS9118,        // TI NTSC simplified (functional alias)
+        TMS9128,        // TI PAL simplified (functional alias)
+        TMS9129,        // TI PAL alt (functional alias)
+        T7937A,         // Toshiba — no sprite cloning
+        T6950,          // Toshiba — no sprite cloning
+    };
+
     struct Snapshot {
         std::array<uint8_t, 0x4000> vram{};
         std::array<uint8_t, 8> regs{};
         uint8_t statusReg = 0;
         bool siliconStrictMode = false;
+        ChipType chipType = ChipType::TMS9918A;   // drives Bug N°8 cloning in renderToBuffer
         // Persistent 288×216 RGBA framebuffer rendered progressively at the
         // emulation-thread side (per scanline crossing). The UI reads this
         // verbatim — no further per-snapshot rendering is required. Mid-frame
@@ -255,23 +274,8 @@ public:
     // hybrid-mode case where the BG playfield render is bypassed).
     static bool isIllegalModeRegs(const uint8_t* regs);
 
-    // Chip-type dispatch — POM1 emulates one of several silicon
-    // variants. Default is TMS9918A (NTSC, what the P-LAB Apple-1
-    // Graphic Card carries). Toshiba clones (T7937A / T6950) have
-    // factory-fixed addressing that suppresses Bug N°8 sprite cloning;
-    // V9938 / V9958 (Yamaha MSX2+) likewise. The dispatch is currently
-    // limited to controlling cloning behaviour — frame timing stays
-    // NTSC across types because POM1's host machine is a 1.022 MHz
-    // 6502 Apple-1, not a Z80 MSX.
-    enum class ChipType : uint8_t {
-        TMS9918A = 0,   // TI NTSC (default — Apple-1 + P-LAB Graphic Card)
-        TMS9929A,       // TI PAL (313 lines — POM1 frame timer is NTSC, label only)
-        TMS9118,        // TI NTSC simplified (functional alias)
-        TMS9128,        // TI PAL simplified (functional alias)
-        TMS9129,        // TI PAL alt (functional alias)
-        T7937A,         // Toshiba — no sprite cloning
-        T6950,          // Toshiba — no sprite cloning
-    };
+    // ChipType selection — the enum itself is declared above Snapshot (the
+    // snapshot carries it so renderToBuffer applies the right cloning rule).
     void setChipType(ChipType ct) { chipType = ct; }
     ChipType getChipType() const { return chipType; }
     bool isToshibaChip() const {
@@ -336,8 +340,9 @@ private:
     // Étape 3 — this chip's NTSC raster geometry for the shared BeamClock seam.
     pom1::BeamGeometry beamGeometry() const;
     // Étape 1 — run the per-line sprite-status scan up to active line
-    // `activeNow` (exclusive), latching 5S/collision/index + the per-frame
-    // reset. Shared by advanceCycles and syncSpriteScanToBeam.
+    // `activeNow` (exclusive), latching 5S/collision/index. No per-frame
+    // status reset: F/5S/C are sticky-until-read, as silicon. Shared by
+    // advanceCycles and syncSpriteScanToBeam.
     void advanceSpriteScanTo(int activeNow);
     void paintTopBorder();
     void paintBottomBorder();
@@ -423,10 +428,12 @@ private:
         int16_t        back()  const { return data[size - 1]; }
     };
 
-    // What a scheduled VRAM access slot will do when it fires (openMSX has
-    // only Read/Write; Barrier is POM1's retained $CC01 control-port gating —
-    // it occupies the bus for one slot but touches no VRAM).
-    enum class PendingKind : uint8_t { None, Read, Write, Barrier };
+    // What a scheduled VRAM access slot will do when it fires — Read or
+    // Write, exactly openMSX. ($CC01 control writes are internal latches on
+    // silicon, never slot-scheduled; the old POM1-only "Barrier" kind that
+    // gated them was removed juillet 2026 — a dropped control byte desynced
+    // the emulated flip-flop from the real chip's.)
+    enum class PendingKind : uint8_t { None, Read, Write };
 
     bool canAcceptAccess() const;
     // Cycles from now to the next free VRAM access slot of the current zone
@@ -440,9 +447,11 @@ private:
     SlotSpan selectSlotTable() const;
     SlotTableId activeSlotTableId() const;
     // Record a dropped (== too-fast, openMSX `tooFastCallback`) access into
-    // dropStats and emit a stderr trace line. `port` is 'D' for $CC00 data,
-    // 'C' for $CC01 control, 'r' for a data-port read. Bumps droppedWrites and
-    // the PC/port/table/zone histograms.
+    // dropStats and emit a stderr trace line. `port` is 'D' for $CC00 data
+    // writes, 'r' for a data-port read / read-setup prefetch overwrite.
+    // ('C' control drops no longer occur — control writes are internal
+    // latches on silicon and are never gated; the writeCtrl counter is kept
+    // for ABI stability and stays 0.) Bumps droppedWrites + histograms.
     void noteDroppedAccess(char port, uint8_t value);
 
 private:

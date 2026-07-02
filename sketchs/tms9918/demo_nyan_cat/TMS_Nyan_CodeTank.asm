@@ -65,11 +65,24 @@ start:
         TXS
 
         JSR init_vdp_g3           ; Mode III + 6-section name-table fan-out
-        JSR disable_sprites       ; Y=$D0 sentinel at SAT[0]
+                                  ;   (display kept OFF by the reg loop)
+        JSR disable_sprites       ; Y=$D0 sentinel + $D1 scrub at SAT[0..]
 
         LDA #0
         STA frame_idx
-        JSR upload_current_frame  ; show frame 0 immediately
+        JSR upload_current_frame  ; decode frame 0 while still blanked
+
+        ; Display ON only now — tables, SAT and frame 0 are all valid, so
+        ; real silicon never flashes power-on VRAM garbage / ghost sprites
+        ; (best-practices §1: init order is display-off → tables → SAT →
+        ; display-on). The blanked init also rides the free ScreenOff slot
+        ; table, so the ~3 KB of setup writes cannot drop.
+        LDA #$C8                  ; R1 = 16K | display ON | M2 (Multicolor)
+        STA VDP_CTRL
+        JSR tms9918_pad18
+        LDA #$81
+        STA VDP_CTRL
+        JSR tms9918_pad18
 
         LDA #VSYNC_DIV
         STA vsync_count
@@ -227,6 +240,14 @@ rle_decode:
 init_vdp_g3:
         LDX #0
 @rg:    LDA vdp3_regs,X
+        CPX #1
+        BNE @nomask
+        AND #$BF                  ; R1: keep display OFF for the whole init —
+                                  ; hides power-on VRAM garbage on real
+                                  ; silicon and opens the free ScreenOff
+                                  ; write window (mirrors init_vdp_g1).
+                                  ; start: re-arms $C8 after frame 0.
+@nomask:
         STA VDP_CTRL
         JSR tms9918_pad18
         TXA

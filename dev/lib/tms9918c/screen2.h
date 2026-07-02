@@ -16,8 +16,12 @@ extern const unsigned char SCREEN2_TABLE[8];
 
 extern unsigned char screen2_plot_mode;
 
-#define PLOT_MODE_RESET  0U
-#define PLOT_MODE_SET    1U
+/* Values chosen so BSS-zero == PLOT_MODE_SET: the cc65 `-t none` crt0 has
+ * no copydata (DATA initializers are never applied), but zerobss runs on
+ * every entry — so the default plot mode is guaranteed by the zeroed BSS
+ * itself, with no init-site coupling. Use the macros, never raw values. */
+#define PLOT_MODE_SET    0U
+#define PLOT_MODE_RESET  1U
 #define PLOT_MODE_INVERT 2U
 
 void screen2_init_bitmap(unsigned char color);

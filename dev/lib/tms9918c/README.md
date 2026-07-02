@@ -130,7 +130,11 @@ void main(void) {
             s.y = (signed char)(20 + (rand8() & 0x3F));
             s.x = (unsigned char)(rand8());
             s.name = (unsigned char)(i * 4);
-            s.color = (unsigned char)((i & 0xF) | 0x10); /* EARLY_CLOCK */
+            s.color = (unsigned char)(1U + (i & 0xEU)); /* 1..15 — never 0 =
+                                     transparent (invisible sprite). For a
+                                     deliberate -32 px X shift use
+                                     `| EARLY_CLOCK` ($80 — sprites.h),
+                                     NOT $10 (an undefined SAT bit). */
             tms_shadow_set(i, &s);
         }
         tms_shadow_set_terminator(4);

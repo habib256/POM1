@@ -7,7 +7,9 @@
 ; Layout: each 16x16 sprite occupies 32 bytes -- the first 16 bytes are
 ; the left half (column 0..7), the next 16 the right half (column 8..15).
 ; Native TMS9918 16x16 sprite layout: stream the 32 bytes into a
-; sprite-pattern slot starting at base $3800 + slot*32.
+; sprite-pattern slot starting at the ACTIVE MODE'S sprite-pattern table
+; + slot*32 (asm Mode-1 init_vdp_g1: R6=$07 -> $3800; C lib SCREEN1/SCREEN2
+; tables: R6=$03 -> $1800 — on those layouts $3800 is the NAME table!).
 ; ============================================================================
 .export expl_torch_pat, expl_lantern_pat, expl_bomb_pat, expl_pickaxe_pat, expl_rope_pat
 .export expl_flask_pat, expl_coin_pat, expl_chest_closed_pat, expl_chest_open_pat, expl_mortar_pat

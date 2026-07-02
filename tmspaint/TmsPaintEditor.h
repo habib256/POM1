@@ -129,6 +129,7 @@ private:
     bool  importDither = true;
     bool  importSerpentine = true;
     float importDiffusion = 1.0f;
+    int   importKernel = 0;            // 0 = Floyd-Steinberg (TMS default), 1 = Jarvis-mod
     float importBrightness = 1.0f;
     float importContrast = 1.0f;
     float importGamma = 1.0f;

@@ -1,0 +1,4 @@
+Codetank_GAME6.rom — TMS9918 P-LAB CodeTank cartridge (classics)
+  Lower jumper: 4000R → menu → 1=Maze3D 2=OrbitalPool 3=Stars
+                (OrbitalPool/Stars are copied ROM→RAM $0280 by the menu)
+  Upper jumper: 4000R → TMS_SilBench (29-test silicon benchmark menu)

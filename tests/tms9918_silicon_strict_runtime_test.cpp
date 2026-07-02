@@ -321,9 +321,15 @@ int main()
     }
 
     // ----------------------------------------------------------------------
-    // Phase J — drop diagnostics aggregation. Run mixed-port traffic with
-    // distinct PCs (simulated via setLastAccessPc) and verify byPc / byPort
-    // / byTable / inActive / inVBlank counters add up.
+    // Phase J — drop diagnostics aggregation + SILICON control-port
+    // semantics (re-pinned juillet 2026). On real TMS9918A silicon the
+    // control port is an internal latch: register/address writes are NEVER
+    // dropped however fast they arrive (openMSX applies them immediately
+    // too), and the byte flip-flop therefore can never desync from the
+    // hardware's. Only data-port traffic rides the VRAM slot machinery.
+    // (The old POM1 "Barrier" gating dropped gated control bytes — a
+    // dropped FIRST byte desynced the flip-flop versus silicon, making
+    // every later control pair decode differently from the real chip.)
     // ----------------------------------------------------------------------
     {
         TMS9918 vdp; vdp.reset();
@@ -331,26 +337,34 @@ int main()
         vdp.setSiliconStrictMode(true);
         cushionedSetWriteAddress(vdp, 0x1B00);
 
-        // Force three distinct "PCs" via setLastAccessPc — emulates Memory's
+        // Distinct "PCs" via setLastAccessPc — emulates Memory's
         // mid-instruction PC stamp before each VDP access.
         for (int i = 0; i < 8; ++i) {
             vdp.setLastAccessPc(0x5000);
             vdp.writeData((uint8_t)i);
             vdp.advanceCycles(2);             // tight enough to drop
         }
-        for (int i = 0; i < 8; ++i) {
-            vdp.setLastAccessPc(0x6000);
-            vdp.writeControl((uint8_t)i);     // bursts on $CC01
-            vdp.advanceCycles(2);
-        }
+        // Back-to-back $CC01 register writes with ZERO breathing room:
+        // silicon latches every byte. Write R7 = $0B via a 2c-apart pair,
+        // then verify the register really changed (never dropped, flip-flop
+        // in phase).
+        vdp.setLastAccessPc(0x6000);
+        vdp.writeControl(0x0B);               // 1st byte: value
+        vdp.advanceCycles(2);
+        vdp.writeControl(0x87);               // 2nd byte: write R7
+        vdp.advanceCycles(2);
 
         const auto& d = vdp.dropDiagnostics();
         mustBeTrue(d.total == d.writeData + d.readData + d.writeCtrl,
                    "PhaseJ: total = writeData + readData + writeCtrl"); ++assertions;
-        mustBeTrue(d.writeData > 0 && d.writeCtrl > 0,
-                   "PhaseJ: drops on both ports"); ++assertions;
-        mustBeTrue(d.byPc.count(0x5000) > 0 && d.byPc.count(0x6000) > 0,
-                   "PhaseJ: byPc histogram captures both PC sites"); ++assertions;
+        mustBeTrue(d.writeData > 0,
+                   "PhaseJ: data-port drops recorded"); ++assertions;
+        mustBeTrue(d.writeCtrl == 0,
+                   "PhaseJ: control-port writes NEVER drop (silicon: internal latch)"); ++assertions;
+        mustBeTrue(vdp.regsData()[7] == 0x0B,
+                   "PhaseJ: the 2c-apart register write landed (R7 = $0B)"); ++assertions;
+        mustBeTrue(d.byPc.count(0x5000) > 0 && d.byPc.count(0x6000) == 0,
+                   "PhaseJ: byPc histogram has the data site only"); ++assertions;
         mustBeTrue(d.byTable[TMS9918::kSlotTableGfx12] == d.total,
                    "PhaseJ: all drops in Gfx12 table"); ++assertions;
         mustBeTrue(d.inActive + d.inVBlank == d.total,

@@ -770,10 +770,11 @@ int queueKeystrokes(EmulationController& emu, std::string_view text, int maxChar
     for (char c : text) {
         if (sent >= maxChars) break;
         if (c == '\n') c = '\r';                          // newline → Apple-1 CR
-        if (c == '\r' || (static_cast<unsigned char>(c) >= 32 &&
-                          static_cast<unsigned char>(c) <= 126)) {
-            emu.queueKey(c);
-            ++sent;
+        if (c == '\r' || c == 0x1B ||                     // ESC passes: it is the
+            (static_cast<unsigned char>(c) >= 32 &&       // canonical exit key of
+             static_cast<unsigned char>(c) <= 126)) {     // every TMS9918 program —
+            emu.queueKey(c);                              // headless runs must be
+            ++sent;                                       // able to test exit paths
         }
     }
     return sent;

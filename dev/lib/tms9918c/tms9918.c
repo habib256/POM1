@@ -70,10 +70,26 @@ void tms_set_external_video(unsigned char val) {
     tms_write_reg(0, regvalue);
 }
 
-void tms_wait_end_of_frame(void) {
-    while (!FRAME_BIT(tms_read_status())) {
-        /* poll status */
-    }
+unsigned char tms_wait_end_of_frame(void) {
+    /* Drain-then-poll (the asm WAIT_VBLANK idiom). Without the drain, an F
+     * flag latched any time since the last status read returned IMMEDIATELY —
+     * the caller was at a random raster position, not in VBlank, and every
+     * hard-VBlank contract downstream (tms_shadow_flush's ~15c/byte cadence,
+     * the scroll burst chunks) silently ran mid-frame on real silicon.
+     * A status read latch-clears F+5S+C atomically (TI datasheet §2.2), so
+     * the drain byte is also the only place a collision from the waited-out
+     * frame can be observed: the return value merges C/5S seen on either
+     * read with the fresh F — snapshot it once per frame and test the copy. */
+    unsigned char acc = (unsigned char)(tms_read_status() & 0x60U); /* drain */
+    unsigned char s;
+    do {
+        s = tms_read_status();
+        acc |= (unsigned char)(s & 0x60U);  /* EVERY poll read latch-clears
+                                             * C/5S — a collision landing
+                                             * mid-wait would otherwise be
+                                             * eaten by a discarded read */
+    } while (!FRAME_BIT(s));
+    return (unsigned char)(s | acc);
 }
 
 void tms_copy_to_vram(const unsigned char *source, unsigned size, unsigned dest) {

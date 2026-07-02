@@ -23,7 +23,12 @@ static void screen1_square_sprites(void) {
 
     tms_set_vram_write_addr(TMS_SPRITE_ATTRS);
     for (i = 0; i < 32U; ++i) {
-        TMS_WRITE_DATA_PORT((unsigned char)(40U + (i & 7U) * 24U));
+        /* Row pitch 20 px starting at Y=24: rows 24..164, all fully on the
+         * 192-line screen. The old pitch (40 + (i&7)*24) put row 7 at
+         * Y=208 = $D0 — the SAT chain TERMINATOR — so the hardware stopped
+         * scanning at sprite 7 and sprites 7..31 never displayed (real
+         * silicon and POM1 agree). Never place a sprite at Y=$D0. */
+        TMS_WRITE_DATA_PORT((unsigned char)(24U + (i & 7U) * 20U));
         TMS_IO_DELAY();
         TMS_IO_DELAY();
         TMS_IO_DELAY();
@@ -38,7 +43,10 @@ static void screen1_square_sprites(void) {
         TMS_IO_DELAY();
         TMS_IO_DELAY();
         TMS_IO_DELAY();
-        TMS_WRITE_DATA_PORT(i);
+        /* Colour 1..15, never 0: colour 0 is TRANSPARENT (sprite 0 was
+         * invisible with the old `i` value), and masking to 4 bits keeps
+         * bit 7 (Early Clock) clear for i >= 16. */
+        TMS_WRITE_DATA_PORT((unsigned char)(1U + (i % 15U)));
         TMS_IO_DELAY();
         TMS_IO_DELAY();
         TMS_IO_DELAY();
@@ -98,5 +106,9 @@ void main(void) {
         screen1_puts((const unsigned char *)"'");
     }
 
+    /* Blessed exit: park the SAT (32 sprites are live, no terminator) and
+     * blank the display so whatever runs next starts from a quiet chip. */
+    tms_set_total_sprites(0);
+    tms_write_reg(1, 0x80U);
     woz_mon();
 }

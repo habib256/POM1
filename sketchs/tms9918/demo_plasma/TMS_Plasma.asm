@@ -288,10 +288,11 @@ make_sine_table:
 ; upload_patterns — 32 patterns × 8 reps = 256 chars × 8 B = 2048 B to $0000.
 ; Called once at boot.
 ;
-; Timing: Mode I + sprites disabled at this point (init_vdp_g1 →
-; disable_sprites already ran), so silicon-strict floor = 6c between
-; consecutive VDP writes. STA→STA gap = INY(2) + BNE(3) + LDA(4) +
-; STA(4) = 13c — 2.2× above floor, no pad12 needed.
+; Timing: pad18-gated. The old rationale ("sprites disabled → 6c floor")
+; referenced a POM1 fast-path that was REMOVED when the emulator adopted the
+; openMSX slot tables verbatim — real silicon does not discriminate on
+; sprites-off, and the raw 13c STA→STA gap sat under the ~16c floor
+; validated on Parmigiani's Replica-1. Boot-only cost: +2048×18c ≈ 37 kc.
 ; ----------------------------------------------------------------------------
 upload_patterns:
         LDA #$00
@@ -304,6 +305,7 @@ upload_patterns:
 @pr:    LDY #0
 @pl:    LDA patterns,Y
         STA VDP_DATA
+        JSR tms9918_pad18
         INY
         BNE @pl
         DEX
@@ -346,9 +348,11 @@ upload_color_table:
         ORA tmp                   ; A = (FG<<4) | BG
 
         LDY #4                    ; ColorRepeats — same byte 4 times
-@cr:    STA VDP_DATA              ; gap = STA(4) + DEY(2) + BNE(3) = 9c, > 6c floor
-        DEY
-        BNE @cr
+@cr:    STA VDP_DATA
+        JSR tms9918_pad18         ; raw 9c gap sat under the ~16c silicon
+        DEY                       ;   floor (old "6c sprites-off" rationale
+        BNE @cr                   ;   referenced a removed POM1 fast-path);
+                                  ;   pad18 preserves A (NOP-only body)
 
         INX
         CPX #8

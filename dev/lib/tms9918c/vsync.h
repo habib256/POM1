@@ -22,8 +22,11 @@ extern unsigned int vsync_frames;
 /* Reset the counter to 0. */
 void vsync_reset(void);
 
-/* Block until the next end-of-frame, then increment vsync_frames. */
-void vsync_wait(void);
+/* Block until the NEXT end-of-frame (stale-F drained), then increment
+ * vsync_frames. Returns the frame's status snapshot (fresh F + C/5S seen
+ * on either read) — the one chance to test COLLISION_BIT/FIVESPR_BIT,
+ * since a status read clears all three flags atomically. */
+unsigned char vsync_wait(void);
 
 /* Wait n frames. Counter advances by n. */
 void vsync_wait_n(unsigned char n);

@@ -9,8 +9,12 @@
 #include "c64font.h"
 #include "sprites.h"
 
+/* R1 = $80: 16K, display OFF. The display is enabled by screen1_prepare()
+ * once the pattern/colour/name tables and the SAT park are valid — enabling
+ * it here (the old $C0) flashed power-on VRAM garbage + noise sprites on
+ * real DRAM until prepare caught up (best-practices §1 blank-first order). */
 const unsigned char SCREEN1_TABLE[8] = {
-    0x00U, 0xC0U, 0x0EU, 0x80U, 0x00U, 0x76U, 0x03U, 0x25U
+    0x00U, 0x80U, 0x0EU, 0x80U, 0x00U, 0x76U, 0x03U, 0x25U
 };
 
 void screen1_load_font(void) {
@@ -45,6 +49,12 @@ void screen1_cls(void) {
     tms_set_vram_write_addr(TMS_NAME_TABLE);
     for (i = SCREEN1_SIZE; i != 0U; --i) {
         TMS_WRITE_DATA_PORT(32U);
+        /* Explicit pacing: this loop is reachable with the display ON
+         * (screen1_putc(CHR_CLS)) and was the only display-ON burst with
+         * NO delay at all — measured ~70c/write today purely from cc65
+         * -Oirs codegen, which any optimizer change could shrink below
+         * the ~22c silicon floor. The RAM-sink delay pins the margin. */
+        TMS_IO_DELAY();
     }
     tms_cursor_x = 0;
     tms_cursor_y = 0;
@@ -114,9 +124,26 @@ void screen1_scroll_up(void) {
 void screen1_prepare(void) {
     unsigned i;
 
-    /* Disable sprites (avoid linking sprites.c when not needed). */
+    /* Blank UNCONDITIONALLY. tms_regs_latch is BSS — on a warm start
+     * (Wozmon 4000R re-run, CodeTank game switch) the mirror can read
+     * "blanked" while the REAL chip still has the display ON from the
+     * previous program; trusting the mirror ran this bulk init hot and
+     * dropped most bytes on real silicon. (mirror & $3F) | $80 keeps the
+     * known mode bits, forces 16K and clears the display bit — fail-safe
+     * is always "display off during init". Note: the R1 write clobbers
+     * the VRAM address counter (real-silicon behaviour, openMSX/dvik),
+     * so every upload below re-primes its own address. */
+    tms_write_reg(1, (unsigned char)((tms_regs_latch[1] & 0x3FU) | 0x80U));
+
+    /* Park the SAT: $D0 terminator at slot 0 + $D1 prefill of the remaining
+     * 127 bytes. A lone $D0 renders fine on POM1's bistable power-on VRAM
+     * but leaves SAT noise armed behind it on real silicon — ghost sprites
+     * the moment slot 0 is overwritten (TMS9918-SPRITE_INIT.md §4.2/§11). */
     tms_set_vram_write_addr(TMS_SPRITE_ATTRS);
     TMS_WRITE_DATA_PORT(SPRITE_OFF_MARKER);
+    for (i = 127U; i != 0U; --i) {
+        TMS_WRITE_DATA_PORT(0xD1U);
+    }
     screen1_cls();
 
     tms_set_vram_write_addr(TMS_PATTERN_TABLE);
@@ -128,6 +155,12 @@ void screen1_prepare(void) {
     for (i = 32U; i != 0U; --i) {
         TMS_WRITE_DATA_PORT(FG_BG(COLOR_BLACK, COLOR_WHITE));
     }
+
+    /* Contract (juillet 2026): prepare LEAVES THE DISPLAY ON — the tables
+     * and the SAT park are valid now, and SCREEN1_TABLE ships R1 with the
+     * display bit clear precisely so this is the first enable the viewer
+     * ever sees (no garbage frame on real DRAM). */
+    tms_set_blank(1);
 }
 
 void screen1_putc(unsigned char c) {

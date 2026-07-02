@@ -225,6 +225,68 @@ void gen2_hgr_sprite(unsigned x, unsigned char y,
  * gen2_hgr_sprite, mode is always XOR (draw==erase). */
 void gen2_hgr_sprite_xor(unsigned x, unsigned char y, const gen2_sprite_t *spr);
 
+/* --- Masked pre-shifted sprites + save-under (the SPRMASK family) ----------
+ * gen2_hgr_sprite_xor is the fastest mover, but XOR is only self-erasing over
+ * a background it also XORed -- over DECOR (text, coloured rects) the sprite
+ * shows the background toggled through it. The masked engine draws OPAQUE
+ * sprites over any background and puts the background back byte-exact:
+ *
+ *     dst[j] = (dst[j] & mask[j]) | data[j]
+ *
+ * Data ABI (what build_preshift_sprites.py --masked emits, and what the
+ * gen2_sprmask.s kernels read):
+ *   stride = ceil((w + 6) / 7) bytes per row, uniform across the 7 phases
+ *            (same rule as gen2_sprite_t).
+ *   data   = 7 phase blocks, each h*stride bytes, row-major, 7px/byte
+ *            (bit 0 = leftmost, bit 7 CLEAR). Phase p at offset p*(h*stride).
+ *            These are the sprite's lit pixels, pre-shifted like a
+ *            gen2_sprite_t bank.
+ *   mask   = 7 phase blocks with the SAME geometry. A 1-bit KEEPS the
+ *            background; mask = ~coverage (coverage = the sprite's footprint,
+ *            optionally dilated by a --halo for a black outline). Bit 7 of
+ *            every mask byte is ALWAYS 1, so the background byte's HIRES
+ *            palette-group bit survives the draw (and data bit 7 is always 0,
+ *            so the sprite never flips it). A hand-authored bank that wants to
+ *            OWN the palette bit can clear mask bit 7 + set data bit 7 -- the
+ *            kernel maths allows it; the generator never does. */
+typedef struct {
+    const unsigned char *data;   /* 7 phase blocks: pre-shifted pixels, bit7=0 */
+    const unsigned char *mask;   /* 7 phase blocks: ~coverage, bit7=1 (KEEP)   */
+    unsigned char        stride; /* bytes per row per phase = ceil((w+6)/7)    */
+    unsigned char        h;      /* rows                                       */
+} gen2_mspr_t;
+
+/* --- The sprite ENGINE (gen2_sprengine.c, needs SPRMASK + CORE) ------------
+ * Up to GEN2_SPR_MAX masked sprites with automatic save-under/restore, in
+ * either double-buffered (tear-free) or single-buffered (V-blank-raced) mode.
+ * The engine owns the under-buffers (a static pool -- no dynamic allocation):
+ * each sprite may cover at most GEN2_SPR_UNDER_BYTES = stride*h bytes (e.g.
+ * 4x24, or a full 16x16 creature at stride 4 x 16 rows = 64). gen2_spr_define
+ * silently rejects (deactivates) a shape over the cap.
+ *
+ * The loop:
+ *     gen2_hgr_init();
+ *     ...draw the background (BOTH pages if double buffering)...
+ *     gen2_spr_init(1);                          // 1 = double-buffered
+ *     gen2_spr_define(0, &wolf);
+ *     for (;;) {
+ *         gen2_spr_move(0, x, y);                // just records the target
+ *         gen2_spr_update();                     // restore + draw + flip
+ *     }
+ *
+ * gen2_spr_update does all the work; see gen2_sprengine.c for the mode
+ * semantics (double-buffer: draw on the hidden page, then flip in V-blank;
+ * single-buffer: restore+draw inside the V-blank window) and the cycle
+ * budget math. */
+#define GEN2_SPR_MAX          8u
+#define GEN2_SPR_UNDER_BYTES  96u   /* per-sprite save-under cap (stride*h)   */
+
+void gen2_spr_init(unsigned char double_buffered);
+void gen2_spr_define(unsigned char id, const gen2_mspr_t *shape);
+void gen2_spr_move(unsigned char id, unsigned x, unsigned char y);
+void gen2_spr_hide(unsigned char id);
+void gen2_spr_update(void);
+
 /* Draw an ASCII string at pixel (x, y) using the built-in Beautiful Boot 8x8
  * font, pixel-doubled so the text is solid white (no NTSC colour artifacts) in
  * 16x16 cells on an 18px pitch. Renders into HIRES page 1; call gen2_hgr_init

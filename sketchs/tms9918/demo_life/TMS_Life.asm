@@ -42,19 +42,26 @@
 ; the Woz Monitor. Tap any key to change pattern, ESC to exit.
 ;
 ; Memory footprint (Parmigiani dual-bank 8 KB + TMS9918):
-;   $0280-~$078B  code + pattern tables + HUD strings (output file)
-;   $0800-$0B73   grid_a       (884 B, zeroed at boot)
-;   $0C00-$0F73   grid_b       (884 B, zeroed at boot)
+;   $0280-~$08E6  code + pattern tables + HUD strings (output file)
+;   $0900-$0C73   grid_a       (884 B, zeroed at boot)
+;   $0C80-$0FF3   grid_b       (884 B, zeroed at boot)
 ;   VRAM on card  pattern/name/color tables (not main bus)
 ;
 ; Grids must stay inside the low RAM bank ($0000-$0FFF) because the
 ; TMS9918 presets use Parmigiani's dual-bank layout (4 KB at $0000 +
 ; 4 KB at $E000) — anything in [$1000, $8000) is OOR and gets dropped
 ; by Memory.cpp's strict-OOR enforcement, which froze the grids at
-; $FF and made the simulation render solid blocks. $0800/$0C00 sits
-; above the program (~$078B) and below the bank ceiling at $0FFF, so
-; it works on every TMS9918-capable preset (with or without CodeTank
-; ROM at $4000-$7FFF, with or without GEN2 HGR at $2000-$3FFF).
+; $FF and made the simulation render solid blocks.
+;
+; BUG HISTORY (juillet 2026): the multi-pattern edition grew the program
+; image past $0800 (to ~$08E6) while grid_a stayed at $0800 —
+; clear_grids then zeroed row_ofs + tms9918_pad18 + the display helpers
+; that live in that range, so the first `JSR tms9918_pad18` executed a
+; BRK and the demo died with a black screen before its first render.
+; Grids moved to $0900/$0C80 (clear_grids never needed page alignment —
+; it fills 884 consecutive bytes from any base) and a `.assert` at the
+; end of this file now fails the build if code ever reaches grid_a
+; again. grid_b ends at $0FF3, inside the bank ceiling.
 ;
 ; Cell layout:       cell (r, c), r in 1..24, c in 1..32
 ;                    byte = grid[r*34 + c]   (0 = dead, 1 = alive)
@@ -93,10 +100,11 @@ NUM_PATTERNS = 14
 ; the strict-OOR check drops writes there. They also need to avoid
 ; the CodeTank ROM window ($4000-$7FFF when a CodeTank cart is
 ; plugged) and the GEN2 HGR framebuffer ($2000-$3FFF when GEN2 is
-; plugged). $0800/$0C00 sits above the program image (ends ~$078B)
-; and stays inside the low bank, so it's safe everywhere.
-grid_a  := $0800
-grid_b  := $0C00
+; plugged). $0900/$0C80 sits above the program image (ends ~$08E6 —
+; guarded by the .assert at the end of this file) and grid_b ends at
+; $0FF3, inside the low bank, so it's safe everywhere.
+grid_a  := $0900
+grid_b  := $0C80
 
 ; ----- Zero page -----
 .zeropage
@@ -137,6 +145,10 @@ str_p_hi:   .res 1          ; print_str cursor (hi)
 ; The TMS9918 raster is dedicated to the simulation.
 ; =============================================
 main:
+        SEI                 ; canonical preamble (mirrors Mandel/Plasma/Nyan):
+        CLD                 ; a warm re-run after a program that left D=1
+        LDX #$FF            ; would silently turn compute_next's chained ADC
+        TXS                 ; neighbour sums into BCD — corrupted generations
         LDA #0
         STA pat_idx
         STA paused          ; start running
@@ -170,7 +182,18 @@ gen_loop:
         JSR step_one_gen
         JMP gen_loop
 @done:
-        RTS
+        ; Canonical exit (mirrors Mandel/Plasma/Nyan). The old `RTS` popped a
+        ; return address that was NEVER pushed: both launch paths are JMPs
+        ; (Wozmon 280R/4100R = JMP (XAM); the GAME3 menu does JMP LIFE_ENTRY),
+        ; so on real hardware ESC jumped through two undefined power-on stack
+        ; bytes — crash or random execution instead of returning to Wozmon.
+        LDA #$80            ; R1 = display off (bulk-safe park for whoever
+        STA VDP_CTRL        ;      runs next; their init rewrites all 8 regs)
+        JSR tms9918_pad18
+        LDA #$81            ; write R1
+        STA VDP_CTRL
+        LDA KBD             ; drain the ESC so Wozmon doesn't read it as input
+        JMP WOZMON
 
 ; =============================================
 ; dispatch_key: map A (a key with bit 7 set) onto a transport
@@ -966,3 +989,11 @@ row_ofs_hi:
         .repeat 26, I
             .byte >(I * 34)
         .endrepeat
+
+; Build-time guard: when the image loads in low RAM (standalone $0280
+; layout) it must end below grid_a. In juillet 2026 the image silently
+; grew past the old grid base ($0800) and clear_grids wiped the tail of
+; the program — black screen. The CodeTank run-in-place layout links the
+; code at $4100 (ROM window) where it cannot collide with the RAM grids,
+; so the guard only applies below $1000.
+        .assert (* >= $1000) .or (* <= grid_a), error, "TMS_Life image overlaps grid_a — move the grids up (and keep grid_b + 884 <= $1000)"
