@@ -165,6 +165,25 @@ endif()
 add_test(NAME cpu_pc_length_smoke COMMAND test_cpu_pc_length)
 set_tests_properties(cpu_pc_length_smoke PROPERTIES TIMEOUT 30)
 
+# -- Undocumented-opcode cycle oracle -----------------------------------------
+add_executable(test_cpu_illegal_cycles
+    cpu_illegal_cycles_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_cpu_illegal_cycles PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_cpu_illegal_cycles PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_cpu_illegal_cycles PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_cpu_illegal_cycles PRIVATE ws2_32)
+endif()
+add_test(NAME cpu_illegal_cycles_smoke COMMAND test_cpu_illegal_cycles)
+set_tests_properties(cpu_illegal_cycles_smoke PROPERTIES TIMEOUT 30)
+
 # -- PeripheralBus dispatch smoke test ----------------------------------------
 # Self-contained: the bus has no dependency on Memory, peripherals, or
 # libresidfp. The test registers a handful of fake handlers and asserts the

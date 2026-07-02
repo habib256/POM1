@@ -122,5 +122,29 @@ int main()
     std::printf("hex_dump_multi_zone: OK (lo=$0280, hi=$E000, run=$0280, %d bytes)\n", bytes);
     std::error_code ec;
     std::filesystem::remove(path, ec);
+
+    // Zero-page address prefix (regression: "40:FF" must parse as addr $40, not
+    // a lone data byte 0x40 — the old >=3-digit guard rejected 1–2 digit addrs).
+    {
+        const std::string zpPath = (std::filesystem::temp_directory_path()
+                                  / "pom1_hex_dump_zp_addr.txt").string();
+        {
+            std::ofstream f(zpPath);
+            f << "40: FF A9 00 40R\n";
+        }
+        Memory memZp;
+        uint16_t run = 0;
+        int loaded = 0;
+        assert(memZp.loadHexDump(zpPath.c_str(), run, &loaded, nullptr) == 0);
+        assert(run == 0x0040);
+        assert(loaded == 3);
+        assert(memZp.memRead(0x0040) == 0xFF);
+        assert(memZp.memRead(0x0041) == 0xA9);
+        assert(memZp.memRead(0x0042) == 0x00);
+        std::error_code ecZp;
+        std::filesystem::remove(zpPath, ecZp);
+        std::printf("hex_dump_zp_addr: OK ($0040: FF A9 00)\n");
+    }
+
     return 0;
 }

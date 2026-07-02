@@ -181,6 +181,7 @@ private :
     uint16_t op;
     int tmp;
     int cycles;
+    uint8_t lastFetchedOpcode = 0; // executeOpcode → Unoff* cycle lookup
     // `run()` polls this every loop iteration; `stop()` clears it. It is
     // written lock-free by EmulationController::stopCpu() (off the emulation
     // thread) to abort a slice already inside run() within one instruction,

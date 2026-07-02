@@ -504,11 +504,51 @@ int main()
         std::filesystem::remove(pathG, ecG);
     }
 
+    // ── microSD snapshot across a CodeTank preset (regression for the
+    //    MEM-then-FLAGS restore ordering bug: disable paths used to zero
+    //    $4000-$7FFF / $8000-$9FFF after MEM had already restored RAM).
+    {
+        Memory memSD;
+        memSD.setMicroSDEnabled(true);
+        for (int addr = 0x6000; addr < 0x6800; ++addr) {
+            memSD.memWrite(static_cast<uint16_t>(addr),
+                           static_cast<uint8_t>(0xA0 + (addr & 0x0F)));
+        }
+        auto pathSD = makeTempPath("microsd_codetank");
+        std::string errSD;
+        if (!memSD.saveSnapshot(pathSD.string(), errSD)) {
+            std::fprintf(stderr, "microSD saveSnapshot failed: %s\n", errSD.c_str());
+            return 1;
+        }
+        Memory memSD2;
+        memSD2.setCodeTankEnabled(true);   // different preset — TMS9918 cascades on
+        assert(memSD2.isCodeTankEnabled());
+        if (!memSD2.loadSnapshot(pathSD.string(), errSD)) {
+            std::fprintf(stderr, "microSD loadSnapshot failed: %s\n", errSD.c_str());
+            return 1;
+        }
+        assert(memSD2.isMicroSDEnabled());
+        assert(!memSD2.isCodeTankEnabled());
+        for (int addr = 0x6000; addr < 0x6800; ++addr) {
+            const uint8_t expected = static_cast<uint8_t>(0xA0 + (addr & 0x0F));
+            const uint8_t got = memSD2.memRead(static_cast<uint16_t>(addr));
+            if (got != expected) {
+                std::fprintf(stderr,
+                    "microSD/CodeTank preset-cross restore: RAM[$%04X] got %02X expected %02X\n",
+                    addr, got, expected);
+                return 1;
+            }
+        }
+        std::error_code ecSD;
+        std::filesystem::remove(pathSD, ecSD);
+    }
+
     std::error_code ec;
     std::filesystem::remove(path, ec);
     std::printf("snapshot round-trip OK (%zu RAM bytes, CPU regs, "
                 "TMS9918+SID+cassette+GT-6144+PR-40+CodeTank+CFFA1 + "
-                "standalone Juke-Box + A1-IO/RTC + GEN2 HGR)\n",
+                "standalone Juke-Box + A1-IO/RTC + GEN2 HGR + "
+                "microSD/CodeTank preset-cross)\n",
                 baseline.size());
     return 0;
 }

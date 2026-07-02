@@ -1203,7 +1203,7 @@ int Memory::loadHexDump(const char* filename, uint16_t &startAddress, int* bytes
                 continue;
             }
 
-            if (peek < cleaned.size() && cleaned[peek] == ':' && hexStr.size() >= 3) {
+            if (peek < cleaned.size() && cleaned[peek] == ':' && hexStr.size() >= 1) {
                 // Handle merged data+address: e.g. "ED0300:" = data ED, address 0300
                 if (hexStr.size() > 4) {
                     size_t dataLen = hexStr.size() - 4;
@@ -1575,9 +1575,14 @@ void Memory::setMicroSDEnabled(bool b)
     } else {
         // IEC daughterboard rides on microSD's VIA — drop it first.
         if (iecCardEnabled) setIECCardEnabled(false);
-        // Clear the ROM region (restore to RAM)
-        std::fill(mem.begin() + 0x8000, mem.begin() + 0xA000, 0);
-        markPagesDirty(0x8000, 0x2000);
+        // Clear the ROM region (restore to RAM). Skip during snapshot
+        // restore: the MEM section already holds the correct bytes and
+        // FLAGS runs after MEM — zeroing here would wipe just-restored RAM
+        // (e.g. Applesoft Lite at $6000-$7FFF when switching presets).
+        if (!snapshotRestoreInProgress) {
+            std::fill(mem.begin() + 0x8000, mem.begin() + 0xA000, 0);
+            markPagesDirty(0x8000, 0x2000);
+        }
     }
 }
 
@@ -1630,9 +1635,12 @@ void Memory::setCFFA1Enabled(bool b)
         if (jukeBoxEnabled) setJukeBoxEnabled(false);
         loadCFFA1Rom();
     } else {
-        // Clear the CFFA1 ROM region
-        std::fill(mem.begin() + 0x9000, mem.begin() + 0xB000, 0);
-        markPagesDirty(0x9000, 0x2000);
+        // Clear the CFFA1 ROM region. Skip during snapshot restore — same
+        // MEM-then-FLAGS ordering hazard as setMicroSDEnabled(false).
+        if (!snapshotRestoreInProgress) {
+            std::fill(mem.begin() + 0x9000, mem.begin() + 0xB000, 0);
+            markPagesDirty(0x9000, 0x2000);
+        }
     }
 }
 
@@ -1795,6 +1803,10 @@ int Memory::loadJukeBoxRom(void)
 void Memory::applyCodeTankFlatMemoryMirror()
 {
     if (!codeTankEnabled) return;
+    // During snapshot restore the MEM section already holds the correct
+    // mirror bytes; re-running the mirror here would clobber them (and
+    // FLAGS runs before the CodeTank card section is deserialized).
+    if (snapshotRestoreInProgress) return;
     const uint8_t* romBuf = codeTank->getRomPointer();
     const size_t   romSize = codeTank->getRomSize();
     const size_t halfOff = (codeTank->getJumper() == CodeTank::Jumper::Upper16)
@@ -1834,9 +1846,12 @@ void Memory::setCodeTankEnabled(bool b)
     } else {
         bus.setEnabled(codeTankBusHandle, false);
         // Clear the mirrored ROM bytes so the Memory Viewer doesn't keep
-        // showing stale ROM contents at $4000-$7FFF after unplug.
-        std::fill_n(mem.begin() + CodeTank::kBase, CodeTank::kHalfSize, static_cast<uint8_t>(0));
-        markPagesDirty(CodeTank::kBase, CodeTank::kHalfSize);
+        // showing stale ROM contents at $4000-$7FFF after unplug. Skip
+        // during snapshot restore — MEM already restored the correct bytes.
+        if (!snapshotRestoreInProgress) {
+            std::fill_n(mem.begin() + CodeTank::kBase, CodeTank::kHalfSize, static_cast<uint8_t>(0));
+            markPagesDirty(CodeTank::kBase, CodeTank::kHalfSize);
+        }
     }
 }
 
