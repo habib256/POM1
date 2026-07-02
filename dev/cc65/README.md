@@ -26,6 +26,7 @@ buffer; the differences are the code window and ZP size.
 | `apple1_gen2.cfg` | asm | `$E000` (`E000R`) | `$E000-$EFFF` (4 KB) | GEN2 HGR, ≤ 4 KB single-bank. Code in the high bank (where Integer BASIC ROM used to sit); GEN2 framebuffer reserved at `$2000-$3FFF`. 36 B ZP (`$00-$23`; Wozmon reserve `$24-$2B` guarded). |
 | `apple1_gen2_c.cfg` | C (cc65) | `$6000` (`6000R`) | `$6000-$BEFF` | GEN2 HGR C, 48 KB machine (preset 11). Code lives **above** the HGR pages (`$2000`/`$4000`) and text/lores (`$0400`/`$0800`). |
 | `codetank.cfg` | asm | `$4000` (`4000R`) | `$4000-$7FFF` (16 KB) | Standalone CodeTank ROM card — code runs in place from the ROM window; only writes need RAM (ZP / `$0280-$0FFF`). RODATA folded into CODE so tables serve straight from ROM. |
+| `codetank_c_data.cfg` | C (cc65) | `$4000` (`4000R`) | `$4000-$7FFF` (16 KB) | Same layout as `../lib/tms9918c/cc65/codetank_c.cfg`, but paired with **`crt0_pom1.s`** (below): C initializers on globals are honoured. New TMS9918 C code should use this pair; the classic pair stays for the burn-validated ROMs. |
 | `pom1_fantasy.cfg` | asm | `$0300` (`300R`) | `$0300-$82FF` (32 KB) | XXL programs on the 64 KB Multiplexing Fantasy presets (10 / 12). **Not real-Apple-1 portable.** Adds a separate `BASIC_RAM` BSS region `$A000-$BFFF` (8 KB, not in the `.bin` — program zeroes it). Requires Applesoft Lite + SD CARD OS + GEN2 unplugged. |
 
 **Project-local variants.** When a program needs a different code start/size —
@@ -48,7 +49,50 @@ so split builds need their own cfg + the `emit_dualbank.py` stitcher below).
 | GEN2 HGR asm, needs > 4 KB | project-local split-bank cfg (`.lo`/`.hi`) |
 | GEN2 HGR C | `apple1_gen2_c.cfg` |
 | CodeTank cartridge ROM | `codetank.cfg` (or a `bank_cfgs/` slot variant) |
+| TMS9918 C, initialized globals honoured | `codetank_c_data.cfg` **+ `crt0_pom1.s` first on the link line** |
 | 32 KB+ program, Fantasy-only | `pom1_fantasy.cfg` |
+
+## `crt0_pom1.s` — opt-in cc65 startup with copydata
+
+cc65's `-t none` startup (none.lib's `crt0.o`) never calls `copydata`, skips
+`CLD`, never initializes the 6502 hardware stack, and RTSes into garbage when
+`main()` returns. On a load ≠ run cfg (DATA in ROM, run in RAM — the CodeTank
+layout) that means **every initialized C global silently holds power-on
+garbage** — the "`-t none` DATA trap" ([`../lib/README.md`](../lib/README.md)).
+`crt0_pom1.s` is the root fix: `CLD` → `TXS` → `sp` → `zerobss` → **`copydata`**
+→ `initlib` → `main` → `donelib` → `JMP $FF1A` (Wozmon ESCAPE prompt — the
+house "exit to monitor" entry, instead of the stock crt0's RTS-to-garbage).
+
+**How the override works** — put the file *first* on the `cl65` line, no custom
+library needed:
+
+    cl65 -t none -Oirs -C dev/cc65/codetank_c_data.cfg \
+         dev/cc65/crt0_pom1.s main.c <runtime .c/.s>... -o main.bin
+
+`ld65` extracts a library member only for an *unresolved* import; with
+`crt0_pom1.o` on the line, `__STARTUP__`/`_exit` are already defined, so
+none.lib's `crt0.o` is never pulled while `zerobss`/`copydata`/`initlib`/
+`donelib` still resolve from none.lib's other members (verified with
+`ld65 -vm`: the module list shows `crt0_pom1.o` + `none.lib(copydata.o)` and
+**no** `none.lib(crt0.o)`; a double-pull would be a loud duplicate-symbol
+error, not silent corruption). Cost: **+52 ROM bytes** (+7 startup, +45
+copydata). Cfg requirements: `STARTUP` segment first in the code window,
+`DATA` and `BSS` with `define = yes`, `__STACKSTART__` in SYMBOLS —
+`codetank_c_data.cfg` is the documented reference; all in-tree C cfgs already
+satisfy them except that only load ≠ run layouts *need* copydata.
+
+**Migration recipe** (existing project → initializer-honouring pair):
+
+1. Switch `-C` to `dev/cc65/codetank_c_data.cfg` (or add `define = yes` to the
+   `DATA` segment of your own cfg — the codetank one already had it).
+2. Add `dev/cc65/crt0_pom1.s` as the FIRST input on the `cl65`/`ld65` line.
+3. Now-safe cleanups are *optional*: the BSS + lazy-default house patterns
+   (`rand8()` auto-seed, `PLOT_MODE_SET == 0`, …) still work unchanged.
+
+In-tree consumer: `sketchs/portable/hello_gfx_text` (TMS variant). The
+CodeTank cartridge ROM builds (`dev/projects/codetank/`) deliberately stay on
+the classic `codetank_c.cfg` + none.lib pair — they are burn-validated on the
+BSS conventions; migrate them only with a re-validation pass on real hardware.
 
 ## Makefile.common — the shared build target
 

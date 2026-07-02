@@ -450,6 +450,10 @@ if(EMSCRIPTEN)
         # tools/build_cc65_wasm.sh --out build-wasm/cc65.
         "--preload-file ${PRELOAD_DIR}/dev/cc65@dev/cc65"
         "--preload-file ${PRELOAD_DIR}/dev/lib@dev/lib"
+        # Per-target C build specs (cfg + runtime file lists) read by the Bench
+        # at build time — dev/bench/<target>.json; Pom1BenchHost falls back to
+        # its compiled-in copies if these are absent.
+        "--preload-file ${PRELOAD_DIR}/dev/bench@dev/bench"
         # DevBench sketches (build-only staging, see SKETCHS_STAGE above) so the
         # in-browser bench can load repo sketches with their own cfg/extraAsm/defines.
         "--preload-file ${SKETCHS_STAGE}/sketchs@sketchs"

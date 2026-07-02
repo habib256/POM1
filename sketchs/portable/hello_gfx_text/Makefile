@@ -28,7 +28,13 @@ include $(TMS9918C)/tms9918c.mk    # TMS9918C_ALL_SRCS / TMS9918C_INCS
 CL65    := cl65
 CFLAGS  := -t none -Oirs
 GEN2CFG := $(CC65DIR)/apple1_gen2_c.cfg
-TMSCFG  := $(TMS9918C)/cc65/codetank_c.cfg
+# TMS variant uses the crt0_pom1 startup pair (proof-of-concept consumer):
+# codetank_c_data.cfg + dev/cc65/crt0_pom1.s FIRST on the link line = C
+# initializers on globals are honoured (copydata runs; the classic
+# codetank_c.cfg + none.lib crt0 pair never copies DATA -> the "-t none DATA
+# trap", dev/lib/README.md). Costs +52 ROM bytes; exits to Wozmon $FF1A.
+TMSCFG  := $(CC65DIR)/codetank_c_data.cfg
+CRT0    := $(CC65DIR)/crt0_pom1.s
 
 .PHONY: all gen2 tms clean
 .DEFAULT_GOAL := all
@@ -48,10 +54,10 @@ $(PROJECT)_gen2.bin: $(PROJECT).c $(GFX)/gfx-gen2.lib $(GEN2CFG)
 tms: $(PROJECT)_tms.bin
 $(GFX)/gfx-tms.lib:
 	$(MAKE) -C $(GFX) tms
-$(PROJECT)_tms.bin: $(PROJECT).c $(GFX)/gfx-tms.lib $(TMSCFG)
+$(PROJECT)_tms.bin: $(PROJECT).c $(GFX)/gfx-tms.lib $(TMSCFG) $(CRT0)
 	$(CL65) $(CFLAGS) -DPOM1_GFX_TMS -C $(TMSCFG) \
 	    $(TMS9918C_INCS) -I $(GFX) \
-	    $(PROJECT).c $(TMS9918C_ALL_SRCS) $(GFX)/gfx-tms.lib -o $@
+	    $(CRT0) $(PROJECT).c $(TMS9918C_ALL_SRCS) $(GFX)/gfx-tms.lib -o $@
 	@ls -l $@
 
 clean:

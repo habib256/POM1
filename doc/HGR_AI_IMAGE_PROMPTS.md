@@ -116,7 +116,26 @@ que l'extension **ne peut pas piloter** (il est hors de la page web) → le batc
 2. Cliquer le champ de saisie, `type` le prompt **en UNE seule ligne sans retour à la ligne**
    (un `\n` déclenche l'envoi prématuré), préfixé de `Generate a single 4:3 landscape image. `.
 3. Cliquer le bouton d'envoi (flèche bleue), `wait` ~8 s, `screenshot` pour juger le rendu.
-4. **Récupérer l'image** — le `fetch` du blob échoue (« Failed to fetch »), et le résultat de
+4. **Récupérer l'image — voie presse-papier (méthode recommandée, validée 2026-07-02)** :
+   aucun réglage Chrome requis, aucun dialogue. Dans la page : canvas → `ClipboardItem` ;
+   côté OS : lecture GTK (python3-gi, présent sur Ubuntu — pas besoin de xclip) :
+   ```js
+   const img = [...document.querySelectorAll('img')].find(i=>i.naturalWidth>200);
+   const c = document.createElement('canvas'); c.width=img.naturalWidth; c.height=img.naturalHeight;
+   c.getContext('2d').drawImage(img,0,0);
+   const blob = await new Promise(res=>c.toBlob(res,'image/png'));
+   await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);
+   ```
+   ```bash
+   python3 -c "import gi; gi.require_version('Gtk','3.0'); from gi.repository import Gtk, Gdk; \
+   pb = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).wait_for_image(); \
+   pb.savev('N0xx.png','png',[],[]); print(pb.get_width(), pb.get_height())"
+   ```
+   (Un POST vers un serveur localhost est bloqué par la CSP de Gemini — testé. Skill
+   projet : `.claude/skills/nanobanana-hgr/`.)
+
+   **Variante download historique** (nécessite le pré-requis Chrome ci-dessus) — le `fetch`
+   du blob échoue (« Failed to fetch »), et le résultat de
    l'outil JS **bloque toute sortie base64**. La voie qui marche : dessiner l'`<img>` (déjà
    chargée, `naturalWidth` ≈ 1024) sur un `canvas`, puis déclencher un download programmé avec
    le bon nom :

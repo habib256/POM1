@@ -908,31 +908,6 @@ static AsmProjectCtx probeSketchProject(const std::string& sourcePath)
     return p;
 }
 
-// Full tms9918c runtime for the Bench C target (ld65 dead-strips unused .o files,
-// but we link every family so any sketch under sketchs/tms9918/*.c builds).
-static std::string tms9918cBenchRuntimeCl65Args(const std::string& lib, const std::string& gfxLib)
-{
-    auto qf = [&](const std::string& base, const char* name) {
-        return " " + bench::shellQuote(base + "/" + name);
-    };
-    std::string s =
-        qf(lib, "apple1.c") + qf(lib, "apple1_asm.s") +
-        qf(lib, "tms9918.c") + qf(lib, "tms_fast.s") +
-        qf(lib, "screen1.c") + qf(lib, "c64font.c") + qf(lib, "screen1_input.c") +
-        qf(lib, "screen2_init.c") + qf(lib, "screen2_text.c") + qf(lib, "screen2_pixel.c") +
-        qf(lib, "screen2_geom.c") + qf(lib, "screen1_ext.c") + qf(lib, "screen2_ext.c") +
-        qf(lib, "sprites.c") + qf(lib, "sprite_shadow.c") +
-        qf(lib, "vsync.c") + qf(lib, "printlib.c") + qf(lib, "random.c");
-    if (!gfxLib.empty()) {
-        s += qf(gfxLib, "gfx_line.c") + qf(gfxLib, "gfx_rect.c") + qf(gfxLib, "gfx_circle.c") +
-             qf(gfxLib, "gfx_ellipse.c") + qf(gfxLib, "gfx_num_dec.c") + qf(gfxLib, "gfx_num_hex.c") +
-             qf(gfxLib, "gfx_text.c") +
-             qf(gfxLib, "gfx_backend_tms.c") + qf(gfxLib, "gfx_backend_tms_rect.c") +
-             qf(gfxLib, "gfx_text_backend_tms.c");
-    }
-    return s;
-}
-
 static std::string benchAbsToWasmDev(const std::string& absPath)
 {
     const std::string needle = "/dev/";
@@ -951,46 +926,257 @@ static std::string jsonQuoted(const std::string& s)
     return o;
 }
 
-static std::string wasmTms9918cBuildSpec(const std::vector<std::string>& extraAsmAbs)
-{
-    std::ostringstream spec;
-    spec << R"({"cfg":"/dev/lib/tms9918c/cc65/codetank_c.cfg","defines":["POM1_GFX_TMS"],"incDirs":["/dev/lib/tms9918c","/dev/lib/gfx","/dev/lib/telemetry"],)"
-         << R"("cSources":[{"path":"/dev/lib/tms9918c/apple1.c","name":"apple1.c"},)"
-         << R"({"path":"/dev/lib/tms9918c/tms9918.c","name":"tms9918.c"},)"
-         << R"({"path":"/dev/lib/tms9918c/screen1.c","name":"screen1.c"},)"
-         << R"({"path":"/dev/lib/tms9918c/c64font.c","name":"c64font.c"},)"
-         << R"({"path":"/dev/lib/tms9918c/screen1_input.c","name":"screen1_input.c"},)"
-         << R"({"path":"/dev/lib/tms9918c/screen2_init.c","name":"screen2_init.c"},)"
-         << R"({"path":"/dev/lib/tms9918c/screen2_text.c","name":"screen2_text.c"},)"
-         << R"({"path":"/dev/lib/tms9918c/screen2_pixel.c","name":"screen2_pixel.c"},)"
-         << R"({"path":"/dev/lib/tms9918c/screen2_geom.c","name":"screen2_geom.c"},)"
-         << R"({"path":"/dev/lib/tms9918c/screen1_ext.c","name":"screen1_ext.c"},)"
-         << R"({"path":"/dev/lib/tms9918c/screen2_ext.c","name":"screen2_ext.c"},)"
-         << R"({"path":"/dev/lib/tms9918c/sprites.c","name":"sprites.c"},)"
-         << R"({"path":"/dev/lib/tms9918c/sprite_shadow.c","name":"sprite_shadow.c"},)"
-         << R"({"path":"/dev/lib/tms9918c/vsync.c","name":"vsync.c"},)"
-         << R"({"path":"/dev/lib/tms9918c/printlib.c","name":"printlib.c"},)"
-         << R"({"path":"/dev/lib/gfx/gfx_line.c","name":"gfx_line.c"},)"
-         << R"({"path":"/dev/lib/gfx/gfx_rect.c","name":"gfx_rect.c"},)"
-         << R"({"path":"/dev/lib/gfx/gfx_circle.c","name":"gfx_circle.c"},)"
-         << R"({"path":"/dev/lib/gfx/gfx_ellipse.c","name":"gfx_ellipse.c"},)"
-         << R"({"path":"/dev/lib/gfx/gfx_num_dec.c","name":"gfx_num_dec.c"},)"
-         << R"({"path":"/dev/lib/gfx/gfx_num_hex.c","name":"gfx_num_hex.c"},)"
-         << R"({"path":"/dev/lib/gfx/gfx_text.c","name":"gfx_text.c"},)"
-         << R"({"path":"/dev/lib/gfx/gfx_backend_tms.c","name":"gfx_backend_tms.c"},)"
-         << R"({"path":"/dev/lib/gfx/gfx_backend_tms_rect.c","name":"gfx_backend_tms_rect.c"},)"
-         << R"({"path":"/dev/lib/gfx/gfx_text_backend_tms.c","name":"gfx_text_backend_tms.c"}],)"
-         << R"("asmSources":[{"path":"/dev/lib/tms9918c/apple1_asm.s","name":"apple1_asm.s"},)"
-         << R"({"path":"/dev/lib/tms9918c/tms_fast.s","name":"tms_fast.s"})";
-    for (const std::string& ea : extraAsmAbs) {
-        const std::string wp = benchAbsToWasmDev(ea);
-        if (wp.empty()) continue;
-        spec << ",{\"path\":" << jsonQuoted(wp) << ",\"name\":"
-             << jsonQuoted(std::filesystem::path(ea).filename().string()) << "}";
-    }
-    spec << "]}";
-    return spec.str();
+// ─────────────────────────────────────────────────────────────
+// Bench C-target build specs (tms9918c / gen2c / apple1c)
+//
+// One JSON spec per C target: linker cfg + -D defines + include dirs + the
+// runtime .c/.s file lists, all as MEMFS-style "/dev/..." paths. The EDITABLE
+// source of truth is dev/bench/<target>.json — loaded at build time, so a
+// runtime-lib change needs no emulator rebuild. The kBenchCSpec* literals
+// below are byte-identical compiled-in fallbacks for bundles that predate
+// dev/bench/. Desktop derives the cl65 command line from the parsed spec;
+// WASM forwards the raw JSON text to window.POM1cc65.buildC. Rationale kept
+// from the old hardcoded lists:
+//   - ld65 dead-strips unused .o files, so every runtime family is linked
+//     (any sketch may call anything; a Bench binary is throwaway).
+//   - gen2c is split into per-family modules (init/pixel/rect/text/sprites/
+//     preshift/geom/lores) + the hot-path gen2_blit.s.
+//   - the shared apple1c text base rides along with GEN2 so C programs can
+//     also print to the WOZ terminal / read the keyboard.
+//   - the card-neutral gfx layer (dev/lib/gfx) is compiled FROM SOURCE so
+//     edits apply live; the backend files bind gfx_* to the card.
+//   - POM1_GFX_GEN2 / POM1_GFX_TMS let a portable sketch pick its bring-up
+//     with #if defined(...) without the author passing -D by hand.
+//   - telemetry is header-only: include dir, nothing to compile.
+// See doc/DEVBENCH.md ("Per-target C build specs").
+// ─────────────────────────────────────────────────────────────
+
+static const char* kBenchCSpecApple1c = R"json({
+  "cfg": "/dev/cc65/apple1_c.cfg",
+  "incDirs": ["/dev/lib/apple1c", "/dev/lib/telemetry"],
+  "cSources": [
+    { "path": "/dev/lib/apple1c/apple1io.c", "name": "apple1io.c" }
+  ],
+  "asmSources": [
+    { "path": "/dev/lib/apple1c/apple1io_asm.s", "name": "apple1io_asm.s" }
+  ]
 }
+)json";
+
+static const char* kBenchCSpecGen2c = R"json({
+  "cfg": "/dev/cc65/apple1_gen2_c.cfg",
+  "defines": ["POM1_GFX_GEN2"],
+  "incDirs": ["/dev/lib/gen2c", "/dev/lib/apple1c", "/dev/lib/gfx", "/dev/lib/telemetry"],
+  "cSources": [
+    { "path": "/dev/lib/gen2c/gen2_init.c", "name": "gen2_init.c" },
+    { "path": "/dev/lib/gen2c/gen2_pixel.c", "name": "gen2_pixel.c" },
+    { "path": "/dev/lib/gen2c/gen2_rect.c", "name": "gen2_rect.c" },
+    { "path": "/dev/lib/gen2c/gen2_text.c", "name": "gen2_text.c" },
+    { "path": "/dev/lib/gen2c/gen2_sprites.c", "name": "gen2_sprites.c" },
+    { "path": "/dev/lib/gen2c/gen2_preshift.c", "name": "gen2_preshift.c" },
+    { "path": "/dev/lib/gen2c/gen2_geom.c", "name": "gen2_geom.c" },
+    { "path": "/dev/lib/gen2c/gen2_lores.c", "name": "gen2_lores.c" },
+    { "path": "/dev/lib/apple1c/apple1io.c", "name": "apple1io.c" },
+    { "path": "/dev/lib/gfx/gfx_line.c", "name": "gfx_line.c" },
+    { "path": "/dev/lib/gfx/gfx_rect.c", "name": "gfx_rect.c" },
+    { "path": "/dev/lib/gfx/gfx_circle.c", "name": "gfx_circle.c" },
+    { "path": "/dev/lib/gfx/gfx_ellipse.c", "name": "gfx_ellipse.c" },
+    { "path": "/dev/lib/gfx/gfx_num_dec.c", "name": "gfx_num_dec.c" },
+    { "path": "/dev/lib/gfx/gfx_num_hex.c", "name": "gfx_num_hex.c" },
+    { "path": "/dev/lib/gfx/gfx_text.c", "name": "gfx_text.c" },
+    { "path": "/dev/lib/gfx/gfx_backend_gen2.c", "name": "gfx_backend_gen2.c" },
+    { "path": "/dev/lib/gfx/gfx_backend_gen2_rect.c", "name": "gfx_backend_gen2_rect.c" },
+    { "path": "/dev/lib/gfx/gfx_text_backend_gen2.c", "name": "gfx_text_backend_gen2.c" }
+  ],
+  "asmSources": [
+    { "path": "/dev/lib/gen2c/gen2_blit.s", "name": "gen2_blit.s" },
+    { "path": "/dev/lib/apple1c/apple1io_asm.s", "name": "apple1io_asm.s" }
+  ]
+}
+)json";
+
+static const char* kBenchCSpecTms9918c = R"json({
+  "cfg": "/dev/lib/tms9918c/cc65/codetank_c.cfg",
+  "defines": ["POM1_GFX_TMS"],
+  "incDirs": ["/dev/lib/tms9918c", "/dev/lib/gfx", "/dev/lib/telemetry"],
+  "cSources": [
+    { "path": "/dev/lib/tms9918c/apple1.c", "name": "apple1.c" },
+    { "path": "/dev/lib/tms9918c/tms9918.c", "name": "tms9918.c" },
+    { "path": "/dev/lib/tms9918c/screen1.c", "name": "screen1.c" },
+    { "path": "/dev/lib/tms9918c/c64font.c", "name": "c64font.c" },
+    { "path": "/dev/lib/tms9918c/screen1_input.c", "name": "screen1_input.c" },
+    { "path": "/dev/lib/tms9918c/screen2_init.c", "name": "screen2_init.c" },
+    { "path": "/dev/lib/tms9918c/screen2_text.c", "name": "screen2_text.c" },
+    { "path": "/dev/lib/tms9918c/screen2_pixel.c", "name": "screen2_pixel.c" },
+    { "path": "/dev/lib/tms9918c/screen2_geom.c", "name": "screen2_geom.c" },
+    { "path": "/dev/lib/tms9918c/screen1_ext.c", "name": "screen1_ext.c" },
+    { "path": "/dev/lib/tms9918c/screen2_ext.c", "name": "screen2_ext.c" },
+    { "path": "/dev/lib/tms9918c/sprites.c", "name": "sprites.c" },
+    { "path": "/dev/lib/tms9918c/sprite_shadow.c", "name": "sprite_shadow.c" },
+    { "path": "/dev/lib/tms9918c/vsync.c", "name": "vsync.c" },
+    { "path": "/dev/lib/tms9918c/printlib.c", "name": "printlib.c" },
+    { "path": "/dev/lib/tms9918c/random.c", "name": "random.c" },
+    { "path": "/dev/lib/gfx/gfx_line.c", "name": "gfx_line.c" },
+    { "path": "/dev/lib/gfx/gfx_rect.c", "name": "gfx_rect.c" },
+    { "path": "/dev/lib/gfx/gfx_circle.c", "name": "gfx_circle.c" },
+    { "path": "/dev/lib/gfx/gfx_ellipse.c", "name": "gfx_ellipse.c" },
+    { "path": "/dev/lib/gfx/gfx_num_dec.c", "name": "gfx_num_dec.c" },
+    { "path": "/dev/lib/gfx/gfx_num_hex.c", "name": "gfx_num_hex.c" },
+    { "path": "/dev/lib/gfx/gfx_text.c", "name": "gfx_text.c" },
+    { "path": "/dev/lib/gfx/gfx_backend_tms.c", "name": "gfx_backend_tms.c" },
+    { "path": "/dev/lib/gfx/gfx_backend_tms_rect.c", "name": "gfx_backend_tms_rect.c" },
+    { "path": "/dev/lib/gfx/gfx_text_backend_tms.c", "name": "gfx_text_backend_tms.c" }
+  ],
+  "asmSources": [
+    { "path": "/dev/lib/tms9918c/apple1_asm.s", "name": "apple1_asm.s" },
+    { "path": "/dev/lib/tms9918c/tms_fast.s", "name": "tms_fast.s" }
+  ]
+}
+)json";
+
+struct BenchCSpec {
+    bool ok = false;
+    bool fromFile = false;                  // loaded from dev/bench/*.json (vs embedded)
+    std::string rawJson;                    // exact spec text (WASM forwards this to buildC)
+    std::string cfg;                        // linker cfg, "/dev/..." form
+    std::vector<std::string> defines;       // -D symbols
+    std::vector<std::string> incDirs;       // -I dirs, "/dev/..." form
+    struct Src { std::string path, name; };
+    std::vector<Src> cSources;              // runtime .c modules
+    std::vector<Src> asmSources;            // hand-written .s modules
+};
+
+// [{"path":...,"name":...},...] extraction — same tolerant hand-rolled style as
+// the .sketch.json helpers above (fixed schema, no nested arrays/objects).
+static std::vector<BenchCSpec::Src> benchJsonObjArray(const std::string& json, const char* key)
+{
+    std::vector<BenchCSpec::Src> out;
+    const std::string needle = std::string("\"") + key + "\"";
+    size_t pos = json.find(needle);
+    if (pos == std::string::npos) return out;
+    pos = json.find('[', pos + needle.size());
+    if (pos == std::string::npos) return out;
+    for (size_t i = pos + 1; i < json.size(); ) {
+        const size_t ob = json.find_first_of("{]", i);
+        if (ob == std::string::npos || json[ob] == ']') break;
+        const size_t cb = json.find('}', ob + 1);
+        if (cb == std::string::npos) break;
+        const std::string obj = json.substr(ob, cb - ob + 1);
+        BenchCSpec::Src s;
+        s.path = sketchJsonString(obj, "path");
+        s.name = sketchJsonString(obj, "name");
+        if (s.name.empty() && !s.path.empty())
+            s.name = std::filesystem::path(s.path).filename().string();
+        if (!s.path.empty()) out.push_back(std::move(s));
+        i = cb + 1;
+    }
+    return out;
+}
+
+static BenchCSpec benchCSpecParse(const std::string& text)
+{
+    BenchCSpec s;
+    s.rawJson    = text;
+    s.cfg        = sketchJsonString(text, "cfg");
+    s.defines    = sketchJsonStringArray(text, "defines");
+    s.incDirs    = sketchJsonStringArray(text, "incDirs");
+    s.cSources   = benchJsonObjArray(text, "cSources");
+    s.asmSources = benchJsonObjArray(text, "asmSources");
+    s.ok = !s.cfg.empty() && !(s.cSources.empty() && s.asmSources.empty());
+    return s;
+}
+
+// dev/bench/<name>.json when present (the editable source of truth), else the
+// compiled-in default. devRoot: the resolved dev/ tree on desktop, "/dev" on
+// WASM (MEMFS). A missing or unparsable file falls back with a one-line notice
+// so packaged builds with an old bundle layout keep working.
+static BenchCSpec loadBenchCSpec(const std::string& devRoot, const char* name, const char* embedded)
+{
+    std::string text;
+    if (!devRoot.empty()) {
+        std::ifstream in(devRoot + "/bench/" + name + ".json", std::ios::binary);
+        if (in) text.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    }
+    if (!text.empty()) {
+        BenchCSpec s = benchCSpecParse(text);
+        if (s.ok) { s.fromFile = true; return s; }
+    }
+    std::fprintf(stderr, "[bench] dev/bench/%s.json %s - using built-in spec\n",
+                 name, text.empty() ? "not found" : "unparsable");
+    return benchCSpecParse(embedded);
+}
+
+// Compact re-serialisation — used when per-sketch EXTRA_ASM modules must be
+// folded into a spec before handing it to the WASM builder.
+static std::string benchCSpecSerialize(const BenchCSpec& s)
+{
+    std::ostringstream o;
+    o << "{\"cfg\":" << jsonQuoted(s.cfg);
+    auto strArray = [&o](const char* key, const std::vector<std::string>& v) {
+        o << ",\"" << key << "\":[";
+        for (size_t i = 0; i < v.size(); ++i) o << (i ? "," : "") << jsonQuoted(v[i]);
+        o << "]";
+    };
+    auto srcArray = [&o](const char* key, const std::vector<BenchCSpec::Src>& v) {
+        o << ",\"" << key << "\":[";
+        for (size_t i = 0; i < v.size(); ++i)
+            o << (i ? "," : "") << "{\"path\":" << jsonQuoted(v[i].path)
+              << ",\"name\":" << jsonQuoted(v[i].name) << "}";
+        o << "]";
+    };
+    if (!s.defines.empty()) strArray("defines", s.defines);
+    strArray("incDirs", s.incDirs);
+    srcArray("cSources", s.cSources);
+    srcArray("asmSources", s.asmSources);
+    o << "}";
+    return o.str();
+}
+
+#if !POM1_IS_WASM
+// Map a spec's "/dev/..." path onto the resolved desktop dev/ tree — the same
+// fs::absolute(devRoot / rel) computation probe()'s members used, so the
+// derived command line stays byte-identical to the historical hardcoded one.
+static std::string benchDevAbs(const std::string& devRoot, const std::string& devPath)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    std::string rel = devPath;
+    if (rel.rfind("/dev/", 0) == 0) rel = rel.substr(5);
+    else if (!rel.empty() && rel[0] == '/') rel = rel.substr(1);
+    return fs::absolute(fs::path(devRoot) / rel, ec).string();
+}
+
+// The full desktop cl65 command for a C target, derived from the parsed spec
+// (ONE source of truth with the WASM path). Sources are emitted zip-interleaved
+// (c[0], asm[0], c[1], asm[1], then the longer list's tail), which preserves
+// the historical argument order byte-for-byte; cl65 itself is order-agnostic
+// (options are global, objects reach ld65 whatever their position).
+static std::string benchCSpecCl65Cmd(const BenchCSpec& spec, const std::string& devRoot,
+                                     const std::string& cl65, const std::string& cfgAbs,
+                                     const std::string& srcC, const std::string& extraObjs,
+                                     const std::string& outBin)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    std::string cmd = bench::shellQuote(cl65) + " -t none -Oirs";
+    for (const std::string& d : spec.defines) cmd += " -D" + d;
+    cmd += " -C " + bench::shellQuote(cfgAbs);
+    for (const std::string& inc : spec.incDirs) {
+        const std::string dir = benchDevAbs(devRoot, inc);
+        if (fs::exists(dir, ec)) cmd += " -I " + bench::shellQuote(dir);
+    }
+    cmd += " " + bench::shellQuote(srcC);
+    const size_t n = std::max(spec.cSources.size(), spec.asmSources.size());
+    for (size_t i = 0; i < n; ++i) {
+        if (i < spec.cSources.size())
+            cmd += " " + bench::shellQuote(benchDevAbs(devRoot, spec.cSources[i].path));
+        if (i < spec.asmSources.size())
+            cmd += " " + bench::shellQuote(benchDevAbs(devRoot, spec.asmSources[i].path));
+    }
+    cmd += extraObjs + " -o " + bench::shellQuote(outBin);
+    return cmd;
+}
+#endif
 
 static void applySketchAssets(const std::string& sourcePath, std::string& asset, uint16_t& addr)
 {
@@ -2306,41 +2492,29 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         // matching the desktop cl65 command, fed to POM1cc65.buildC. pollBuild then
         // loadBinary+runs (or ROM-flashes the TMS9918 C target) just like asm.
         const std::string cfgTag = t.cfg ? t.cfg : "";
-        std::string cfg, spec;
-        if (cfgTag == "C-plain") {
-            cfg  = "/dev/cc65/apple1_c.cfg";
-            spec = R"({"cfg":"/dev/cc65/apple1_c.cfg","incDirs":["/dev/lib/apple1c","/dev/lib/telemetry"],)"
-                   R"("cSources":[{"path":"/dev/lib/apple1c/apple1io.c","name":"apple1io.c"}],)"
-                   R"("asmSources":[{"path":"/dev/lib/apple1c/apple1io_asm.s","name":"apple1io_asm.s"}]})";
-        } else if (cfgTag == "C-gen2") {
-            // The gen2c runtime is split into per-family modules (init/pixel/
-            // rect/text/sprites/geom/lores) so ld65 can dead-strip per family;
-            // the Bench links the lot since a sketch may call anything. gen2_geom
-            // forwards to the card-neutral gfx layer (Axis 1), so its sources
-            // ride along — matching the desktop GEN2 C Bench command.
-            cfg  = "/dev/cc65/apple1_gen2_c.cfg";
-            spec = R"({"cfg":"/dev/cc65/apple1_gen2_c.cfg","defines":["POM1_GFX_GEN2"],"incDirs":["/dev/lib/gen2c","/dev/lib/apple1c","/dev/lib/gfx","/dev/lib/telemetry"],)"
-                   R"("cSources":[{"path":"/dev/lib/gen2c/gen2_init.c","name":"gen2_init.c"},{"path":"/dev/lib/gen2c/gen2_pixel.c","name":"gen2_pixel.c"},)"
-                   R"({"path":"/dev/lib/gen2c/gen2_rect.c","name":"gen2_rect.c"},{"path":"/dev/lib/gen2c/gen2_text.c","name":"gen2_text.c"},)"
-                   R"({"path":"/dev/lib/gen2c/gen2_sprites.c","name":"gen2_sprites.c"},{"path":"/dev/lib/gen2c/gen2_preshift.c","name":"gen2_preshift.c"},)"
-                   R"({"path":"/dev/lib/gen2c/gen2_geom.c","name":"gen2_geom.c"},)"
-                   R"({"path":"/dev/lib/gen2c/gen2_lores.c","name":"gen2_lores.c"},{"path":"/dev/lib/apple1c/apple1io.c","name":"apple1io.c"},)"
-                   R"({"path":"/dev/lib/gfx/gfx_line.c","name":"gfx_line.c"},{"path":"/dev/lib/gfx/gfx_rect.c","name":"gfx_rect.c"},)"
-                   R"({"path":"/dev/lib/gfx/gfx_circle.c","name":"gfx_circle.c"},{"path":"/dev/lib/gfx/gfx_ellipse.c","name":"gfx_ellipse.c"},)"
-                   R"({"path":"/dev/lib/gfx/gfx_num_dec.c","name":"gfx_num_dec.c"},{"path":"/dev/lib/gfx/gfx_num_hex.c","name":"gfx_num_hex.c"},)"
-                   R"({"path":"/dev/lib/gfx/gfx_text.c","name":"gfx_text.c"},)"
-                   R"({"path":"/dev/lib/gfx/gfx_backend_gen2.c","name":"gfx_backend_gen2.c"},{"path":"/dev/lib/gfx/gfx_backend_gen2_rect.c","name":"gfx_backend_gen2_rect.c"},)"
-                   R"({"path":"/dev/lib/gfx/gfx_text_backend_gen2.c","name":"gfx_text_backend_gen2.c"}],)"
-                   R"("asmSources":[{"path":"/dev/lib/gen2c/gen2_blit.s","name":"gen2_blit.s"},{"path":"/dev/lib/apple1c/apple1io_asm.s","name":"apple1io_asm.s"}]})";
-        } else {   // "C" = TMS9918 CodeTank ROM
-            cfg  = "/dev/lib/tms9918c/cc65/codetank_c.cfg";
-            {
-                const AsmProjectCtx proj = probeSketchProject(activeSourcePath_);
-                spec = wasmTms9918cBuildSpec(proj.extraAsm);
+        const bool wPlain = (cfgTag == "C-plain");
+        const bool wGen2  = (cfgTag == "C-gen2");   // else: "C" = TMS9918 CodeTank ROM
+        // Spec = /dev/bench/<target>.json from MEMFS (preloaded with the dev/
+        // tree), the compiled-in copy as fallback. buildC gets the raw JSON text.
+        BenchCSpec bspec = loadBenchCSpec("/dev",
+            wPlain ? "apple1c" : wGen2 ? "gen2c" : "tms9918c",
+            wPlain ? kBenchCSpecApple1c : wGen2 ? kBenchCSpecGen2c : kBenchCSpecTms9918c);
+        std::string spec = bspec.rawJson;
+        if (!wPlain && !wGen2) {
+            // TMS9918: fold the sketch's EXTRA_ASM modules into asmSources.
+            const AsmProjectCtx proj = probeSketchProject(activeSourcePath_);
+            bool added = false;
+            for (const std::string& ea : proj.extraAsm) {
+                const std::string wp = benchAbsToWasmDev(ea);
+                if (wp.empty()) continue;
+                bspec.asmSources.push_back({wp, std::filesystem::path(ea).filename().string()});
+                added = true;
             }
+            if (added) spec = benchCSpecSerialize(bspec);
         }
+        const std::string cfg = bspec.cfg;   // "/dev/..." path, MEMFS-visible
         uint16_t entry = parseCfgLoadAddr(cfg);
-        if (entry == 0) entry = (cfgTag == "C-plain") ? 0x0300 : (cfgTag == "C-gen2") ? 0x6000 : 0x4000;
+        if (entry == 0) entry = wPlain ? 0x0300 : wGen2 ? 0x6000 : 0x4000;
         wasmJobActive_ = true; wasmJobVerifyOnly_ = !run;
         wasmJobTarget_ = target; wasmJobEntry_ = entry;
         EM_ASM({
@@ -2493,81 +2667,22 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         const fs::path srcC = dir / "pom1_bench.c";
         sweep.add(srcC);
         std::ofstream(srcC, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
-        std::string cmd; const char* tag;
-        // Header-only telemetry side channel (telemetry.h) — include dir only,
-        // available to every C target so any sketch can emit telemetry frames.
-        const std::string tele = telemetryLib_.empty() ? std::string()
-            : " -I " + bench::shellQuote(telemetryLib_);
-        if (gen2c) {
-            tag = "GEN2 HGR";
-            logMeta.cfgPath = gen2Cfg_;
-            // Optionally fold in the shared apple1c text base so GEN2 C programs
-            // can also print to the WOZ terminal / read the keyboard.
-            std::string a1c;
-            if (!apple1cLib_.empty())
-                a1c = " -I " + bench::shellQuote(apple1cLib_) +
-                      " " + bench::shellQuote(apple1cLib_ + "/apple1io.c") +
-                      " " + bench::shellQuote(apple1cLib_ + "/apple1io_asm.s");
-            // Card-neutral gfx layer (dev/lib/gfx). Compiled FROM SOURCE here so
-            // edits apply live; the GEN2 backend's gfx_plot resolves to
-            // gen2_hgr_plot (in gen2_pixel.c). A sketch can #include "gfx.h"
-            // and call gfx_line/circle/ellipse/utoa. (Shipped builds under
-            // dev/projects use the pruning gfx-gen2.lib instead so an unused
-            // layer costs 0 bytes; a Bench binary is throwaway.)
-            std::string gfx;
-            if (!gfxLib_.empty())
-                gfx = " -I " + bench::shellQuote(gfxLib_) +
-                      " " + bench::shellQuote(gfxLib_ + "/gfx_line.c") +
-                      " " + bench::shellQuote(gfxLib_ + "/gfx_rect.c") +
-                      " " + bench::shellQuote(gfxLib_ + "/gfx_circle.c") +
-                      " " + bench::shellQuote(gfxLib_ + "/gfx_ellipse.c") +
-                      " " + bench::shellQuote(gfxLib_ + "/gfx_num_dec.c") +
-                      " " + bench::shellQuote(gfxLib_ + "/gfx_num_hex.c") +
-                      " " + bench::shellQuote(gfxLib_ + "/gfx_text.c") +
-                      " " + bench::shellQuote(gfxLib_ + "/gfx_backend_gen2.c") +
-                      " " + bench::shellQuote(gfxLib_ + "/gfx_backend_gen2_rect.c") +
-                      " " + bench::shellQuote(gfxLib_ + "/gfx_text_backend_gen2.c");
-            // The gen2c runtime is split into per-family modules so ld65 can
-            // dead-strip per family; the Bench links the lot since a sketch may
-            // call anything. Order is link-order irrelevant; kept stable for
-            // readability.
-            // -DPOM1_GFX_GEN2: lets a card-agnostic ("portable") sketch pick the
-            // GEN2 bring-up with #if defined(POM1_GFX_GEN2) (the TMS target sets
-            // POM1_GFX_TMS) without the author passing -D by hand.
-            cmd = bench::shellQuote(cl65_) + " -t none -Oirs -DPOM1_GFX_GEN2 -C " + bench::shellQuote(gen2Cfg_) +
-                " -I " + bench::shellQuote(gen2cLib_) + a1c + gfx + tele + " " + bench::shellQuote(srcC.string()) +
-                " " + bench::shellQuote(gen2cLib_ + "/gen2_init.c") +
-                " " + bench::shellQuote(gen2cLib_ + "/gen2_pixel.c") +
-                " " + bench::shellQuote(gen2cLib_ + "/gen2_rect.c") +
-                " " + bench::shellQuote(gen2cLib_ + "/gen2_text.c") +
-                " " + bench::shellQuote(gen2cLib_ + "/gen2_sprites.c") +
-                " " + bench::shellQuote(gen2cLib_ + "/gen2_preshift.c") +
-                " " + bench::shellQuote(gen2cLib_ + "/gen2_geom.c") +
-                " " + bench::shellQuote(gen2cLib_ + "/gen2_lores.c") +
-                " " + bench::shellQuote(gen2cLib_ + "/gen2_blit.s") +
-                " -o " + bench::shellQuote(binB.string());
-        } else if (plainc) {
-            tag = "Apple-1 text";
-            logMeta.cfgPath = plainCfg_;
-            const std::string& lib = apple1cLib_;   // shared, card-neutral text base
-            cmd = bench::shellQuote(cl65_) + " -t none -Oirs -C " + bench::shellQuote(plainCfg_) +
-                " -I " + bench::shellQuote(lib) + tele + " " + bench::shellQuote(srcC.string()) +
-                " " + bench::shellQuote(lib + "/apple1io.c") + " " + bench::shellQuote(lib + "/apple1io_asm.s") +
-                " -o " + bench::shellQuote(binB.string());
-        } else {
-            tag = "CodeTank ROM";
+        const char* tag = gen2c ? "GEN2 HGR" : plainc ? "Apple-1 text" : "CodeTank ROM";
+        // The per-target build spec — dev/bench/<target>.json (the editable
+        // source of truth, shared with the WASM path) with the compiled-in
+        // kBenchCSpec* copy as fallback. The full cl65 command (defines, cfg,
+        // -I dirs, runtime .c/.s lists) is derived from it by benchCSpecCl65Cmd.
+        const BenchCSpec spec = loadBenchCSpec(devRoot_,
+            gen2c ? "gen2c" : plainc ? "apple1c" : "tms9918c",
+            gen2c ? kBenchCSpecGen2c : plainc ? kBenchCSpecApple1c : kBenchCSpecTms9918c);
+        std::string cfgAbs = benchDevAbs(devRoot_, spec.cfg);
+        std::string extraObjs;
+        if (!gen2c && !plainc) {
+            // TMS9918: a real sketch's own linker cfg (sidecar .sketch.json)
+            // overrides the spec default, and its EXTRA_ASM modules are
+            // pre-assembled and appended to the link.
             const AsmProjectCtx proj = probeSketchProject(activeSourcePath_);
-            std::string cfgUse = codetankCfg_;
-            if (proj.ok && !proj.cfg.empty()) {
-                cfgUse = proj.cfg;
-                logMeta.cfgPath = cfgUse;
-            } else {
-                logMeta.cfgPath = codetankCfg_;
-            }
-            const std::string& lib = videocardLib_;
-            std::string gfxInc;
-            if (!gfxLib_.empty()) gfxInc = " -I " + bench::shellQuote(gfxLib_);
-            std::string extraObjs;
+            if (proj.ok && !proj.cfg.empty()) cfgAbs = proj.cfg;
             int xn = 0;
             for (const std::string& ea : proj.extraAsm) {
                 const fs::path eo = dir / ("pom1_bench_x" + std::to_string(xn++) + ".o");
@@ -2583,19 +2698,16 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 }
                 extraObjs += " " + bench::shellQuote(eo.string());
             }
-            // -DPOM1_GFX_TMS: the TMS twin of the GEN2 target's define above, so
-            // a portable sketch selects the TMS bring-up at compile time.
-            cmd = bench::shellQuote(cl65_) + " -t none -Oirs -DPOM1_GFX_TMS -C " + bench::shellQuote(cfgUse) +
-                " -I " + bench::shellQuote(lib) + gfxInc + tele + " " + bench::shellQuote(srcC.string()) +
-                tms9918cBenchRuntimeCl65Args(lib, gfxLib_) + extraObjs +
-                " -o " + bench::shellQuote(binB.string());
         }
+        logMeta.cfgPath = cfgAbs;
+        const std::string cmd = benchCSpecCl65Cmd(spec, devRoot_, cl65_, cfgAbs,
+                                                  srcC.string(), extraObjs, binB.string());
         std::string out;
         const int rc = bench::runCapture(cmd, out);
         r.console = std::string("$ cl65 -t none [") + tag + "]\n" + out;
         if (rc != 0) { parseErrorMarkers(out, r.errors); r.console += humanizeCc65(out); r.status = "cl65 failed (see Build output)"; return r; }
         r.console += std::string("[ok] compiled + linked (") + tag + ")\n";
-        entry = gen2c ? parseCfgLoadAddr(gen2Cfg_) : plainc ? parseCfgLoadAddr(plainCfg_) : 0x4000;
+        entry = (gen2c || plainc) ? parseCfgLoadAddr(cfgAbs) : 0x4000;
         if (entry == 0) entry = plainc ? 0x0300 : 0x6000;
     } else {
         if (!toolchainOk_) { r.console = std::string("cc65 (ca65/ld65) not found.\n") + kCc65InstallHint; r.status = "cc65 missing"; return r; }

@@ -1,0 +1,10 @@
+{
+  "cfg": "/dev/cc65/apple1_c.cfg",
+  "incDirs": ["/dev/lib/apple1c", "/dev/lib/telemetry"],
+  "cSources": [
+    { "path": "/dev/lib/apple1c/apple1io.c", "name": "apple1io.c" }
+  ],
+  "asmSources": [
+    { "path": "/dev/lib/apple1c/apple1io_asm.s", "name": "apple1io_asm.s" }
+  ]
+}

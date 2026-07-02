@@ -1,0 +1,69 @@
+{
+  "_comment": [
+    "Human annotations merged into the machine-generated ZP map tables in",
+    "dev/lib/README.md (see tools/gen_zp_map.py). The parser supplies the",
+    "facts (.res slots, .importzp/.exportzp, fixed := $xx equates); THIS file",
+    "supplies the judgement (ownership, liveness caveats, seam membership).",
+    "Edit here, then re-run tools/gen_zp_map.py -- never edit the generated",
+    "tables in the README directly.",
+    "Keys: 'baseline' = symbol -> owner text for the apple1/zp.inc $00-$07",
+    "table; 'files' = dev/lib-relative path -> Notes cell; 'extra_modules' =",
+    "textual includes that use CALLER-defined bare symbols (no .res/.importzp",
+    "of their own, invisible to the parser) -> {slots, importzp, notes}."
+  ],
+  "baseline": {
+    "tmp": "general scratch — `kbd.asm`, `math.asm`, `tms9918*.asm`, chess. Pure scratch: any lib JSR may clobber it",
+    "tmp2": "general scratch — `math.asm`, `tms9918m2.asm`, chess. Pure scratch: any lib JSR may clobber it",
+    "print_ptr_lo": "`apple1/print.asm` (string pointer, lo)",
+    "print_ptr_hi": "`apple1/print.asm` (string pointer, hi)",
+    "mul_tmp": "`m6502/multiply.asm`",
+    "mul_res0": "`m6502/multiply.asm`",
+    "prng_lo": "`m6502/prng8.asm` **and** `prng16.asm` (shared pair by design)",
+    "prng_hi": "`m6502/prng8.asm` **and** `prng16.asm` (shared pair by design)"
+  },
+  "files": {
+    "a1io/a1io.asm": "register selector",
+    "apple1/print.asm": "baseline pair — `.ifndef`-guarded duplicate of the `zp.inc` slots (aliases when `zp.inc` is included first)",
+    "basicrt/basicrt_float.s": "standalone binary32 software-float runtime state (FP accumulators + scratch)",
+    "basicrt/basicrt_gen2.s": "BASIC-compiler runtime, GEN2 backend — whole `rt_*` seam, link-exclusive with `basicrt_tms.s`",
+    "basicrt/basicrt_tms.s": "BASIC-compiler runtime, TMS backend — whole `rt_*` seam, link-exclusive with `basicrt_gen2.s`; drives `tms9918m2.asm`'s `pix_*`/`ln_*`",
+    "games/chess/chess_engine.asm": "11 B engine-private",
+    "games/chess/chess_text_io.asm": "owns no ZP itself",
+    "games/rogue/shadowcast.asm": "recursive-shadowcast FOV state; `cur_x`/`cur_y` may be pre-declared by the caller (`.ifndef`-guarded)",
+    "gen2/gen2_bubble.asm": "bubble raster (GEN2 side of the `draw_bubble` shadow pair)",
+    "gen2/gen2_logom2.asm": "GEN2 re-export of the whole LOGO m2 seam (`pix_*`/`ln_*`/`pen_color`) — link-exclusive with `tms9918/tms9918m2.asm`",
+    "gen2/gen2_text_bitmap.asm": "`text_blit_glyph` GEN2 backend (same contract as `tms9918/text_bitmap.asm`)",
+    "gen2/subbyte_fill.asm": "sub-byte HGR fill pointer",
+    "gen2c/gen2_blit.s": "cc65-track hot-path kernels; imports cc65's `ptr1`/`ptr2`/`tmp1`-`tmp4` (none.lib `zeropage.o`), plus `_gen2_*` C-ABI argument slots",
+    "gen2c/gen2_sprmask.s": "cc65-track masked-sprite kernel; imports cc65's `ptr1`-`ptr4`/`tmp1`-`tmp4`",
+    "m6502/math.asm": "caller-declared/`.exportzp`'d; owns no ZP itself (+ BSS `prod_lo/hi`, `sign_flag`, `lfsr_lo/hi`). `arg_*` are a shared argument/return window — NOT live across calls into other `arg_*` users",
+    "m6502/multiply.asm": "baseline pair — `.ifndef`-guarded duplicate of the `zp.inc` slots",
+    "m6502/prng16.asm": "shared with `prng8.asm` **by design** (`.ifndef`-guarded): both stir ONE state pair — use one generator per program",
+    "m6502/prng8.asm": "shared with `prng16.asm` **by design** (`.ifndef`-guarded)",
+    "sd/sd.asm": "string pointer",
+    "text40/layout.asm": "arrow-key remap",
+    "tms9918/bubble.asm": "bubble raster (TMS side of the `draw_bubble` shadow pair)",
+    "tms9918/buffer_editor.asm": "reuses `math.asm`'s `arg_*` argument window — not storage; reload per call",
+    "tms9918/sprite_helpers.asm": "imports the caller's sprite shadow registers (`spr_*`)",
+    "tms9918/sprite_triangle.asm": "reuses `math.asm`'s `arg_*` argument window — not storage; reload per call",
+    "tms9918/text_bitmap.asm": "`text_blit_glyph` TMS backend (same contract as `gen2/gen2_text_bitmap.asm`)",
+    "tms9918/tms9918_console.asm": "console cursor on top of the shared `vdp_*` slots",
+    "tms9918/tms9918_text.asm": "same exported `vdp_*` names as `tms9918m1.asm` — shared on purpose (one of m1/text per link)",
+    "tms9918/tms9918m1.asm": "`.exportzp`'d so `_text`/`_console` share them",
+    "tms9918/tms9918m2.asm": "bitmap/line raster state — the m2 side of the LOGO seam (link-exclusive with `gen2/gen2_logom2.asm`)",
+    "tms9918c/tms_fast.s": "cc65-track; imports cc65's `ptr1` only",
+    "wifi/acia.asm": "string pointer"
+  },
+  "extra_modules": {
+    "gen2/hgr_clear.asm": {
+      "slots": "caller defines `ptr_lo`, `ptr_hi` (textual include)",
+      "importzp": "—",
+      "notes": "`clear_hgr` trashes both (same pair as `hgr_plot.asm` — intended shared)"
+    },
+    "gen2/hgr_plot.asm": {
+      "slots": "caller defines `cur_x`, `cur_y`, `ptr_lo`, `ptr_hi` (textual include)",
+      "importzp": "—",
+      "notes": "`plot_pixel` preserves `cur_x`/`cur_y`; needs the `hgr_lo/hi/col/mask` tables alongside"
+    }
+  }
+}

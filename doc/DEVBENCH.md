@@ -70,6 +70,37 @@ the WOZ Monitor.
 - **C / TMS9918**: the TMS9918 C runtime under **`dev/lib/tms9918c/`**
   (`screen1.h` / `tms9918.h`).
 
+### Per-target C build specs — `dev/bench/*.json`
+
+What each C target actually compiles/links is **data, not code**: one JSON spec
+per target under **`dev/bench/`** (`apple1c.json`, `gen2c.json`, `tms9918c.json`),
+loaded at build time by `Pom1BenchHost`. This is the **editable source of
+truth** — add a runtime module to `dev/lib/…`, list it in the matching spec, and
+the Bench picks it up on the next Run with **no emulator rebuild**.
+
+Schema (all paths in MEMFS-style `/dev/…` form):
+
+```json
+{
+  "cfg": "/dev/lib/tms9918c/cc65/codetank_c.cfg",
+  "defines": ["POM1_GFX_TMS"],
+  "incDirs": ["/dev/lib/tms9918c", "/dev/lib/gfx", "/dev/lib/telemetry"],
+  "cSources":   [ { "path": "/dev/lib/tms9918c/apple1.c", "name": "apple1.c" }, … ],
+  "asmSources": [ { "path": "/dev/lib/tms9918c/apple1_asm.s", "name": "apple1_asm.s" }, … ]
+}
+```
+
+- **Desktop** derives the full `cl65` command line from the parsed spec
+  (`benchCSpecCl65Cmd`), mapping `/dev/…` onto the resolved `dev/` tree.
+- **WASM** forwards the raw JSON text to `window.POM1cc65.buildC` (the specs are
+  MEMFS-preloaded with the rest of `dev/`); per-sketch `EXTRA_ASM` modules are
+  folded into `asmSources` before hand-off.
+- **Fallback:** if `dev/bench/<target>.json` is missing or unparsable (old
+  bundle layouts), a byte-identical compiled-in copy (`kBenchCSpec*` in
+  `Pom1BenchHost.cpp`) is used and a one-line notice goes to stderr — packaged
+  builds never break. **Keep the embedded copies in sync when editing a spec.**
+  Release packagers ship `dev/bench/` next to `dev/cc65` + `dev/lib`.
+
 ### Starter files & sketch layout
 
 The built-in *New* dialog embeds default starters in `src/Pom1BenchHost.cpp`.

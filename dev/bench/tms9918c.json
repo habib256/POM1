@@ -1,0 +1,37 @@
+{
+  "cfg": "/dev/lib/tms9918c/cc65/codetank_c.cfg",
+  "defines": ["POM1_GFX_TMS"],
+  "incDirs": ["/dev/lib/tms9918c", "/dev/lib/gfx", "/dev/lib/telemetry"],
+  "cSources": [
+    { "path": "/dev/lib/tms9918c/apple1.c", "name": "apple1.c" },
+    { "path": "/dev/lib/tms9918c/tms9918.c", "name": "tms9918.c" },
+    { "path": "/dev/lib/tms9918c/screen1.c", "name": "screen1.c" },
+    { "path": "/dev/lib/tms9918c/c64font.c", "name": "c64font.c" },
+    { "path": "/dev/lib/tms9918c/screen1_input.c", "name": "screen1_input.c" },
+    { "path": "/dev/lib/tms9918c/screen2_init.c", "name": "screen2_init.c" },
+    { "path": "/dev/lib/tms9918c/screen2_text.c", "name": "screen2_text.c" },
+    { "path": "/dev/lib/tms9918c/screen2_pixel.c", "name": "screen2_pixel.c" },
+    { "path": "/dev/lib/tms9918c/screen2_geom.c", "name": "screen2_geom.c" },
+    { "path": "/dev/lib/tms9918c/screen1_ext.c", "name": "screen1_ext.c" },
+    { "path": "/dev/lib/tms9918c/screen2_ext.c", "name": "screen2_ext.c" },
+    { "path": "/dev/lib/tms9918c/sprites.c", "name": "sprites.c" },
+    { "path": "/dev/lib/tms9918c/sprite_shadow.c", "name": "sprite_shadow.c" },
+    { "path": "/dev/lib/tms9918c/vsync.c", "name": "vsync.c" },
+    { "path": "/dev/lib/tms9918c/printlib.c", "name": "printlib.c" },
+    { "path": "/dev/lib/tms9918c/random.c", "name": "random.c" },
+    { "path": "/dev/lib/gfx/gfx_line.c", "name": "gfx_line.c" },
+    { "path": "/dev/lib/gfx/gfx_rect.c", "name": "gfx_rect.c" },
+    { "path": "/dev/lib/gfx/gfx_circle.c", "name": "gfx_circle.c" },
+    { "path": "/dev/lib/gfx/gfx_ellipse.c", "name": "gfx_ellipse.c" },
+    { "path": "/dev/lib/gfx/gfx_num_dec.c", "name": "gfx_num_dec.c" },
+    { "path": "/dev/lib/gfx/gfx_num_hex.c", "name": "gfx_num_hex.c" },
+    { "path": "/dev/lib/gfx/gfx_text.c", "name": "gfx_text.c" },
+    { "path": "/dev/lib/gfx/gfx_backend_tms.c", "name": "gfx_backend_tms.c" },
+    { "path": "/dev/lib/gfx/gfx_backend_tms_rect.c", "name": "gfx_backend_tms_rect.c" },
+    { "path": "/dev/lib/gfx/gfx_text_backend_tms.c", "name": "gfx_text_backend_tms.c" }
+  ],
+  "asmSources": [
+    { "path": "/dev/lib/tms9918c/apple1_asm.s", "name": "apple1_asm.s" },
+    { "path": "/dev/lib/tms9918c/tms_fast.s", "name": "tms_fast.s" }
+  ]
+}

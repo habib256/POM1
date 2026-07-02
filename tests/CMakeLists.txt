@@ -1436,3 +1436,49 @@ if(Python3_FOUND)
     set_tests_properties(codetank_claudio_gate PROPERTIES
                          TIMEOUT 600 SKIP_RETURN_CODE 77)
 endif()
+
+# ── TMS9918 static silicon lint ──────────────────────────────────────────────
+# tools/lint_tms_lib.py statically enforces the real-silicon VDP contracts on
+# every ca65 source in the TMS9918 scope (dev/lib/tms9918, basicrt_tms.s,
+# sketchs/tms9918, dev/projects/codetank): P1 minimum $CC00 store-to-store
+# pacing (ERROR below the ~16c Replica-1-validated drop floor; WARN below the
+# 22c pad18 contract) along linear paths AND loop back-edges, with audited
+# auto-exemptions (display blanked via R1, VBlank-gated bounded bursts,
+# documented free zones, `; lint: free-zone <why>` pragmas — list them with
+# --list); P2 SAT immediate hygiene; P3 cross-lib ZP/export collisions not in
+# dev/lib/README.md's registry. Complements codetank_claudio_gate: the gate
+# runs the ROMs, the lint proves the sources — no build artefacts needed.
+if(Python3_FOUND)
+    add_test(NAME lint_tms_silicon
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/lint_tms_lib.py"
+                     --root "${CMAKE_SOURCE_DIR}"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(lint_tms_silicon PROPERTIES TIMEOUT 60)
+endif()
+
+# ── dev/lib unit-level 6502 micro-tests ──────────────────────────────────────
+# tools/test_lib_micro.py builds each dev/lib/test/micro/ driver with the real
+# cc65 toolchain (ca65/ld65; cl65 for the C test), runs it headless in POM1
+# (--load/--run/--step/--snapshot-save) and asserts real mailbox values read
+# back from the snapshot's MEM section, plus zero [TMS9918 DROP lines.
+# Skips (77) without cc65 on PATH or build/POM1.
+if(Python3_FOUND)
+    add_test(NAME lib_micro_tests
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/test_lib_micro.py"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(lib_micro_tests PROPERTIES
+                         SKIP_RETURN_CODE 77 TIMEOUT 120)
+endif()
+
+# ── ZP-map drift guard ───────────────────────────────────────────────────────
+# dev/lib/README.md's generated ZP tables must match the sources (regenerate
+# with tools/gen_zp_map.py; human notes live in tools/zp_annotations.json).
+if(Python3_FOUND)
+    add_test(NAME zp_map_check
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/gen_zp_map.py" --check
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(zp_map_check PROPERTIES TIMEOUT 60)
+endif()

@@ -97,12 +97,13 @@ if [[ -n "$CC65_TREE" ]]; then
     # DevBench linker cfgs + libs (release bundles otherwise omit dev/).
     # Pom1BenchHost probes dev/ exe-relative at Contents/Resources/dev and needs
     # exactly dev/cc65 (the .cfg linker configs) + dev/lib (recursed for ca65 -I,
-    # incl. tms9918c/gen2c/apple1c/gfx/telemetry). dev/projects is a
+    # incl. tms9918c/gen2c/apple1c/gfx/telemetry) + dev/bench (per-target C
+    # build specs, JSON). dev/projects is a
     # developer-only build tree — never loaded by a packaged app — so it stays
     # out. (The old apple1-videocard-lib line was dead: that C lib moved under
     # dev/lib/tms9918c, already covered by dev/lib below.)
     mkdir -p "$DATA_ROOT/dev"
-    for d in cc65 lib; do
+    for d in cc65 lib bench; do
         [[ -d "dev/$d" ]] && cp -R "dev/$d" "$DATA_ROOT/dev/$d"
     done
 else

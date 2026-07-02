@@ -65,6 +65,24 @@ compile_commands.json
 # cc65 build intermediates (per-project Makefiles produce .o next to the .asm)
 dev/projects/*/*.o
 
+# cc65 build intermediates under sketchs/ (sketch Makefiles + ad-hoc cl65 runs
+# drop .o/.map/.lst/.lbl next to the source; the canonical artefact lives under
+# software/). Round-trip GOLDEN inputs stay tracked and are NOT matched here:
+# sketchs/gen2/a2port_buzzard_bait/buzzard_bait.bin (da65 reference) and
+# sketchs/gen2/game_pang/GEN2Pang.bin (only committed build of the game).
+sketchs/**/*.o
+sketchs/**/*.map
+*.lst
+*.lbl
+# Specific in-tree intermediate .bin (rebuilt by `make` in their directory)
+sketchs/gen2/demo_preshift/main.bin
+sketchs/gen2/demo_sprengine/main.bin
+sketchs/gen2/demo_sprengine/main_test.bin
+sketchs/gen2/a2port_buzzard_bait/buzzard_bait.rebuilt.bin
+sketchs/gen2/a2port_buzzard_bait/gen2_port.bin
+# hello_gfx_text link outputs (portable demo — rebuilt by its Makefile)
+sketchs/portable/hello_gfx_text/*.bin
+
 # Python bytecode / test caches (tools/ contains scripts run ad-hoc)
 __pycache__/
 *.py[cod]
