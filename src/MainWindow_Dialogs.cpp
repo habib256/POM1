@@ -806,7 +806,7 @@ void MainWindow_ImGui::renderAboutDialog()
                          ImVec2(iconDisplay, iconDisplay));
             ImGui::SameLine();
             ImGui::BeginGroup();
-            ImGui::TextWrapped("POM1 v1.9.2 - Apple 1 Emulator (Dear ImGui)");
+            ImGui::TextWrapped("POM1 v1.9.3 - Apple 1 Emulator (Dear ImGui)");
             ImGui::TextWrapped("Celebrating 50 years of Apple (1976-2026)");
             ImGui::TextWrapped("Author: Arnaud VERHILLE");
             ImGui::TextWrapped("original POM1 (Java, 2000)");
@@ -814,7 +814,7 @@ void MainWindow_ImGui::renderAboutDialog()
             ImGui::TextWrapped("Copyright (C) 2000-2026 - GPL-3.0");
             ImGui::EndGroup();
         } else {
-            ImGui::TextWrapped("POM1 v1.9.2 - Apple 1 Emulator (Dear ImGui)");
+            ImGui::TextWrapped("POM1 v1.9.3 - Apple 1 Emulator (Dear ImGui)");
             ImGui::TextWrapped("Celebrating 50 years of Apple (1976-2026)");
             ImGui::TextWrapped("Author: Arnaud VERHILLE");
             ImGui::TextWrapped("original POM1 (Java, 2000)");

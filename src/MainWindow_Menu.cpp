@@ -337,6 +337,17 @@ void MainWindow_ImGui::renderMenuBar()
                     setStatusMessage("GEN2 HGR card plugged for HGR Paint Editor", 2.0f);
                 }
             }
+            // HGR sprite/shape editor — edits a byte-aligned HIRES bitmap (Apple II
+            // has no hardware sprites), previews it over the live page and stamps
+            // the raw bytes. Opening it plugs the GEN2 card (render loop also guards).
+            if (ImGui::MenuItem("HGR Sprite Editor...", nullptr, &showHGRSpriteEditor)) {
+                if (showHGRSpriteEditor && !graphicsCardEnabled) {
+                    graphicsCardEnabled = true;
+                    showGraphicsCard = true;
+                    emulation->setHgrFramebufferAttached(true);
+                    setStatusMessage("GEN2 HGR card plugged for HGR Sprite Editor", 2.0f);
+                }
+            }
             // TMS9918 paint editor — draws live into the P-LAB Graphic Card VRAM
             // (Graphics II bitmap / Multicolor). Opening it plugs the TMS9918 so
             // there is a live card to paint into (the render loop also guards this).
@@ -346,6 +357,17 @@ void MainWindow_ImGui::renderMenuBar()
                     pendingTms9918Enable = true;
                     showTMS9918 = true;
                     setStatusMessage("TMS9918 card plugged for TMS9918 Paint Editor", 2.0f);
+                }
+            }
+            // TMS9918 sprite editor — draws monochrome 8×8 / 16×16 sprite patterns
+            // into the P-LAB Graphic Card VRAM and places the sprite live via the
+            // SAT. Opening it plugs the TMS9918 (the render loop also guards this).
+            if (ImGui::MenuItem("TMS9918 Sprite Editor...", nullptr, &showTMSSpriteEditor)) {
+                if (showTMSSpriteEditor && !tms9918Enabled) {
+                    tms9918Enabled = true;
+                    pendingTms9918Enable = true;
+                    showTMS9918 = true;
+                    setStatusMessage("TMS9918 card plugged for TMS9918 Sprite Editor", 2.0f);
                 }
             }
             ImGui::Separator();

@@ -48,6 +48,7 @@ public:
                       const std::string& defaultDir, const std::string& defaultName,
                       std::string& outPath) override;
     bool nativeFilePickerAvailable() const override;
+    std::vector<tmspaint::DevSpriteCategory> devSprites() override;
     void* uploadTexture(void* tex, const void* rgba,
                         int w, int h, bool linear) override;
     void  destroyTexture(void* tex) override;
@@ -59,6 +60,10 @@ private:
     std::unique_ptr<TMS9918::Snapshot> snap_;            // staging for renderToBuffer
     int  batchDepth_ = 0;                                // begin/endBatch nesting depth (reentrant)
     std::vector<std::pair<uint16_t, uint8_t>> batch_;    // coalesced VRAM writes
+
+    // Lazily-parsed built-in TMS9918 sprite library (dev/lib/tms9918/sprites_*.asm).
+    std::vector<tmspaint::DevSpriteCategory> devSpritesCache_;
+    bool devSpritesLoaded_ = false;
 };
 
 #endif // POM1_TMSPAINT_HOST_H

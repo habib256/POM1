@@ -24,12 +24,15 @@
 
 .include "apple1.inc"
 
-GRID_COLS    = 6
+; Sprites are drawn at DOUBLE size (2x): each 16x16 source sprite paints as a
+; 32x32 block -- 6 dest bytes wide (each 7-px source byte stretches to two
+; 7-px bytes via dblL/dblR) x 32 scanlines (each source row painted twice).
+GRID_COLS    = 4
 GRID_ROWS    = 4
-GRID_X0      = 8                    ; HGR byte column of the grid's left edge
-GRID_Y0      = 36                   ; top scanline of the first slot row
-SLOT_X_PITCH = 4                    ; bytes per slot (3 sprite + 1 gap)
-SLOT_Y_PITCH = 22                   ; scanlines per slot (16 sprite + 6 gap)
+GRID_X0      = 4                    ; HGR byte column of the grid's left edge
+GRID_Y0      = 12                   ; top scanline of the first slot row
+SLOT_X_PITCH = 8                    ; bytes per slot (6 sprite + 2 gap)
+SLOT_Y_PITCH = 40                   ; scanlines per slot (32 sprite + 8 gap)
 NUM_CATS     = 6                    ; entries in cat_* tables below
 
 .zeropage
@@ -50,6 +53,13 @@ base_hi:    .res 1
 ccount:     .res 1                  ; current category sprite count
 nm_lo:      .res 1                  ; current category name string
 nm_hi:      .res 1
+cur_y:      .res 1                  ; scanline being written by the 2x blit
+d0:         .res 1                  ; six doubled dest bytes for the current row
+d1:         .res 1
+d2:         .res 1
+d3:         .res 1
+d4:         .res 1
+d5:         .res 1
 
 .code
 
@@ -103,27 +113,25 @@ show_cat:
         LDA #0
         STA slot_col
 @col_lp:
-        ; hcol = GRID_X0 + slot_col * SLOT_X_PITCH (=4)
+        ; hcol = GRID_X0 + slot_col * SLOT_X_PITCH (=8)
         LDA slot_col
+        ASL
         ASL
         ASL
         CLC
         ADC #GRID_X0
         STA hcol
 
-        ; top_y = GRID_Y0 + slot_row * 22  (22 = 16 + 4 + 2 = row*18 + row*4)
+        ; top_y = GRID_Y0 + slot_row * 40  (40 = row*32 + row*8)
         LDA slot_row
         ASL                         ; row*2
-        STA top_y
         ASL                         ; row*4
         ASL                         ; row*8
+        STA top_y                   ; = row*8
         ASL                         ; row*16
+        ASL                         ; row*32
         CLC
-        ADC top_y                   ; row*16 + row*2 = row*18
-        CLC
-        ADC top_y                   ; + row*2 = row*20
-        CLC
-        ADC top_y                   ; + row*2 = row*22
+        ADC top_y                   ; row*32 + row*8 = row*40
         CLC
         ADC #GRID_Y0
         STA top_y
@@ -167,10 +175,12 @@ show_cat:
 
 
 ; -----------------------------------------------------------------------------
-; draw_sprite -- A = sprite index within the current category.
-;   Reads base_lo/hi (category data), hcol, top_y from zp. Blits 16 rows x 3
-;   bytes from (base + A*48) straight into the framebuffer via hgr_lo/hgr_hi.
-; Clobbers: A, X, Y, ptr_lo/hi, fpl/fph, gline.
+; draw_sprite -- A = sprite index within the current category, drawn at 2x.
+;   Reads base_lo/hi (category data), hcol, top_y from zp. For each of the 16
+;   source rows: stretch the 3 source bytes into 6 dest bytes (dblL/dblR turn
+;   one 7-px byte into two) and paint that row onto TWO consecutive scanlines,
+;   giving a 32x32 doubled sprite.
+; Clobbers: A, X, Y, ptr_lo/hi, fpl/fph, gline, cur_y, d0..d5.
 ; -----------------------------------------------------------------------------
 draw_sprite:
         ; fp = A*48 + base   (A*48 by repeated add; counts <= 33 -> <= 1584)
@@ -202,37 +212,45 @@ draw_sprite:
         LDA #0
         STA gline
 @line:
-        LDA gline
-        CLC
-        ADC top_y
+        ; --- stretch the 3 source bytes into d0..d5 ---
+        LDY #0
+        LDA (fpl),Y
+        AND #$7F                    ; bit 7 = NTSC selector, keep off the index
         TAX
-        LDA hgr_lo,X
-        STA ptr_lo
-        LDA hgr_hi,X
-        STA ptr_hi
-
-        ; read the 3 sprite bytes (Y=2,1,0), push, write at hcol/+1/+2
+        LDA dblL,X
+        STA d0
+        LDA dblR,X
+        STA d1
+        LDY #1
+        LDA (fpl),Y
+        AND #$7F
+        TAX
+        LDA dblL,X
+        STA d2
+        LDA dblR,X
+        STA d3
         LDY #2
         LDA (fpl),Y
-        PHA
-        DEY
-        LDA (fpl),Y
-        PHA
-        DEY
-        LDA (fpl),Y
-        PHA
+        AND #$7F
+        TAX
+        LDA dblL,X
+        STA d4
+        LDA dblR,X
+        STA d5
 
-        LDY hcol
-        PLA
-        STA (ptr_lo),Y              ; byte 0 (cols 0..6)
-        INY
-        PLA
-        STA (ptr_lo),Y              ; byte 1 (cols 7..13)
-        INY
-        PLA
-        STA (ptr_lo),Y              ; byte 2 (cols 14..15)
+        ; --- paint d0..d5 onto two scanlines: cur_y = top_y + gline*2, +1 ---
+        LDA gline
+        ASL
+        CLC
+        ADC top_y
+        STA cur_y
+        TAX
+        JSR blit_row6
+        INC cur_y
+        LDX cur_y
+        JSR blit_row6
 
-        ; advance sprite pointer by 3 (next row)
+        ; advance sprite pointer by 3 (next source row)
         LDA fpl
         CLC
         ADC #3
@@ -244,6 +262,35 @@ draw_sprite:
         LDA gline
         CMP #16
         BCC @line
+        RTS
+
+; -----------------------------------------------------------------------------
+; blit_row6 -- X = scanline. Writes d0..d5 to hcol..hcol+5 on that scanline.
+; Clobbers A, Y, ptr_lo/hi.
+; -----------------------------------------------------------------------------
+blit_row6:
+        LDA hgr_lo,X
+        STA ptr_lo
+        LDA hgr_hi,X
+        STA ptr_hi
+        LDY hcol
+        LDA d0
+        STA (ptr_lo),Y
+        INY
+        LDA d1
+        STA (ptr_lo),Y
+        INY
+        LDA d2
+        STA (ptr_lo),Y
+        INY
+        LDA d3
+        STA (ptr_lo),Y
+        INY
+        LDA d4
+        STA (ptr_lo),Y
+        INY
+        LDA d5
+        STA (ptr_lo),Y
         RTS
 
 
@@ -283,6 +330,31 @@ name_magick:
         .byte $0D, " MAGICK     (15)", $0D, 0
 name_music:
         .byte $0D, " MUSIC      (6)", $0D, 0
+
+; -----------------------------------------------------------------------------
+; 2x horizontal-stretch tables. Index = a 7-px source byte (bit 7 masked off).
+; dblL = the left doubled byte  (src pixels 0,0,1,1,2,2,3),
+; dblR = the right doubled byte (src pixels 3,4,4,5,5,6,6), so one source byte
+; becomes two, doubling every pixel horizontally with output bit 7 clear.
+; -----------------------------------------------------------------------------
+dblL:
+        .byte $00, $03, $0C, $0F, $30, $33, $3C, $3F, $40, $43, $4C, $4F, $70, $73, $7C, $7F
+        .byte $00, $03, $0C, $0F, $30, $33, $3C, $3F, $40, $43, $4C, $4F, $70, $73, $7C, $7F
+        .byte $00, $03, $0C, $0F, $30, $33, $3C, $3F, $40, $43, $4C, $4F, $70, $73, $7C, $7F
+        .byte $00, $03, $0C, $0F, $30, $33, $3C, $3F, $40, $43, $4C, $4F, $70, $73, $7C, $7F
+        .byte $00, $03, $0C, $0F, $30, $33, $3C, $3F, $40, $43, $4C, $4F, $70, $73, $7C, $7F
+        .byte $00, $03, $0C, $0F, $30, $33, $3C, $3F, $40, $43, $4C, $4F, $70, $73, $7C, $7F
+        .byte $00, $03, $0C, $0F, $30, $33, $3C, $3F, $40, $43, $4C, $4F, $70, $73, $7C, $7F
+        .byte $00, $03, $0C, $0F, $30, $33, $3C, $3F, $40, $43, $4C, $4F, $70, $73, $7C, $7F
+dblR:
+        .byte $00, $00, $00, $00, $00, $00, $00, $00, $01, $01, $01, $01, $01, $01, $01, $01
+        .byte $06, $06, $06, $06, $06, $06, $06, $06, $07, $07, $07, $07, $07, $07, $07, $07
+        .byte $18, $18, $18, $18, $18, $18, $18, $18, $19, $19, $19, $19, $19, $19, $19, $19
+        .byte $1E, $1E, $1E, $1E, $1E, $1E, $1E, $1E, $1F, $1F, $1F, $1F, $1F, $1F, $1F, $1F
+        .byte $60, $60, $60, $60, $60, $60, $60, $60, $61, $61, $61, $61, $61, $61, $61, $61
+        .byte $66, $66, $66, $66, $66, $66, $66, $66, $67, $67, $67, $67, $67, $67, $67, $67
+        .byte $78, $78, $78, $78, $78, $78, $78, $78, $79, $79, $79, $79, $79, $79, $79, $79
+        .byte $7E, $7E, $7E, $7E, $7E, $7E, $7E, $7E, $7F, $7F, $7F, $7F, $7F, $7F, $7F, $7F
 
 ; -----------------------------------------------------------------------------
 ; Mutualised text printer + HGR helpers + the six sprite data blocks.

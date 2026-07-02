@@ -27,7 +27,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
 
-VERSION="${POM1_VERSION:-1.9.2}"
+VERSION="${POM1_VERSION:-1.9.3}"
 DIST="${REPO_ROOT}/dist"
 WORK="${REPO_ROOT}/build-appimage"
 APPDIR="${WORK}/AppDir"

@@ -15,8 +15,10 @@
 #include "JukeBox.h"
 #include "MemoryViewer_ImGui.h"
 #include "HgrPaintEditor.h"        // hgrpaint/ (portable editor) on the include path
+#include "HgrSpriteEditor.h"       // hgrsprite/ (portable sprite editor) on the include path
 #include "Pom1HgrPaintHost.h"
 #include "TmsPaintEditor.h"        // tmspaint/ (portable editor) on the include path
+#include "TmsSpriteEditor.h"       // tmssprite/ (portable sprite editor) on the include path
 #include "Pom1TmsPaintHost.h"
 #include "Screen_ImGui.h"
 #include "GraphicsCard.h"
@@ -44,7 +46,9 @@ public:
     // while the context is still current — call before ImGui/GLFW teardown.
     void releaseGLResources() {
         if (hgrPaintEditor) hgrPaintEditor->releaseGL();
+        if (hgrSpriteEditor) hgrSpriteEditor->releaseGL();
         if (tmsPaintEditor) tmsPaintEditor->releaseGL();
+        if (tmsSpriteEditor) tmsSpriteEditor->releaseGL();
         // The MainWindow-owned textures (board/about photos, card framebuffers)
         // and the Screen glyph atlas are otherwise deleted by ~MainWindow_ImGui /
         // ~Screen_ImGui, which run at main()'s return — i.e. AFTER glfwTerminate(),
@@ -191,8 +195,14 @@ private:
     // first so it outlives the editor that holds a raw pointer to it.
     std::unique_ptr<Pom1HgrPaintHost> hgrPaintHost;
     std::unique_ptr<hgrpaint::HgrPaintEditor> hgrPaintEditor;
+    // GEN2 HGR sprite editor reuses the same POM1 host (Pom1HgrPaintHost implements
+    // hgrpaint::IHgrPaintHost), so no extra host is needed.
+    std::unique_ptr<hgrsprite::HgrSpriteEditor> hgrSpriteEditor;
     std::unique_ptr<Pom1TmsPaintHost> tmsPaintHost;
     std::unique_ptr<tmspaint::TmsPaintEditor> tmsPaintEditor;
+    // Sprite editor reuses the same POM1 host (Pom1TmsPaintHost implements
+    // tmspaint::ITmsPaintHost), so no extra host is needed.
+    std::unique_ptr<tmssprite::TmsSpriteEditor> tmsSpriteEditor;
     EmulationSnapshot uiSnapshot;
     
     // Window reference for keyboard callbacks
@@ -206,7 +216,9 @@ private:
     // Interface state
     bool showMemoryViewer = false;
     bool showHGRPaintEditor = false;
+    bool showHGRSpriteEditor = false;
     bool showTMSPaintEditor = false;
+    bool showTMSSpriteEditor = false;
     bool showDebugger = false;
     bool showRewindTimeline = false;   // State-rewind timeline / scrub panel
     bool rewindAutoStarted = false;    // one-shot: the toolbar timeline band auto-enables recording

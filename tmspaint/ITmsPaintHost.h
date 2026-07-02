@@ -21,10 +21,25 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "imgui.h"   // ImTextureID for textureToImTexture()
 
 namespace tmspaint {
+
+// A ready-made sprite from the host's built-in library (POM1 ships the TMS9918
+// SCROLL-O-SPRITES catalogue under dev/lib/tms9918/). `bytes` is the native
+// 32-byte 16×16 sprite pattern (left half col 0..7 = 16 bytes, then right half
+// col 8..15 = 16 bytes) that streams straight into a sprite-pattern slot group
+// at $3800 + patNum*8. Empty for a host with no such library (the default).
+struct DevSprite {
+    std::string name;
+    std::vector<uint8_t> bytes;      // 32 (16×16)
+};
+struct DevSpriteCategory {
+    std::string name;
+    std::vector<DevSprite> sprites;
+};
 
 class ITmsPaintHost {
 public:
@@ -95,6 +110,12 @@ public:
     // When true a false return from pickFilePath means the user CANCELLED, so
     // the editor must NOT fall back to its built-in ImGui browser.
     virtual bool nativeFilePickerAvailable() const { return false; }
+
+    // The host's built-in TMS9918 sprite library, grouped by category, or empty
+    // when the host ships none (the default). POM1 parses dev/lib/tms9918/
+    // sprites_*.asm; the sprite editor shows a browser so you can drop a ready-made
+    // 16×16 sprite into VRAM. Called rarely (the editor caches the result).
+    virtual std::vector<DevSpriteCategory> devSprites() { return {}; }
 
     // Texture lifecycle — the HOST owns the graphics backend (see
     // hgrpaint/IHgrPaintHost.h for the design rationale). Opaque void* so a

@@ -12,7 +12,11 @@
 #include "third_party/stb/stb_image_write.h"   // decl only; impl lives in main_imgui.cpp
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <system_error>
 
 Pom1TmsPaintHost::Pom1TmsPaintHost(EmulationController* emu,
                                    GLFWwindow* const* windowSlot)
@@ -36,6 +40,140 @@ bool Pom1TmsPaintHost::pickFilePath(bool forSave, const std::string& title,
 bool Pom1TmsPaintHost::nativeFilePickerAvailable() const
 {
     return pom1::NativeFileDialog::isAvailable();
+}
+
+// ── Built-in TMS9918 sprite library (dev/lib/tms9918/sprites_*.asm) ──────────
+// The SCROLL-O-SPRITES catalogue ships as ca65 sources: each 16×16 sprite is 32
+// `.byte` values under a `; slot NN/MM ... -- name` comment / `xxx_pat:` label
+// (left half col 0..7 = 16 B, then right half col 8..15 = 16 B — the native
+// $3800+patNum*8 stream). Parsed once and cached. Mirror of
+// Pom1HgrPaintHost::devSprites (48 B / row-major there vs 32 B here).
+namespace {
+
+void parseByteLine(const std::string& line, std::vector<uint8_t>& out)
+{
+    for (size_t i = 0; i + 1 < line.size(); ++i) {
+        if (line[i] != '$') continue;
+        auto hex = [](char c) -> int {
+            if (c >= '0' && c <= '9') return c - '0';
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+            return -1;
+        };
+        const int hi = hex(line[i + 1]);
+        if (hi < 0) continue;
+        const int lo = (i + 2 < line.size()) ? hex(line[i + 2]) : -1;
+        out.push_back(static_cast<uint8_t>(lo < 0 ? hi : (hi * 16 + lo)));
+    }
+}
+
+std::string trim(const std::string& s)
+{
+    size_t a = 0, b = s.size();
+    while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
+    while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
+    return s.substr(a, b - a);
+}
+
+tmspaint::DevSpriteCategory parseSpriteFile(const std::filesystem::path& file)
+{
+    tmspaint::DevSpriteCategory cat;
+    std::string stem = file.stem().string();               // sprites_creatures
+    if (stem.rfind("sprites_", 0) == 0) stem = stem.substr(8);
+    cat.name = stem;
+
+    std::ifstream in(file);
+    if (!in) return cat;
+    tmspaint::DevSprite cur;
+    bool haveCur = false;
+    std::string pendingName;
+    auto flush = [&]() {
+        if (haveCur && cur.bytes.size() >= 32) {
+            cur.bytes.resize(32);                          // 16×16 native pattern
+            cat.sprites.push_back(std::move(cur));
+        }
+        cur = tmspaint::DevSprite{};
+        haveCur = false;
+    };
+    auto isLabel = [](const std::string& code, std::string& label) {
+        if (code.size() < 2 || code.back() != ':') return false;
+        for (size_t i = 0; i + 1 < code.size(); ++i) {
+            const char c = code[i];
+            if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '_')) return false;
+        }
+        const char c0 = code[0];
+        if (!(std::isalpha(static_cast<unsigned char>(c0)) || c0 == '_')) return false;
+        label = code.substr(0, code.size() - 1);
+        return true;
+    };
+    std::string line;
+    while (std::getline(in, line)) {
+        std::string t = trim(line);
+        if (t.empty()) continue;
+        if (t[0] == ';') {
+            const size_t dash = t.find("--");
+            if (t.find("slot") != std::string::npos && dash != std::string::npos) {
+                pendingName = trim(t.substr(dash + 2));
+                const size_t paren = pendingName.find('(');
+                if (paren != std::string::npos) pendingName = trim(pendingName.substr(0, paren));
+            }
+            continue;
+        }
+        const size_t sc = t.find(';');
+        std::string code = trim(sc == std::string::npos ? t : t.substr(0, sc));
+        std::string label;
+        if (isLabel(code, label)) {
+            flush();
+            if (!pendingName.empty()) { cur.name = pendingName; pendingName.clear(); }
+            else {
+                if (label.size() > 4 && label.compare(label.size() - 4, 4, "_pat") == 0)
+                    label.resize(label.size() - 4);
+                cur.name = label;
+            }
+            haveCur = true;
+            continue;
+        }
+        if (haveCur && code.find(".byte") != std::string::npos)
+            parseByteLine(code, cur.bytes);
+    }
+    flush();
+    return cat;
+}
+
+} // namespace
+
+std::vector<tmspaint::DevSpriteCategory> Pom1TmsPaintHost::devSprites()
+{
+    if (devSpritesLoaded_) return devSpritesCache_;
+    devSpritesLoaded_ = true;
+
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const char* candidates[] = {
+        "dev/lib/tms9918",
+        "../dev/lib/tms9918",
+        "../../dev/lib/tms9918",
+    };
+    fs::path dir;
+    for (const char* c : candidates)
+        if (fs::is_directory(c, ec)) { dir = c; break; }
+    if (dir.empty()) return devSpritesCache_;
+
+    std::vector<fs::path> files;
+    for (const auto& e : fs::directory_iterator(dir, ec)) {
+        const auto p = e.path();
+        const std::string fn = p.filename().string();
+        // Catalogue files are "sprites_<cat>.asm" (plural); skip the singular
+        // "sprite_helpers.asm" / "sprite_triangle.asm" tooling.
+        if (p.extension() == ".asm" && fn.rfind("sprites_", 0) == 0)
+            files.push_back(p);
+    }
+    std::sort(files.begin(), files.end());
+    for (const auto& f : files) {
+        auto cat = parseSpriteFile(f);
+        if (!cat.sprites.empty()) devSpritesCache_.push_back(std::move(cat));
+    }
+    return devSpritesCache_;
 }
 
 void Pom1TmsPaintHost::pokeVram(uint16_t addr, uint8_t value)

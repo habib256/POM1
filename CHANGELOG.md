@@ -10,6 +10,24 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+## [1.9.3] — 2026-07-01
+
+### Fixed — 6502 software: Galaga title/help SAT rebuilt during active display
+
+- `draw_title_sprites` / `draw_help_sprites`
+  (`sketchs/tms9918/game_galaga/TMS_Galaga.asm`) rebuilt the Sprite Attribute
+  Table (`$1B00`, ~20 bytes) during **active display with no `WAIT_VBLANK`
+  gate** — and `title_wait_key` re-invoked `draw_title_sprites` on every
+  keyboard poll — so the raster scanned the SAT mid-rewrite, tearing/garbling
+  the title and help aliens on real TMS9918A silicon (matching Claudio
+  Parmigiani's "Galaga still broken" report on his Replica-1). The in-game
+  `render_sprites` path was already correctly VBlank-gated; the pad18 timing
+  fix alone did not cover this. Both routines now open with `WAIT_VBLANK` +
+  the pad18 cross-boundary cushion, mirroring `render_sprites`. Costs +16 B
+  and still fits the `$4100-$61FF` CodeTank bank (170 B headroom); reship by
+  rebuilding `Codetank_GAME1.rom` (needs the external `tetris_codetank.bin`
+  lower-bank drop-in).
+
 ### Added — Renderer abstraction, macOS Metal backend & OS-native file dialogs
 
 - **`PomRenderer` graphics-backend seam** (`src/PomRenderer.h` + `_GL.cpp` /

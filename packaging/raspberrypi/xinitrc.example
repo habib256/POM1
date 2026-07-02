@@ -1,0 +1,29 @@
+# ---------------------------------------------------------------------------
+# Exemple de ~/.xinitrc pour la borne POM1 (Raspberry Pi 400, session X11).
+#
+# install.sh écrit une version personnalisée de ce fichier dans le home de
+# l'utilisateur avec le bon chemin vers pom1-kiosk.sh. Ce fichier n'est qu'une
+# référence lisible de ce qui est généré.
+#
+# Chaîne : autologin console tty1 -> ~/.bash_profile lance `startx`
+#          -> ~/.xinitrc (ce fichier) démarre matchbox + POM1 en plein écran.
+# ---------------------------------------------------------------------------
+
+# Pas de veille écran ni d'extinction DPMS sur une borne.
+xset s off
+xset s noblank
+xset -dpms
+
+# Masquer le curseur après 1 s d'inactivité (unclutter).
+command -v unclutter >/dev/null 2>&1 && unclutter -idle 1 &
+
+# matchbox-window-manager met l'unique fenêtre en plein écran, sans barre de
+# titre — exactement ce qu'il faut pour une borne mono-application.
+matchbox-window-manager -use_titlebar no &
+
+# Boucle de supervision : si POM1 se ferme ou plante, on le relance.
+# Remplace le chemin ci-dessous par celui de TON dépôt (install.sh le fait).
+while true; do
+    /opt/pom1/packaging/raspberrypi/pom1-kiosk.sh
+    sleep 1
+done

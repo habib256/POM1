@@ -21,10 +21,26 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "imgui.h"   // ImTextureID for textureToImTexture()
 
 namespace hgrpaint {
+
+// A ready-made sprite from the host's built-in library (POM1 ships the GEN2 HGR
+// SCROLL-O-SPRITES catalogue under dev/lib/gen2/sprites/). `bytes` is row-major
+// HGR (hRows rows × wBytes bytes/row, bit 0 = leftmost pixel) — exactly the
+// layout hgrsprite::stamp expects, so the sprite editor drops it straight into
+// its scratch page. Empty for a host with no such library (the default).
+struct DevSprite {
+    std::string name;
+    int wBytes = 3, hRows = 16;
+    std::vector<uint8_t> bytes;      // wBytes*hRows
+};
+struct DevSpriteCategory {
+    std::string name;
+    std::vector<DevSprite> sprites;
+};
 
 class IHgrPaintHost {
 public:
@@ -93,6 +109,13 @@ public:
     // (default: WASM, or Linux without zenity/kdialog) pickFilePath is never
     // available and the ImGui browser is the only path.
     virtual bool nativeFilePickerAvailable() const { return false; }
+
+    // The host's built-in HGR sprite library, grouped by category, or empty when
+    // the host ships none (the default). POM1 parses dev/lib/gen2/sprites/*.asm;
+    // the sprite editor shows a browser so you can drop a ready-made sprite into
+    // the canvas. Called rarely (the editor caches the result), so a host MAY
+    // parse files on demand here.
+    virtual std::vector<DevSpriteCategory> devSprites() { return {}; }
 
     // Texture lifecycle — the HOST owns the graphics backend, so the portable
     // editor never names GL/GLFW/SDL/Metal. The editor hands over RGBA8 (w*h,

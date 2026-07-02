@@ -221,6 +221,19 @@ em_y0:       .res 1     ; sprite top-left Y
 em_row:      .res 1     ; current row 0..dim-1
 em_col:      .res 1     ; current col 0..dim-1
 em_dim:      .res 1     ; 16 (16x16) or 8 (8x8)
+em_color:    .res 1     ; 0 = default solid-white 2x2 emote (BIRDFLY etc.);
+                        ; 1 = colourised emote (DEMO2 narrator): tinted by
+                        ; pen_color, drawn every-other-column so HGR shows the
+                        ; hue instead of collapsing two adjacent dots to white.
+em_erase:    .res 1     ; colour path only: 0 = draw (OR + pen family bit),
+                        ; 1 = erase (XOR clears the dots, palette bit is
+                        ; invisible on the black narrator field). Ignored by the
+                        ; white path, which XORs both ways (self-inverse).
+em_par:      .res 1     ; colour path: parity nudge (0/1) LATCHED at draw time.
+                        ; The matching erase reuses it, so a SETPC that changes
+                        ; pen_color between a sprite's draw and its next erase
+                        ; still XORs the exact columns that were drawn (else the
+                        ; erase misses and residue washes the emote to white).
 .endif
 ; --- Colour ------------------------------------------------------------
 ; All colourisable surfaces (trail, bitmap arrow, sprite-0, bitmap text)
@@ -372,6 +385,17 @@ main:
         STA plot_mode
         STA turtle_visible
         STA sprite_mode
+.ifdef LOGO_GEN2
+        ; GEN2 only: the turtle X is 9-bit (tx_lo + tx_hi). cmd_home sets
+        ; tx_lo=128 but NOT tx_hi, so a non-zero power-on RAM value in this
+        ; BSS byte would fling the boot arrow to column 128+256 = 384 (off the
+        ; right edge -> nothing drawn). Silicon presets fill RAM with noise, so
+        ; the turtle was intermittently invisible at first start. Seed it 0.
+        STA tx_hi
+        STA em_color              ; default emote = solid white (BIRDFLY look)
+        STA em_erase
+        STA em_par
+.endif
         ; Default sprite geometry = 16x16 (consistent with V2.0 behaviour).
         ; apply_sprite_size at the next SETSHAPE picks the right values.
         LDA #32
@@ -1692,6 +1716,14 @@ cmd_demo2:
         STA mptr_lo
         LDA #>demo2_script
         STA mptr_hi
+.ifdef LOGO_GEN2
+        ; GEN2: the narrator emotes are tinted by SETPC in demo2_script, so
+        ; switch the emote blitter into its colour path for the whole show.
+        ; Cleared again at cmd_demo_run's @done so BIRDFLY (run from the classic
+        ; DEMO / the REPL) keeps its solid-white birds.
+        LDA #1
+        STA em_color
+.endif
         JMP cmd_demo_run
 .endif
 cmd_demo_run:
@@ -1736,6 +1768,10 @@ cmd_demo_run:
         JMP @nxt
 @done:  ; terminate outer line_buf so the caller's parse_and_exec @loop
         ; sees a CR and exits cleanly.
+.ifdef LOGO_GEN2
+        LDA #0                ; back to solid-white emotes for BIRDFLY / REPL
+        STA em_color
+.endif
         LDA #$0D
         STA line_buf
         LDA #0
@@ -3025,6 +3061,11 @@ cmd_home:
         LDA #0
         STA th_lo
         STA th_hi
+.ifdef LOGO_GEN2
+        STA tx_hi             ; keep HOME on the low 256 columns (tx_lo=128) --
+                              ; without this a turtle parked at x>=256 would
+                              ; re-home into the phantom column 384.
+.endif
         ; (V2.0 fix) HOME no longer flips pen back down -- the pen-state
         ; should survive a HOME so PU + HOME + REPEAT [...] flies the
         ; sprite without leaving a bitmap trail. CS still implicitly
@@ -3940,6 +3981,33 @@ trace_turtle_lines:
         JSR line_xy16
         RTS
 
+; gen2_emote_vsync: coarse V-blank sync (HST0 = bit 7 of any $C25x read).
+;   Called at the head of every visible EMOTE transition (erase_turtle @emote),
+;   so the XOR erase -> reposition -> redraw burst BEGINS at V-blank. That parks
+;   the transient "bird fully erased" window up in V-blank / top-of-frame, where
+;   the beam has already swept past the mid-screen sprite -- the async HGR
+;   renderer stops catching the blank, so the BIRDFLY strobe goes away. This is
+;   the GEN2 analogue of the TMS erase_turtle's WAIT_VBLANK (which syncs on the
+;   VDP $CC01 status flag instead). Polls PAGE1 -- LOGO runs HIRES/PAGE1 and a
+;   $C254 read is an idempotent page-1 SELECT (not a bit toggle), so the poll
+;   never disturbs the mode. ORs two samples 4c apart to mask the 3c colour-
+;   burst notch (see gen2.inc / gen2_sync.asm). Clobbers A only.
+GEN2_PAGE1 = $C254
+gen2_emote_vsync:
+@live:  LDA GEN2_PAGE1
+        ORA GEN2_PAGE1
+        BMI @live                 ; spin until live scan (HST0 = 0)
+@blank: LDA GEN2_PAGE1
+        ORA GEN2_PAGE1
+        BPL @blank                ; spin until the next blanking edge
+        .repeat 13
+        NOP                       ; 26c: an H-blank (25c) has ended by now,
+        .endrep                   ;      so only a real V-blank still reads 1
+        LDA GEN2_PAGE1
+        ORA GEN2_PAGE1
+        BPL @live                 ; it was only an H-blank -> scan the next line
+        RTS                       ; V-blank: beam parked off-screen, safe to blit
+
 draw_turtle:
         LDA turtle_visible
         BNE @done                 ; already on screen
@@ -3963,7 +4031,9 @@ draw_turtle:
         LDA #1
         STA turtle_visible
         RTS
-@emote: JSR gen2_draw_emote       ; XOR-blit the SETSHAPE bitmap
+@emote: LDA #0                    ; colour path: this pass DRAWS (OR + pen)
+        STA em_erase
+        JSR gen2_draw_emote       ; XOR-blit (white) / OR-blit (colour) the shape
         LDA #1
         STA turtle_visible
 @done:  RTS
@@ -3983,7 +4053,10 @@ erase_turtle:
         LDA #0
         STA turtle_visible
         RTS
-@emote: JSR gen2_draw_emote       ; re-XOR the same bitmap -> erased
+@emote: JSR gen2_emote_vsync      ; begin the erase+reposition+redraw at V-blank
+        LDA #1                    ; colour path: this pass ERASES (XOR)
+        STA em_erase
+        JSR gen2_draw_emote       ; re-XOR the same dots -> erased
         LDA #0
         STA turtle_visible
 @done:  RTS
@@ -4038,6 +4111,27 @@ gen2_draw_emote:
         LDA tx_hi
         SBC #0
         STA em_x0h
+        ; Colour parity nudge: on HGR the two artifact hues of a palette family
+        ; (violet/green, or blue/orange) are chosen by the EVEN/ODD column the
+        ; dots land on. pen_hi_tbl (in the backend) picks the family bit; this
+        ; table picks the parity, so pen_color -> one of 4 hues. Shift the whole
+        ; sprite's left-column base by 0/1 px accordingly (white path skips it).
+        LDA em_color
+        BEQ @nopar
+        LDA em_erase
+        BNE @usepar               ; erase: reuse the parity the draw latched
+        LDX pen_color             ; draw: latch parity for this pen
+        LDA em_par_tbl,X
+        STA em_par
+@usepar:
+        CLC
+        LDA em_par
+        ADC em_x0
+        STA em_x0
+        LDA em_x0h
+        ADC #0
+        STA em_x0h
+@nopar:
         LDA spr_yoff
         ASL
         STA tmp
@@ -4045,8 +4139,19 @@ gen2_draw_emote:
         LDA ty_lo
         SBC tmp
         STA em_y0
-        LDA #1                    ; XOR
+        ; Blit mode. White emote (em_color=0): XOR both ways -- self-inverse, and
+        ; the 2x2 cell lights two adjacent dots so HGR collapses them to solid
+        ; white. Colour emote (em_color=1): OR+pen to draw (em_erase=0), XOR to
+        ; erase (em_erase=1); the inner loop then lights only the LEFT dot of
+        ; each cell, so every-other column carries the pen hue instead of white.
+        LDA em_color
+        BEQ @white
+        LDA em_erase              ; colour: 0 = OR draw (pen), 1 = XOR erase
         STA plot_mode
+        JMP @seedrow
+@white: LDA #1                    ; white: XOR
+        STA plot_mode
+@seedrow:
         LDA #0
         STA em_row
 @row:   LDA #0
@@ -4082,7 +4187,10 @@ gen2_draw_emote:
         TAX
         LDA gen2_em_bit,X         ; mask = $80 >> (col&7)
         AND tmp
-        BEQ @next                 ; bit clear -> transparent
+        BNE @lit                  ; set -> plot; else fall through to @next
+        JMP @next                 ; transparent (long jump: @next is out of
+                                  ; branch range past the two blit variants)
+@lit:
         ; 2x2 screen block: px (9-bit) = em_x0 + col*2, py = em_y0 + row*2
         LDA em_col
         ASL                       ; col*2
@@ -4098,6 +4206,8 @@ gen2_draw_emote:
         ADC em_y0
         STA pix_y
         JSR plot_set_x16          ; (px,   py)
+        LDA em_color
+        BNE @coldot               ; colour: LEFT dot only -> every-other column
         INC pix_x                 ; px+1 (16-bit)
         BNE @r1
         INC pix_xh
@@ -4109,19 +4219,36 @@ gen2_draw_emote:
         DEC pix_xh
 @r2:    DEC pix_x
         JSR plot_set_x16          ; (px,   py+1)
+        JMP @next
+@coldot:
+        INC pix_y                 ; the 2-tall left column: (px, py+1)
+        JSR plot_set_x16
+        DEC pix_y
 @next:  INC em_col
         LDA em_col
         CMP em_dim
-        BNE @col
+        BEQ @coldone              ; column loop back-branch is out of range now
+        JMP @col                  ;   (the colour variant grew the cell body)
+@coldone:
         INC em_row
         LDA em_row
         CMP em_dim
-        BNE @row
+        BEQ @rowdone
+        JMP @row
+@rowdone:
         LDA #0
         STA plot_mode
         RTS
 gen2_em_bit:
         .byte $80, $40, $20, $10, $08, $04, $02, $01
+; em_par_tbl: column-parity (0/1) per pen_color, tuned with the backend's
+;   pen_hi_tbl (family bit) so the DEMO2 narrator gets 4 recognisable HGR hues.
+;   Values verified against the live NTSC decode -- see the demo2 SETPC scheme.
+em_par_tbl:
+        ;      0    1    2    3    4    5    6    7
+        .byte   0,   0,   1,   1,   0,   0,   1,   1
+        ;      8    9   10   11   12   13   14   15
+        .byte   0,   1,   0,   1,   0,   1,   0,   0
 
 ; cmd_setshape (GEN2): look the name up in shape_table (shared with TMS),
 ;   latch the pattern pointer + size, switch to sprite mode and redraw. ARROW
@@ -4983,64 +5110,95 @@ demo2_script:
         ;     animate it in place, don't wipe the frame between cards. ---
         .byte "CS", $0D
         .byte "SETXY 140 46", $0D
+        ; --- Colour scheme (mirrors the TMS build's mood tinting; the GEN2
+        ;     emote blitter now honours pen_color, drawn every-other-column so
+        ;     HGR shows the hue). Signature tint per mood, from the 4 stable
+        ;     HGR artifact colours: green (3) upbeat, magenta (15) excited,
+        ;     blue (4) cool/down, orange (9) heated/bold:
+        ;       HAPPY/NORMAL -> 3 green   SUPER -> 15 magenta
+        ;       SHADES/SAD   -> 4 blue    GRUMPY/PIRATE -> 9 orange
+        ;     SETPC precedes each SETSHAPE whose tint changes; the emote's
+        ;     draw latches the pen so its later erase stays exact. ---
         ; --- Act 1: the card admits what it is ---
+        .byte "SETPC 3", $0D
         .byte "SETSHAPE ", $22, "HAPPY", $0D
         .byte "SAY ", $22, "I AM A 1ST-APRIL JOKE.", $0D
+        .byte "SETPC 4", $0D
         .byte "SETSHAPE ", $22, "SHADES", $0D
         .byte "SAY ", $22, "BY UNCLE BERNIE.", $0D
         ; --- Act 2: the annual April Fools' tradition ---
+        .byte "SETPC 3", $0D
         .byte "SETSHAPE ", $22, "NORMAL", $0D
         .byte "SAY ", $22, "EVERY APRIL FOOLS' DAY...", $0D
         .byte "SETSHAPE ", $22, "HAPPY", $0D
         .byte "SAY ", $22, "BERNIE SHOWS A FOOLISH", $0D
+        .byte "SETPC 15", $0D
         .byte "SETSHAPE ", $22, "SUPER", $0D
         .byte "SAY ", $22, "APPLE-1 PROJECT.", $0D
         ; --- Act 3: why April 1 -- a double meaning ---
+        .byte "SETPC 4", $0D
         .byte "SETSHAPE ", $22, "SHADES", $0D
         .byte "SAY ", $22, "APRIL 1 = FOOLS' DAY", $0D
+        .byte "SETPC 3", $0D
         .byte "SETSHAPE ", $22, "HAPPY", $0D
         .byte "SAY ", $22, "AND APPLE-1'S BIRTHDAY!", $0D
         ; --- Act 4: "foolish" does not mean broken ---
+        .byte "SETPC 9", $0D
         .byte "SETSHAPE ", $22, "GRUMPY", $0D
         .byte "SAY ", $22, "FOOLISH = NOT BROKEN!", $0D
+        .byte "SETPC 15", $0D
         .byte "SETSHAPE ", $22, "SUPER", $0D
         .byte "SAY ", $22, "I WORK JUST FINE.", $0D
+        .byte "SETPC 4", $0D
         .byte "SETSHAPE ", $22, "SAD", $0D
         .byte "SAY ", $22, "JUST TOO NICHE TO SELL.", $0D
         ; --- Act 5: who is Uncle Bernie ---
+        .byte "SETPC 3", $0D
         .byte "SETSHAPE ", $22, "NORMAL", $0D
         .byte "SAY ", $22, "BERNIE: RETIRED CHIP MAN.", $0D
+        .byte "SETPC 15", $0D
         .byte "SETSHAPE ", $22, "SUPER", $0D
         .byte "SAY ", $22, "50 YEARS IN SILICON.", $0D
+        .byte "SETPC 3", $0D
         .byte "SETSHAPE ", $22, "HAPPY", $0D
         .byte "SAY ", $22, "STAYS SHARP WITH THESE.", $0D
         ; --- Act 6: what the card actually is ---
         .byte "SETSHAPE ", $22, "NORMAL", $0D
         .byte "SAY ", $22, "I PAINT NTSC ARTIFACTS.", $0D
+        .byte "SETPC 15", $0D
         .byte "SETSHAPE ", $22, "SUPER", $0D
         .byte "SAY ", $22, "280 X 192, APPLE II WAY.", $0D
+        .byte "SETPC 9", $0D
         .byte "SETSHAPE ", $22, "PIRATE", $0D
         .byte "SAY ", $22, "70S-ERA CHIPS INSIDE.", $0D
         ; --- Act 7: the joke turned real ---
+        .byte "SETPC 3", $0D
         .byte "SETSHAPE ", $22, "HAPPY", $0D
         .byte "SAY ", $22, "THEN THE JOKE WENT VIRAL!", $0D
+        .byte "SETPC 15", $0D
         .byte "SETSHAPE ", $22, "SUPER", $0D
         .byte "SAY ", $22, "FANS ASKED: MAKE IT REAL!", $0D
+        .byte "SETPC 3", $0D
         .byte "SETSHAPE ", $22, "HAPPY", $0D
         .byte "SAY ", $22, "SO PCBS CAME FROM OSHPARK.", $0D
         ; --- Act 8: Bernie's motto ---
         .byte "SETSHAPE ", $22, "NORMAL", $0D
         .byte "SAY ", $22, "USE YOUR MIND...", $0D
+        .byte "SETPC 9", $0D
         .byte "SETSHAPE ", $22, "GRUMPY", $0D
         .byte "SAY ", $22, "...OR LOSE IT.", $0D
+        .byte "SETPC 4", $0D
         .byte "SETSHAPE ", $22, "SHADES", $0D
         .byte "SAY ", $22, "STAY HUNGRY,", $0D
+        .byte "SETPC 15", $0D
         .byte "SETSHAPE ", $22, "SUPER", $0D
         .byte "SAY ", $22, "STAY FOOLISH.", $0D
+        .byte "SETPC 3", $0D
         .byte "SETSHAPE ", $22, "HAPPY", $0D
         .byte "SAY ", $22, "A FOOL'S CARD, MADE REAL!", $0D
-        ; --- end of show: one final clear (not a per-frame reset) + restore
-        ;     the classic ARROW turtle so the REPL comes back clean ---
+        ; --- end of show: restore the white pen, one final clear (not a
+        ;     per-frame reset) + the classic ARROW turtle so the REPL is clean ---
+        .byte "SETPC 15", $0D
         .byte "CS", $0D
         .byte "SETSHAPE ", $22, "ARROW", $0D
         .byte 0

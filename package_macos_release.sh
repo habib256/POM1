@@ -18,7 +18,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-VERSION="${POM1_VERSION:-1.9.2}"   # release workflow overrides from the git tag
+VERSION="${POM1_VERSION:-1.9.3}"   # release workflow overrides from the git tag
 STAGING="dist/POM1.app"
 DMG_STAGE="dist/dmg-staging"
 DMGPATH="dist/POM1-macOS-v${VERSION}.dmg"

@@ -143,7 +143,7 @@ static void ball(unsigned char b, unsigned x, unsigned char y, unsigned char pha
 
 void main(void)
 {
-    unsigned char page = 1u, pidx, huddirty = 2u, i, j;
+    unsigned char page = 2u, pidx, huddirty = 2u, i, j;
     int  x[NB]  = { 119, 21, 238, 35 };       /* top-left corner (x mult. of 7)  */
     int  y[NB]  = {  49, 21,  28, 119 };
     int  vx[NB] = { HSTEP,  HSTEP, -HSTEP,  HSTEP };
@@ -167,8 +167,11 @@ void main(void)
         ophase[i][0] = ophase[i][1] = phase[i];
     }
 
+    /* gen2_hgr_init() already selected graphics + hires + full + page 1, so
+     * page 1 is DISPLAYED and page 2 is HIDDEN — we start by drawing into 2. */
     for (;;) {
-        gen2_graphics(); gen2_hires(); gen2_full();
+        /* `page` is always the HIDDEN buffer here; draw the next frame into it
+         * while the card keeps showing the other one. */
         pidx = (unsigned char)(page - 1u);
         gen2_set_draw_page(page);
 
@@ -180,19 +183,27 @@ void main(void)
             ophase[i][pidx] = phase[i];
         }
 
+        /* HUD counter: redraw for 2 frames after a change so BOTH buffers pick up
+         * the new value (huddirty starts at 2 → one redraw per page). Kept opaque
+         * and off the XOR path; the HUD sits at y>=162, below the FB=150 play area,
+         * so the balls never touch it. */
         if (huddirty) { gen2_hgr_putu_field(HUDX, HUDY, bounces, HUDW); --huddirty; }
 
-        /* Flip ONLY during V-blank: the hidden page is now fully drawn, but the
-         * $C254/$C255 switch takes effect mid-scan if we flip while the beam is
-         * in the visible area -> the top of the screen shows the new page and
-         * the bottom still the old one, i.e. a brief ghost of the previous ball
-         * position (tearing). Waiting for V-blank lands the flip between frames
-         * so the whole next frame shows the freshly drawn page cleanly. This
-         * also paces the loop to one frame per refresh. (gen2_wait_vbl only
-         * became usable once its sample threshold was fixed — it hung before.) */
-        gen2_wait_vbl();
+        /* DOUBLE BUFFER ONLY — no V-blank sync. The hidden page is now fully
+         * drawn, so show it and keep drawing into the other one. We deliberately
+         * do NOT gen2_wait_vbl() here: one C frame (XOR-erasing + redrawing the
+         * 48x48 ball plus three 16x16 balls, all in cc65 C) already takes longer
+         * than a single 60 Hz refresh, so the loop never outruns the beam — there
+         * is nothing to pace. Worse, gen2_wait_vbl() polls HST0 from C and its
+         * H-blank/V-blank discrimination is unreliable at C speed: an occasional
+         * misfire returned mid-scan, briefly ran the loop fast, and landed two
+         * opposite page flips inside one refresh -> a torn frame (new balls up
+         * top, the previous page's stale HUD at the bottom). Dropping the wait
+         * makes every iteration span at least one refresh, so at most one flip
+         * happens per frame and each shown page is always whole. */
         gen2_show_page();
-        page = (page == 1u) ? 2u : 1u;
+        page = (page == 1u) ? 2u : 1u;   /* the page just shown is now visible;
+                                            the other becomes the hidden target */
 
         /* Walls: bounds aligned on 7 in x (byte alignment preserved). */
         for (i = 0u; i < NB; ++i) {

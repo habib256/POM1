@@ -118,7 +118,7 @@ str_title:
         .byte $0D, " * HGR SIERPINSKI *", $0D
         .byte " GEN2 COLOR GRAPHICS CARD", $0D
         .byte " CENTERED BITWISE FRACTAL", $0D
-        .byte $0D, " DRAWING...", $0D, 0
+        .byte $0D, " CALCULATION...", $0D, 0
 
 str_draw:
         .byte " DRAWING...", $0D, 0
@@ -131,3 +131,4 @@ str_done:
 ; =============================================
 .include "hgr_tables.inc"
 .include "gen2_init.asm"
+

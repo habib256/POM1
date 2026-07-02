@@ -179,6 +179,10 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsPaintEditor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsConvert.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsImageDecode.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tmssprite/TmsSpriteModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/tmssprite/TmsSpriteEditor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrsprite/HgrSpriteBlit.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrsprite/HgrSpriteEditor.cpp
 )
 
 set(HEADERS
@@ -202,6 +206,10 @@ set(HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/ITmsPaintHost.h
     ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsPaintEditor.h
     ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsConvert.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/tmssprite/TmsSpriteModel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/tmssprite/TmsSpriteEditor.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrsprite/HgrSpriteBlit.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrsprite/HgrSpriteEditor.h
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintEditor.h
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrFont.h
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintModel.h
@@ -316,6 +324,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/bench
     ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint
     ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint
+    ${CMAKE_CURRENT_SOURCE_DIR}/tmssprite
+    ${CMAKE_CURRENT_SOURCE_DIR}/hgrsprite
 )
 
 # libresidfp (vendored, third_party/libresidfp). PUBLIC include dir on the
@@ -583,8 +593,8 @@ else()
             MACOSX_BUNDLE_EXECUTABLE_NAME       "POM1"
             MACOSX_BUNDLE_GUI_IDENTIFIER        "net.gistlabs.pom1"
             MACOSX_BUNDLE_ICON_FILE             "POM1.icns"
-            MACOSX_BUNDLE_BUNDLE_VERSION        "1.9.2"
-            MACOSX_BUNDLE_SHORT_VERSION_STRING  "1.9.2"
+            MACOSX_BUNDLE_BUNDLE_VERSION        "1.9.3"
+            MACOSX_BUNDLE_SHORT_VERSION_STRING  "1.9.3"
             MACOSX_BUNDLE_COPYRIGHT             "Copyright © 2000-2026 Verhille Arnaud. GPL-3.0."
             MACOSX_BUNDLE_INFO_PLIST
                 "${CMAKE_CURRENT_SOURCE_DIR}/packaging/macos/Info.plist.in"

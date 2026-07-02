@@ -104,8 +104,12 @@ void MainWindow_ImGui::createPom1()
     // hosts dereference it lazily at file-pick time to parent the native dialog.
     hgrPaintHost = std::make_unique<Pom1HgrPaintHost>(emulation.get(), &window);
     hgrPaintEditor = std::make_unique<hgrpaint::HgrPaintEditor>(hgrPaintHost.get());
+    // Sprite editor shares the HGR paint host (same IHgrPaintHost seam).
+    hgrSpriteEditor = std::make_unique<hgrsprite::HgrSpriteEditor>(hgrPaintHost.get());
     tmsPaintHost = std::make_unique<Pom1TmsPaintHost>(emulation.get(), &window);
     tmsPaintEditor = std::make_unique<tmspaint::TmsPaintEditor>(tmsPaintHost.get());
+    // Sprite editor shares the TMS paint host (same ITmsPaintHost seam).
+    tmsSpriteEditor = std::make_unique<tmssprite::TmsSpriteEditor>(tmsPaintHost.get());
     // Republie cpuRunning=true (le constructeur publie une fois avant runRequested.store(true)).
     emulation->startCpu();
     emulation->copySnapshot(uiSnapshot);
@@ -674,6 +678,20 @@ void MainWindow_ImGui::render()
             hgrPaintEditor->render(uiSnapshot.memory);
         ImGui::End();
     }
+    if (showHGRSpriteEditor) {
+        // Opening the sprite editor implies you want the GEN2 HGR card live so the
+        // Stamp/preview target a real page — auto-enable it (menu also does this).
+        if (!graphicsCardEnabled) {
+            graphicsCardEnabled = true;
+            emulation->setHgrFramebufferAttached(true);
+            showGraphicsCard = true;
+        }
+        ImGui::SetNextWindowSize(ImVec2(760, 560), ImGuiCond_FirstUseEver);
+        applyPendingLayout("HGR Sprite Editor");
+        if (ImGui::Begin("HGR Sprite Editor", &showHGRSpriteEditor))
+            hgrSpriteEditor->render(uiSnapshot.memory);
+        ImGui::End();
+    }
     if (showTMSPaintEditor) {
         // Opening the editor implies you want the TMS9918 card live so strokes
         // appear on screen — auto-plug it, mirroring the HGR Paint behaviour.
@@ -688,6 +706,20 @@ void MainWindow_ImGui::render()
         applyPendingLayout("TMS9918 Paint Editor");
         if (ImGui::Begin("TMS9918 Paint Editor", &showTMSPaintEditor))
             tmsPaintEditor->render();
+        ImGui::End();
+    }
+    if (showTMSSpriteEditor) {
+        // Opening the sprite editor implies you want the TMS9918 card live so the
+        // sprite you draw appears on screen — auto-plug it (menu also does this).
+        if (!tms9918Enabled) {
+            tms9918Enabled = true;
+            pendingTms9918Enable = true;
+            showTMS9918 = true;
+        }
+        ImGui::SetNextWindowSize(ImVec2(760, 560), ImGuiCond_FirstUseEver);
+        applyPendingLayout("TMS9918 Sprite Editor");
+        if (ImGui::Begin("TMS9918 Sprite Editor", &showTMSSpriteEditor))
+            tmsSpriteEditor->render();
         ImGui::End();
     }
     if (tms9918Enabled && showTMS9918) renderTMS9918Window();

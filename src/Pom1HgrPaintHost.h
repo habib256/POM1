@@ -46,6 +46,7 @@ public:
                       const std::string& defaultDir, const std::string& defaultName,
                       std::string& outPath) override;
     bool nativeFilePickerAvailable() const override;
+    std::vector<hgrpaint::DevSpriteCategory> devSprites() override;
     void* uploadTexture(void* tex, const void* rgba,
                         int w, int h, bool linear) override;
     void  destroyTexture(void* tex) override;
@@ -58,6 +59,10 @@ private:
     std::vector<uint8_t> scratch_;     // 64 KB scratch the page is rendered through
     int  batchDepth_ = 0;              // begin/endBatch nesting depth (reentrant)
     std::vector<std::pair<uint16_t, uint8_t>> batch_;   // coalesced writes
+
+    // Lazily-parsed built-in HGR sprite library (dev/lib/gen2/sprites/*.asm).
+    std::vector<hgrpaint::DevSpriteCategory> devSpritesCache_;
+    bool devSpritesLoaded_ = false;
 };
 
 #endif // POM1_HGRPAINT_HOST_H

@@ -982,6 +982,43 @@ target_include_directories(test_tms_paint_plot PRIVATE
 add_test(NAME tms_paint_plot_smoke COMMAND test_tms_paint_plot)
 set_tests_properties(tms_paint_plot_smoke PROPERTIES TIMEOUT 5)
 
+# -- TMS9918 Sprite model smoke test ------------------------------------------
+# Pins the pure sprite-VRAM addressing of the TMS9918 Sprite editor (tmssprite::
+# helpers) cross-checked against the real TMS9918 sprite renderer: it installs the
+# model's canonical Graphics-I backdrop + registers, draws 8×8 / 16×16 sprite
+# pixels, places the sprite via the SAT, renders through TMS9918::renderToBuffer,
+# and asserts the displayed pixels == kPalette[colour] (set) / backdrop (clear),
+# incl. all four 16×16 quadrants + the Early-Clock shift. No GL/ImGui dependency.
+add_executable(test_tms_sprite_plot
+    tms_sprite_plot_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/tmssprite/TmsSpriteModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/TMS9918.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
+)
+target_include_directories(test_tms_sprite_plot PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+    ${CMAKE_SOURCE_DIR}/tmssprite)
+add_test(NAME tms_sprite_plot_smoke COMMAND test_tms_sprite_plot)
+set_tests_properties(tms_sprite_plot_smoke PROPERTIES TIMEOUT 5)
+
+# -- GEN2 HGR Sprite blit smoke test ------------------------------------------
+# Pins the pure byte-placement logic of the HGR Sprite editor (hgrsprite::extract
+# / stamp) against hgrpaint's Apple II row interleave: draws a shape through the
+# (already-pinned) hgrpaint model, extracts the W×H byte rectangle, stamps it into
+# a fresh page at a shifted spot, and asserts every lit pixel reappears shifted +
+# off-page cells are clipped. No GL/ImGui/emulator dependency.
+add_executable(test_hgr_sprite_blit
+    hgr_sprite_blit_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/hgrsprite/HgrSpriteBlit.cpp
+    ${CMAKE_SOURCE_DIR}/hgrpaint/HgrPaintModel.cpp
+)
+target_include_directories(test_hgr_sprite_blit PRIVATE
+    ${CMAKE_SOURCE_DIR}/hgrpaint
+    ${CMAKE_SOURCE_DIR}/hgrsprite)
+add_test(NAME hgr_sprite_blit_smoke COMMAND test_hgr_sprite_blit)
+set_tests_properties(hgr_sprite_blit_smoke PROPERTIES TIMEOUT 5)
+
 # -- TMS9918 image-import smoke test ------------------------------------------
 # Pins the Cam16 metric + the TmsConvert image→VRAM pipeline (tmspaint::
 # imageToTmsVram) cross-checked against the real TMS9918 renderer: solid-palette-

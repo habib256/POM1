@@ -3447,6 +3447,13 @@ draw_title_tms:
 ; in play_loop.
 ; =============================================
 draw_title_sprites:
+        ; Gate the SAT rebuild to VBlank. This runs during active display
+        ; (initial title draw + the title_wait_key poll loop, which re-calls
+        ; this every keypoll), so rebuilding the SAT ungated lets the raster
+        ; scan it mid-rewrite → torn/garbled title aliens on real silicon.
+        ; Mirror render_sprites' gate: WAIT_VBLANK then the pad18 cushion
+        ; across the exit-BIT → STA VDP_CTRL boundary.
+        WAIT_VBLANK
         JSR     tms9918_pad18   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
         LDA #$00
         STA VDP_CTRL
@@ -3631,6 +3638,9 @@ draw_help_tms:
 
 
 draw_help_sprites:
+        ; Gate the SAT rebuild to VBlank — same active-display hazard as
+        ; draw_title_sprites (help/page-2 screen). Mirror render_sprites.
+        WAIT_VBLANK
         JSR     tms9918_pad18   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
         LDA #$00
         STA VDP_CTRL
