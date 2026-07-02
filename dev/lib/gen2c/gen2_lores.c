@@ -16,6 +16,7 @@ static void gen2_lores_build(void)
 {
     unsigned r, a;
     if (gen2_lo_ready) return;
+    if (!gen2_lo_base) gen2_lo_base = 0x04u;   /* BSS default: page 1 */
     for (r = 0; r < 24u; ++r) {
         /* base + $80*(r&7) + $28*(r>>3); r>>3 is only 0,1,2 so add directly. */
         a = ((unsigned)gen2_lo_base << 8) + ((unsigned)(r & 7u) << 7);
@@ -42,12 +43,15 @@ void gen2_lores_clear(unsigned char color)
      * card DRAM) a page at a time with an 8-bit index. Four base pointers keep
      * the inner store a simple (ptr),Y — page 1 ($0400) or page 2 ($0800). */
     unsigned char v = (unsigned char)((color & 0x0Fu) | (color << 4));
-    unsigned base = (unsigned)gen2_lo_base << 8;
-    unsigned char *p0 = (unsigned char *)(base);
-    unsigned char *p1 = (unsigned char *)(base + 0x100u);
-    unsigned char *p2 = (unsigned char *)(base + 0x200u);
-    unsigned char *p3 = (unsigned char *)(base + 0x300u);
+    unsigned base;
+    unsigned char *p0, *p1, *p2, *p3;
     unsigned char i = 0;
+    if (!gen2_lo_base) gen2_lo_base = 0x04u;   /* BSS default: page 1 */
+    base = (unsigned)gen2_lo_base << 8;
+    p0 = (unsigned char *)(base);
+    p1 = (unsigned char *)(base + 0x100u);
+    p2 = (unsigned char *)(base + 0x200u);
+    p3 = (unsigned char *)(base + 0x300u);
     do {
         p0[i] = v;
         p1[i] = v;

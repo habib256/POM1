@@ -217,7 +217,8 @@ void main(void)
     }
 
     /* Keep the "0" on screen for a moment, play the fireworks finale, then hand
-     * back to the WOZ Monitor (no-return jump to $FF1F — nothing runs after). */
+     * back to the WOZ Monitor (no-return jump to $FF1A, the "\" prompt entry —
+     * nothing runs after). */
     spin(TICK_SPINS);
     fireworks_finale();
     woz_mon();

@@ -121,13 +121,16 @@ SCENARIOS = [
     ("GAME5-upper-Screen1", "Codetank_GAME5.rom", "upper",
      [(10 * M, "HI"), (12 * M, "\r")],
      [8 * M, 16 * M]),
-    # GAME6 lower — menu -> Maze3D (1, run-in-place $4200). Title waits
-    # for a key (RNG seed), then AZERTY moves: Z=forward D=turn-right
-    # M=map toggle.
+    # GAME6 lower — menu -> Maze3D (1, run-in-place $4200). RETURN at 8 M
+    # dismisses the title (its keycode seeds the maze — key VALUES only,
+    # paste-jitter-proof); the help screen auto-dismisses after ~3 s, so
+    # gameplay starts ~11.8 M. AZERTY moves: Z=forward D=turn-right
+    # M=map toggle. First checkpoint = 3D corridor after the Z move,
+    # second = the top-down dungeon map.
     ("GAME6-lower-Maze3D", "Codetank_GAME6.rom", "lower",
      [(6 * M, "1"), (8 * M, "\r"), (12 * M, "z"), (15 * M, "d"),
       (18 * M, "m")],
-     [11 * M, 20 * M]),
+     [13 * M, 20 * M]),
     # GAME6 lower — menu -> OrbitalPool (2, packed ROM->RAM $0280, state
     # page relocated to $0F00). A=angle, SPACE=fire.
     ("GAME6-lower-OrbitalPool", "Codetank_GAME6.rom", "lower",

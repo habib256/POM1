@@ -31,7 +31,12 @@
 ; Silicon-strict: the densest path is console_scroll, which streams 23
 ; lines * 40 bytes = 920 reads + 920 writes + a 40-byte clear of the new
 ; bottom line. Each STA VDP_DATA is followed by a 40-iter inner loop body
-; that already eats >= 12c, well above the 8c floor.
+; that already eats >= 12c. Text-mode active display serves dense CPU
+; access slots in POM1's openMSX tables (worst active gap ~8c), so this
+; passes silicon-strict. Real-silicon caveat: the drop floor measured in
+; active Mode I/II is ~16c (doc/TMS9918_TRANSFER_WINDOWS.md) — if the
+; scroll ever drops on real hardware, bracket it with vdp_display_off /
+; vdp_display_on (tms9918_pad.asm) to run it in a free zone.
 ; ============================================================================
 
         .import tms9918_pad18  ; silicon-strict pad18-v4 (helper from tms9918_pad.asm)

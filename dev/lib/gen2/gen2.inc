@@ -20,6 +20,13 @@
 ; program relies on before displaying anything. JSR gen2_hgr_init or
 ; gen2_lores_init from dev/lib/gen2/gen2_init.asm (or link gen2_blit.s from C).
 ;
+; The framebuffer SRAM is indeterminate too, and the card has NO display-enable
+; bit — so a HIRES program that flips modes before clearing $2000-$3FFF shows
+; 8 KB of SRAM junk while it clears. gen2_hgr_init_clear (gen2_init.asm) is the
+; blank-first init: it scrubs page 1 while the display is parked on TEXT, THEN
+; flips to HIRES — the order is the whole point. On exit, restore the monitor-
+; visible state before leaving: JSR gen2_text_restore / JMP WOZMON ($FF1A).
+;
 ; cc65 include path: dev/lib/gen2/
 ; ============================================================================
 

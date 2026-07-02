@@ -193,6 +193,14 @@ ch_cy:      .res 1     ; $3B    row    0..23
 ch_code:    .res 1     ; $3C
 ch_idx:     .res 1     ; $3D
 
+; --- movement scratch ---
+mv_dir:     .res 1     ; try_move's direction. MUST NOT live in tmp:
+                       ; cell_index_xy does STX tmp and would clobber it
+                       ; (the historical game-breaking movement bug)
+
+; --- wait_key timeout counter (bits 16-23) ---
+wk_hi:      .res 1
+
 ; --- scratch for fill / map ---
 fl_y0:      .res 1     ; $3E
 fl_y1:      .res 1
@@ -216,12 +224,12 @@ main:
                                 ; previous program would shift every register
                                 ; write below by one byte. POM1 masks this;
                                 ; the chip does not.
-        ; PRNG seed is a CONSTANT, so a scripted --paste-at-cycle session is
-        ; fully deterministic (noise-invariance gate relies on it). On real
-        ; hardware variety comes from key timing: wait_key stirs prng_lo every
-        ; ~23-cycle polling iteration and EORs in each keycode, so the human
-        ; title-screen keypress alone yields a different maze every game
-        ; (Snake-style key-timing entropy).
+        ; PRNG seed is a CONSTANT and wait_key mixes in KEY VALUES only
+        ; (never a polling counter — see the entropy contract at wait_key),
+        ; so a scripted --paste-at-cycle session is fully deterministic
+        ; regardless of host-load paste jitter (noise-invariance gate).
+        ; Real hardware gets variety the TMS_Snake way: title/help accept
+        ; ANY key, each distinct keycode seeds a different dungeon.
         LDA #$5A
         STA prng_lo
         LDA #$3C
@@ -407,16 +415,22 @@ play_input:
 ; =============================================
 ; try_move: attempt to move in direction A.
 ; If blocked by wall, ignore. After move, check exit + mob spawn.
+; BUG HISTORY (juillet 2026): the direction used to be saved in tmp —
+; but cell_index_xy does STX tmp, so the direction was silently replaced
+; by p_col before the very first compare. Every move key thus moved in
+; the direction equal to the player's COLUMN NUMBER (usually blocked
+; north at col 0): the game was never walkable. Direction now lives in
+; the dedicated mv_dir.
 ; =============================================
 try_move:
-        STA tmp                 ; save direction
+        STA mv_dir              ; save direction (cell_index_xy-proof)
         LDX p_col
         LDY p_row
-        JSR cell_index_xy       ; A = idx
+        JSR cell_index_xy       ; A = idx (clobbers tmp!)
         TAX
         LDA grid,X
         STA tmp2                ; current cell flags
-        LDA tmp
+        LDA mv_dir
         CMP #DIR_N
         BNE @ne
         LDA tmp2
@@ -747,20 +761,35 @@ random:
         RTS
 
 ; =============================================
-; wait_key: spin until key, also stir entropy.
+; wait_key: spin until key, stir entropy with the KEY VALUE (only).
 ; Reads KBD only once (a second read clears the strobe and would
 ; consume a fresh queued character if any).
 ;
-; A 24-bit polling counter gives the loop a hard stop after a few
-; seconds of CPU time; if it fires we return $A0 (a synthetic SPACE)
-; so the title / help / win / lose screens can never wedge the game
-; on a sticky keyboard / focus issue.  In normal use a real keypress
-; trips the KBDCR test long before the counter saturates.
+; ENTROPY CONTRACT (juillet 2026, Snake idiom): the polling loop must
+; NOT touch the PRNG. An older revision INC'd prng_lo every iteration
+; ("raw timer" seeding) — under POM1's --paste-at-cycle a few thousand
+; cycles of host-load slice jitter in key delivery then produced a
+; COMPLETELY different maze per run, breaking the noise-invariance /
+; determinism gate. Mixing only the key VALUE is paste-jitter-proof:
+; the dungeon depends solely on WHICH keys were pressed before
+; generation. On real hardware variety comes from the same place as
+; TMS_Snake's: the title/help screens accept ANY key, so each distinct
+; key press seeds a different dungeon, and in-game combat rolls keep
+; consuming draws state-dependently.
+;
+; A 24-bit polling counter gives the loop a hard stop after ~3 s of
+; CPU time; if it fires we return $A0 (a synthetic SPACE) so the
+; title / help / win / lose screens can never wedge the game on a
+; sticky keyboard / focus issue (and double as a slow attract mode).
+; In normal use a real keypress trips the KBDCR test long before the
+; counter saturates. In gameplay/combat the synthetic SPACE is ignored
+; WITHOUT a repaint (see play_input / run_combat).
 ; =============================================
 wait_key:
         LDA #0
-        STA vdp_addr_lo         ; wkey_lo
-        STA vdp_addr_hi         ; wkey_md
+        STA vdp_addr_lo         ; wkey bits 0-7
+        STA vdp_addr_hi         ; wkey bits 8-15
+        STA wk_hi               ; wkey bits 16-23
 @spin:
         LDA KBDCR
         BPL @nokey
@@ -771,14 +800,13 @@ wait_key:
         PLA
         RTS
 @nokey:
-        INC prng_lo
-        BNE @t1
-        INC prng_hi
-@t1:    INC vdp_addr_lo
+        INC vdp_addr_lo
         BNE @spin
         INC vdp_addr_hi
-        LDA vdp_addr_hi
-        CMP #$80                ; 128*256 iters * ~23c = ~0.7 s at 1 MHz
+        BNE @spin
+        INC wk_hi
+        LDA wk_hi
+        CMP #3                  ; 3 * 65536 iters * ~15c = ~2.9 s at 1 MHz
         BCC @spin
         ; timeout: synthetic SPACE so screens still advance
         LDA #$A0
@@ -889,15 +917,11 @@ init_sat:
 ; clear_bitmap - write 0 to all 6144 pattern bytes
 ; =============================================
 clear_bitmap:
-        LDX #24                ; full bitmap, 24 char rows (screens)
-        BNE clear_pages        ; X != 0 -> always taken
-; clear_view: gameplay variant — clears char rows 0..21 only. Row 22 is
-; the HUD, fully rewritten by draw_hud_3d every frame (fixed layout,
-; space-padded digits), and row 23 is never drawn. Saves 512 byte-writes
-; per repaint and kills HUD flicker.
-clear_view:
-        LDX #22
-clear_pages:
+        LDX #24                ; 24 char rows * 256 B = 6144 B. NOTE: a
+                               ; "skip the HUD row" variant is NOT safe —
+                               ; the 3D view bleeds into rows 22-23
+                               ; (frame_by[0] = 191), stale wall art would
+                               ; linger under the HUD.
         LDA #$00
         STA VDP_CTRL
         JSR     tms9918_pad12   ; +18c silicon-strict (back-to-back CTRL store)
@@ -1700,7 +1724,7 @@ show_lose:
 render_3d:
         ; Sync to VBlank before the full 3D-scene rebuild burst.
         WAIT_VBLANK
-        JSR clear_view          ; rows 0..21; HUD row is rewritten below
+        JSR clear_bitmap
 
         ; floor & ceiling base lines (horizon at y=96)
         LDA #0
@@ -2425,9 +2449,7 @@ write_decimal_2d:
 render_map:
         ; Sync to VBlank before the top-down map rebuild burst.
         WAIT_VBLANK
-        JSR clear_view          ; rows 0..21 — keeps the last HUD line
-                                ; (row 22) visible under the map, and it
-                                ; is only ever redrawn by draw_hud_3d
+        JSR clear_bitmap
         LDA #4
         STA ch_cx
         LDA #1
@@ -2460,29 +2482,31 @@ render_map:
         STA fl_x0
         JSR vline
 
-        ; walls between cells
-        ; for each cell (col,row): if NORTH passage missing -> top wall; if EAST missing -> right wall.
-        ; Actually we already drew the outer border, so internal walls only.
-        LDY #0                  ; row
-@yloop: STY tmp2
-        LDX #0                  ; col
-@xloop: STX tmp
-        ; cell index = row*NCOLS + col
-        LDA row_offset,Y
-        CLC
-        ADC tmp
+        ; walls between cells — loop indices live in rd_col/rd_row (free
+        ; during map rendering). BUG HISTORY (juillet 2026): they used to
+        ; live in tmp/tmp2, but cell_index_xy, calc_pix_addr and the line
+        ; primitives all clobber tmp — after the first drawn wall the
+        ; column index turned to garbage and the map came out empty but
+        ; for a couple of random ticks.
+        LDA #0
+        STA rd_row
+@yloop: LDA #0
+        STA rd_col
+@xloop: LDX rd_col
+        LDY rd_row
+        JSR cell_index_xy       ; A = row*NCOLS + col (clobbers tmp)
         TAX
         LDA grid,X
         STA rd_cell
-        ; --- right wall: if EAST passage NOT set and col<NCOLS-1, draw vertical line ---
-        LDA tmp
+        ; --- right wall: if EAST passage NOT set and col<NCOLS-1 ---
+        LDA rd_col
         CMP #(NCOLS-1)
         BCS @no_right
         LDA rd_cell
         AND #EAST_BIT
         BNE @no_right
-        ; vertical line at x = 40 + (col+1)*16, y from 24+row*16 .. 24+(row+1)*16
-        LDA tmp
+        ; vertical line at x = 40+(col+1)*16, y 24+row*16 .. 24+(row+1)*16
+        LDA rd_col
         CLC
         ADC #1
         ASL
@@ -2492,7 +2516,7 @@ render_map:
         CLC
         ADC #40
         STA fl_x0
-        LDA tmp2
+        LDA rd_row
         ASL
         ASL
         ASL
@@ -2505,24 +2529,21 @@ render_map:
         STA fl_y1
         JSR vline
 @no_right:
-        ; --- bottom wall: if SOUTH passage missing (south_neighbor.NORTH==0) and row<NROWS-1 ---
-        LDA tmp2
+        ; --- bottom wall: if SOUTH passage missing (south neighbor's
+        ;     NORTH bit clear) and row<NROWS-1 ---
+        LDA rd_row
         CMP #(NROWS-1)
         BCS @no_bot
-        ; load south neighbor
-        LDA tmp2
-        CLC
-        ADC #1
-        TAY
-        LDA row_offset,Y
-        CLC
-        ADC tmp
+        LDX rd_col
+        LDY rd_row
+        INY
+        JSR cell_index_xy       ; south neighbor index
         TAX
         LDA grid,X
         AND #NORTH_BIT
-        BNE @no_bot_restore
-        ; horizontal line at y = 24 + (row+1)*16, x from 40+col*16 .. 40+(col+1)*16
-        LDA tmp
+        BNE @no_bot
+        ; horizontal line at y = 24+(row+1)*16, x 40+col*16 .. +16
+        LDA rd_col
         ASL
         ASL
         ASL
@@ -2530,17 +2551,10 @@ render_map:
         CLC
         ADC #40
         STA fl_x0
-        LDA tmp
         CLC
-        ADC #1
-        ASL
-        ASL
-        ASL
-        ASL
-        CLC
-        ADC #40
+        ADC #16
         STA fl_x1
-        LDA tmp2
+        LDA rd_row
         CLC
         ADC #1
         ASL
@@ -2551,18 +2565,16 @@ render_map:
         ADC #24
         STA fl_y0
         JSR hline
-@no_bot_restore:
-        LDY tmp2                ; restore Y for outer loop
 @no_bot:
-        LDY tmp2
-        LDX tmp
-        INX
-        CPX #NCOLS
-        BEQ @yend
+        INC rd_col
+        LDA rd_col
+        CMP #NCOLS
+        BCS @yend
         JMP @xloop
-@yend:  INY
-        CPY #NROWS
-        BEQ @ydone
+@yend:  INC rd_row
+        LDA rd_row
+        CMP #NROWS
+        BCS @ydone
         JMP @yloop
 @ydone:
 
@@ -2795,10 +2807,12 @@ draw_combat_screen:
         JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         JSR print_str_ax
 
-        ; Monster name
+        ; Monster name. BUG HISTORY (juillet 2026): an ASL doubled the
+        ; type before indexing, but mob_names_lo/hi are PARALLEL byte
+        ; tables indexed by type directly — orcs displayed the mage's
+        ; name and mages read past the table ("R 3 ?" garbage).
         LDX cur_mob
         LDA mob_type,X
-        ASL                     ; idx*2 for table of pointers
         TAX
         LDA mob_names_lo,X
         STA str_lo

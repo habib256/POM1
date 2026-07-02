@@ -6,6 +6,7 @@
 #
 #     LIBDIR    := ../../../lib
 #     TMS9918C  := $(LIBDIR)/tms9918c
+#     GFX       := $(LIBDIR)/gfx
 #     include $(TMS9918C)/tms9918c.mk
 #
 #     # Minimal sprite program:
@@ -15,7 +16,12 @@
 #     # OR include the lot:
 #     SRCS := main.c $(TMS9918C_ALL_SRCS)
 #
-#     INCS := $(TMS9918C_INCS)
+#     INCS := $(TMS9918C_INCS) -I $(GFX)
+#
+# screen2_geom.c and printlib.c #include gfx.h and call gfx_*, so any SRCS
+# set that pulls them (incl. TMS9918C_ALL_SRCS) also needs -I $(GFX) and
+# gfx-tms.lib (built by `make -C dev/lib/gfx tms`) after your own sources
+# on the link line.
 #
 # --- Per-family source sets -----------------------------------------------
 

@@ -51,6 +51,7 @@ GEN2C_ALL_SRCS := $(GEN2C_CORE_SRCS) \
                   $(GEN2C_GEOM_SRCS) \
                   $(GEN2C_LORES_SRCS)
 
-# Include paths. GEN2C_GEOM_SRCS calls gfx_*, so the consumer must also link
-# gfx-gen2.lib (built by `make -C dev/lib/gfx gen2`) when it includes it.
+# Include paths. GEN2C_GEOM_SRCS *and* GEN2C_TEXT_SRCS call gfx_* (gen2_text.c
+# uses gfx_hexstr for putx), so the consumer must also link gfx-gen2.lib
+# (built by `make -C dev/lib/gfx gen2`) when it includes either.
 GEN2C_INCS := -I $(GEN2C)

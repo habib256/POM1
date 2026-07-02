@@ -32,8 +32,11 @@
 ;
 ; Silicon-strict timing: every STA VDP_DATA in this module is followed by
 ; a paired STA/INX/CPX/BNE that already eats >= 8 cycles, OR by an explicit
-; NOP pad. The display is blanked (R1 = $80) during upload_charmap so even
-; the densest burst sees an open access window.
+; pad. Text-mode active display serves dense CPU access slots in POM1's
+; openMSX tables (worst active gap ~8c), so this passes silicon-strict;
+; the real-silicon drop floor measured in active Mode I/II is ~16c
+; (doc/TMS9918_TRANSFER_WINDOWS.md). The display is blanked (R1 = $80)
+; during upload_charmap so the densest burst runs in a free zone anyway.
 ; ============================================================================
 
         .import tms9918_pad18  ; silicon-strict pad18-v4 (helper from tms9918_pad.asm)

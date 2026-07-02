@@ -20,13 +20,14 @@ VDP_CTRL = $CC01        ; VDP register / address port (write twice = setup)
 ; index ORed with $80 in CTRL — see tms9918m2.asm:init_vdp_g2 for an example.
 
 ; ---------------------------------------------------------------------------
-; VRAM access timing — silicon-strict back-to-back gating. Contract: 12c.
+; VRAM access timing — silicon-strict back-to-back gating. Contract: 18c pad
+; (22c STA→STA).
 ;
 ; Real TMS9918A silicon opens a CPU access window only periodically in Mode I/II
 ; with the display active (cf. sketchs/doc/Programming_TMS9918.md §17 Bug N°1).
 ; Validated on Claudio Parmigiani's Replica-1: the chip DROPS CPU writes spaced
 ; under ~16c during active display — far stricter than the openMSX slot-table's
-; ~7.5c estimate. The contract is a single JSR tms9918_pad18 between back-to-back
+; ~8c worst active gap. The contract is a single JSR tms9918_pad18 between back-to-back
 ; VDP writes: an 18c gap (the pad alone), or 22c measured STA→STA (4c store + 18c
 ; pad) — clearing the ~16c silicon floor with margin. The retired 12c pad gave
 ; only a 16c STA→STA gap, exactly at the floor (no margin). 18c is the default:
@@ -38,9 +39,11 @@ VDP_CTRL = $CC01        ; VDP register / address port (write twice = setup)
 ; hardened mode; see tms9918_pad.asm).
 ;
 ; POM1 enforces this when Hardware → Silicon Strict is ON (default for every
-; preset except Multiplexing Fantasy): TMS9918.cpp floors the active-display
-; drain to 16c (kMinActiveDrainCycles). Writes that arrive too fast are silently
-; DROPPED — exactly like silicon.
+; preset except Multiplexing Fantasy): TMS9918.cpp drains writes through the
+; pure openMSX per-mode CPU-access slot tables (worst active-display gap ~8c);
+; writes that arrive faster than the slots drain are silently DROPPED. The
+; ~16c figure above is the real-silicon margin the 22c contract clears — the
+; emulator's slot tables are the laxer bound, real hardware the stricter one.
 ;
 ; Padding strategy: prefer `JSR tms9918_pad18` over NOPs (defined in
 ; tms9918_pad.asm). 3 bytes for 18c idle vs 9 NOPs for the same 18c — 3×

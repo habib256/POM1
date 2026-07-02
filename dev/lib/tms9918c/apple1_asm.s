@@ -7,11 +7,19 @@
 ; ----------------------------------------------------------------------------
 ;
 ; Apple-1 Wozmon hooks — P-LAB / POM1 CodeTank preset
-.export _woz_putc, _woz_print_hex, _woz_mon, _apple1_getkey
+.export _woz_putc, _woz_print_hex, _woz_mon, _woz_mon_silent, _apple1_getkey
 
 ECHO    = $FFEF
 PRBYTE  = $FFDC
-WOZMON  = $FF1F
+; $FF1A is the Wozmon PROMPT entry: prints "\" + CR then drops into the line
+; editor — the house rule (dev/lib/apple1/apple1.inc). woz_mon() therefore
+; leaves the familiar "\" prompt, matching dev/lib/apple1c and dev/lib/gen2c
+; (this runtime historically jumped $FF1F — the silent post-prompt warm
+; restart, which looks like a hang to the user; unified June 2026).
+; woz_mon_silent() keeps $FF1F for callers that just printed their own
+; status line and genuinely want the silent restart.
+WOZMON  = $FF1A
+WOZ_RST = $FF1F
 KEYCR   = $D011
 KEYDATA = $D010
 
@@ -26,6 +34,9 @@ _woz_print_hex:
 
 _woz_mon:
         jmp     WOZMON
+
+_woz_mon_silent:
+        jmp     WOZ_RST
 
 _apple1_getkey:
 wait:   lda     KEYCR

@@ -36,19 +36,23 @@ SRCS := $(GEN2C_CORE_SRCS) $(GEN2C_SPRMASK_SRCS) $(GEN2C_SPRENGINE_SRCS) \
 $(GFXLIB):
 	$(MAKE) -C $(GFX) gen2
 
-sprites: sprites_msk.h
-sprites_msk.h: sprites.txt $(TOOLS)/build_preshift_sprites.py
-	python3 $(TOOLS)/build_preshift_sprites.py sprites.txt --masked --halo 1 \
-	        -o sprites_msk.h
+# The sample masked bank LIVES IN THE LIB (dev/lib/gen2c/sprites_msk.h +
+# its ASCII source sprites_msk.txt): release packages bundle dev/ but not
+# sketchs/, and the DevBench GEN2-C target's include dirs point at the lib —
+# so a pasted copy of this demo resolves #include "sprites_msk.h" there.
+sprites: $(GEN2C)/sprites_msk.h
+$(GEN2C)/sprites_msk.h: $(GEN2C)/sprites_msk.txt $(TOOLS)/build_preshift_sprites.py
+	python3 $(TOOLS)/build_preshift_sprites.py $(GEN2C)/sprites_msk.txt \
+	        --masked --halo 1 -o $(GEN2C)/sprites_msk.h
 
 all: $(PROJECT).bin
 
-$(PROJECT).bin: $(PROJECT).c sprites_msk.h $(GEN2C)/gen2.h $(GFXLIB) $(GEN2CFG)
+$(PROJECT).bin: $(PROJECT).c $(GEN2C)/sprites_msk.h $(GEN2C)/gen2.h $(GFXLIB) $(GEN2CFG)
 	$(CL65) $(CFLAGS) -C $(GEN2CFG) $(INCS) $(PROJECT).c $(SRCS) $(GFXLIB) -o $(PROJECT).bin
 	@ls -l $(PROJECT).bin
 
 selftest: $(PROJECT)_test.bin
-$(PROJECT)_test.bin: $(PROJECT).c sprites_msk.h $(GEN2C)/gen2.h $(GFXLIB) $(GEN2CFG)
+$(PROJECT)_test.bin: $(PROJECT).c $(GEN2C)/sprites_msk.h $(GEN2C)/gen2.h $(GFXLIB) $(GEN2CFG)
 	$(CL65) $(CFLAGS) -DSPRENGINE_SELFTEST -C $(GEN2CFG) $(INCS) \
 	        $(PROJECT).c $(SRCS) $(GFXLIB) -o $(PROJECT)_test.bin
 	@ls -l $(PROJECT)_test.bin

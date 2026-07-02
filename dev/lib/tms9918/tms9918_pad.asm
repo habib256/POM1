@@ -13,10 +13,12 @@
 ; pad alone), or 22c measured STA->STA (4c store + 18c pad) between back-to-back
 ; STA VDP_DATA. Real TMS9918A silicon (validated on Claudio Parmigiani's
 ; Replica-1) drops CPU writes spaced under ~16c during active Mode I/II
-; display — far stricter than the openMSX slot-table's ~7.5c estimate. The old
+; display — far stricter than the openMSX slot-table's ~8c worst gap. The old
 ; 12c pad gave only a 16c STA->STA gap, sitting *exactly* at the silicon floor
-; (no margin); pad18's 22c clears it. POM1 models the floor in TMS9918.cpp
-; (kMinActiveDrainCycles = 16). The WRT_DATA_* macros in tms9918.inc and all
+; (no margin); pad18's 22c clears it. POM1 itself models access with the pure
+; openMSX per-mode slot tables (worst active-display CPU-slot gap ~8c) — the
+; ~16c figure is the real-silicon margin the 22c contract is sized to clear,
+; not an emulator constant. The WRT_DATA_* macros in tms9918.inc and all
 ; lib code use pad18; `tms9918_pad12` survives as a legacy alias that now
 ; resolves to pad18 (so any un-migrated call site still gets the safe 18c).
 ;
@@ -43,11 +45,14 @@
 ; helper itself = 4 bytes. This is THE silicon-strict default — a 22c STA->STA
 ; gap that clears the real chip's ~16c active-display floor with margin.
 ;
-; INVARIANT — flag-transparent: NOP and RTS leave every processor flag
-; untouched. Hot loops place `JSR tms9918_pad18` BETWEEN a CPX/CMP and its
-; branch (see sprite_triangle.asm and tms9918_text.asm) and rely on the
-; compare's Z/C surviving the call. Any future pad body MUST stay
-; flag-transparent (NOP-only filler) or those loops break silently.
+; INVARIANT — flag- AND register-transparent: NOP and RTS leave every
+; processor flag and every register (A/X/Y) untouched. Hot loops place
+; `JSR tms9918_pad18` BETWEEN a CPX/CMP and its branch (see
+; sprite_triangle.asm and tms9918_text.asm) and rely on the compare's Z/C
+; surviving the call; fill loops (basicrt_tms.s lr_fill) keep the fill byte
+; in A across the pad. Any future pad body MUST stay flag- and
+; register-transparent (NOP-only filler — no LDA/LDX/LDY/TAX/…) or those
+; loops break silently.
 tms9918_pad18:
         nop                     ; +2c
         nop                     ; +2c
@@ -86,9 +91,10 @@ tms9918_pad40:
 ;
 ; Use these to bracket any VRAM burst that runs after init_vdp_g{1,2} has
 ; left display ON. Strict-mode active-display slot density (Gfx12 ~19
-; slots/line) drops bytes from tight loops even with pad12 between writes;
-; blanking flips POM1 to slotsMsx1ScreenOff (~107 slots/line, ~2c apart)
-; where bursts always fit. See sketchs/doc/TMS9918-SPRITE_INIT.md § 6.4.
+; slots/line) drops bytes from unpadded tight loops and makes padded ones
+; crawl (22c/byte); blanking flips POM1 to slotsMsx1ScreenOff (~107
+; slots/line, ~2c apart) where bursts always fit with no per-byte pad.
+; See sketchs/doc/TMS9918-SPRITE_INIT.md § 6.4.
 ;
 ; Callers that need a non-default ON value (e.g. R1 = $C2 for 16x16 sprites,
 ; or $C3 for 16x16+mag) must do their own write and skip vdp_display_on.

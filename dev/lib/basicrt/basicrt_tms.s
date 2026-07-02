@@ -112,8 +112,8 @@ rt_line:
 ; call sites for either card. The pixels live in the TMS9918's private VRAM
 ; (pattern table $0000, banded name table $0800) instead of a memory-mapped
 ; Apple-II framebuffer, so every cell is a read-modify-write through the two VDP
-; ports, with a silicon-strict 12c gap (JSR tms9918_pad18) between back-to-back
-; VDP stores. Self-contained: needs only tms9918_pad18 from tms9918_pad.asm (the
+; ports, with a silicon-strict 18c pad (JSR tms9918_pad18, 22c STA-to-STA gap)
+; between back-to-back VDP stores. Self-contained: needs only tms9918_pad18 from tms9918_pad.asm (the
 ; hi-res VDP lib tms9918m2.o is NOT required for a lo-res-only program).
 ;
 ; Coordinate model mirrors sketchs/tms9918/applesoft_tms9918/tmsgfx.inc: Multicolor
@@ -125,7 +125,7 @@ RT_LR = .defined(RT_GR) .or .defined(RT_COLOR) .or .defined(RT_LORESPLOT) .or .d
 
 .if RT_LR
 .include "tms9918.inc"           ; VDP_DATA $CC00 / VDP_CTRL $CC01
-.import tms9918_pad18: absolute  ; silicon-strict 12c gap (tms9918_pad.asm)
+.import tms9918_pad18: absolute  ; silicon-strict 18c pad (tms9918_pad.asm)
 
 .segment "ZEROPAGE"
 lr_src: .res 2                   ; register-table pointer for lr_load_regs
@@ -142,8 +142,8 @@ lr_end:  .res 1                  ; HLIN/VLIN endpoint coordinate
 
 ; ---- VDP address latch + register loader (shared by GR/TEXT) ----------------
 ; lr_setw / lr_setr: arm the VRAM auto-increment write / read address from
-; lr_al:lr_ah. Each ends with a pad12 cushion, so the caller's first VDP_DATA
-; access lands >=24c after the command byte (matches tms9918m2 vdp_set_*).
+; lr_al:lr_ah. Each ends with a pad18 cushion, so the caller's first VDP_DATA
+; access lands >=30c after the command byte (matches tms9918m2 vdp_set_*).
 lr_setw:
         lda lr_al
         sta VDP_CTRL
@@ -183,7 +183,8 @@ lr_load_regs:
         rts
 
 ; lr_fill: fill VRAM. lr_al:lr_ah = start address, X = page count (256B units),
-; A = fill byte. tms9918_pad18 is a bare RTS, so A survives the inner loop.
+; A = fill byte. tms9918_pad18 is NOP×3+RTS and register-transparent (contract
+; pinned in tms9918_pad.asm's INVARIANT block), so A survives the inner loop.
 lr_fill:
         stx lr_end               ; reuse lr_end as the page counter (no GR active)
         pha
@@ -344,7 +345,7 @@ rt_loresplot:
         bcs @skip
         jsr lr_addr
         jsr lr_setr
-        jsr tms9918_pad18        ; +12c before the data read
+        jsr tms9918_pad18        ; +18c before the data read
         lda VDP_DATA
         sta lr_byte
         lda rt_x0
@@ -368,7 +369,7 @@ rt_loresplot:
         ora lr_byte
 @wr:    sta lr_byte
         jsr lr_setw
-        jsr tms9918_pad18        ; +12c before the data write
+        jsr tms9918_pad18        ; +18c before the data write
         lda lr_byte
         sta VDP_DATA
         jsr tms9918_pad18

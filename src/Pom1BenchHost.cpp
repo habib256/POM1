@@ -2652,6 +2652,69 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         }
         if (!cfgPath.empty() && logMeta.cfgPath.empty())
             logMeta.cfgPath = cfgPath;
+        // Pasted-source convenience (no sketch/Makefile context — proj.ok
+        // handles opened sketches via their EXTRA_ASM): auto-link the shared
+        // dev/lib/tms9918 modules the source references. Every TMS sketch
+        // paces its VDP accesses with `JSR tms9918_pad18/pad12` and the
+        // canonical exits use vdp_display_off, so a bare paste otherwise
+        // dies at ld65 with unresolved externals. A module is pulled in only
+        // when one of its symbols appears WITHOUT a local definition
+        // (`sym:`) — a self-contained sketch defining its own pad keeps
+        // linking alone, no duplicate-symbol trap.
+        if (!proj.ok && std::string(t.label).find("TMS9918") != std::string::npos &&
+            !devRoot_.empty()) {
+            struct LibSym { const char* sym; const char* file; };
+            static const LibSym kTmsLibSyms[] = {
+                { "tms9918_pad12",    "tms9918_pad.asm"       },
+                { "tms9918_pad18",    "tms9918_pad.asm"       },
+                { "tms9918_pad24",    "tms9918_pad.asm"       },
+                { "tms9918_pad40",    "tms9918_pad.asm"       },
+                { "vdp_display_off",  "tms9918_pad.asm"       },
+                { "vdp_display_on",   "tms9918_pad.asm"       },
+                { "init_vdp_g1",      "tms9918m1.asm"         },
+                { "init_vdp_g2",      "tms9918m2.asm"         },
+                { "arm_5s_trigger",   "tms9918_5strigger.asm" },
+                { "wait_5s_trigger",  "tms9918_5strigger.asm" },
+                { "vdp_write_a",      "tms9918_helpers.asm"   },
+                { "vdp_set_write_xy", "tms9918_helpers.asm"   },
+            };
+            std::vector<std::string> mods;
+            auto addMod = [&](const std::string& f) {
+                for (const auto& m : mods) if (m == f) return;
+                mods.push_back(f);
+            };
+            for (const auto& ls : kTmsLibSyms) {
+                if (src.find(ls.sym) == std::string::npos) continue;
+                if (src.find(std::string(ls.sym) + ":") != std::string::npos)
+                    continue;                       // defined locally — skip
+                addMod(ls.file);
+            }
+            // m1/m2/5strigger/helpers all JSR the pad themselves.
+            if (!mods.empty()) addMod("tms9918_pad.asm");
+            const fs::path tmsLib = fs::path(devRoot_) / "lib" / "tms9918";
+            int nMod = 0;
+            for (const auto& mfile : mods) {
+                const fs::path msrc = tmsLib / mfile;
+                if (!fs::exists(msrc, ec)) continue;
+                const fs::path mo = dir / ("pom1_bench_lib" +
+                                           std::to_string(nMod++) + ".o");
+                sweep.add(mo);
+                std::string mout;
+                const std::string mca = bench::shellQuote(ca65_) + " " + asmFlags +
+                    "-I " + bench::shellQuote(tmsLib.string()) + " " +
+                    bench::shellQuote(msrc.string()) + " -o " +
+                    bench::shellQuote(mo.string());
+                if (bench::runCapture(mca, mout) != 0) {
+                    parseErrorMarkers(mout, r.errors);
+                    r.console += "$ ca65 [auto-link " + mfile + "]\n" + mout
+                               + humanizeCc65(mout);
+                    r.status = "ca65 failed (lib module, see Build output)";
+                    return r;
+                }
+                r.console += "$ ca65 [auto-link " + mfile + "]\n";
+                extraObjs += " " + bench::shellQuote(mo.string());
+            }
+        }
         std::string out;
         const std::string ca = bench::shellQuote(ca65_) + " " + asmFlags +
             bench::shellQuote(srcS.string()) + " -o " + bench::shellQuote(objO.string());

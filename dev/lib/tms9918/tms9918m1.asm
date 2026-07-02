@@ -39,7 +39,7 @@
 
         .import tms9918_pad18  ; silicon-strict pad18-v4 (helper from tms9918_pad.asm)
 .include "apple1.inc"
-.include "tms9918.inc"  ; provides WRT_DATA_REG / WRT_DATA_VAL macros (pad40)
+.include "tms9918.inc"  ; provides WRT_DATA_REG / WRT_DATA_VAL macros (pad18)
 
 ; --- exported ZP slots -----------------------------------------------------
 .exportzp vdp_lo, vdp_hi, vdp_src_lo, vdp_src_hi, vdp_row, vdp_col
@@ -70,11 +70,11 @@ vdp_col:        .res 1
 ;   sprites, then re-arm R1. Self-sufficient — a caller that uploads nothing
 ;   still gets a clean, garbage-free chip (the wipe + SAT terminator run while
 ;   the display is blanked, so the burst rides the dense ScreenOff slots).
-;   The auto-patcher injects pad40 between intra-pair (value→cmd) and
-;   inter-iter (cmd→next-value via BNE @rg loop-back) writes. Even if the
-;   caller leaves R1 with display ON (Rogue boot after a game-switch from
-;   LOGO/Galaga), iter 1 (X=1) commits R1 with bit 6 cleared and the gate
-;   drops to 16c for the rest of init.
+;   pad18 calls bridge the intra-pair (value→cmd) and inter-iter
+;   (cmd→next-value via BNE @rg loop-back) writes. Even if the caller
+;   leaves R1 with display ON (Rogue boot after a game-switch from
+;   LOGO/Galaga), iter 1 (X=1) commits R1 with bit 6 cleared and the rest
+;   of init runs in the relaxed blanked-display window.
 ;
 ;   Always disable sprites on init — without this, random bistable VRAM
 ;   noise on power-on appears as floating sprites (CLAUDE.md gotcha). We
@@ -85,7 +85,7 @@ init_vdp_g1:
         ; Caller-gap cushion: covers the worst-case scenario where the
         ; caller's last VDP write was very recent (e.g. Rogue boot
         ; immediately after the menu's last STA VDP_CTRL).
-        JSR     tms9918_pad18   ; cross-caller cushion (40c)
+        JSR     tms9918_pad18   ; cross-caller cushion (18c)
         LDX     #0
 @rg:    LDA     vdp1_regs,X
         CPX     #1
@@ -156,7 +156,7 @@ wipe_all_vram:
 ;   rendering of slot 1+. Mirrors tms9918m2.asm::disable_sprites.
 ; ----------------------------------------------------------------------------
 disable_sprites:
-        JSR     tms9918_pad18   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
+        JSR     tms9918_pad18   ; MANUAL caller-gap cushion (18c)
         LDA     #$00
         STA     VDP_CTRL
         JSR     tms9918_pad18
@@ -180,7 +180,7 @@ disable_sprites:
 ;   colour byte at $2000 makes them invisible.
 ; ----------------------------------------------------------------------------
 clear_name_table:
-        JSR     tms9918_pad18   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
+        JSR     tms9918_pad18   ; MANUAL caller-gap cushion (18c)
         LDA     #$00
         STA     VDP_CTRL
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
@@ -191,7 +191,7 @@ clear_name_table:
         LDA     #$00
 @np:    LDY     #$00
 @nb:    STA     VDP_DATA
-        JSR     tms9918_pad18   ; silicon-strict 12c (loop-back inner @nb,
+        JSR     tms9918_pad18   ; silicon-strict 18c (loop-back inner @nb,
                                 ; raw inner gap = STA+INY+BNE = 9c)
         INY
         BNE     @nb
@@ -211,29 +211,29 @@ clear_name_table:
 ;   Caller writes data via STA VDP_DATA after this returns.
 ; ----------------------------------------------------------------------------
 vdp_set_write:
-        JSR     tms9918_pad18   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
+        JSR     tms9918_pad18   ; MANUAL caller-gap cushion (18c)
         LDA     vdp_lo
         STA     VDP_CTRL
-        JSR     tms9918_pad18   ; silicon-strict 12c (LDA zp + ORA bridge)
+        JSR     tms9918_pad18   ; silicon-strict 18c (LDA zp + ORA bridge)
         LDA     vdp_hi
         ORA     #$40            ; bit 6 = write
         STA     VDP_CTRL
         JSR     tms9918_pad18   ; cushion: caller's first STA VDP_DATA lands
-        RTS                     ; ≥ 24c+ after the cmd byte (12c+6c+6c=24c gap)
+        RTS                     ; ≥ 30c after the cmd byte (18c+6c+6c=30c gap)
 
 ; ----------------------------------------------------------------------------
 ; vdp_set_read: prep VDP for reads at vdp_lo:hi.
 ;   Caller reads via LDA VDP_DATA after this returns.
 ; ----------------------------------------------------------------------------
 vdp_set_read:
-        JSR     tms9918_pad18   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
+        JSR     tms9918_pad18   ; MANUAL caller-gap cushion (18c)
         LDA     vdp_lo
         STA     VDP_CTRL
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA zp/abs bridge)
         LDA     vdp_hi          ; bit 6 = 0 → read
         STA     VDP_CTRL
         JSR     tms9918_pad18   ; cushion: caller's first LDA VDP_DATA lands
-        RTS                     ; ≥ 24c+ after the cmd byte
+        RTS                     ; ≥ 30c after the cmd byte
 
 ; ----------------------------------------------------------------------------
 ; vdp_upload_a: copy A bytes from (vdp_src_lo:hi) to VDP_DATA.

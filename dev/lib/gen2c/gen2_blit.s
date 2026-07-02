@@ -27,7 +27,9 @@
 ; so no bounds checking is done here.
 
         .export   _gen2_hgr_init
+        .export   _gen2_hgr_init_clear
         .export   _gen2_lores_init
+        .export   _gen2_text_restore
         .export   _gen2_hgr_clear
         .export   _gen2_blit_glyph
         .export   _gen2_blit_glyph_color
@@ -962,8 +964,18 @@ _gen2_preshift_xor_run:
 ; stays in A for every STA, so nothing reloads it; ptr1 walks the pages by its
 ; high byte ($20..$3F). This is the explicit asm form of the old cc65 C loop —
 ; the tightest 8 KB fill the 6502 can do (STA (ptr),Y / INY / BNE).
+; _gen2_hgr_base is BSS (0 = unset, gen2_init.c) and gen2_hgr_clear() is a C
+; entry callable BEFORE any table build — lazy-default it here too, or a
+; pre-init call would scrub $0000-$1FFF (zero page + stack). The other asm
+; routines in this file never read _gen2_hgr_base: they go through the
+; _gen2_rowlo/_gen2_rowhi tables, and every C wrapper that JSRs them calls
+; gen2_build_tables() first, which fixes the base.
 _gen2_hgr_clear:
         ldx _gen2_hgr_base   ; draw-page high byte ($20 page1 / $40 page2)
+        bne @baseok          ; 0 = unset (BSS) -> default to page 1
+        ldx #$20
+        stx _gen2_hgr_base
+@baseok:
         stx ptr1+1
         ldy #$00
         sty ptr1             ; ptr1 = base<<8, Y = 0

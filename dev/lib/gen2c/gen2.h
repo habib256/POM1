@@ -112,6 +112,22 @@ extern volatile unsigned char gen2_ss_sink;
 /* graphics + hires + page 1 + full screen. */
 void gen2_hgr_init(void);
 
+/* BLANK-FIRST variant of gen2_hgr_init: clears the page-1 framebuffer
+ * ($2000-$3FFF) while the display is parked on TEXT, THEN flips to HIRES.
+ * The card has no display-enable bit and the framebuffer SRAM is
+ * indeterminate at power-on, so plain gen2_hgr_init shows SRAM garbage until
+ * the program's own clear lands — use this when your program cannot clear
+ * immediately after init. (Page 2 is untouched; clear it via
+ * gen2_set_draw_page(2) + gen2_hgr_clear(0) before showing it.) */
+void gen2_hgr_init_clear(void);
+
+/* Polite exit: restore the monitor-visible state (TEXT + PAGE1) so whatever
+ * runs next (Wozmon, BASIC) is visible on the GEN2 monitor. Toggles only —
+ * follow it with woz_mon() (the $FF1A "\" prompt entry):
+ *     gen2_text_restore();
+ *     woz_mon();                                   /- no-return -/           */
+void gen2_text_restore(void);
+
 /* Fill the HIRES page-1 framebuffer ($2000-$3FFF) with `fill` (0 = black). */
 void gen2_hgr_clear(unsigned char fill);
 

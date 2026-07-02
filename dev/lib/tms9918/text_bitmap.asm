@@ -119,7 +119,7 @@ text_blit_glyph:
         ORA #$01                  ; transparent background ($x1)
         LDX #8
 @col:   STA VDP_DATA
-        JSR tms9918_pad18       ; silicon-strict 12c (loop-back inner @col)
+        JSR tms9918_pad18       ; silicon-strict 18c (loop-back inner @col)
         DEX
         BNE @col
         RTS

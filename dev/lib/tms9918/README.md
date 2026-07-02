@@ -259,7 +259,7 @@ CPU spinning toward the trap line.
 
 ### Cost
 
-- `arm_5s_trigger`: ~25 VDP stores with pad12 between each ≈ 600 cycles.
+- `arm_5s_trigger`: ~25 VDP stores with pad18 between each ≈ 650 cycles.
   Done 1× per frame, negligible.
 - `WAIT_5S`: ~6c × (lines remaining until the trigger). Worst case
   ~12,000c when triggering shortly after a V-blank (line 8). That is a
@@ -269,10 +269,14 @@ CPU spinning toward the trap line.
 ## Silicon-strict timing macros (`WRT_DATA_REG`, `WRT_DATA_VAL`)
 
 When POM1's Hardware menu → **Silicon Strict** is ON (default for every
-preset except the Multiplexing Fantasy ones), the TMS9918 enforces real-
-silicon access windows: VRAM writes happening less than ~8 cycles apart
-in Mode I + sprites are dropped. Two helper macros in `tms9918.inc` add
-the right NOP padding between consecutive `STA VDP_DATA`:
+preset except the Multiplexing Fantasy ones), the TMS9918 models the CPU
+access windows with the openMSX per-mode slot tables: during active
+Graphics I/II display the worst CPU-slot gap is ≈ 8 cycles, and writes
+that arrive faster than the chip can drain them are dropped. Real
+TMS9918A silicon is stricter still — measurements on Claudio
+Parmigiani's Replica-1 put the drop floor near **~16 cycles** between
+stores in active Mode I/II. Two helper macros in `tms9918.inc` add the
+right padding between consecutive `STA VDP_DATA`:
 
 ```asm
 ; A already loaded with the byte to push (typical loop body).
@@ -282,12 +286,13 @@ WRT_DATA_REG     ; expands to: STA VDP_DATA / JSR tms9918_pad18
 WRT_DATA_VAL #$AA  ; expands to: LDA #$AA / STA VDP_DATA / JSR tms9918_pad18
 ```
 
-Both append a 12-cycle pad (a 4 + 12 + 4 = 20c gap between back-to-back
-`STA VDP_DATA`), comfortably above the worst-case window in Graphic I +
-sprites. Callers must `.import tms9918_pad18`. Use them in new code; for an
-existing project, retrofitting is mechanical — insert a `pad12` (or the
-equivalent NOP run) between every back-to-back VDP store that can fire
-during active display. Reference implementation:
+Both append an 18-cycle pad (a 4 + 18 = 22c STA-to-STA gap between
+back-to-back `STA VDP_DATA`), comfortably above the ~16c real-silicon
+floor. Callers must `.import tms9918_pad18` (`tms9918_pad12` survives
+only as a legacy alias resolving to pad18). Use them in new code; for an
+existing project, retrofitting is mechanical — insert a `JSR
+tms9918_pad18` (or the equivalent NOP run) between every back-to-back
+VDP store that can fire during active display. Reference implementation:
 `sketchs/tms9918/game_galaga/TMS_Galaga.asm` carries ~219 NOPs across its
 sprite / HUD / title / help routines.
 
@@ -297,43 +302,32 @@ The macros only matter when the program writes back-to-back during
 `init_vdp_g2` could opt to blank around uploads to skip the macros, but
 none currently do.
 
-### Shortcut: skip `pad12` in "Mode I + no sprites" hot loops
+### Transmission zones: when the pad is (and isn't) needed
 
-If a project disables sprites for the whole frame (e.g. by leaving
-`init_vdp_g1`'s tail-call to `disable_sprites` in place and never
-re-arming the SAT), the silicon-strict floor drops to **6 c** between
-consecutive VDP writes (vs 7.5 c in Mode I + sprites, vs 12 c in the
-hardened pad12 contract). A natural 6502 inner loop already clears 6 c
-without any padding:
+Think of VRAM access in two zones (full model + measured tables:
+[`doc/TMS9918_TRANSFER_WINDOWS.md`](../../../doc/TMS9918_TRANSFER_WINDOWS.md)):
 
-```asm
-@cell:  LDA (src),Y           ; 5c
-        STA VDP_DATA          ; 4c — write happens here
-        INY                   ; 2c
-        BNE @cell             ; 3c (taken)
-;                STA→STA gap = INY + BNE + LDA = 2 + 3 + 5 = 10 c (3.3× floor)
-```
+- **Free zones — display blanked (R1 bit 6 = 0) or the VBlank burst**:
+  the chip serves the dense "ScreenOff" access slots (~2c apart), so
+  bursts need **no per-byte pad**. This is why `init_vdp_g1` /
+  `init_vdp_g2` blank the display around their 16 KB wipes and table
+  fills (~3× faster than a padded loop). Bracket your own big uploads
+  with `vdp_display_off` / `vdp_display_on` (helpers in
+  `tms9918_pad.asm`) to run them in a free zone.
+- **Active display (R1 bit 6 = 1)**: the pad18 contract applies to
+  every back-to-back VDP data store — use `WRT_DATA_REG` /
+  `WRT_DATA_VAL`, or an explicit `JSR tms9918_pad18`.
 
-Reference implementation: `sketchs/tms9918/demo_plasma/TMS_Plasma.asm`'s
-`render_frame` and `upload_patterns` deliberately drop `JSR
-tms9918_pad18` in the hot path, taking the demo from ~22 fps to ~60 fps
-without dropping any writes. The lib's `init_vdp_g1` / `vdp_set_write`
-keep their `pad12` calls because they wrap `STA VDP_CTRL` register
-writes (different timing class) and run in contexts that can't make
-the no-sprites assumption.
-
-**When to use this shortcut**:
-- Pure graphics-I demos with no sprite use (plasma, scrollers, tile
-  animations).
-- Save the macros for whatever sprite arming / SAT updates the
-  project still does — those keep the original gating.
-
-**When NOT to use it**:
-- Any project that uses sprites mid-frame (Galaga, Snake, Sokoban,
-  CodeTank menu).
-- Mode II projects (timing class differs).
-- If you're unsure: the universal `WRT_DATA_REG` / `WRT_DATA_VAL`
-  pad12 macros are always safe.
+**Real-silicon caveat — do not shave the pad in active display.** The
+drop floor measured on real TMS9918A hardware (Claudio Parmigiani's
+Replica-1) is roughly **16 cycles** between stores in active Mode I/II,
+regardless of whether sprites are enabled — the silicon does not
+discriminate sprites-on/off, and it is much stricter than POM1's
+openMSX slot tables (worst active gap ≈ 8c). An unpadded natural inner
+loop (`STA VDP_DATA / INY / BNE` ≈ 9-10c STA-to-STA) can therefore pass
+in POM1 yet drop bytes on the real card. If a hot loop genuinely cannot
+afford the pad, move the burst into a free zone (blank the display, or
+confine it to VBlank) instead of dropping the pad.
 
 ## Migration path for existing Mode-1 games
 

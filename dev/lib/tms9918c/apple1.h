@@ -10,10 +10,16 @@
 
 #include "utils.h"
 
-/* NOTE: this runtime's woz_mon() jumps $FF1F — the silent warm-restart, no "\"
- * prompt — unlike dev/lib/apple1c and dev/lib/gen2c whose woz_mon() jumps $FF1A
- * and prints the prompt. Same API name, intentionally different return UX. */
-#define WOZMON    0xFF1FU
+/* woz_mon() jumps $FF1A — the Wozmon PROMPT entry (prints "\" + CR), the house
+ * rule shared with dev/lib/apple1 (apple1.inc), dev/lib/apple1c and
+ * dev/lib/gen2c: the user at the keyboard needs the "\" to know the monitor is
+ * back. (Historically this runtime jumped $FF1F, the SILENT post-prompt warm
+ * restart, which looks like a hang; unified June 2026. WOZMON below now agrees
+ * with apple1c/apple1io.h — the two headers used to #define WOZMON with
+ * different values.) woz_mon_silent() keeps $FF1F for callers that just
+ * printed their own status line and genuinely want no prompt. */
+#define WOZMON        0xFF1AU
+#define WOZMON_SILENT 0xFF1FU
 #define ECHO      0xFFEFU
 #define PRBYTE    0xFFDCU
 #define KEY_DATA  0xD010U
@@ -27,7 +33,8 @@ void woz_print_hex(unsigned char c);
 void woz_print_hexword(word w);
 void woz_putc(unsigned char c);
 void woz_puts(const unsigned char *s);
-void woz_mon(void);
+void woz_mon(void);         /* return to the WOZ Monitor "\" prompt ($FF1A) */
+void woz_mon_silent(void);  /* silent warm restart ($FF1F) — no "\" printed */
 
 unsigned char apple1_iskeypressed(void);
 unsigned char apple1_getkey(void);

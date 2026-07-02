@@ -87,7 +87,7 @@ pen_color:    .res 1     ; 0..15 -- foreground colour written to colour
 init_vdp_g2:
         ; Caller-gap cushion: covers the case where init_vdp_g2 is
         ; called immediately after another VDP write in the caller.
-        JSR     tms9918_pad18   ; cross-caller cushion (40c)
+        JSR     tms9918_pad18   ; cross-caller cushion (18c)
         LDX #0
 @rg:    LDA vdp2_regs,X
         CPX #1
@@ -185,7 +185,7 @@ vdp2_regs:
 ;   guaranteed-clean clear should blank display explicitly before the
 ;   call (Mandel does this via its own clear_pattern_table inline).
 clear_bitmap:
-        JSR     tms9918_pad18   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
+        JSR     tms9918_pad18   ; MANUAL caller-gap cushion (18c)
         LDA #$00
         STA VDP_CTRL
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
@@ -233,25 +233,25 @@ disable_sprites:
         RTS
 
 vdp_set_write:
-        JSR     tms9918_pad18   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
+        JSR     tms9918_pad18   ; MANUAL caller-gap cushion (18c)
         LDA pix_addr_lo
         STA VDP_CTRL
-        JSR tms9918_pad18       ; silicon-strict 12c (LDA zp + ORA bridge)
+        JSR tms9918_pad18       ; silicon-strict 18c (LDA zp + ORA bridge)
         LDA pix_addr_hi
         ORA #$40
         STA VDP_CTRL
         JSR tms9918_pad18       ; cushion: caller's first STA VDP_DATA lands
-        RTS                     ; ≥24c after cmd (12c+6c+6c=24c gap)
+        RTS                     ; ≥30c after cmd (18c+6c+6c=30c gap)
 
 vdp_set_read:
-        JSR     tms9918_pad18   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
+        JSR     tms9918_pad18   ; MANUAL caller-gap cushion (18c)
         LDA pix_addr_lo
         STA VDP_CTRL
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA zp/abs bridge)
         LDA pix_addr_hi
         STA VDP_CTRL
         JSR tms9918_pad18       ; cushion: caller's first LDA VDP_DATA lands
-        RTS                     ; ≥24c after cmd
+        RTS                     ; ≥30c after cmd
 
 calc_pix_addr:
         LDA pix_x
@@ -307,7 +307,7 @@ plot_set:
         STA VDP_CTRL
         JSR     tms9918_pad18   ; MANUAL: cmd-byte → first colour STA. Natural
                                 ; bridge LDA(3c)+ASL×4(8c)+ORA(2c) = 13c gives
-                                ; gap=17c < 24c (LOGO drop site, May 2026).
+                                ; gap=17c < 22c contract (LOGO drop site, May 2026).
         LDA pen_color
         ASL
         ASL

@@ -103,11 +103,32 @@
 
 /* Pop one inbound byte from the harness. Returns 0 when none is waiting — which
  * cannot be told apart from a legitimately-received 0x00; gate on tele_inlen()
- * first if NUL is a valid inbound payload byte. */
+ * first if NUL is a valid inbound payload byte.
+ *
+ * WARNING — side-effecting read: tele_in() / tele_stat() reads pop / latch
+ * hardware state. cc65 -Oirs ELIDES a volatile read whose result is discarded
+ * with (void) — to read purely for the side effect, store into the volatile
+ * sink instead (same rationale as tms_io_sink in dev/lib/tms9918c/utils.h):
+ * use tele_in_drop() / tele_in_drain() below, never `(void)tele_in();`. */
 #define tele_in()           (TELE_IN_REG)
 
 /* Number of inbound bytes pending (saturates at 255). */
 #define tele_inlen()        (TELE_INLEN_REG)
+
+/* Volatile sink keeping side-effecting reads alive under cc65 -Oirs (a store
+ * to a volatile object is never elided). `static` = one copy per TU, fine. */
+static volatile unsigned char tele_io_sink;
+
+/* Pop-and-discard one inbound byte (side effect only). */
+#define tele_in_drop()      (tele_io_sink = TELE_IN_REG)
+
+/* Drain every pending inbound byte (e.g. to resync after a protocol error). */
+static void tele_in_drain(void)
+{
+    while ((TELE_INLEN_REG) != 0U) {
+        tele_io_sink = TELE_IN_REG;
+    }
+}
 
 /* Push a 16-bit value little-endian (low byte first) — for U16 / S16 fields.
  * A function (not a macro) so the argument is evaluated exactly once. */

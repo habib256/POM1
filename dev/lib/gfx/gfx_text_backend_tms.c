@@ -29,7 +29,7 @@ const unsigned char gfx_text_rows = 24u;   /* 192 / 8 */
  * garbage and the text would render in an invisible colour. .bss IS zeroed by
  * crt0, so a 0 default is the only value we can trust without the caller first
  * calling gfx_cell_color(). */
-static unsigned char s_color = 0u;
+static unsigned char s_color;
 
 void gfx_cell_color(unsigned char color)
 {

@@ -8,6 +8,11 @@
 ; fonts/font_codepage_437_8x8.png (same GEN2 encoding).
 ;
 ; Full CP437 0..255: bbfont_cp437.inc (HGR_BBFontShow).
+;
+; FROZEN manual subset — NOT emitted by tools/build_shared_font.py (note the
+; hand-tuned 'Q' exception above). Do not edit glyphs here; fix the master
+; bbfont_cp437.inc instead, or re-derive this table by hand from it if the
+; subset must change.
 ; =============================================================================
 
 BBFONT_SOKOBAN_BYTES_PER_GLYPH = 8

@@ -136,7 +136,8 @@ extern unsigned char gen2_mask7[280];          /* 1 << (x % 7) (bit mask)       
 extern unsigned char gen2_phase7[280];         /* x % 7 (sub-byte phase 0..6)    */
 extern unsigned char gen2_lo_rowlo[24];        /* LORES text-row base low byte  */
 extern unsigned char gen2_lo_rowhi[24];        /* LORES text-row base high byte */
-extern unsigned char gen2_lo_base;             /* LORES page base ($04 or $08)  */
+extern unsigned char gen2_lo_base;             /* LORES page base ($04 or $08;
+                                                  BSS 0 = unset, lazy -> $04)  */
 extern unsigned char gen2_lo_ready;            /* LORES tables built once       */
 
 /* --- Cross-module helpers (defined in gen2_init.c) -------------------------- */

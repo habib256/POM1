@@ -276,7 +276,10 @@ def _common_includes(asm: pathlib.Path) -> list[str]:
 
 def _ca65(asm: pathlib.Path, obj: pathlib.Path,
           extra_args: list[str] | None = None) -> None:
-    cmd = ["ca65", *_common_includes(asm), *(extra_args or []),
+    # extra_args FIRST: callers pass generated -I dirs (BUILD) that must
+    # shadow any stray same-named .inc committed under the lib include
+    # paths — ca65 searches -I dirs in order.
+    cmd = ["ca65", *(extra_args or []), *_common_includes(asm),
            "-o", str(obj), str(asm)]
     subprocess.run(cmd, check=True, cwd=str(ROOT))
 
@@ -468,13 +471,24 @@ def parse_woz_txt(path: pathlib.Path) -> tuple[list[tuple[int, bytes]], int | No
             continue
         for tok in line.replace(":", ": ").split():
             if tok.endswith(":"):                       # address prefix
-                cur_addr = int(tok[:-1], 16)
+                try:
+                    cur_addr = int(tok[:-1], 16)
+                except ValueError:
+                    raise SystemExit(f"{path.name}: bad address token {tok!r}")
                 continue
             if tok.upper().endswith("R"):               # run address
-                run_addr = int(tok[:-1], 16)
+                try:
+                    run_addr = int(tok[:-1], 16)
+                except ValueError:
+                    raise SystemExit(f"{path.name}: bad run-address token "
+                                     f"{tok!r} (a bare 'R' or an ACI turbo "
+                                     f"marker is not packable)")
                 continue
             if len(tok) == 2 and cur_addr is not None:  # data byte
-                put(cur_addr, int(tok, 16))
+                try:
+                    put(cur_addr, int(tok, 16))
+                except ValueError:
+                    raise SystemExit(f"{path.name}: bad data byte {tok!r}")
                 cur_addr += 1
                 continue
             raise SystemExit(f"{path.name}: unsupported token {tok!r} "
@@ -752,6 +766,43 @@ def build_game5_upper_bank() -> bytes:
 
 # ---------------------------------------------------------------------------
 # GAME6 — menu+packer + Maze3D (lower); SilBench (upper)
+SOFT_TMS = ROOT / "software" / "Graphic TMS9918"
+
+
+def emit_maze3d_software_txt(image: bytes, base: int = 0x4200) -> None:
+    """Woz-hex sidecar of the fixed Maze3D for software/Graphic TMS9918/."""
+    lines = [
+        "// TMS_Maze3D — Dungeon-Master-style first-person crawler (FIXED",
+        "// juillet 2026 build; the previous image here never got past its",
+        "// title screen and its movement logic was broken).",
+        "// Run-in-place at $4200 — two ways to play:",
+        "//   1. Codetank_GAME6.rom, jumper Lower, 4000R, menu choice 1",
+        "//      (works on every TMS9918 preset; this is Claudio's path).",
+        "//   2. POM1 Fantasy preset (64 KB RAM) with the right cards:",
+        "//      plug the TMS9918 (Hardware menu — this ejects the A1-AUDIO",
+        "//      SE that shares $CC00) and unplug Juke-Box + CodeTank (both",
+        "//      shadow $4000+ with ROM), then Load Memory this file, 4200R.",
+        "//      Headless: --preset 12 --enable tms9918 --disable",
+        "//      jukebox,codetank --load 4200:<this file> --run 0x4200.",
+        "//      NOT loadable on the 8 KB dual-bank preset without the",
+        "//      cartridge ($4200 is out of RAM there).",
+        "// Keys: Z fwd  S back  Q left  D right  M map  A attack  F flee",
+        "//       ESC quit to Wozmon.",
+        "// Source: dev/projects/codetank/game6_maze3d/TMS_Maze3D.asm",
+    ]
+    for off in range(0, len(image), 8):
+        chunk = image[off:off + 8]
+        lines.append(f"{base + off:04X}: " +
+                     " ".join(f"{b:02X}" for b in chunk))
+    lines.append(f"{base:04X}R")
+    lines.append("")
+    SOFT_TMS.mkdir(parents=True, exist_ok=True)
+    out = SOFT_TMS / "TMS_Maze3D.txt"
+    out.write_text("\n".join(lines), encoding="utf-8")
+    print(f"  software sidecar: {out} ({len(image)} B @ ${base:04X})",
+          file=sys.stderr)
+
+
 # ---------------------------------------------------------------------------
 def build_game6_lower_bank() -> bytes:
     """Lower 16 kB — generic packer menu at $4000. Layout:
@@ -764,6 +815,15 @@ def build_game6_lower_bank() -> bytes:
     print("[GAME6] Lower bank (menu+packer + Maze3D + OrbitalPool + Stars):",
           file=sys.stderr)
     maze = assemble(MAZE3D_ASM, MAZE3D_BANK_CFG, "G6_Maze3D", 0x1C00)
+
+    # Refresh software/'s TMS_Maze3D.txt with THIS build: the historical
+    # $0280 standalone image there was the never-functional build (frozen
+    # title + dead movement), and its RAM footprint ($0280-$1A78 + BSS
+    # $1B00) can never fit the Parmigiani dual-bank low RAM anyway. The
+    # shipped .txt is now the same $4200 run-in-place binary the GAME6
+    # cartridge carries: play it from the cartridge (jumper Lower, menu 1)
+    # or load it on a 64 KB-RAM machine (POM1 Fantasy preset) and 4200R.
+    emit_maze3d_software_txt(maze)
 
     packs = []                       # (label, run_addr, [(dest, data)...])
     for (label, txt, patch) in (
@@ -782,12 +842,16 @@ def build_game6_lower_bank() -> bytes:
     # right after the Maze3D slot at $5E00.
     rom_cursor = 0x5E00
     progs = [{"name": "Maze3D", "run": 0x4200, "segs": []}]
-    payload_at: list[tuple[int, bytes]] = []       # (bank_offset, data)
+    # One entry per SEGMENT (not per program): a multi-zone packed image
+    # emits several payloads, and the placement loop below must see each
+    # of them — the old zip(payload_at, packs) pairing silently dropped
+    # trailing segments the moment any image became multi-zone.
+    payload_at: list[tuple[int, bytes, str]] = []  # (bank_offset, data, label)
     for (label, run, segs) in packs:
         entry = {"name": label, "run": run, "segs": []}
         for (dest, data) in segs:
             entry["segs"].append((rom_cursor, dest, len(data)))
-            payload_at.append((rom_cursor - 0x4000, data))
+            payload_at.append((rom_cursor - 0x4000, data, label))
             rom_cursor = (rom_cursor + len(data) + 15) & ~15
         progs.append(entry)
     if rom_cursor > 0x8000:
@@ -813,7 +877,7 @@ def build_game6_lower_bank() -> bytes:
     bank = bytearray(b"\xFF" * HALF_SIZE)
     slot(bank, 0x0000, menu, 0x0200, "Menu+pack ($4000-$41FF)")
     slot(bank, 0x0200, maze, 0x1C00, "Maze3D    ($4200-$5DFF)")
-    for ((off, data), (label, _run, _segs)) in zip(payload_at, packs):
+    for (off, data, label) in payload_at:
         slot(bank, off, data, len(data),
              f"{label:<9} (${0x4000 + off:04X}+, pack)")
     print(f"  pack window ends ${rom_cursor - 1:04X} "

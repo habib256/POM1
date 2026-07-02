@@ -242,6 +242,44 @@ documented in [`../cc65/`](../cc65/README.md)).
 
   Build the `gfx-<card>.lib` archive once with `make -C ../../lib/gfx <card>`.
 
+## Porting between cards (TMS9918 ↔ GEN2)
+
+The two graphics tracks look symmetric (init / clear / plot / line / text on
+both sides) but the hardware contracts do NOT port 1:1. Five asymmetries that
+bite, verified against the current lib sources:
+
+| Contract | TMS9918 | GEN2 |
+|---|---|---|
+| **Display gating** | R1 bit 6 is a real enable. Contract: **blank first, enable last** — `init_vdp_g1`/`init_vdp_g2` force the bit off on the register pass so the VRAM bursts run blanked; the C tables (`SCREEN1_TABLE`, `SCREEN2_TABLE`) ship R1 = `$80` and `screen1_prepare()` / `screen2_init_bitmap()` do the first enable only once tables + SAT park are valid. Helpers: `vdp_display_off` / `vdp_display_on` ([`tms9918/tms9918_pad.asm`](tms9918/tms9918_pad.asm)). | **No enable bit** — the screen always shows *something*. The analogue is ordering: park the display on TEXT, scrub the framebuffer (plain RAM, writable in any mode), and flip to HIRES **last**. `gen2_hgr_init_clear` ([`gen2/gen2_init.asm`](gen2/gen2_init.asm)) is exactly that sequence (`GEN2_TEXTON` → clear `$2000-$3FFF` → `gen2_hgr_init`); plain `gen2_hgr_init` flips immediately and shows power-on SRAM garbage until the caller's own clear lands. |
+| **Write pacing** | The data port drops writes spaced under ~16c during active Mode I/II display. **pad18 contract**: `JSR tms9918_pad18` between stores = 22c store-to-store (`tms9918_pad12` is a legacy alias resolving to pad18; the pad is flag-transparent by invariant). Free zones — display blanked or V-blank — serve ~2c ScreenOff slots, so init / full-screen bursts always fit ([`tms9918/tms9918_pad.asm`](tms9918/tms9918_pad.asm)). | Framebuffer = plain bus RAM: **no pacing**, `STA` at full speed. The care moves to the **soft switches**: READ-only toggles that return HST0 in bit 7 (bits 0-6 are floating-bus garbage). Poll only a switch already in your program's state (the poll IS a toggle) and OR two samples ≥ 4 cycles apart to mask the 3-cycle colour-burst notch ([`gen2/gen2.inc`](gen2/gen2.inc)). |
+| **Frame wait** | `tms_wait_end_of_frame()` **drains** the stale F flag, polls, and **returns a status snapshot** (fresh F merged with C/5S accumulated across the wait). One status read per frame: a read latch-clears F+5S+C atomically — test the returned copy, never re-read ([`tms9918c/tms9918.c`](tms9918c/tms9918.c); propagated by `vsync_wait()`). | `gen2_wait_vbl()` **returns void** — HST0 is a level, not a latch: nothing to drain, no status to snapshot. Level-samples HST0 and returns ~3 lines into V-blank ([`gen2c/gen2_init.c`](gen2c/gen2_init.c)). Asm: `gen2_waitvbl` (coarse) / `gen2_beam_lock` (cycle-exact) in [`gen2/gen2_sync.asm`](gen2/gen2_sync.asm). |
+| **Frame counter** | `vsync_frames` ([`tms9918c/vsync.c`](tms9918c/vsync.c)), bumped by `vsync_wait()`. | None — count your own around `gen2_wait_vbl()` calls. |
+| **Exit to monitor** | `JSR vdp_display_off` then `JMP WOZMON`. ⚠ An R1 write also loads the VRAM address counter — never flip the display between a `vdp_set_write/read` and its data stream. Both tracks now use the `$FF1A` **prompt entry** (`WOZMON` in [`apple1/apple1.inc`](apple1/apple1.inc); the C runtime's `woz_mon()` in [`tms9918c/apple1_asm.s`](tms9918c/apple1_asm.s) was unified onto it June 2026 — `woz_mon_silent()` keeps the silent `$FF1F` warm restart for callers that printed their own status). | `JSR gen2_text_restore` (TEXT + PAGE1 toggles, [`gen2/gen2_init.asm`](gen2/gen2_init.asm)) then `JMP WOZMON` — hands the display back to the text page the monitor echoes on. The helper deliberately RTSes instead of jumping to Wozmon itself (pure GEN2 layer; the `WOZMON` equate belongs to the caller's `apple1.inc`). |
+
+### The cc65 `-t none` DATA trap (both C tracks)
+
+The `-t none` crt0 has **no copydata**: an initialized global — even `= 0` —
+lands in the DATA segment and is **never copied** to its run address on a
+load ≠ run (ROM) cfg; it silently holds power-on garbage. Only *uninitialized*
+globals live in BSS, which crt0's zerobss clears on **every** entry (each
+`4000R` / `6000R` re-run). RAM-load cfgs (load = run, e.g. `apple1_gen2_c.cfg`)
+dodge the first-run bite because DATA ships inside the loaded image — but the
+value is still stale on a warm re-entry without a re-load, and a move to a ROM
+cfg breaks it. House pattern: **BSS + lazy default** or **zero-meaningful
+encodings** —
+
+- [`tms9918c/random.c`](tms9918c/random.c) — LFSR states deliberately
+  uninitialized; `rand8()`/`rand16()` auto-seed when they read 0 (the old
+  `= 0xAC` initializers were never applied, and a 0 state zero-locks an LFSR).
+- [`tms9918c/screen2_pixel.c`](tms9918c/screen2_pixel.c) — `PLOT_MODE_SET` is
+  defined as 0 precisely so the zerobss'd `screen2_plot_mode` **is** the
+  default.
+- [`gfx/gfx_text.c`](gfx/gfx_text.c) — cursor statics kept genuinely
+  uninitialized; BSS zero = home position.
+- [`gen2c/gen2_init.c`](gen2c/gen2_init.c) — `gen2_hgr_base` is BSS with a
+  lazy default at the use sites (`if (!gen2_hgr_base) gen2_hgr_base = 0x20`):
+  zero is not a valid page base, so BSS-zero means "not set yet".
+
 ## Cross-library zero-page map
 
 ZP is the scarce shared resource and **collisions raise no error** — they
@@ -276,6 +314,9 @@ both park names in the same low region — check before combining:
 | `tms9918/tms9918m1.asm` · `_text.asm` · `_console.asm` | `vdp_lo`,`vdp_hi`,`vdp_src_lo`,`vdp_src_hi`,`vdp_row`,`vdp_col` (console adds `cur_row`,`cur_col`,`con_tmp`) | `.exportzp`'d so `m2`/console/text share them |
 | `tms9918/tms9918m2.asm` | `pix_x`,`pix_y`,`pix_addr_lo/hi`,`pix_mask`,`pix_byte`,`ln_x0/y0/x1/y1`,`ln_dx/dy/sx/sy`,`ln_err`,`ln_err_hi`,`pen_color` | bitmap/line raster state; imports `tmp`,`tmp2` |
 | `gen2/subbyte_fill.asm` | `sb_ptr_lo`,`sb_ptr_hi` | sub-byte HGR fill pointer |
+| `gen2/hgr_plot.asm` (include) | caller defines `cur_x`,`cur_y`,`ptr_lo`,`ptr_hi` | `plot_pixel` preserves `cur_x`/`cur_y`; needs the `hgr_lo/hi/col/mask` tables alongside |
+| `gen2/hgr_clear.asm` (include) | caller defines `ptr_lo`,`ptr_hi` | `clear_hgr` trashes both (same pair as `hgr_plot.asm` — intended shared) |
+| `tms9918/sprite_triangle.asm` · `buffer_editor.asm` | import `tmp`,`tmp2`,`arg_lo/hi` (triangle also `arg2_lo/hi`) | reuse `math.asm`'s argument slots — see the `arg_*` rule below |
 | `text40/layout.asm` | `key_up_code`,`key_left_code` | arrow-key remap |
 | `sd/sd.asm` | `sd_str_lo`,`sd_str_hi` | string pointer |
 | `wifi/acia.asm` | `acia_str_lo`,`acia_str_hi` | string pointer |
@@ -287,6 +328,39 @@ both park names in the same low region — check before combining:
 `tms9918_5strigger.asm`) declare project-private state documented at their use
 sites. When ZP is tight, **alias** a slot onto existing scratch *before* the
 include — the `.ifndef` guards detect it (recipe in `apple1/zp.inc`).
+
+Three cross-cutting rules the tables can't show:
+
+- **`tmp`/`tmp2` are pure scratch.** Any lib JSR may clobber them — never
+  hold a value in them across a call into *any* lib routine.
+- **`arg_lo`/`arg_hi` (+ `arg2_*`) are a shared argument/return window, not
+  storage.** `m6502/math.asm`, `tms9918/sprite_triangle.asm` and
+  `tms9918/buffer_editor.asm` all `.importzp` the same bytes; a value parked
+  there is NOT live across a call between these modules — reload per call.
+- **Wozmon reserves `$24-$2B`** (`XAML/XAMH/STL/STH/L/H/YSAV/MODE`): the
+  monitor rewrites them on every prompt interaction, so a resident program
+  must not park state there.
+  [`../cc65/apple1_4k.cfg`](../cc65/apple1_4k.cfg) guards the reserve via its
+  ZP ceiling (`$00-$22`); [`../cc65/apple1_gen2.cfg`](../cc65/apple1_gen2.cfg)
+  does **not** (its ZP window is `$00-$3F`) — a gen2 program whose `ZEROPAGE`
+  segment grows past `$23` overlaps the reserve and loses those bytes to any
+  Wozmon round-trip.
+
+### Symbol-collision registry (deliberate link-exclusive shadows)
+
+Several Model-B objects export the SAME symbols on purpose — alternative
+backends behind one seam. `ld65` errors on the duplicate if you link both
+sides of a row; that error is the guard, not a bug. Pick per card / per need:
+
+| Symbol(s) | Defined by | Pick |
+|---|---|---|
+| `init_vdp_g2`, `clear_bitmap`, `disable_sprites`, `vdp_set_write/read`, `calc_pix_addr`, `plot_set(_x16)`, `line_xy(16)`, `tms9918_pad18`, `vdp_display_off` + the `pix_*`/`ln_*`/`pen_color` ZP | [`tms9918/tms9918m2.asm`](tms9918/tms9918m2.asm) + [`tms9918/tms9918_pad.asm`](tms9918/tms9918_pad.asm) **vs** [`gen2/gen2_logom2.asm`](gen2/gen2_logom2.asm), which re-exports the whole seam (pads / VDP address ops become no-ops) | one backend per link — how LOGO's card-independent core targets either card |
+| `disable_sprites`, `vdp_set_write`, `vdp_set_read` | [`tms9918/tms9918m1.asm`](tms9918/tms9918m1.asm) **vs** [`tms9918/tms9918m2.asm`](tms9918/tms9918m2.asm) | one TMS mode per program (m1 XOR m2) |
+| `draw_bubble` | [`tms9918/bubble.asm`](tms9918/bubble.asm) **vs** [`gen2/gen2_bubble.asm`](gen2/gen2_bubble.asm) | per card |
+| `text_blit_glyph` | [`tms9918/text_bitmap.asm`](tms9918/text_bitmap.asm) **vs** [`gen2/gen2_text_bitmap.asm`](gen2/gen2_text_bitmap.asm) (same `A`/`pix_x`/`pix_y`/`pen_color` contract) | per card |
+| the whole `rt_*` seam (`rt_hgr`, `rt_hcolor`, `rt_plot`, `rt_line`, `rt_gr`, `rt_color`, `rt_loresplot`, `rt_hlin/vlin`, `rt_text`, `rt_home` + `rt_*` ZP) | [`basicrt/basicrt_tms.s`](basicrt/basicrt_tms.s) **vs** [`basicrt/basicrt_gen2.s`](basicrt/basicrt_gen2.s) | BASIC-compiler runtime backend: per target card |
+| every sprite label (`creat_wolf_pat`, …) | `tms9918/sprites_*.asm` **vs** [`gen2/sprites/`](gen2/sprites/)`*_hgr.asm` — same names, **different data** (TMS native 32 B/sprite vs HGR 16×3 B rows) | per card; the format is implicit in which `.o` you pull |
+| `prng_lo`/`prng_hi` (ZP state; Model A) | [`m6502/prng8.asm`](m6502/prng8.asm) **and** [`m6502/prng16.asm`](m6502/prng16.asm) | shared **by design** (`.ifndef`-guarded, no link error): including both compiles, but the two generators stir ONE state pair — use one |
 
 ## Validation
 

@@ -4,6 +4,14 @@
 ; $00-$1F, $80-$FF: fonts/font_codepage_437_8x8.png (7 cols, bit0=left).
 ; $20-$7F: fonts/fontbb.s (Beautiful Boot) — AND #$7F + reverse 8 rows
 ;         (DrawChar / GEN2 convention, same as HGR_Sokoban_bbfont.inc).
+;
+; MASTER of the shared Beautiful Boot font. After editing, rerun
+;   python3 tools/build_shared_font.py          (--check verifies no drift)
+; which regenerates:
+;   dev/lib/gen2c/gen2_bbfont.inc      (HGR C fragment, ASCII $20-$7F)
+;   dev/lib/tms9918/bbfont_tms.inc     (TMS pattern table, bit 7 = left)
+;   dev/lib/tms9918/font_hud8x8.inc    (TMS HUD subset, char codes 56..92)
+;   hgrpaint/HgrFont.cpp               (full CP437 C++ table, host-side)
 ; =============================================================================
 
 HGR_BBFONT_BYTES_PER_GLYPH = 8

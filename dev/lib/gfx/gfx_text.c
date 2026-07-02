@@ -8,13 +8,13 @@
  *
  * The cursor is module-static (one text pen per program, matching the single
  * video card). It is NOT reset on entry: a program calls gfx_gotoxy once to
- * anchor it (default 0,0 from the BSS zero-init), then streams gfx_text /
+ * anchor it (default 0,0 from the BSS zero-init (kept genuinely UNINITIALIZED: cc65 places even `= 0` in DATA, which ROM cfgs never copy; only uninitialized globals are zerobss'd)), then streams gfx_text /
  * gfx_putu.
  */
 #include "gfx.h"
 
-static unsigned char s_col = 0u;   /* cursor cell column (0..gfx_text_cols-1) */
-static unsigned char s_row = 0u;   /* cursor cell row    (0..gfx_text_rows-1) */
+static unsigned char s_col;   /* cursor cell column (0..gfx_text_cols-1) */
+static unsigned char s_row;   /* cursor cell row    (0..gfx_text_rows-1) */
 
 void gfx_gotoxy(unsigned char col, unsigned char row)
 {

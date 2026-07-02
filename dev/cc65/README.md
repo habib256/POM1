@@ -23,7 +23,7 @@ buffer; the differences are the code window and ZP size.
 |---|---|---|---|---|
 | `apple1_4k.cfg` | asm | `$0280` (`280R`) | `$0280-$127F` (4 KB) | Text-mode + TMS9918 (VRAM is off-bus, so no HGR RAM needed). 35 B ZP. The default for plain programs. |
 | `apple1_c.cfg` | C (cc65) | `$0300` (`0300R`) | `$0300-$0FFF` + stack to `$1000` | Plain text-mode C on the 8 KB dual-bank machine (RAM `$0000-$0FFF` + `$E000-$EFFF`). Full 256 B ZP, cc65 CONDES/startup segments. |
-| `apple1_gen2.cfg` | asm | `$E000` (`E000R`) | `$E000-$EFFF` (4 KB) | GEN2 HGR, ≤ 4 KB single-bank. Code in the high bank (where Integer BASIC ROM used to sit); GEN2 framebuffer reserved at `$2000-$3FFF`. 64 B ZP. |
+| `apple1_gen2.cfg` | asm | `$E000` (`E000R`) | `$E000-$EFFF` (4 KB) | GEN2 HGR, ≤ 4 KB single-bank. Code in the high bank (where Integer BASIC ROM used to sit); GEN2 framebuffer reserved at `$2000-$3FFF`. 36 B ZP (`$00-$23`; Wozmon reserve `$24-$2B` guarded). |
 | `apple1_gen2_c.cfg` | C (cc65) | `$6000` (`6000R`) | `$6000-$BEFF` | GEN2 HGR C, 48 KB machine (preset 11). Code lives **above** the HGR pages (`$2000`/`$4000`) and text/lores (`$0400`/`$0800`). |
 | `codetank.cfg` | asm | `$4000` (`4000R`) | `$4000-$7FFF` (16 KB) | Standalone CodeTank ROM card — code runs in place from the ROM window; only writes need RAM (ZP / `$0280-$0FFF`). RODATA folded into CODE so tables serve straight from ROM. |
 | `pom1_fantasy.cfg` | asm | `$0300` (`300R`) | `$0300-$82FF` (32 KB) | XXL programs on the 64 KB Multiplexing Fantasy presets (10 / 12). **Not real-Apple-1 portable.** Adds a separate `BASIC_RAM` BSS region `$A000-$BFFF` (8 KB, not in the `.bin` — program zeroes it). Requires Applesoft Lite + SD CARD OS + GEN2 unplugged. |

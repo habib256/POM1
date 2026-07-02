@@ -8,7 +8,8 @@
 .if .defined(RT_PRINT) .or .defined(RT_PUTC) .or .defined(RT_PRINTCR)
 .export rt_print, rt_printcr, rt_putc
 
-ECHO := $FFEF           ; WOZ Monitor char output (present in POM1 at $FF00)
+.include "apple1.inc"   ; ECHO = $FFEF (Wozmon char output). Guarded/idempotent;
+                        ; every basicrt assemble site passes -I dev/lib/apple1.
 
 ; rt_putc: A = char -> Apple-1 terminal (waits for DSP, writes $D012).
 rt_putc:

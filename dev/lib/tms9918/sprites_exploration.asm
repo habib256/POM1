@@ -1,5 +1,7 @@
 ; ============================================================================
 ; sprites_exploration.asm  --  21 sprites (16x16, TMS9918 sprite mode)
+; derived: dev/lib/gen2/sprites/sprites_exploration_hgr.asm -- after editing this master rerun:
+;   python3 tools/build_hgr_sprites.py --only exploration
 ; ----------------------------------------------------------------------------
 ; SCROLL-O-SPRITES "Exploration" by Quale, May 2013, CC-BY-3.0.
 ; Lifted from pic/undefined - Imgur.png by tools/extract_scroll_sprites.py.

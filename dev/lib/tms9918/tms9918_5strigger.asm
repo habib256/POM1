@@ -54,7 +54,8 @@
 ;      internally. Pass 0 for "last line" (Y attribute = $FF = -1).
 ;
 ;   6. POM1 with `siliconStrictMode = ON` (default) drops VRAM writes
-;      < ~7.5 c apart in Mode I + sprites. We use the same JSR
+;      faster than the openMSX slot tables drain (worst active gap ~8c;
+;      real silicon ~16c — see tms9918.inc). We use the same JSR
 ;      tms9918_pad18 pattern as tms9918m1.asm — every consecutive
 ;      VDP_DATA / VDP_CTRL store is gated.
 ;
@@ -96,7 +97,10 @@ arm_5s_trigger:
         ; Address VDP for write at $1B00 (sprite attribute table base).
         LDA #$00
         STA VDP_CTRL
-        JSR tms9918_pad18       ; pad12 between back-to-back CTRL stores
+        JSR tms9918_pad18       ; pad18 between back-to-back CTRL stores.
+                                ; Optional for CTRL pairs (the control port
+                                ; is an internal latch — never dropped), kept
+                                ; for datasheet-spacing prudence.
         LDA #$5B                ; $1B | $40 = write-mode address $1B00
         STA VDP_CTRL
         JSR tms9918_pad18       ; cushion before first STA VDP_DATA
