@@ -136,6 +136,55 @@ que l'extension **ne peut pas piloter** (il est hors de la page web) → le batc
 synthétique (pas de download fiable) → toujours passer par le canvas + `<a download>`. Si Gemini
 présente une vérification anti-bot, passer la main à l'utilisateur (ne pas la franchir).
 
+## Génération automatisée (Pinokio + Forge Neo / Z-Image Turbo)
+
+Alternative **100 % locale et scriptable** — c'est la voie retenue pour les **gros batches**
+(validée 2026-07-01 sur les 49 nœuds du livre-jeu « Marais aux Scorpions », ~6 s/image).
+Contrairement à Gemini, l'API renvoie l'image **en base64 dans la réponse JSON** → on l'écrit
+direct sur disque, **aucun dialogue de download** à contourner.
+
+**Démarrage** (skill `pinokio`, via `pterm`) :
+1. Si le plan de contrôle est injoignable (`ETIMEDOUT` sur une IP réseau périmée dans
+   `~/.pinokio/config.json`), c'est que **Pinokio n'est pas lancé** — démarrer l'app desktop
+   (`/opt/Pinokio/pinokio`, détaché) et poller `http://127.0.0.1:42000/pinokio/path/pterm`
+   jusqu'à réponse. Au lancement, Pinokio réécrit `access.host` avec l'IP LAN courante.
+2. `pterm run "pinokio://<host>:42000/api/forge-neo.git" --default start.js` **sans `timeout`
+   autour** (un `timeout` qui tue `pterm` tue le process enfant Forge). Poller
+   `http://127.0.0.1:7860/` jusqu'à HTTP 200 (startup SD-WebUI ≈ 1-2 min).
+
+**Réglages Z-Image Turbo qui marchent** (modèle distillé flow-matching) :
+- **`cfg_scale` = 1.0 impératif** (1.5 → image noire NaN mono-couleur), scheduler **`simple`**,
+  sampler **Euler**, **8 steps**, `width×height` 1024×768.
+- Appel : `POST http://127.0.0.1:7860/sdapi/v1/txt2img` avec `{prompt, negative_prompt, steps,
+  cfg_scale, width, height, sampler_name, scheduler, seed}` ; l'image est dans `images[0]`
+  (base64) → `base64.b64decode(...split(",")[-1])` et écrire le `.png`.
+- Vérifier que le checkpoint actif est `z_image_turbo_bf16` via `/sdapi/v1/options`
+  (`sd_model_checkpoint`) ; sinon le poser via `POST /sdapi/v1/options`.
+
+**Forces / faiblesses de Z-Image vs Nano Banana** (mêmes prompts HGR) :
+- ✅ **Batch massif** : entièrement scriptable, local, gratuit — Nano Banana est ingérable en
+   batch (blocage download natif de Chrome).
+- ⚠️ **Palette moins docile** : malgré le negative prompt, Z-Image ajoute souvent un **fond
+   coloré** (vert, **beige**) au lieu du noir pur, du **jaune** dans le feu, du **gris** sur la
+   pierre. Sur ~49 images, ~5 avaient un fond clair/coloré à refaire.
+- ✗ **Texte dans l'image illisible** — Z-Image ne sait pas écrire (« LE MARAIS AUX SCORPIONS »
+   → « BItE BAtE »). Pour un écran-titre : générer le décor **sans texte** et incruster le
+   titre soi-même (ou le laisser au mode texte de POM1).
+
+| | Nano Banana (Gemini) | Z-Image Turbo (Forge) |
+|---|---|---|
+| Palette / fond noir | ★★★★★ | ★★★☆☆ |
+| Texte dans l'image | correct | ✗ illisible |
+| Automatisation batch | ✗ (download bloqué) | ★★★★★ |
+| Coût / réseau | cloud, session Google | 100 % local (GPU NVIDIA) |
+
+**Règle de choix** : **Nano Banana** pour la qualité fine, les titres, les pièces héro ;
+**Z-Image** pour abattre un gros volume automatiquement (quitte à repasser les ratées).
+Autres checkpoints Forge utiles repérés : `pixelArtDiffusionXL_spriteShaper` (pixel-art),
+`flux1-dev`. Le negative prompt anti-hors-palette standard :
+`gradient, soft shading, glow, 3d render, realistic, photo, gray, brown, beige, yellow, red,
+pastel, colored background, colored wall, noise, blurry, text, watermark`.
+
 ## Prompts validés (calibrés sur les 4 styles, 2026-07-01)
 
 **Jeu vidéo / rétro** (excellent) :
