@@ -984,10 +984,11 @@ void CodeBench::render(const char* title, bool* open)
         ImGui::TextUnformatted(host_->replPrompt().c_str());
         ImGui::PopStyleColor();
         ImGui::SameLine();
-        const float sendW = 64.0f;
-        ImGui::SetNextItemWidth(avail.x - sendW - ImGui::GetStyle().ItemSpacing.x -
-                                ImGui::CalcTextSize(host_->replPrompt().c_str()).x -
-                                ImGui::GetStyle().ItemSpacing.x);
+        const float sendW  = 64.0f;
+        const float breakW = 64.0f;
+        const float sp     = ImGui::GetStyle().ItemSpacing.x;
+        ImGui::SetNextItemWidth(avail.x - sendW - breakW - 3.0f * sp -
+                                ImGui::CalcTextSize(host_->replPrompt().c_str()).x);
         if (replFocus_) { ImGui::SetKeyboardFocusHere(); replFocus_ = false; }
         auto submit = [&]() {
             std::string line = replInput_;
@@ -1022,6 +1023,15 @@ void CodeBench::render(const char* title, bool* open)
             ImGui::SetTooltip("Send this line to the live LOGO interpreter (Enter).\n"
                               "Up/Down recalls previous commands. Turtle draws on the\n"
                               "graphics card window; PRINT/errors on the Apple-1 screen.");
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.55f, 0.18f, 0.18f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.72f, 0.24f, 0.24f, 1.0f));
+        if (ImGui::Button("Break", ImVec2(breakW, 0))) { host_->replBreak(); replFocus_ = true; }
+        ImGui::PopStyleColor(2);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Interrupt a running loop (sends Ctrl-G): aborts REPEAT /\n"
+                              "REPEAT FOREVER at its next step, back to the `?` prompt —\n"
+                              "without halting the CPU like the toolbar Stop.");
     }
 
     // Mirror the bench status line into the host's MAIN status bar (full width —

@@ -186,6 +186,9 @@ public:
     virtual bool        replActive() const { return false; }
     virtual std::string replPrompt() const { return "?"; }   // shown before the input
     virtual void        replSend(const std::string& /*line*/) {}
+    // Send an interrupt (a break keystroke the interpreter polls for) to abort a
+    // running loop without halting the whole CPU. Default: no-op.
+    virtual void        replBreak() {}
 
     // ---- Serial monitor (a separate window the host owns) ----
     virtual bool hasSerial() const { return false; }

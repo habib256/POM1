@@ -3534,3 +3534,14 @@ void Pom1BenchHost::replSend(const std::string& line)
     emu->queueKey('\r');
     emu->startCpu();   // ensure the emulation thread is running to drain the keys
 }
+
+void Pom1BenchHost::replBreak()
+{
+    if (!replActive()) return;
+    // Ctrl-G ($07): APPLE-1 LOGO's poll_break sets break_flag on ESC ($1B) or
+    // Ctrl-G, aborting a REPEAT (incl. REPEAT FOREVER) at its next iteration —
+    // without halting the CPU (unlike the toolbar Stop). Ctrl-G is preferred over
+    // ESC as it survives the TerminalCard's ESC-sequence handling.
+    mw_->emulation->queueKey('\x07');
+    mw_->emulation->startCpu();
+}

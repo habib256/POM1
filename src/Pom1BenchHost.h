@@ -71,6 +71,7 @@ public:
     bool        replActive() const override;
     std::string replPrompt() const override { return "LOGO \xE2\x80\xBA"; }  // "LOGO ›"
     void        replSend(const std::string& line) override;
+    void        replBreak() override;   // Ctrl-G → abort a running REPEAT loop
 
 private:
     void               probe() const;   // lazy cc65 toolchain detection

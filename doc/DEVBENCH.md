@@ -205,7 +205,9 @@ press Enter — the line is fed to the live interpreter (one line at a time, Up/
 recalls history) and echoed into the console as a record of what you sent. The turtle
 draws on the graphics-card window and the interpreter's own text output — the `?`
 prompt, `OK`, `PRINT`, error messages — shows on the **Apple-1 screen window** (that's
-its job). It lets you drive and extend a running program without a re-cold-start.
+its job). It lets you drive and extend a running program without a re-cold-start. A
+**Break** button sends Ctrl-G, which aborts a running `REPEAT` / `REPEAT FOREVER` at
+its next step (back to the `?` prompt) without halting the CPU like the toolbar Stop.
 
 ### Markdown documents
 
