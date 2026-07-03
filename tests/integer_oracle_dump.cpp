@@ -72,8 +72,11 @@ std::vector<uint8_t> tokeniseViaRom(Memory& mem, M6502& cpu, CaptureDisplay& dis
 }
 
 const char* const kSamples[] = {
-    "10 AB=5\n",           // PROBE: multi-char var name isolated
-    "10 ABC=7\n",          // PROBE: 3-char var name
+    "10 A1=5\n",           // PROBE: letter+digit
+    "10 A9=5\n",           // PROBE: letter+digit
+    "10 AB=5\n",           // PROBE: letter+letter
+    "10 A1B=5\n",          // PROBE: letter+digit+letter
+    "10 SCORE=5\n",        // PROBE: long name
     "10 PRINT 42\n",
     "10 PRINT 6*7\n",
     "10 LET A=5\n20 PRINT A\n",

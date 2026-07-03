@@ -108,6 +108,14 @@ int main()
     expectBytes("REM HELLO", "10 REM HELLO",
         {0x0B,0x0A,0x00,0x5D,0xA0,0xC8,0xC5,0xCC,0xCC,0xCF,0x01});
 
+    // REM after a ':' is a statement — the rest of the physical line is a literal
+    // comment (bytes built from the already-oracle-pinned A=1 / colon / REM
+    // patterns above). Regression: the tokeniser used to reject this with
+    // "expected '=' in assignment" because statement() had no REM case.
+    // "A=1" -> C1 71 B1 01 00 ; ":" -> 03 ; "REM HI" -> 5D A0 C8 C9 ; EOL -> 01.
+    expectBytes("A=1:REM HI (mid-line REM)", "10 A=1:REM HI",
+        {0x0E,0x0A,0x00,0xC1,0x71,0xB1,0x01,0x00,0x03,0x5D,0xA0,0xC8,0xC9,0x01});
+
     expectBytes("POKE 0,1", "10 POKE 0,1",
         {0x0C,0x0A,0x00,0x64,0xB0,0x00,0x00,0x65,0xB1,0x01,0x00,0x01});
 

@@ -219,8 +219,24 @@ private:
         if (matchWord("END"))   { emit(TOK_END); return; }
         if (matchWord("INPUT")) { stmtInput(); return; }
         if (matchWord("DIM"))   { stmtDim(); return; }
-        // REM is handled before parsing (takes the rest of the line literally); see
-        // Parser::tryRem in compile(). It never reaches the statement dispatcher.
+        // REM anywhere a statement is expected — line start (via Parser::tryRem
+        // in compile()) OR after a ':' (here). REM is a statement: "A=1:REM x" is
+        // valid, common Integer BASIC, and the ROM consumes the rest of the
+        // physical line as a literal comment. Mirror tryRem's byte semantics
+        // exactly; do NOT use matchWord() — it skips the single space the ROM
+        // preserves after "REM" (oracle "REM HELLO" -> 5D A0 C8 …) and ignores
+        // word boundaries (would match "REM" inside a "REMOTE" variable).
+        if (peekUpper() == 'R' && i_ + 3 <= s_.size() &&
+            std::toupper(static_cast<unsigned char>(s_[i_ + 1])) == 'E' &&
+            std::toupper(static_cast<unsigned char>(s_[i_ + 2])) == 'M' &&
+            (i_ + 3 == s_.size() ||
+             !std::isalnum(static_cast<unsigned char>(s_[i_ + 3])))) {
+            emit(TOK_REM);
+            for (size_t k = i_ + 3; k < s_.size(); ++k)
+                emit(static_cast<uint8_t>(s_[k]) | 0x80);   // rest of line, chars | $80
+            i_ = s_.size();
+            return;
+        }
         if (matchWord("POKE"))  { stmtPoke(); return; }
         if (matchWord("CALL"))  { emit(TOK_CALL); expression(); return; }
         if (matchWord("TAB"))   { emit(TOK_TAB); expression(); return; }
