@@ -156,12 +156,18 @@ static const unsigned char kDisc16[48] = {
 static const unsigned char *const kDiscRaw[3] = { kDisc48, kDisc32, kDisc16 };
 
 /* Pre-tinted disc tables, sized to each tier (48->336, 32->160, 16->48 bytes)
- * to keep BSS small — a flat [3][2][336] wastes ~900 bytes and overflows the
- * $6000-$BEFF budget when the bench links the full gen2c runtime. A const
- * pointer table indexes them by [tier][byte-column phase]. */
+ * to keep BSS small. Even so, the six variants total ~1 KB and — together with
+ * the full gen2c runtime the DevBench links (~20 KB, no dead-strip) — overflow
+ * the $6000-$BEFF budget. They (and the per-page erase memory below) are parked
+ * in LOWBSS: idle user RAM at $0C00-$1FFF beneath the HIRES framebuffers (see
+ * apple1_gen2_c.cfg). Safe there because build_sprites() writes every byte
+ * before the first blit reads it (LOWBSS is NOT crt0-zeroed). A const pointer
+ * table indexes them by [tier][byte-column phase]. */
+#pragma bss-name (push, "LOWBSS")
 static unsigned char tnt48[2][336];
 static unsigned char tnt32[2][160];
 static unsigned char tnt16[2][48];
+#pragma bss-name (pop)
 static unsigned char *const discTint[3][2] = {
     { tnt48[0], tnt48[1] },
     { tnt32[0], tnt32[1] },
@@ -193,19 +199,23 @@ static int   yq[MAXB];          /* vertical position, 1/16 px (by = yq>>4)   */
 
 /* Per-page erase memory (the Bounces trick): each page remembers exactly what
  * it last drew in each slot, so it can XOR-erase it next time it is the draw
- * page. Index [slot][page-1]. */
+ * page. Index [slot][page-1]. Parked in LOWBSS (see the tint tables above):
+ * prime_pages() -> rebuild_page() writes every one of these for BOTH pages
+ * before the first render() reads them, so the un-zeroed segment is safe. */
+#pragma bss-name (push, "LOWBSS")
 static unsigned char oalive[MAXB][2];
 static unsigned char otier[MAXB][2];
 static unsigned char ophase[MAXB][2];
 static int   obx[MAXB][2];
 static int   oby[MAXB][2];
 static int   opx[2];            /* cannon old x per page                     */
+static unsigned char obul_a[MAXBUL][2];      /* per-page erase memory        */
+static int   obul_x[MAXBUL][2], obul_y[MAXBUL][2];
+#pragma bss-name (pop)
 
 /* ---- bullets (discrete fast pellets) ------------------------------------ */
 static unsigned char bul_a[MAXBUL];          /* active flag                  */
 static int   bul_x[MAXBUL], bul_y[MAXBUL];   /* top-left, pixels             */
-static unsigned char obul_a[MAXBUL][2];      /* per-page erase memory        */
-static int   obul_x[MAXBUL][2], obul_y[MAXBUL][2];
 
 /* ---- globals ------------------------------------------------------------ */
 static int           px;        /* cannon x (pixels)                         */
@@ -436,6 +446,7 @@ static void render(unsigned char page)
     if (plat_redraw) {                 /* repaint this hidden page wholesale */
         rebuild_page(page);
         --plat_redraw;
+        gen2_wait_vbl();               /* flip in V-blank — see below         */
         gen2_show_page();
         return;
     }
@@ -471,6 +482,14 @@ static void render(unsigned char page)
 
     if (huddirty) { draw_hud(); --huddirty; }
 
+    /* Flip the freshly-drawn hidden page in DURING V-blank so the beam never
+     * catches the $C254/$C255 page switch mid-scan. Without the wait the flip
+     * lands at an arbitrary raster line — the top of the screen shows the new
+     * page, the bottom the old one (a tear line), and a bubble straddling that
+     * line appears at both its old and new spots (a "ghost"). One C frame spans
+     * more than one 60 Hz refresh, so this only aligns the single per-frame flip
+     * to the next blanking interval; it never paces the loop down. */
+    gen2_wait_vbl();
     gen2_show_page();
 }
 

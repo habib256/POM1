@@ -37,11 +37,12 @@ $(GFXLIB):
 
 all: $(PROJECT).bin
 
+TOOLS    := ../../../tools
+
 $(PROJECT).bin: $(PROJECT).c $(GEN2C)/gen2.h $(GFXLIB) $(GEN2CFG)
 	$(CL65) $(CFLAGS) -C $(GEN2CFG) $(INCS) $(SRCS) $(GFXLIB) -o $(PROJECT).bin
-	@mkdir -p "$(SOFTWARE)"
-	@cp $(PROJECT).bin "$(SOFTWARE)/$(PROJECT).bin"
 	@ls -l $(PROJECT).bin
+	@python3 $(TOOLS)/emit_gen2_txt.py $(PROJECT).bin "$(SOFTWARE)/$(PROJECT).bin" "$(SOFTWARE)/$(PROJECT).txt"
 
 clean:
 	rm -f $(PROJECT).bin *.o
