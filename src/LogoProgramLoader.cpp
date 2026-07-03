@@ -120,10 +120,15 @@ Result compile(const std::string& source, const Target& tgt) {
         if (line.empty()) continue;                       // blank line: ignore
 
         // Every executable line (immediate or body) is re-parsed through the
-        // 60-byte REPL line buffer, so enforce the width up front.
-        if (line.size() > static_cast<size_t>(kLineMax)) {
+        // kLineMax-byte REPL line buffer, which must ALSO hold the terminating
+        // CR — so usable content is kLineMax-1 chars. A line of exactly kLineMax
+        // chars is stored without its CR by the interpreter's body-copy loop
+        // (CPX #LINE_MAX; BCS @run bails before copying the CR), leaving
+        // parse_and_exec to scan past the buffer into adjacent zero-page. Reject
+        // it up front.
+        if (line.size() >= static_cast<size_t>(kLineMax)) {
             r.error = "line " + std::to_string(lineNo) + " exceeds " +
-                      std::to_string(kLineMax) + " chars (LOGO REPL line limit)";
+                      std::to_string(kLineMax - 1) + " chars (LOGO REPL line limit)";
             return r;
         }
 

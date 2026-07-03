@@ -1277,6 +1277,15 @@ void MicroSD::deserialize(pom1::SnapshotReader& r)
     responseBuffer  = r.readByteVector();
     responseIndex   = static_cast<size_t>(r.readU32());
     const uint32_t dirCount = r.readU32();
+    // Validate the declared count against the bytes actually present before
+    // reserving — a forged count could otherwise drive a multi-GB speculative
+    // allocation. Each entry needs ≥ 4 (name length prefix) + 8 (size) + 1
+    // (isDirectory) = 13 bytes. Mirrors CassetteDevice/Drive1541's guards.
+    constexpr std::streamoff kMinDirEntryBytes = 13;
+    if (static_cast<std::streamoff>(dirCount) * kMinDirEntryBytes > r.bytesAvailable()) {
+        r.fail();
+        return;
+    }
     dirEntries.clear();
     dirEntries.reserve(dirCount);
     for (uint32_t i = 0; i < dirCount; ++i) {

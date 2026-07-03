@@ -72,9 +72,8 @@ std::vector<uint8_t> tokeniseViaRom(Memory& mem, M6502& cpu, CaptureDisplay& dis
 }
 
 const char* const kSamples[] = {
-    "10 A B=5\n",          // PROBE: space inside variable name
-    "10 AB=5\n",           // PROBE: baseline var name
-    "10 PR INT 5\n",       // PROBE: space inside keyword PRINT
+    "10 AB=5\n",           // PROBE: multi-char var name isolated
+    "10 ABC=7\n",          // PROBE: 3-char var name
     "10 PRINT 42\n",
     "10 PRINT 6*7\n",
     "10 LET A=5\n20 PRINT A\n",
@@ -143,6 +142,11 @@ int main()
         uint16_t lomem = 0, pp = 0;
         std::vector<uint8_t> img = tokeniseViaRom(mem, cpu, disp, src, lomem, pp);
         mem.setDisplayDevice(nullptr);
+        {
+            std::string t = disp.text; std::string vis;
+            for (char c : t) { if (c=='\r'||c=='\n') vis+="\\n"; else if (c>=32&&c<127) vis+=c; else { char b[8]; std::snprintf(b,8,"[%02X]",(unsigned char)c); vis+=b; } }
+            std::printf("   DISPLAY: %s\n", vis.c_str());
+        }
 
         std::printf("---- source: ");
         for (const char* p = src; *p; ++p) std::printf("%s", *p == '\n' ? " / " : std::string(1, *p).c_str());

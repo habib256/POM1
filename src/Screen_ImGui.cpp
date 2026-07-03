@@ -16,7 +16,14 @@ constexpr int kCharmapGlyphCount = 128;
 constexpr int kCharmapBytesPerGlyph = 8;
 /** 5 colonnes × 8 lignes dans la ROM (ligne 7 = descentes y, g, p, q, j, …). */
 constexpr int kCharmapVisibleRows = 8;
-constexpr int kCharmapVisibleCols = 5;
+constexpr int kCharmapVisibleCols = 5;   // nominal font width — drives the geometry
+// Glyph pixels live in bits 1..6 of each ROM byte, so scan 6 columns when
+// rasterising. Almost every glyph fits in bits 1..5 (the nominal 5-wide font),
+// but '_' ($5F, row7 = $7E) and the control block ($01, never displayed) set
+// bit 6 — a 6th dot a 5-column scan silently clips. Dot 6 lands on the last
+// column of the 7-dot cell (kGlyphXOffset 1 + 6 = 7), so it stays in-cell and
+// in-bounds; glyphs without bit 6 are unaffected.
+constexpr int kCharmapGlyphBits = 6;
 
 }
 
@@ -70,7 +77,7 @@ void Screen_ImGui::buildScreenFramebuffer(const std::array<char, BUFFER_SIZE>& g
                 if (!bits) continue;
                 uint32_t* dst = screenFb.data()
                               + static_cast<size_t>(baseY + row) * kFbWidth + baseX;
-                for (int col = 0; col < kCharmapVisibleCols; ++col) {
+                for (int col = 0; col < kCharmapGlyphBits; ++col) {
                     const unsigned char mask = static_cast<unsigned char>(1u << (col + 1));
                     if (bits & mask) dst[col] = on;
                 }
@@ -210,7 +217,7 @@ void Screen_ImGui::drawCharmapGlyph(ImDrawList* drawList, float x, float y, floa
     const auto& glyph = charmapGlyphs[glyphIndex];
     for (int row = 0; row < kCharmapVisibleRows; ++row) {
         const unsigned char bits = glyph[row];
-        for (int col = 0; col < kCharmapVisibleCols; ++col) {
+        for (int col = 0; col < kCharmapGlyphBits; ++col) {
             const unsigned char mask = static_cast<unsigned char>(1u << (col + 1));
             if ((bits & mask) == 0) {
                 continue;
@@ -305,11 +312,22 @@ void Screen_ImGui::drawCRTBackdrop(float x0, float y0, float x1, float y1, bool 
 
     const ImU32 brightLineColor = ImGui::ColorConvertFloat4ToU32(phosphorTint);
     const float dimLineMul = charmapDisplay ? 0.78f : 0.55f;
-    for (float py = y0; py < y1; py += 1.0f) {
-        const float lineAlpha = (static_cast<int>(py - y0) & 1) == 0 ? 1.0f : dimLineMul;
-        ImVec4 varied = ImGui::ColorConvertU32ToFloat4(brightLineColor);
+    const ImVec4 baseTint = ImGui::ColorConvertU32ToFloat4(brightLineColor);
+    // AddRectFilled at integer Y, NOT AddLine: ImGui's AA line rasteriser
+    // attenuates a sub-2-px line to a fraction of its alpha on macOS GL 3.2 /
+    // WebGL2 — the exact reason drawCRTScanlines was rewritten — so AddLine here
+    // washed the phosphor bands out and let them drift sub-pixel on resize. A
+    // 1-px solid rect anchored to an integer Y hits the display pixel at the
+    // intended alpha on both backends.
+    const int iy0 = static_cast<int>(std::floor(y0));
+    const int iy1 = static_cast<int>(std::ceil(y1));
+    for (int py = iy0; py < iy1; ++py) {
+        const float lineAlpha = ((py - iy0) & 1) == 0 ? 1.0f : dimLineMul;
+        ImVec4 varied = baseTint;
         varied.w *= lineAlpha;
-        dl->AddLine(ImVec2(x0, py), ImVec2(x1, py), ImGui::ColorConvertFloat4ToU32(varied), 1.0f);
+        dl->AddRectFilled(ImVec2(x0, static_cast<float>(py)),
+                          ImVec2(x1, static_cast<float>(py) + 1.0f),
+                          ImGui::ColorConvertFloat4ToU32(varied));
     }
 }
 

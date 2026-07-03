@@ -143,6 +143,14 @@ void PR40Printer::deserialize(pom1::SnapshotReader& r)
     pagesTornOff       = static_cast<int>(r.readU32());
     currentLine        = r.readString();
     const uint32_t lineCount = r.readU32();
+    // Validate the declared count against the bytes present before reserving —
+    // a forged count could otherwise drive a multi-GB speculative allocation.
+    // Each line is a readString (≥ 4-byte length prefix). Mirrors the guards in
+    // CassetteDevice/Drive1541/MicroSD::deserialize.
+    if (static_cast<std::streamoff>(lineCount) * 4 > r.bytesAvailable()) {
+        r.fail();
+        return;
+    }
     paperLines.clear();
     paperLines.reserve(lineCount);
     for (uint32_t i = 0; i < lineCount; ++i) paperLines.push_back(r.readString());

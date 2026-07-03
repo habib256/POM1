@@ -144,9 +144,15 @@ public:
         outW = fbW;
         outH = fbH;
         outPixels.assign(static_cast<size_t>(fbW) * fbH * 4, 0);
+        // Save/restore GL_PACK_ALIGNMENT (mirrors createTexture/updateTexture's
+        // GL_UNPACK_ALIGNMENT handling) so this read doesn't leave global pixel-
+        // store state altered for any future glReadPixels caller.
+        GLint prevPackAlign = 4;
+        glGetIntegerv(GL_PACK_ALIGNMENT, &prevPackAlign);
         glPixelStorei(GL_PACK_ALIGNMENT, 1);
         glReadPixels(0, 0, fbW, fbH, GL_RGBA, GL_UNSIGNED_BYTE,
                      outPixels.data());
+        glPixelStorei(GL_PACK_ALIGNMENT, prevPackAlign);
 
         // Y-flip in place: glReadPixels gives bottom-up, callers (the PNG
         // screenshot path) want top-down. Doing it inside the renderer keeps
