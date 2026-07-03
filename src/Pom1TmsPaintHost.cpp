@@ -22,7 +22,10 @@
 
 Pom1TmsPaintHost::Pom1TmsPaintHost(EmulationController* emu,
                                    GLFWwindow* const* windowSlot)
-    : emu_(emu), windowSlot_(windowSlot), snap_(std::make_unique<TMS9918::Snapshot>())
+    : emu_(emu), windowSlot_(windowSlot), snap_(std::make_unique<TMS9918::Snapshot>()),
+      writer_([this](const PaintCardBatcher::Writes& w) {
+          if (emu_) emu_->writeTms9918VramBatch(w);   // out-of-band VRAM edit via the chip seam
+      })
 {
 }
 
@@ -110,30 +113,16 @@ std::vector<tmspaint::DevSpriteCategory> Pom1TmsPaintHost::devSprites()
     return devSpritesCache_;
 }
 
+// Poke/batch plumbing lives in the shared PaintCardBatcher (see its header for
+// the batching + reentrancy contract). VRAM addresses mask to 14 bits before
+// they reach the batcher; the commit routes them to the TMS9918 editor seam.
 void Pom1TmsPaintHost::pokeVram(uint16_t addr, uint8_t value)
 {
-    // While batching, defer to one writeTms9918VramBatch() so a bulk edit costs
-    // one lock + one framebuffer rebuild + one snapshot publish.
-    if (batchDepth_ > 0) { batch_.emplace_back(static_cast<uint16_t>(addr & 0x3FFF), value); return; }
-    if (emu_) emu_->writeTms9918Vram(static_cast<uint16_t>(addr & 0x3FFF), value);
+    writer_.poke(static_cast<uint16_t>(addr & 0x3FFF), value);
 }
 
-void Pom1TmsPaintHost::beginBatch()
-{
-    // Reentrant depth counter (mirrors Pom1HgrPaintHost): a nested begin/endBatch
-    // — e.g. Ctrl+Z's applyOps brackets firing while a bulk Line/Rect drag's batch
-    // is still open — must NOT clear the queue or flush it early. Only the
-    // outermost begin clears and the outermost end flushes.
-    if (batchDepth_++ == 0) batch_.clear();
-}
-
-void Pom1TmsPaintHost::endBatch()
-{
-    if (batchDepth_ > 0 && --batchDepth_ == 0) {
-        if (emu_) emu_->writeTms9918VramBatch(batch_);
-        batch_.clear();
-    }
-}
+void Pom1TmsPaintHost::beginBatch() { writer_.begin(); }
+void Pom1TmsPaintHost::endBatch()   { writer_.end(); }
 
 void Pom1TmsPaintHost::applyRegisters(const uint8_t regs[8])
 {

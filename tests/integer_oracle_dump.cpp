@@ -72,6 +72,9 @@ std::vector<uint8_t> tokeniseViaRom(Memory& mem, M6502& cpu, CaptureDisplay& dis
 }
 
 const char* const kSamples[] = {
+    "10 A B=5\n",          // PROBE: space inside variable name
+    "10 AB=5\n",           // PROBE: baseline var name
+    "10 PR INT 5\n",       // PROBE: space inside keyword PRINT
     "10 PRINT 42\n",
     "10 PRINT 6*7\n",
     "10 LET A=5\n20 PRINT A\n",

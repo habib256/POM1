@@ -436,15 +436,6 @@ void EmulationController::writeMemoryBatch(const std::vector<std::pair<uint16_t,
     publisher.publish(*memory, *cpu, runRequested.load());   // one publish for the whole batch
 }
 
-void EmulationController::writeTms9918Vram(uint16_t addr, uint8_t value)
-{
-    std::lock_guard<PriorityMutex> lock(stateMutex);
-    TMS9918& tms = memory->getTMS9918();
-    tms.editorPokeVram(addr, value);
-    tms.editorRebuildFramebuffer();
-    publisher.publish(*memory, *cpu, runRequested.load());
-}
-
 void EmulationController::writeTms9918VramBatch(const std::vector<std::pair<uint16_t, uint8_t>>& writes)
 {
     if (writes.empty()) return;

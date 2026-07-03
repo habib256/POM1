@@ -22,7 +22,10 @@
 
 Pom1HgrPaintHost::Pom1HgrPaintHost(EmulationController* emu,
                                    GLFWwindow* const* windowSlot)
-    : emu_(emu), windowSlot_(windowSlot), scratch_(0x10000, 0)
+    : emu_(emu), windowSlot_(windowSlot), scratch_(0x10000, 0),
+      writer_([this](const PaintCardBatcher::Writes& w) {
+          if (emu_) emu_->writeMemoryBatch(w);   // HGR VRAM is main RAM $2000-$3FFF
+      })
 {
 }
 
@@ -116,31 +119,12 @@ std::vector<hgrpaint::DevSpriteCategory> Pom1HgrPaintHost::devSprites()
     return devSpritesCache_;
 }
 
-void Pom1HgrPaintHost::pokeByte(uint16_t addr, uint8_t value)
-{
-    // While batching, defer to one writeMemoryBatch() so a bulk edit costs one
-    // lock + one snapshot publish instead of thousands.
-    if (batchDepth_ > 0) { batch_.emplace_back(addr, value); return; }
-    if (emu_) emu_->writeMemory(addr, value);
-}
-
-void Pom1HgrPaintHost::beginBatch()
-{
-    // Reentrant: only the OUTERMOST begin starts a fresh batch, so a nested
-    // begin/end pair (e.g. doUndo()'s applyOps fired while a shape stroke is still
-    // open) can't clear the queue or flush it early. Pairs with endBatch's depth
-    // count. Previously a plain bool, so a nested endBatch flipped batching off
-    // and the outer stroke's remaining pokes escaped the batch (round-2 D1).
-    if (batchDepth_++ == 0) batch_.clear();
-}
-
-void Pom1HgrPaintHost::endBatch()
-{
-    if (batchDepth_ > 0 && --batchDepth_ == 0) {
-        if (emu_) emu_->writeMemoryBatch(batch_);
-        batch_.clear();
-    }
-}
+// Poke/batch plumbing lives in the shared PaintCardBatcher (see its header for
+// the batching + reentrancy contract). The commit routes HGR VRAM writes to
+// EmulationController::writeMemoryBatch ($2000-$3FFF is plain main RAM).
+void Pom1HgrPaintHost::pokeByte(uint16_t addr, uint8_t value) { writer_.poke(addr, value); }
+void Pom1HgrPaintHost::beginBatch() { writer_.begin(); }
+void Pom1HgrPaintHost::endBatch()   { writer_.end(); }
 
 void Pom1HgrPaintHost::renderHgrPage(const uint8_t* page8k, uint32_t* outRgba, bool mono,
                                      bool grMode)

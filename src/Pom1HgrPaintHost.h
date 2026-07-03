@@ -13,6 +13,7 @@
 #include "IHgrPaintHost.h"   // hgrpaint/ on the include path
 
 #include "GraphicsCard.h"
+#include "PaintCardBatcher.h"   // shared card-copy plumbing (HGR + TMS paint hosts)
 
 #include <cstdint>
 #include <string>
@@ -57,8 +58,7 @@ private:
     GLFWwindow* const* windowSlot_ = nullptr;  // → MainWindow::window (lazy, may be null)
     GraphicsCard gfx_;                 // owns the NTSC pipeline for the editor canvas
     std::vector<uint8_t> scratch_;     // 64 KB scratch the page is rendered through
-    int  batchDepth_ = 0;              // begin/endBatch nesting depth (reentrant)
-    std::vector<std::pair<uint16_t, uint8_t>> batch_;   // coalesced writes
+    PaintCardBatcher writer_;          // begin/end/poke → coalesced writeMemoryBatch
 
     // Lazily-parsed built-in HGR sprite library (dev/lib/gen2/sprites/*.asm).
     std::vector<hgrpaint::DevSpriteCategory> devSpritesCache_;

@@ -13,6 +13,7 @@
 #include "ITmsPaintHost.h"   // tmspaint/ on the include path
 
 #include "TMS9918.h"         // TMS9918::Snapshot for the canvas render
+#include "PaintCardBatcher.h"   // shared card-copy plumbing (HGR + TMS paint hosts)
 
 #include <cstdint>
 #include <memory>
@@ -58,8 +59,7 @@ private:
     EmulationController* emu_;
     GLFWwindow* const* windowSlot_ = nullptr;            // → MainWindow::window (lazy)
     std::unique_ptr<TMS9918::Snapshot> snap_;            // staging for renderToBuffer
-    int  batchDepth_ = 0;                                // begin/endBatch nesting depth (reentrant)
-    std::vector<std::pair<uint16_t, uint8_t>> batch_;    // coalesced VRAM writes
+    PaintCardBatcher writer_;          // begin/end/poke → coalesced writeTms9918VramBatch
 
     // Lazily-parsed built-in TMS9918 sprite library (dev/lib/tms9918/sprites_*.asm).
     std::vector<tmspaint::DevSpriteCategory> devSpritesCache_;

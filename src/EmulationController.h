@@ -165,11 +165,11 @@ public:
     void writeMemoryBatch(const std::vector<std::pair<uint16_t, uint8_t>>& writes);
 
     /// TMS9918 Paint editor seam — the chip's 16 KB VRAM lives behind the
-    /// $CC00/$CC01 ports, not the 6502 bus, so these forward to TMS9918's
-    /// out-of-band editor pokes (which bypass the silicon-strict drain). Each
-    /// takes stateMutex, rebuilds the live framebuffer once, and publishes a
-    /// single snapshot. `addr` is VRAM-relative (& 0x3FFF).
-    void writeTms9918Vram(uint16_t addr, uint8_t value);
+    /// $CC00/$CC01 ports, not the 6502 bus, so this forwards to TMS9918's
+    /// out-of-band editor pokes (which bypass the silicon-strict drain). Takes
+    /// stateMutex, rebuilds the live framebuffer once, and publishes a single
+    /// snapshot. `addr` is VRAM-relative (& 0x3FFF). A lone poke is committed as
+    /// a batch of one by the paint host (see PaintCardBatcher).
     void writeTms9918VramBatch(const std::vector<std::pair<uint16_t, uint8_t>>& writes);
     /// Program all 8 mode registers onto the live chip (canonical paint layout).
     void applyTms9918Registers(const uint8_t regs[8]);
