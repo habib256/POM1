@@ -146,5 +146,30 @@ int main()
         std::printf("hex_dump_zp_addr: OK ($0040: FF A9 00)\n");
     }
 
+    // Inline '#' comment (regression): '#' is documented as inline-strippable
+    // alongside '//' and ';'. If it isn't stripped, hex-looking comment text
+    // after it ("BADC0DE") tokenises as data bytes BA DC 0D and silently
+    // corrupts $0301+. Assert only the byte before '#' loads.
+    {
+        const std::string hashPath = (std::filesystem::temp_directory_path()
+                                    / "pom1_hex_dump_hash_comment.txt").string();
+        {
+            std::ofstream f(hashPath);
+            f << "# full-line hash comment ignored\n"
+                 "0300: AB # BADC0DE inline hash must not become data\n"
+                 "0301: CD\n";
+        }
+        Memory memHash;
+        uint16_t run = 0;
+        int loaded = 0;
+        assert(memHash.loadHexDump(hashPath.c_str(), run, &loaded, nullptr) == 0);
+        assert(loaded == 2 && "only AB and CD are data; the '#' comment must be stripped");
+        assert(memHash.memRead(0x0300) == 0xAB);
+        assert(memHash.memRead(0x0301) == 0xCD && "comment hex must not overwrite $0301");
+        std::error_code ecHash;
+        std::filesystem::remove(hashPath, ecHash);
+        std::printf("hex_dump_hash_comment: OK (inline '#' stripped)\n");
+    }
+
     return 0;
 }
