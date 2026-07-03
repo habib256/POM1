@@ -219,10 +219,17 @@ void HgrSpriteEditor::transformFlipH()
     const int W = wpx(), H = hRows_;
     auto before = snapshotRegion();
     std::vector<HgrColor> g(static_cast<size_t>(W) * H);
+    // Sprites are a monochrome bit shape (pencil/fill draw White, which
+    // plotPage writes without parity-snapping). Transform the raw bits, NOT
+    // the artifact colour: colorAt() classifies isolated/edge pixels as a
+    // chromatic Violet/Green, and re-plotting that through plotPage would snap
+    // the pixel back onto the colour's required column parity — shifting it
+    // ±1 whenever the flip changes its parity.
     for (int y = 0; y < H; ++y)
         for (int x = 0; x < W; ++x)
             g[static_cast<size_t>(y) * W + x] =
-                hgrpaint::colorAt(scratch.data(), W - 1 - x, y);
+                hgrpaint::pixelOn(scratch.data(), W - 1 - x, y)
+                    ? HgrColor::White : HgrColor::Black;
     rebuildFromGrid(scratch, W, H, g, before);
     commitRegionDiff(before);
     status = "Flipped horizontally";
@@ -236,7 +243,8 @@ void HgrSpriteEditor::transformFlipV()
     for (int y = 0; y < H; ++y)
         for (int x = 0; x < W; ++x)
             g[static_cast<size_t>(y) * W + x] =
-                hgrpaint::colorAt(scratch.data(), x, H - 1 - y);
+                hgrpaint::pixelOn(scratch.data(), x, H - 1 - y)
+                    ? HgrColor::White : HgrColor::Black;   // raw bits, not artifact colour
     rebuildFromGrid(scratch, W, H, g, before);
     commitRegionDiff(before);
     status = "Flipped vertically";
@@ -251,7 +259,9 @@ void HgrSpriteEditor::transformShift(int dx, int dy)
         for (int x = 0; x < W; ++x) {
             const int sx = x - dx, sy = y - dy;
             if (sx < 0 || sx >= W || sy < 0 || sy >= H) continue;
-            g[static_cast<size_t>(y) * W + x] = hgrpaint::colorAt(scratch.data(), sx, sy);
+            g[static_cast<size_t>(y) * W + x] =
+                hgrpaint::pixelOn(scratch.data(), sx, sy)   // raw bits, not artifact colour
+                    ? HgrColor::White : HgrColor::Black;
         }
     rebuildFromGrid(scratch, W, H, g, before);
     commitRegionDiff(before);
@@ -272,7 +282,9 @@ void HgrSpriteEditor::transformRotateCW()
     std::vector<HgrColor> src(static_cast<size_t>(W) * H);
     for (int y = 0; y < H; ++y)
         for (int x = 0; x < W; ++x)
-            src[static_cast<size_t>(y) * W + x] = hgrpaint::colorAt(scratch.data(), x, y);
+            src[static_cast<size_t>(y) * W + x] =
+                hgrpaint::pixelOn(scratch.data(), x, y)   // raw bits, not artifact colour
+                    ? HgrColor::White : HgrColor::Black;
     auto before = snapshotRegion(std::max(wBytes_, nW), std::max(hRows_, nH));
     for (const auto& p : before) scratch[p.first] = 0;
     wBytes_ = nW;

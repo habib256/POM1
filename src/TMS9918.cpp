@@ -1516,7 +1516,10 @@ void TMS9918::renderText(uint32_t* pixels, const Snapshot& s, ImU32 backdrop)
     uint8_t fgIdx = (s.regs[7] >> 4) & 0x0F;
     ImU32 fg = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
 
-    // Text mode: 240 pixels wide, centered in 256 (8-pixel border each side)
+    // Text mode: 240 pixels wide with an ASYMMETRIC border — 6-px left, 10-px
+    // right — matching the TMS9918A datasheet and the live renderTextLineRaw
+    // path (see the comment at the top of that helper). A symmetric 8/8 border
+    // here would shift the text two pixels right of what the card displays.
     for (int row = 0; row < 24; row++) {
         for (int col = 0; col < 40; col++) {
             uint8_t name = s.vram[(nameBase + row * 40 + col) & mask];
@@ -1527,7 +1530,7 @@ void TMS9918::renderText(uint32_t* pixels, const Snapshot& s, ImU32 backdrop)
                 int py = row * 8 + line;
                 for (int bit = 0; bit < 6; bit++) {
                     if (pat & (0x80 >> bit))
-                        pixels[py * kScreenWidth + (8 + col * 6 + bit)] = fg;
+                        pixels[py * kScreenWidth + (6 + col * 6 + bit)] = fg;
                 }
             }
         }
