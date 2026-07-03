@@ -189,18 +189,19 @@ void main(void)
          * so the balls never touch it. */
         if (huddirty) { gen2_hgr_putu_field(HUDX, HUDY, bounces, HUDW); --huddirty; }
 
-        /* DOUBLE BUFFER ONLY — no V-blank sync. The hidden page is now fully
-         * drawn, so show it and keep drawing into the other one. We deliberately
-         * do NOT gen2_wait_vbl() here: one C frame (XOR-erasing + redrawing the
-         * 48x48 ball plus three 16x16 balls, all in cc65 C) already takes longer
-         * than a single 60 Hz refresh, so the loop never outruns the beam — there
-         * is nothing to pace. Worse, gen2_wait_vbl() polls HST0 from C and its
-         * H-blank/V-blank discrimination is unreliable at C speed: an occasional
-         * misfire returned mid-scan, briefly ran the loop fast, and landed two
-         * opposite page flips inside one refresh -> a torn frame (new balls up
-         * top, the previous page's stale HUD at the bottom). Dropping the wait
-         * makes every iteration span at least one refresh, so at most one flip
-         * happens per frame and each shown page is always whole. */
+        /* The hidden page is now fully drawn. Flip it in DURING V-blank so the
+         * beam never catches the $C254/$C255 page switch mid-scan. Without this
+         * wait the flip lands at an arbitrary raster line: the top of the screen
+         * shows the newly-shown page while the bottom still shows the old one ->
+         * a tear line (the "coupures"), and because the two pages hold the balls
+         * one game-step (7 px) apart, a ball straddling that line is drawn at
+         * BOTH positions in the same field (the "ghost balls"). One C frame
+         * already spans more than one 60 Hz refresh, so gen2_wait_vbl() only ever
+         * aligns the single per-iteration flip to the next blanking interval — it
+         * never paces the loop down. (The retuned GEN2_VBL_SAMPLES=4 threshold in
+         * gen2_init.c reliably tells the long V-blank from a stray H-blank, so
+         * the wait no longer misfires mid-scan the way an earlier draft did.) */
+        gen2_wait_vbl();
         gen2_show_page();
         page = (page == 1u) ? 2u : 1u;   /* the page just shown is now visible;
                                             the other becomes the hidden target */
