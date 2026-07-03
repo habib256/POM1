@@ -60,7 +60,7 @@ inline float perceptualCost(const Cam16Ucs& got, const Cam16Ucs& want, float cw)
 }
 
 // ── Graphics II: 2-colours-per-8×1-cell ──────────────────────────────────────
-void convertGfxII(const std::vector<LinRgb>& tlin, int ox0, int ow,
+void convertGfxII(const std::vector<LinRgb>& tlin, int ox0, int oy0, int ow, int oh,
                   const ImportOptions& opt, const Cam16Ucs cam[16],
                   const LinRgb lin[16], uint8_t* outVram)
 {
@@ -89,6 +89,11 @@ void convertGfxII(const std::vector<LinRgb>& tlin, int ox0, int ow,
     std::fill(prevBg, prevBg + 32, uint8_t{1});
 
     for (int y = 0; y < H; ++y) {
+        // Vertical letterbox row: leave the page rows black and carry no error
+        // into them, so the top/bottom bars stay pure black — mirrors the HGR
+        // and Multicolor paths. Without this, error from the last active row
+        // diffuses into the bar and speckles it with colour.
+        if (y < oy0 || y >= oy0 + oh) { rotateErrRows(); continue; }
         const bool ltr = !opt.serpentine || ((y & 1) == 0);
         const int dir = ltr ? 1 : -1;
         for (int n = 0; n < 32; ++n) {
@@ -310,7 +315,7 @@ void imageToTmsVram(const uint8_t* rgba, int srcW, int srcH,
     } else {
         resampleToLinearRgb(rgba, srcW, srcH, kGfx2Width, kGfx2Height, opt, tlin,
                             ox0, oy0, ow, oh);
-        convertGfxII(tlin, ox0, ow, opt, cam, lin, outVram);
+        convertGfxII(tlin, ox0, oy0, ow, oh, opt, cam, lin, outVram);
     }
 }
 

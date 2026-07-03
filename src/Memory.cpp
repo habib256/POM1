@@ -1114,10 +1114,15 @@ int Memory::loadHexDump(const char* filename, uint16_t &startAddress, int* bytes
         char first = line[start];
         if (first == '#' || first == ';') continue;
         if (start + 1 < line.size() && first == '/' && line[start + 1] == '/') continue;
-        // Strip inline comments: truncate at first // or ;
+        // Strip inline comments: truncate at first //, ; or #. All three are
+        // documented (CLAUDE.md) as inline-strippable; without the '#' branch a
+        // hex-looking inline comment (e.g. "0300: AB # BADC0DE") would tokenise
+        // "BADC0DE" as data and silently corrupt memory.
         size_t commentPos = line.find("//");
         if (commentPos != std::string::npos) line = line.substr(0, commentPos);
         commentPos = line.find(';');
+        if (commentPos != std::string::npos) line = line.substr(0, commentPos);
+        commentPos = line.find('#');
         if (commentPos != std::string::npos) line = line.substr(0, commentPos);
         cleaned += line;
     }

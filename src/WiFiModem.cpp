@@ -317,8 +317,11 @@ void WiFiModem::processDataByte(uint8_t byte)
     }
 
     // Not an escape candidate — send any buffered '+' chars first, then forward.
+    // Emit the FULL buffered count: 4+ rapid '+' followed by a non-'+' is not a
+    // valid 3-char escape, so every buffered '+' is data and must be forwarded.
+    // (Capping at 3 here silently dropped the 4th and later '+'.)
     if (escapeCount > 0) {
-        for (int i = 0; i < escapeCount && i < 3; i++) {
+        for (int i = 0; i < escapeCount; i++) {
             sendToSocket('+');
         }
         escapeCount = 0;

@@ -96,7 +96,12 @@ struct Lexer {
                 }
                 if (i < src.size() && (src[i] == '$' || src[i] == '%')) {
                     if (src[i] == '$') { err = "string variables need a later phase"; return false; }
-                    ++i;   // accept % integer suffix, treat as plain int var
+                    ++i;
+                    // Integer-typed variable: keep A% distinct from A (they are
+                    // separate variables in Applesoft). Source identifiers are
+                    // alnum-only, so an "_I" suffix can never collide with a
+                    // plain identifier's label — and it stays a valid ca65 symbol.
+                    id += "_I";
                 }
                 if (id == "REM") { toks.push_back({T::Kw, "REM", 0}); remLine = true; continue; }
                 toks.push_back({isKeyword(id) ? T::Kw : T::Ident, id, 0});
