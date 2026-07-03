@@ -10,6 +10,136 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — stray Xlib clipboard error no longer crashes the app (Linux/X11)
+
+- A raw Xlib protocol error (classically a clipboard `SelectionRequest` racing a
+  requestor whose window has already vanished → `X_ChangeProperty` `BadWindow`)
+  bypassed GLFW's error callback and hit Xlib's **default handler, which calls
+  `exit()`** — taking the whole emulator down mid-session. POM1 now installs a
+  non-fatal Xlib error handler at startup (`src/X11ErrorGuard.{h,cpp}`,
+  `pom1InstallX11ErrorGuard()` right after `glfwInit`) that logs the decoded error
+  and returns instead of exiting. All Xlib inclusion is isolated in one TU so its
+  macro soup never leaks; it is a no-op on macOS/Windows/WASM and on Linux builds
+  where `find_package(X11)` fails (headless/Wayland-only).
+
+### Added — LOGO listing injection in the DevBench (4th language)
+
+- **The Bench now writes + runs LOGO turtle programs**, not just the interpreter's
+  asm build. LOGO is the 4th *New*-dialog language (after asm / C / BASIC) with two
+  interpreter targets calqued on the Applesoft GEN2/TMS path: **LOGO TMS9918**
+  (`Codetank_GAME3.rom` lower bank, `$4000`, cold `4000R`, 8 KB Parmigiani dual-bank)
+  and **LOGO GEN2 HGR** (`roms/logo-gen2.rom`, `$6000`, cold `6000R`, preset 2). Both
+  cold-start the resident **APPLE-1 LOGO V2.6** interpreter and draw the turtle live.
+- **`LogoProgramLoader` (`src/LogoProgramLoader.{h,cpp}`, pure C++/WASM-safe)** parses
+  a listing into the interpreter's on-chip layout and `Pom1BenchHost::injectLogo`
+  (mode 6) pokes it. Unlike Applesoft there is **no tokenised image**: a LOGO
+  procedure is stored as **raw ASCII source** in `proc_table` (244-byte slots — name,
+  params, `body_len`, CR-separated body), so the loader emits `proc_table` writes +
+  `n_procs`, cold-starts to the `?` prompt, `writeMemoryBatch`-pokes the table while
+  the CPU is parked, queues **only one entry line** and resumes the REPL. Feeding a
+  single line dodges the `REPEAT` break-poll type-ahead drop — procedure bodies never
+  travel the keyboard. **Verify** parses host-side without disturbing the machine.
+- Syntax colouring `langLogo()` (`bench/BenchLang.cpp`), `.logo` extension routing,
+  starters, hints/tooltips, and `bench_logo_inject_smoke` — pokes a nested-`REPEAT`
+  rosette procedure, calls it by name and asserts the turtle lights both framebuffers
+  (TMS VRAM pattern table + GEN2 HGR page-1 RAM), pinning `proc_table` `$E431`/`$B431`
+  + `n_procs` `$0260`/`$02E3` against an interpreter relink. Frozen `roms/logo-gen2.rom`
+  (byte-identical to a fresh `CODETANK_BUILD`+`LOGO_GEN2` build of `GEN2Logo.bin`).
+- **10 machine-neutral `.logo` sketches** in `sketchs/logo/` (rosette, polygons,
+  stars, recursive flower/tree, random rays/meadow — canonical LOGO-manual §11
+  tutorials), the counterpart of `sketchs/basic_applesoft/`; each runs unchanged on
+  both the TMS9918 and GEN2 turtle and was verified drawing through the real
+  interpreter. Dialect: turns are `TR`/`TL` (not `RT`/`LT`), nested `REPEAT` one deep.
+- **Interactive LOGO REPL** after Run: because the interpreter stays resident at its
+  prompt, the Bench now shows a one-line input below the console (new portable seam
+  `IBenchHost::replActive()`/`replSend()`, gated by `Pom1BenchHost::logoReplActive_`).
+  Typed lines are fed to the live REPL over the keyboard FIFO **one at a time** (so a
+  paste can't trip the `REPEAT` break-poll), with Up/Down command history, and echoed
+  into the console as a record of what was sent. The turtle draws on the card window;
+  the interpreter's own text (prompt, `OK`, `PRINT`, errors) stays on the Apple-1
+  screen window. Drive the turtle, call or (re)define procedures without a re-cold-
+  start. Flag cleared whenever a non-LOGO target reprograms the machine.
+
+### Added — GEN2 video journal survives save-state / rewind (snapshot v5)
+
+- **The GEN2 soft-switch video journal now enters the serialized snapshot.** The
+  per-frame `(cycle, kind, value)` journal that drives the beam-raced renderer
+  (mid-line PAGE2/TEXT/HIRES flips — DROL-class double-buffering, horizontal
+  splits) was published into the live in-memory `EmulationSnapshot` but *dropped*
+  from the save-state / rewind blob: the load path called
+  `resetGen2VideoEventJournal()` and rebuilt from the bare end-of-frame latch, so
+  a beam-split scene restored mid-frame lost its per-line flips until the program
+  toggled a switch again. The `GEN2VID` section now serializes the **published
+  journal + that frame's start state**; on load they are restored (after the
+  recording half is cleared and rebased to the restored latch). Event `emuCycle`s
+  are absolute and the renderer maps them modulo the frame, so they stay valid
+  against the restored cycle counter. This is the first slice of the TODO's
+  "journal enters the snapshot" (TMS9918 adoption + shared `BeamClock` replay
+  still open).
+- **Snapshot format bumped v4 → v5.** The new journal fields are gated on
+  `r.version() >= 5`; pre-v5 snapshots read no journal (the section's length
+  prefix realigns) and fall back to the prior end-of-frame-latch behaviour, so
+  old save-states still load. A forged event count (> `kGen2MaxEventsPerFrame`)
+  is rejected before allocation.
+- Pinned by a new round-trip case in `snapshot_smoke` (journal two soft-switch
+  flips, publish across a frame boundary, save/load, assert every event + the
+  frame-start state survives).
+
+### Added — HGR Sprite editor: monochrome ×2 colour + side-by-side B&W / colour view
+
+- **Reliable single-colour ×2 sprites** (`hgrsprite::magnifyColor2x`, pure +
+  pinned in `hgr_sprite_blit_smoke`). On real HGR a ×2-magnified sprite lights two
+  adjacent dots per source pixel, which NTSC reads as solid **white**. To get
+  colour, each source pixel is doubled into a 2-aligned **colour clock**: only one
+  dot of the pair is lit (even → Violet/Blue, odd → Green/Orange) plus the byte's
+  **palette high bit** (MSB) selecting the group — so the whole ×2 sprite reads as
+  one chosen artifact colour instead of white. The editor is monochrome by design:
+  the shape is drawn in black & white and the sprite takes a **single** colour.
+  Pinned by a new smoke case that stamps the doubled bytes and reads every hue
+  back through the decoder.
+- **Sprite editor rework**: the pencil/fill now author a pure **B&W shape**; the
+  palette became **"Sprite colour (×2)"** — one colour for the whole sprite,
+  **active only in ×2** (two ×1 dots are white, so colour needs the doubled
+  clock). `buildSpriteBytes` produces the mono ×1 bytes or the single-colour
+  doubled ×2 bytes, used by Stamp and the previews.
+- **Dual display**: the editor now shows the **black-&-white shape canvas** and a
+  read-only **NTSC colour view** of the same sprite side by side (decoded through
+  the real GEN2 pipeline), so the colour clocks and hue bascules are legible while
+  editing. The live-page preview also composites the sprite's real bytes and
+  decodes through NTSC (was a swatch overlay).
+
+### Added — GEN2 HGR: OpenEmulator composite NTSC decode on the CPU (Phase 4)
+
+- **`GraphicsCard::RenderMode::CompositeOECpu`** — a second HIRES colour
+  pipeline beside the default MAME artifact-colour LUT (which stays the
+  fast-path v1). Instead of the 128-entry table it builds the 14.318 MHz
+  composite signal from the *same* doubled-word HGR bitstream
+  (`buildHgrWordRow`), then runs OpenEmulator's NTSC demodulator on the CPU:
+  a symmetric **17-tap FIR** (luma ≈ 2.0 MHz, chroma ≈ 0.6 MHz), synchronous
+  sin/cos demodulation against the 4-phase colour subcarrier, and the
+  OpenEmulator YUV→RGB matrix. The 560 demodulated sub-pixels are pair-averaged
+  down to the shared **280×192** RGBA buffer (no 560-wide framebuffer, no DHGR —
+  GEN2 has neither), so the texture seam and every downstream path (monitor
+  tint, phosphor persistence, beam-race splits, fast-path diff) are unchanged
+  and the toggle is free. Port of POM2's `Apple2Display::renderCompositeOeCpu()`;
+  pure CPU (no GLSL) so it works identically on WASM and desktop.
+- **Verified against the original OpenEmulator source** (not just POM2's copy):
+  the YUV→RGB coefficients (`1.139883 / -0.394642 / -0.580622 / 2.032062`) are
+  verbatim from libemulation `OpenGLCanvas.cpp`, and the kernels are the exact
+  result of its `chebyshevWindow(17, 50) × lanczosWindow(17, …)` recipe with
+  luma normalised to sum 1 and chroma normalised **×2** (the demod gain).
+- **Grafts at `rasterizeHgrLine`**: the composite branch replaces only the
+  "560 sub-pixels" stage; `forEachBeamSegment` / `renderInternalSegment` /
+  TEXT / LORES / the legacy fast path are reused as-is (composite affects the
+  HGR artifact-colour decode only). GEN2 has no DHGR, so the per-frame
+  `signalPhaseOffset` is always 0 (phase = sample index mod 4).
+- **UI**: a "NTSC render" combo in the GEN2 window's right-click popup —
+  "NTSC MAME (actuel)" vs "Composite OpenEmulator CPU", applied each frame via
+  `setRenderMode`. Pinned by **`gen2_composite_smoke`** (achromatic-bright
+  white, chromatic `$55/$2A` violet, black-on-empty, output distinct from the
+  LUT, repaint on mode toggle). The golden-image `gfx_regress_gen2_testcard`
+  stays byte-identical (default LUT path untouched).
+
 ## [1.9.3] — 2026-07-01
 
 ### Fixed — 6502 software: Galaga title/help SAT rebuilt during active display

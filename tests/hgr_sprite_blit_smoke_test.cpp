@@ -73,6 +73,38 @@ int main()
         assert(pokes == 1 * 2);
     }
 
+    // ── Colour-aware ×2 magnify (reliable per-super-pixel artifact colour) ────
+    // Each source cell → a 2-aligned colour clock, so the authored hue survives
+    // the doubling regardless of column parity. Stamp the doubled sprite and read
+    // the displayed colour back through the pinned hgrpaint decoder.
+    {
+        const int cwB = 1, cH = 2, cwpx = cwB * 7;      // 7×2 colour cells
+        std::vector<HgrColor> cells(static_cast<size_t>(cwpx) * cH, HgrColor::Black);
+        auto setc = [&](int x, int y, HgrColor c) { cells[y * cwpx + x] = c; };
+        setc(0, 0, HgrColor::Violet);
+        setc(2, 0, HgrColor::Green);
+        setc(4, 0, HgrColor::Blue);
+        setc(6, 0, HgrColor::Orange);
+        setc(0, 1, HgrColor::White);                    // contiguous white pair →
+        setc(1, 1, HgrColor::White);                    // interior reads pure white
+
+        std::vector<uint8_t> dbl(static_cast<size_t>(cwB * 2) * (cH * 2), 0);
+        hgrsprite::magnifyColor2x(cells.data(), cwB, cH, dbl.data());
+
+        std::vector<uint8_t> pg(hgrpaint::kHiresSize, 0);
+        hgrsprite::stamp(dbl.data(), cwB * 2, cH * 2, 0, 0,
+                         [&](int off, uint8_t v) { pg[off] = v; });
+
+        // Each chromatic super-pixel reproduces its exact hue (2-aligned clock).
+        assert(hgrpaint::colorAt(pg.data(), 0,  0) == HgrColor::Violet);
+        assert(hgrpaint::colorAt(pg.data(), 5,  0) == HgrColor::Green);
+        assert(hgrpaint::colorAt(pg.data(), 8,  0) == HgrColor::Blue);
+        assert(hgrpaint::colorAt(pg.data(), 13, 0) == HgrColor::Orange);
+        assert(hgrpaint::colorAt(pg.data(), 1,  2) == HgrColor::White);
+        assert(hgrpaint::colorAt(pg.data(), 2,  2) == HgrColor::White);
+        assert(hgrpaint::colorAt(pg.data(), 3,  0) == HgrColor::Black);   // untouched cell
+    }
+
     std::printf("hgr_sprite_blit_smoke: OK\n");
     return 0;
 }

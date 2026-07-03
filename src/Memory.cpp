@@ -2233,6 +2233,25 @@ void Memory::writeSnapshotSections(pom1::SnapshotWriter& w, const M6502* cpu) co
         w.writeU8(ds.hiRes     ? 1 : 0);
         w.writeU8(gen2Scanner.isFiftyHz() ? 1 : 0);
         w.writeU64(gen2Scanner.cycle());
+        // v5+: the published soft-switch journal (the last completed frame's
+        // mid-line page/mode flips) + that frame's start state. Without it a
+        // beam-split frame restored mid-scene (DROL-class double-buffering,
+        // horizontal splits) loses its per-line flips and shows the plain
+        // end-of-frame latch until the program flips a switch again. The
+        // event emuCycles are absolute and the renderer maps them modulo the
+        // frame, so they stay valid against the restored cycle counter.
+        const std::vector<Gen2VideoScanner::Event>& ev = gen2PublishedEvents;
+        w.writeU32(static_cast<uint32_t>(ev.size()));
+        for (const Gen2VideoScanner::Event& e : ev) {
+            w.writeU64(e.emuCycle);
+            w.writeU8(static_cast<uint8_t>(e.kind));
+            w.writeU8(e.value ? 1 : 0);
+        }
+        const Gen2VideoScanner::DisplayState& fs = gen2PublishedFrameStart;
+        w.writeU8(fs.textMode  ? 1 : 0);
+        w.writeU8(fs.mixedMode ? 1 : 0);
+        w.writeU8(fs.page2     ? 1 : 0);
+        w.writeU8(fs.hiRes     ? 1 : 0);
         w.endSection(h);
     }
 
@@ -2390,10 +2409,42 @@ bool Memory::readSnapshotSections(pom1::SnapshotReader& r, std::string& error, M
             gen2Scanner.setFiftyHz(r.readU8() != 0);
             gen2Scanner.setCycle(r.readU64());
             gen2Scanner.setDisplayState(ds);
-            // Journaled events reference the pre-restore cycle stream —
-            // drop them; the next video frame republishes from the restored
-            // latch state.
+            // Clear the live (recording) journal — its events belong to the
+            // pre-restore cycle stream — and rebase both frame-start states to
+            // the restored latch. The current partial frame re-accumulates from
+            // here; the next V-blank rollover republishes it.
             resetGen2VideoEventJournal();
+            // v5+: restore the published journal (last completed frame) so the
+            // renderer replays the mid-line flips of a beam-split scene right
+            // away instead of falling back to the end-of-frame latch. Pre-v5
+            // snapshots carry no journal — the section length-prefix realigns.
+            if (r.version() >= 5) {
+                const uint32_t n = r.readU32();
+                // The record path collapses the journal at kGen2MaxEventsPerFrame,
+                // so a larger count is corruption — reject before reserving.
+                if (n > kGen2MaxEventsPerFrame) {
+                    error = "corrupt snapshot: GEN2VID event count "
+                          + std::to_string(n);
+                    r.fail();
+                    return false;
+                }
+                std::vector<Gen2VideoScanner::Event> ev;
+                ev.reserve(n);
+                for (uint32_t i = 0; i < n; ++i) {
+                    Gen2VideoScanner::Event e;
+                    e.emuCycle = r.readU64();
+                    e.kind     = static_cast<Gen2VideoScanner::EventKind>(r.readU8());
+                    e.value    = r.readU8() != 0;
+                    ev.push_back(e);
+                }
+                Gen2VideoScanner::DisplayState fs;
+                fs.textMode  = r.readU8() != 0;
+                fs.mixedMode = r.readU8() != 0;
+                fs.page2     = r.readU8() != 0;
+                fs.hiRes     = r.readU8() != 0;
+                gen2PublishedEvents     = std::move(ev);
+                gen2PublishedFrameStart = fs;
+            }
             continue;
         }
 

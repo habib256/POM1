@@ -504,6 +504,59 @@ int main()
         std::filesystem::remove(pathG, ecG);
     }
 
+    // ── GEN2 video journal round-trip (v5 GEN2VID extension). Soft-switch flips
+    //    journaled during a frame must survive save/restore so a beam-split
+    //    scene (mid-line PAGE2/TEXT flips — DROL-class double-buffering,
+    //    horizontal splits) replays correctly on load instead of collapsing to
+    //    the plain end-of-frame latch. Regression for the load path dropping the
+    //    published journal via resetGen2VideoEventJournal().
+    {
+        Memory memJ;
+        memJ.setHgrFramebufferAttached(true);
+        memJ.memRead(0xC255);        // PAGE2 on  -> journals a Page2=1 event
+        memJ.memRead(0xC251);        // TEXT  on  -> journals a TextMode=1 event
+        memJ.advanceCycles(20000);   // cross a video-frame boundary -> publish
+        const auto& pub = memJ.gen2PublishedVideoEvents();
+        if (pub.size() != 2) {
+            std::fprintf(stderr,
+                "GEN2 journal: expected 2 published events, got %zu\n", pub.size());
+            return 1;
+        }
+        auto pathJ = makeTempPath("gen2_journal");
+        std::string errJ;
+        if (!memJ.saveSnapshot(pathJ.string(), errJ)) {
+            std::fprintf(stderr, "GEN2 journal saveSnapshot failed: %s\n", errJ.c_str());
+            return 1;
+        }
+        Memory memJ2;
+        if (!memJ2.loadSnapshot(pathJ.string(), errJ)) {
+            std::fprintf(stderr, "GEN2 journal loadSnapshot failed: %s\n", errJ.c_str());
+            return 1;
+        }
+        const auto& pub2 = memJ2.gen2PublishedVideoEvents();
+        if (pub2.size() != pub.size()) {
+            std::fprintf(stderr,
+                "GEN2 journal did not survive snapshot (got %zu events want %zu) — "
+                "load dropped the published journal\n", pub2.size(), pub.size());
+            return 1;
+        }
+        for (size_t i = 0; i < pub.size(); ++i) {
+            if (pub2[i].emuCycle != pub[i].emuCycle ||
+                pub2[i].kind     != pub[i].kind ||
+                pub2[i].value    != pub[i].value) {
+                std::fprintf(stderr,
+                    "GEN2 journal event %zu mismatch after restore\n", i);
+                return 1;
+            }
+        }
+        if (!(memJ2.gen2PublishedFrameStartState() == memJ.gen2PublishedFrameStartState())) {
+            std::fprintf(stderr, "GEN2 journal frame-start state did not survive snapshot\n");
+            return 1;
+        }
+        std::error_code ecJ;
+        std::filesystem::remove(pathJ, ecJ);
+    }
+
     // ── microSD snapshot across a CodeTank preset (regression for the
     //    MEM-then-FLAGS restore ordering bug: disable paths used to zero
     //    $4000-$7FFF / $8000-$9FFF after MEM had already restored RAM).

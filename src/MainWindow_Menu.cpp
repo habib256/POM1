@@ -303,6 +303,39 @@ void MainWindow_ImGui::renderMenuBar()
                     ImGui::Text("  $%04X  R%02d  %s", base + i, i, kSidRegNames[i]);
                 ImGui::EndMenu();
             }
+
+            // GEN2 HGR colour decode — the HIRES artifact-colour pipeline. Two
+            // choices, also mirrored in the GEN2 window's right-click popup:
+            // the calibrated MAME LUT (default, fast path) vs OpenEmulator's
+            // composite NTSC demodulator run on the CPU (softer, hardware-
+            // faithful). Applied immediately via setRenderMode; gen2RenderMode
+            // keeps the popup + the per-frame sync in agreement.
+            if (ImGui::BeginMenu("GEN2 HGR colour decode")) {
+                if (ImGui::MenuItem("NTSC MAME LUT (fast, default)", nullptr,
+                                    gen2RenderMode == 0)) {
+                    gen2RenderMode = 0;
+                    graphicsCard.setRenderMode(GraphicsCard::RenderMode::MameLut);
+                    setStatusMessage("GEN2 HGR: NTSC MAME artifact-colour LUT", 2.5f);
+                }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip(
+                        "Calibrated 128-entry artifact-colour lookup table\n"
+                        "(MAME apple2video.cpp, medium-colour). The default\n"
+                        "fast path.");
+                if (ImGui::MenuItem("Composite OpenEmulator (CPU)", nullptr,
+                                    gen2RenderMode == 1)) {
+                    gen2RenderMode = 1;
+                    graphicsCard.setRenderMode(GraphicsCard::RenderMode::CompositeOECpu);
+                    setStatusMessage("GEN2 HGR: OpenEmulator composite NTSC (CPU)", 2.5f);
+                }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip(
+                        "Builds the 14.318 MHz composite signal from the HGR\n"
+                        "bitstream and runs OpenEmulator's 17-tap FIR NTSC\n"
+                        "demodulator on the CPU (no GLSL) - softer, physically\n"
+                        "faithful mid-tones. Same 280x192 output as the LUT.");
+                ImGui::EndMenu();
+            }
             ImGui::EndMenu();
         }
 

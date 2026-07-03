@@ -67,6 +67,8 @@ void MainWindow_ImGui::renderGraphicsCardWindow()
     // sit at their defaults.
     graphicsCard.setMonitorMode(
         static_cast<GraphicsCard::MonitorMode>(gen2MonitorMode));
+    graphicsCard.setRenderMode(
+        static_cast<GraphicsCard::RenderMode>(gen2RenderMode));
     graphicsCard.setPhosphorPersistence(gen2PhosphorPersistence);
     graphicsCard.setScanlineAlpha(gen2ScanlineAlpha);
 
@@ -149,6 +151,27 @@ void MainWindow_ImGui::renderGraphicsCardWindow()
             if (ImGui::Combo("Monitor##gen2mode", &gen2MonitorMode, modes, IM_ARRAYSIZE(modes))) {
                 graphicsCard.setMonitorMode(
                     static_cast<GraphicsCard::MonitorMode>(gen2MonitorMode));
+            }
+
+            // HIRES colour pipeline: the calibrated MAME artifact-colour LUT
+            // (fast path v1) vs OpenEmulator's composite NTSC demodulator run
+            // on the CPU (softer, hardware-faithful). Both feed the same
+            // 280×192 buffer, so switching is free.
+            const char* renderModes[] = { "NTSC MAME (actuel)",
+                                          "Composite OpenEmulator CPU" };
+            ImGui::SetNextItemWidth(200.0f);
+            if (ImGui::Combo("NTSC render##gen2render", &gen2RenderMode,
+                             renderModes, IM_ARRAYSIZE(renderModes))) {
+                graphicsCard.setRenderMode(
+                    static_cast<GraphicsCard::RenderMode>(gen2RenderMode));
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "HIRES colour decode.\n"
+                    "NTSC MAME: calibrated 128-entry artifact-colour LUT.\n"
+                    "Composite OpenEmulator CPU: builds the 14.318 MHz composite\n"
+                    "signal and runs the 17-tap FIR NTSC demodulator on the CPU\n"
+                    "(no GLSL) — softer, physically faithful mid-tones.");
             }
             ImGui::SetNextItemWidth(200.0f);
             ImGui::SliderFloat("Phosphor persistence##gen2persist",

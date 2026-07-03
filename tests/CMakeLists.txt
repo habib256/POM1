@@ -382,6 +382,21 @@ target_include_directories(test_gen2_horizontal_split PRIVATE ${CMAKE_SOURCE_DIR
 add_test(NAME gen2_horizontal_split_smoke COMMAND test_gen2_horizontal_split)
 set_tests_properties(gen2_horizontal_split_smoke PROPERTIES TIMEOUT 5)
 
+# -- GEN2 composite OpenEmulator CPU demodulator -------------------------------
+# Pins RenderMode::CompositeOECpu (port of POM2 renderCompositeOeCpu): the
+# 17-tap FIR NTSC demod + OpenEmulator YUV→RGB matrix produce achromatic white,
+# genuinely chromatic artifact colour, black-on-empty, output distinct from the
+# MAME LUT, and a repaint on mode toggle. Self-contained: GraphicsCard only.
+add_executable(test_gen2_composite
+    gen2_composite_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/GraphicsCard.cpp
+    ${CMAKE_SOURCE_DIR}/src/Gen2VideoScanner.cpp
+)
+target_include_directories(test_gen2_composite PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+add_test(NAME gen2_composite_smoke COMMAND test_gen2_composite)
+set_tests_properties(gen2_composite_smoke PROPERTIES TIMEOUT 5)
+
 # -- Preset RAM profile invariant ---------------------------------------------
 # All real-hardware presets use Parmigiani's standard 8 KB dual-bank map
 # ($0000-$0FFF + $E000-$EFFF), except the pre-ACI Bare Apple-1 which remains

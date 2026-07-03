@@ -110,6 +110,73 @@ inline uint32_t avgRgb(uint32_t a, uint32_t b)
     return (uint32_t(0xFFu) << 24) | (bl << 16) | (g << 8) | r;
 }
 
+// ─── OpenEmulator composite NTSC demodulator (CPU path) ────────────────────
+//
+// Port of POM2's Apple2Display::renderCompositeOeCpu(): builds the 14.318 MHz
+// composite signal (one 0/1 sample per HGR sub-pixel, 560/line) from the same
+// doubled-word bitstream the LUT path uses, then separates luma/chroma with a
+// symmetric 17-tap (N=8) FIR and synchronous sin/cos demodulation against the
+// 4-phase colour subcarrier, and applies the OpenEmulator YUV→RGB matrix.
+//
+// Kernels are the OpenEmulator-exact 17-tap Dolph-Chebyshev(50 dB)×sinc set:
+// luma ≈ 2.0 MHz (sum 1, notches at fs/4), chroma ≈ 0.6 MHz (sum 2 = ×2 demod
+// gain). Copied verbatim from POM2 (same numbers drive its GPU shader). Only
+// the soft (neutral) chroma kernel exists on the CPU path — no sharpness knob.
+constexpr int kFirN = 8;                         // taps i ∈ [-8, 8]
+constexpr double kLumaK[kFirN + 1] = {
+    0.27941, 0.23593, 0.13462, 0.03665, -0.01538,
+    -0.02210, -0.00999, -0.00072, 0.00130,
+};
+constexpr double kChromaK[kFirN + 1] = {
+    0.26030, 0.24788, 0.21373, 0.16602, 0.11509,
+    0.07008, 0.03648, 0.01543, 0.00515,
+};
+// Subcarrier at the four raw phases π/2·k → exact {0, ±1}. GEN2 has no DHGR
+// so signalPhaseOffset is always 0; the phase index is simply (sampleX & 3).
+constexpr double kSubSin[4] = { 0.0,  1.0,  0.0, -1.0 };  // sin(π/2·k)
+constexpr double kSubCos[4] = { 1.0,  0.0, -1.0,  0.0 };  // cos(π/2·k)
+
+inline uint8_t clampChannel(double v)
+{
+    if (v <= 0.0) return 0;
+    if (v >= 1.0) return 255;
+    return static_cast<uint8_t>(v * 255.0 + 0.5);
+}
+
+// Demodulate one HGR scanline's 40 doubled words into 560 RGBA sub-pixels.
+inline void demodCompositeLine(const uint16_t (&words)[40],
+                               uint32_t (&subPixels)[kStreamLen])
+{
+    // Bitstream: 40 words × 14 bits, LSB-first — identical sample order to the
+    // LUT path's sliding window (bit 0 of word 0 is sub-pixel 0).
+    uint8_t sig[kStreamLen];
+    for (int col = 0; col < 40; ++col) {
+        const uint16_t wd = words[col];
+        for (int b = 0; b < 14; ++b)
+            sig[col * 14 + b] = static_cast<uint8_t>((wd >> b) & 1u);
+    }
+
+    for (int x = 0; x < kStreamLen; ++x) {
+        double Y = 0.0, U = 0.0, V = 0.0;
+        const int iLo = (x - kFirN < 0) ? -x : -kFirN;
+        const int iHi = (x + kFirN >= kStreamLen) ? (kStreamLen - 1 - x) : kFirN;
+        for (int i = iLo; i <= iHi; ++i) {
+            const int xi = x + i;
+            if (!sig[xi]) continue;               // signal is 0/1
+            const int a = (i < 0) ? -i : i;
+            const int k = xi & 3;                 // phase; offset 0 (no DHGR)
+            Y += kLumaK[a];
+            U += kSubSin[k] * kChromaK[a];
+            V += kSubCos[k] * kChromaK[a];
+        }
+        // OpenEmulator (libemulation) YUV→RGB matrix.
+        const double r = Y + 1.139883 * V;
+        const double g = Y - 0.394642 * U - 0.580622 * V;
+        const double b = Y + 2.032062 * U;
+        subPixels[x] = makeRgba(clampChannel(r), clampChannel(g), clampChannel(b));
+    }
+}
+
 // Per-mode phosphor tint factors (linear scale per channel). Applied after
 // the pixel is desaturated to luma. Values mirror Screen_ImGui's phosphor
 // palette so the GEN2 mono modes match the text screen visually.
@@ -707,31 +774,37 @@ void GraphicsCard::renderHiRes(const uint8_t* memory, const DisplayState& state,
 void GraphicsCard::rasterizeHgrLine(int y, const uint8_t* memory, uint16_t rowAddr,
                                     int px0, int px1)
 {
-    // MAME-style 7-bit sliding-window decode. ContextBits = 3 leaves the
-    // centre sub-pixel at bit 3 of the window, with 3 bits of left context
-    // (the tail of the previous byte) and 3 bits of right context (the
-    // head of the next byte) on either side.
-    constexpr int kContextBits = 3;
-
     uint16_t words[40];
     buildHgrWordRow(memory, rowAddr, words);
 
     uint32_t subPixels[kStreamLen];
 
-    // `w` accumulates up to (3 + 14 + 14) = 31 bits — fits a uint32_t.
-    // Each iteration consumes one bit (`>>= 1`).
-    uint32_t w = static_cast<uint32_t>(words[0]) << kContextBits;
-    for (int col = 0; col < 40; ++col) {
-        if (col + 1 < 40) {
-            w |= static_cast<uint32_t>(words[col + 1])
-                 << (14 + kContextBits);
-        }
-        for (int b = 0; b < 14; ++b) {
-            const int absX = col * 14 + b;
-            const uint8_t lutEntry = kArtifactColorLut[w & 0x7Fu];
-            const unsigned loresIdx = rotl4b(lutEntry, static_cast<unsigned>(absX));
-            subPixels[absX] = kApple2Palette[loresIdx];
-            w >>= 1;
+    if (renderMode == RenderMode::CompositeOECpu) {
+        // OpenEmulator composite demod — same doubled-word bitstream, but
+        // recovered through the 17-tap FIR NTSC demodulator instead of the LUT.
+        demodCompositeLine(words, subPixels);
+    } else {
+        // MAME-style 7-bit sliding-window decode. ContextBits = 3 leaves the
+        // centre sub-pixel at bit 3 of the window, with 3 bits of left context
+        // (the tail of the previous byte) and 3 bits of right context (the
+        // head of the next byte) on either side.
+        constexpr int kContextBits = 3;
+
+        // `w` accumulates up to (3 + 14 + 14) = 31 bits — fits a uint32_t.
+        // Each iteration consumes one bit (`>>= 1`).
+        uint32_t w = static_cast<uint32_t>(words[0]) << kContextBits;
+        for (int col = 0; col < 40; ++col) {
+            if (col + 1 < 40) {
+                w |= static_cast<uint32_t>(words[col + 1])
+                     << (14 + kContextBits);
+            }
+            for (int b = 0; b < 14; ++b) {
+                const int absX = col * 14 + b;
+                const uint8_t lutEntry = kArtifactColorLut[w & 0x7Fu];
+                const unsigned loresIdx = rotl4b(lutEntry, static_cast<unsigned>(absX));
+                subPixels[absX] = kApple2Palette[loresIdx];
+                w >>= 1;
+            }
         }
     }
 

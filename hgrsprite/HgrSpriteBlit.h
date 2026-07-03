@@ -19,6 +19,8 @@
 #include <cstdint>
 #include <functional>
 
+#include "HgrPaintModel.h"   // hgrpaint::HgrColor
+
 namespace hgrsprite {
 
 // Byte columns / rows of an Apple II HIRES page (280 px = 40 bytes × 7, 192 rows).
@@ -38,6 +40,20 @@ void extract(const uint8_t* page, int srcByteCol, int srcRow,
 void stamp(const uint8_t* sprite, int wBytes, int hRows,
            int dstByteCol, int dstRow,
            const std::function<void(int, uint8_t)>& poke);
+
+// Colour-aware ×2 magnify: build a DOUBLED HGR sprite (2*wBytes bytes × 2*hRows
+// rows) from a per-pixel colour grid `cells` (row-major, wBytes*7 × hRows). Each
+// source cell becomes a 2×2 destination block; because the block's left column is
+// always even and the right always odd, it spans a full NTSC colour clock, so the
+// authored colour reproduces RELIABLY regardless of parity (unlike a lone ×1
+// pixel): Violet/Blue light the even (left) column, Green/Orange the odd (right),
+// White lights both, Black neither; Blue/Orange set the byte's shared palette high
+// bit. Palette is per-byte on real HGR, so if two cells of opposite palette groups
+// fall in the same destination byte, that byte reads palette-1 (blue/orange wins) —
+// the caller keeps like-hued cells byte-aligned to avoid it. `out` must hold
+// (2*wBytes)*(2*hRows) bytes. This is the reliable-colour core the ×2 editor uses.
+void magnifyColor2x(const hgrpaint::HgrColor* cells, int wBytes, int hRows,
+                    uint8_t* out);
 
 } // namespace hgrsprite
 

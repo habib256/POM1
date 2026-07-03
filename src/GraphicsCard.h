@@ -84,6 +84,20 @@ public:
         Monochrome = 3,
     };
 
+    // HIRES colour pipeline. The default MAME LUT is the calibrated fast-path
+    // v1 (a 128-entry artifact-colour table). CompositeOECpu instead builds
+    // the 14.318 MHz composite signal from the same HGR bitstream and runs
+    // OpenEmulator's 17-tap FIR NTSC demodulator on the CPU — the physically
+    // faithful (softer, hardware-accurate) alternative. Both feed the same
+    // 280×192 RGBA buffer (the demod's 560 samples are pair-averaged down,
+    // like the LUT path), so no texture geometry changes. Port of POM2's
+    // Apple2Display ColorCompositeOECpu; GEN2 has no DHGR, so the per-frame
+    // signalPhaseOffset is always 0 (phase = sample index mod 4).
+    enum class RenderMode : uint8_t {
+        MameLut = 0,        // artifact-colour LUT (fast path v1)
+        CompositeOECpu = 1, // OpenEmulator composite demod on the CPU
+    };
+
     GraphicsCard();
 
     // ── Beam-raced frame render (Phase 3 entry point) ──────────────────
@@ -138,6 +152,10 @@ public:
     float getPhosphorPersistence() const { return phosphorPersistence; }
     void setScanlineAlpha(float a) { scanlineAlpha = a; }
     float getScanlineAlpha() const { return scanlineAlpha; }
+    void setRenderMode(RenderMode m) {
+        if (m != renderMode) { renderMode = m; invalidate(); }
+    }
+    RenderMode getRenderMode() const { return renderMode; }
 
 private:
     // ── Beam-raced internals (port of POM2 Apple2Display) ──────────────
@@ -195,6 +213,7 @@ private:
 
     // Cosmetic state
     MonitorMode monitorMode = MonitorMode::Colour;
+    RenderMode  renderMode  = RenderMode::MameLut;
     float       phosphorPersistence = 0.0f;   // 0=snap, 1=hold previous frame
     float       scanlineAlpha       = 0.0f;   // 0=no overlay, 1=fully black rows
 };

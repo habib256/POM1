@@ -64,7 +64,13 @@ inline constexpr char     kSnapshotMagic[8] = {'P','O','M','1','S','N','A','P'};
 // v4: June 2026 — appends the MicroSD VIA T2 timer-running bool to the MicroSD
 //     section, gated `r.version() >= 4` (MicroSD.cpp); pre-v4 snapshots read it
 //     as false (timer idle on load), so they still round-trip.
-inline constexpr uint32_t kSnapshotVersion  = 4;
+// v5: July 2026 — appends the GEN2 published soft-switch video journal (last
+//     completed frame's mid-line page/mode flips + that frame's start state) to
+//     the GEN2VID section, gated `r.version() >= 5` (Memory.cpp). Pre-v5
+//     snapshots read no journal (the section's length-prefix realigns), so a
+//     restored beam-split frame simply falls back to the end-of-frame latch
+//     until the next flip re-journals — the pre-fix behaviour.
+inline constexpr uint32_t kSnapshotVersion  = 5;
 
 /// Section names are 8 bytes, NUL-padded. 8 bytes keeps the file aligned
 /// and reads cheaply via fixed-size buffers. Names beyond 8 chars are

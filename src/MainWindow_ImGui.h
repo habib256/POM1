@@ -414,6 +414,7 @@ private:
     bool gen2RandomDramNoiseEnabled    = true;
     // GEN2 HGR cosmetic monitor controls — per-window state, not silicon.
     int  gen2MonitorMode = 0;       // 0=Colour, 1=Green, 2=Amber, 3=Mono
+    int  gen2RenderMode  = 0;       // 0=NTSC MAME (LUT), 1=Composite OpenEmulator CPU
     float gen2PhosphorPersistence = 0.0f;
     float gen2ScanlineAlpha = 0.0f;
     // UI mirror of Memory::isOutOfRangeStrictMode(). Resynced from the same

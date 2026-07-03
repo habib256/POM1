@@ -59,6 +59,12 @@ private:
     std::vector<uint32_t> previewRgba;    // kHiresWidth*kHiresHeight
     void* previewTex = nullptr;
 
+    // Side-by-side colour view: the sprite decoded through the real NTSC pipeline
+    // (mono shape at ×1, single-colour clocks at ×2) so the colour bascules read
+    // clearly next to the black-&-white shape canvas.
+    std::vector<uint32_t> colorRgba_;     // kHiresWidth*kHiresHeight
+    void* colorTex_ = nullptr;
+
     // Sprite geometry (byte-aligned width).
     int wBytes_ = 2;                      // 1..kByteCols  (×7 px wide)
     int hRows_  = 16;                     // 1..kRows
@@ -137,6 +143,14 @@ private:
     void renderDevSprites();
     void loadDevSprite(const hgrpaint::DevSprite& s);
 
+    // Build the sprite bytes to stamp / save / preview from the mono shape in
+    // `scratch`. ×1 → the raw wBytes×hRows mono bytes. ×2 → the doubled
+    // (2*wBytes × 2*hRows) MONOCOLOUR bytes: every lit pixel painted in the
+    // single sprite colour `color_` via HgrSpriteBlit::magnifyColor2x (each
+    // super-pixel a 2-aligned NTSC colour clock). `wB`/`hR` receive the byte
+    // dimensions of `out`.
+    void buildSpriteBytes(std::vector<uint8_t>& out, int& wB, int& hR) const;
+
     // Live-card actions.
     void stampToPage();
     void grabFromPage(const std::vector<uint8_t>& memory);   // inverse of Stamp
@@ -149,6 +163,7 @@ private:
     void renderTopBar();
     void renderToolPanel(const std::vector<uint8_t>& memory);
     void renderCanvas();
+    void renderColorCanvas();   // read-only NTSC colour view beside the B&W canvas
     void renderPreview(const std::vector<uint8_t>& memory);
     void handleShortcuts();
 };

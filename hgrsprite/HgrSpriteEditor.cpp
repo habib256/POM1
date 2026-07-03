@@ -30,8 +30,6 @@ const ImU32 kSwatch[6] = {
 };
 const char* kColorName[6] = { "Black", "White", "Violet", "Green", "Blue", "Orange" };
 
-inline ImU32 swatchU32(HgrColor c) { return kSwatch[static_cast<int>(c)]; }
-
 } // namespace
 
 namespace hgrsprite {
@@ -39,7 +37,8 @@ namespace hgrsprite {
 HgrSpriteEditor::HgrSpriteEditor(hgrpaint::IHgrPaintHost* host_)
     : host(host_),
       scratch(hgrpaint::kHiresSize, 0),
-      previewRgba(static_cast<size_t>(hgrpaint::kHiresWidth) * hgrpaint::kHiresHeight, 0)
+      previewRgba(static_cast<size_t>(hgrpaint::kHiresWidth) * hgrpaint::kHiresHeight, 0),
+      colorRgba_(static_cast<size_t>(hgrpaint::kHiresWidth) * hgrpaint::kHiresHeight, 0)
 {
 }
 
@@ -49,6 +48,8 @@ void HgrSpriteEditor::releaseGL()
 {
     if (host && previewTex) host->destroyTexture(previewTex);
     previewTex = nullptr;
+    if (host && colorTex_) host->destroyTexture(colorTex_);
+    colorTex_ = nullptr;
 }
 
 void HgrSpriteEditor::clampGeom()
@@ -59,36 +60,6 @@ void HgrSpriteEditor::clampGeom()
     // fits the page (stamp() also clips, but keep the sliders honest).
     destByteCol_ = std::clamp(destByteCol_, 0, std::max(0, kByteCols - magF() * wBytes_));
     destRow_     = std::clamp(destRow_, 0, std::max(0, kRows - magF() * hRows_));
-}
-
-// Build the ×2-magnified sprite (2*wBytes × 2*hRows, row-major) from the base
-// sprite bytes: each source pixel becomes a 2×2 block. A source byte's 7 pixels
-// double into 14 columns = two destination bytes; the byte's palette high bit is
-// copied to both so the colour group is preserved.
-static void magnify2x(const std::vector<uint8_t>& src, int wBytes, int hRows,
-                      std::vector<uint8_t>& out)
-{
-    const int dW = wBytes * 2;
-    out.assign(static_cast<size_t>(dW) * (hRows * 2), 0);
-    for (int sr = 0; sr < hRows; ++sr)
-        for (int sb = 0; sb < wBytes; ++sb) {
-            const uint8_t sByte = src[static_cast<size_t>(sr) * wBytes + sb];
-            const uint8_t pal   = sByte & 0x80u;
-            uint8_t d0 = pal, d1 = pal;                 // two doubled bytes (cols 0..6 / 7..13)
-            for (int p = 0; p < 7; ++p) {
-                if (!((sByte >> p) & 1)) continue;
-                for (int k = 0; k < 2; ++k) {           // source col p → dest cols 2p, 2p+1
-                    const int dp = 2 * p + k;
-                    if (dp < 7) d0 |= static_cast<uint8_t>(1u << dp);
-                    else        d1 |= static_cast<uint8_t>(1u << (dp - 7));
-                }
-            }
-            for (int k = 0; k < 2; ++k) {               // row doubling
-                const int dr = 2 * sr + k;
-                out[static_cast<size_t>(dr) * dW + 2 * sb + 0] = d0;
-                out[static_cast<size_t>(dr) * dW + 2 * sb + 1] = d1;
-            }
-        }
 }
 
 // ── Undo primitives (scratch-only; no live poke — editor is non-destructive) ─
@@ -321,24 +292,46 @@ void HgrSpriteEditor::transformRotateCW()
 
 // ── Live-card actions + files ───────────────────────────────────────────────
 
+// ── Sprite bytes: mono shape (×1) or single-colour doubled clock pattern (×2) ─
+//
+// The sprite is authored as a MONOCHROME shape in `scratch` (white pixels). At
+// ×2 the whole sprite takes a single chosen colour `color_`: each lit pixel is
+// doubled into a 2-aligned NTSC colour clock (light one column of the pair + the
+// palette high bit), so the doubled sprite reads as that one artifact colour
+// instead of the solid white two-adjacent-dots would otherwise give.
+void HgrSpriteEditor::buildSpriteBytes(std::vector<uint8_t>& out, int& wB, int& hR) const
+{
+    if (mag2_) {
+        const int W = wpx();
+        std::vector<HgrColor> cells(static_cast<size_t>(W) * hRows_, HgrColor::Black);
+        for (int y = 0; y < hRows_; ++y)
+            for (int x = 0; x < W; ++x)
+                if (hgrpaint::pixelOn(scratch.data(), x, y))
+                    cells[static_cast<size_t>(y) * W + x] = color_;
+        wB = wBytes_ * 2;
+        hR = hRows_ * 2;
+        out.assign(static_cast<size_t>(wB) * hR, 0);
+        magnifyColor2x(cells.data(), wBytes_, hRows_, out.data());
+    } else {
+        wB = wBytes_;
+        hR = hRows_;
+        out.assign(static_cast<size_t>(wB) * hR, 0);
+        extract(scratch.data(), 0, 0, wBytes_, hRows_, out.data());
+    }
+}
+
 void HgrSpriteEditor::stampToPage()
 {
     if (!host) return;
-    std::vector<uint8_t> spr(static_cast<size_t>(wBytes_) * hRows_, 0);
-    extract(scratch.data(), 0, 0, wBytes_, hRows_, spr.data());
+    std::vector<uint8_t> bytes; int wB = 0, hR = 0;
+    buildSpriteBytes(bytes, wB, hR);
     const uint16_t base = pageBase();
     host->beginBatch();
-    if (mag2_) {
-        std::vector<uint8_t> dbl;
-        magnify2x(spr, wBytes_, hRows_, dbl);
-        stamp(dbl.data(), wBytes_ * 2, hRows_ * 2, destByteCol_, destRow_,
-              [&](int off, uint8_t v) { host->pokeByte(static_cast<uint16_t>(base + off), v); });
-    } else {
-        stamp(spr.data(), wBytes_, hRows_, destByteCol_, destRow_,
-              [&](int off, uint8_t v) { host->pokeByte(static_cast<uint16_t>(base + off), v); });
-    }
+    stamp(bytes.data(), wB, hR, destByteCol_, destRow_,
+          [&](int off, uint8_t v) { host->pokeByte(static_cast<uint16_t>(base + off), v); });
     host->endBatch();
-    status = mag2_ ? "Stamped to HGR page (\xC3\x97""2)" : "Stamped to HGR page";
+    status = mag2_ ? "Stamped to HGR page (\xC3\x97""2 " + std::string(kColorName[static_cast<int>(color_)]) + ")"
+                   : "Stamped to HGR page";
 }
 
 // Inverse of Stamp: extract the wBytes×hRows rectangle at (Byte X, Row Y) from
@@ -434,14 +427,26 @@ bool HgrSpriteEditor::performFileAction(FileAction a, const std::string& fullPat
         return ok;
     }
     case FileAction::SavePng: {
-        const int W = wpx(), H = hRows_;
+        // WYSIWYG image: decode the sprite's real bytes (mono ×1 / single-colour
+        // ×2) through the NTSC pipeline and crop to the sprite region — matches
+        // the colour view, unlike the raw .hgrspr which stays the mono source.
+        if (!host) { status = "PNG failed: no host"; return false; }
+        std::vector<uint8_t> bytes; int wB = 0, hR = 0;
+        buildSpriteBytes(bytes, wB, hR);
+        std::vector<uint8_t> pg(hgrpaint::kHiresSize, 0);
+        stamp(bytes.data(), wB, hR, 0, 0,
+              [&](int off, uint8_t v) { pg[off] = v; });
+        std::vector<uint32_t> full(static_cast<size_t>(hgrpaint::kHiresWidth) *
+                                   hgrpaint::kHiresHeight, 0);
+        host->renderHgrPage(pg.data(), full.data(), false, false);
+        const int W = wB * 7, H = hR;
         std::vector<uint32_t> rgba(static_cast<size_t>(W) * H, 0);
         for (int y = 0; y < H; ++y)
             for (int x = 0; x < W; ++x)
                 rgba[static_cast<size_t>(y) * W + x] =
-                    swatchU32(hgrpaint::colorAt(scratch.data(), x, y));
+                    full[static_cast<size_t>(y) * hgrpaint::kHiresWidth + x];
         std::string err;
-        const bool ok = host && host->savePng(fullPath, rgba.data(), W, H, err);
+        const bool ok = host->savePng(fullPath, rgba.data(), W, H, err);
         status = ok ? "Saved PNG" : (std::string("PNG failed: ") + err);
         return ok;
     }
@@ -717,9 +722,12 @@ void HgrSpriteEditor::renderToolPanel(const std::vector<uint8_t>& memory)
     }
     ImGui::NewLine();
 
-    // HGR colours (skip Black — that's the eraser). Lone pixels artifact-colour by
-    // parity, so a single "White" dot may show violet/green — faithful HGR.
-    ImGui::TextUnformatted("Colour");
+    // The sprite is MONOCHROME: a single chosen colour for the whole shape, and
+    // it only reads as colour at ×2 (two adjacent ×1 dots make white — see the
+    // colour view). So the palette picks the sprite's one colour and is active
+    // only in ×2 mode; the shape itself is drawn in black & white.
+    ImGui::TextUnformatted("Sprite colour (\xC3\x97""2)");
+    ImGui::BeginDisabled(!mag2_);
     for (int i = 1; i < 6; ++i) {
         ImGui::PushID(2000 + i);
         const bool sel = (static_cast<int>(color_) == i);
@@ -735,6 +743,9 @@ void HgrSpriteEditor::renderToolPanel(const std::vector<uint8_t>& memory)
         ImGui::SameLine();
     }
     ImGui::NewLine();
+    ImGui::EndDisabled();
+    if (!mag2_)
+        ImGui::TextDisabled("(enable \xC3\x97""2 to colour the sprite)");
     ImGui::Separator();
 
     // Placement on the live page.
@@ -789,12 +800,14 @@ void HgrSpriteEditor::renderCanvas()
                            ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
     const bool hov = ImGui::IsItemHovered();
 
-    // Pixels (crisp per-pixel artifact colour).
+    // Pixels — strictly black & white (the shape). Colour is a whole-sprite
+    // attribute shown in the colour view, not per pixel here.
     for (int y = 0; y < H; ++y)
         for (int x = 0; x < W; ++x) {
-            const HgrColor c = hgrpaint::colorAt(scratch.data(), x, y);
+            const bool on = hgrpaint::pixelOn(scratch.data(), x, y);
             const ImVec2 a(p0.x + x * cell, p0.y + y * cell);
-            dl->AddRectFilled(a, ImVec2(a.x + cell, a.y + cell), swatchU32(c));
+            dl->AddRectFilled(a, ImVec2(a.x + cell, a.y + cell),
+                              on ? IM_COL32(255,255,255,255) : IM_COL32(0,0,0,255));
         }
 
     // Grid: light every pixel, heavier on 7-pixel byte boundaries.
@@ -828,8 +841,10 @@ void HgrSpriteEditor::renderCanvas()
 
     const bool L = io.MouseDown[0], R = io.MouseDown[1];
     if (tool == Tool::Fill) {
+        // Shape is authored monochrome; the sprite's single colour is chosen
+        // separately and applied at ×2 (see buildSpriteBytes / the colour view).
         if (hov && cx >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-            floodFill(cx, cy, color_);
+            floodFill(cx, cy, HgrColor::White);
         if (hov && cx >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
             floodFill(cx, cy, HgrColor::Black);
     } else {
@@ -840,7 +855,7 @@ void HgrSpriteEditor::renderCanvas()
             lastPx = lastPy = -1;
         }
         if (dragging && cx >= 0) {
-            const HgrColor c = eraseDrag ? HgrColor::Black : color_;
+            const HgrColor c = eraseDrag ? HgrColor::Black : HgrColor::White;
             if (lastPx < 0) { recordPlot(cx, cy, c); }
             else {
                 int x0 = lastPx, y0 = lastPy, x1 = cx, y1 = cy;
@@ -865,6 +880,48 @@ void HgrSpriteEditor::renderCanvas()
     }
 }
 
+// Read-only colour view: the sprite decoded through the real GEN2 NTSC pipeline
+// (mono ×1 or single-colour ×2), shown at the same on-screen size as the B&W
+// shape canvas so the two sit side by side and the colour bascules are legible.
+void HgrSpriteEditor::renderColorCanvas()
+{
+    const int W = wpx(), H = hRows_;
+    const float cell = static_cast<float>(zoom_);
+    ImGui::BeginGroup();
+    ImGui::TextUnformatted(mag2_ ? "Colour (\xC3\x97""2 NTSC)" : "Colour (NTSC)");
+    if (host) {
+        // Build the sprite's real bytes and stamp them into a blank page, then
+        // decode through the host NTSC pipeline (identical to the live card).
+        std::vector<uint8_t> bytes; int wB = 0, hR = 0;
+        buildSpriteBytes(bytes, wB, hR);
+        std::vector<uint8_t> pg(hgrpaint::kHiresSize, 0);
+        stamp(bytes.data(), wB, hR, 0, 0,
+              [&](int off, uint8_t v) { pg[off] = v; });
+        host->renderHgrPage(pg.data(), colorRgba_.data(), false, false);
+        colorTex_ = host->uploadTexture(colorTex_, colorRgba_.data(),
+                                        hgrpaint::kHiresWidth, hgrpaint::kHiresHeight, false);
+        // Crop the full-page texture to the sprite's decoded region (wB*7 × hR px)
+        // and scale it to the B&W canvas footprint so both align row-for-row.
+        const int pw = wB * 7, ph = hR;
+        const ImVec2 uv0(0.0f, 0.0f);
+        const ImVec2 uv1(static_cast<float>(pw) / hgrpaint::kHiresWidth,
+                         static_cast<float>(ph) / hgrpaint::kHiresHeight);
+        ImGui::Image(host->textureToImTexture(colorTex_),
+                     ImVec2(W * cell, H * cell), uv0, uv1);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(
+                mag2_ ? "The ×2 sprite in its single colour (%s). Each source pixel\n"
+                        "becomes a 2-dot NTSC colour clock: one dot of the pair lit +\n"
+                        "the palette high bit pick the hue instead of solid white."
+                      : "×1 decodes monochrome. Enable ×2 to colour the sprite —\n"
+                        "two adjacent dots read white, so colour needs the doubled clock.",
+                kColorName[static_cast<int>(color_)]);
+    } else {
+        ImGui::Dummy(ImVec2(W * cell, H * cell));
+    }
+    ImGui::EndGroup();
+}
+
 void HgrSpriteEditor::renderPreview(const std::vector<uint8_t>& memory)
 {
     if (!host) return;
@@ -875,22 +932,18 @@ void HgrSpriteEditor::renderPreview(const std::vector<uint8_t>& memory)
     const size_t need = static_cast<size_t>(base) + hgrpaint::kHiresSize;
     if (memory.size() < need) { ImGui::TextDisabled("(page out of RAM)"); return; }
 
-    // Render the live page, then composite the sprite on top (non-destructive).
-    // With ×2 each source pixel paints an m×m block so the preview matches the stamp.
+    // Composite the sprite's REAL bytes into a copy of the live page, then decode
+    // the whole thing through the NTSC pipeline — so the preview shows exactly the
+    // stamp result (single-colour clocks at ×2, mono at ×1), not a swatch overlay.
     std::vector<uint8_t> live(memory.begin() + base, memory.begin() + base + hgrpaint::kHiresSize);
+    std::vector<uint8_t> bytes; int wB = 0, hR = 0;
+    buildSpriteBytes(bytes, wB, hR);
+    stamp(bytes.data(), wB, hR, destByteCol_, destRow_,
+          [&](int off, uint8_t v) {
+              if (off >= 0 && off < static_cast<int>(live.size())) live[off] = v;
+          });
     host->renderHgrPage(live.data(), previewRgba.data(), false, false);
     const int m = magF();
-    for (int y = 0; y < hRows_; ++y)
-        for (int x = 0; x < wpx(); ++x) {
-            const HgrColor c = hgrpaint::colorAt(scratch.data(), x, y);
-            if (c == HgrColor::Black) continue;
-            for (int ky = 0; ky < m; ++ky)
-                for (int kx = 0; kx < m; ++kx) {
-                    const int px = destByteCol_ * 7 + x * m + kx, py = destRow_ + y * m + ky;
-                    if (px < hgrpaint::kHiresWidth && py < hgrpaint::kHiresHeight)
-                        previewRgba[static_cast<size_t>(py) * hgrpaint::kHiresWidth + px] = swatchU32(c);
-                }
-        }
     previewTex = host->uploadTexture(previewTex, previewRgba.data(),
                                      hgrpaint::kHiresWidth, hgrpaint::kHiresHeight, false);
     const ImVec2 pos = ImGui::GetCursorScreenPos();
@@ -910,10 +963,19 @@ void HgrSpriteEditor::render(const std::vector<uint8_t>& memory)
     renderTopBar();
     ImGui::Separator();
 
-    const float canvasW = wpx() * static_cast<float>(zoom_) + 24.0f;
+    // Dual display: the editable black-&-white shape canvas on the left, a
+    // read-only NTSC colour view of the same sprite on the right, so the colour
+    // bascules are legible while editing.
+    const float oneCanvas = wpx() * static_cast<float>(zoom_);
+    const float canvasW = oneCanvas * 2.0f + 40.0f;
     ImGui::BeginChild("##hgrcanvaspane", ImVec2(canvasW, 0), false,
                       ImGuiWindowFlags_HorizontalScrollbar);
+    ImGui::BeginGroup();
+    ImGui::TextUnformatted("Black & white (shape)");
     renderCanvas();
+    ImGui::EndGroup();
+    ImGui::SameLine(0.0f, 16.0f);
+    renderColorCanvas();
     ImGui::EndChild();
 
     ImGui::SameLine();
