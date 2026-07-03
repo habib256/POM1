@@ -73,6 +73,12 @@ private:
     int  focusUid_ = -1;             // request to programmatically select a tab
     int  lastActiveUid_ = -1;        // detect tab switches → refresh host mode mapping
     bool pendingNewChoose_ = false;  // bench just emptied → auto-open the New chooser
+    // A close action (tab X, Close, Close others/all) that would discard unsaved
+    // changes, held until the user answers the Discard/Cancel confirmation popup.
+    enum class CloseReq { None, One, Others, All };
+    CloseReq pendingCloseReq_ = CloseReq::None;
+    int      pendingCloseUid_ = -1;  // subject tab for One / survivor for Others
+    bool anyDirty(int exceptUid) const;   // any open doc dirty (skip `exceptUid`, -1 = none)
 
     // ---- Global UI state (not per-document) ----
     std::string console_;

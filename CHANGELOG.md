@@ -10,6 +10,21 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — DevBench editor polish + GEN2 default = OpenEmulator composite
+
+- **Markdown syntax highlighting in the editor's Edit mode** (`bench/BenchLang.cpp`
+  `langMarkdown()`, routed via `langDef("markdown")` — was plain text): a light
+  regex "pencil" for `#` headings, `**bold**`/`__bold__`, `*italic*`/`_italic_`,
+  `` `code` `` and `[text](url)` links. Preview still renders the real formatting.
+- **Unsaved-close guard** (`CodeBench`): closing a dirty tab (X, context Close, or
+  Close others/all when any tab is dirty) now pauses on a **Discard / Cancel** modal
+  (Discard in red, `Esc` = Cancel) instead of silently throwing away edits.
+- **GEN2 HGR now renders with the OpenEmulator composite NTSC decode by default**
+  (`MainWindow_ImGui.h` `gen2RenderMode = 1`) — the more faithful decode is what you
+  see on first boot. The MAME artifact LUT stays a click away in the GEN2 menu, and
+  remains the `GraphicsCard` standalone default so `gfx_regress_gen2` keeps its
+  reference image.
+
 ### Fixed — stray Xlib clipboard error no longer crashes the app (Linux/X11)
 
 - A raw Xlib protocol error (classically a clipboard `SelectionRequest` racing a

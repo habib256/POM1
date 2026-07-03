@@ -33,7 +33,7 @@ Built with Dear ImGui & OpenGL — fast, lightweight, cross-platform.
 - 📡 **Wi-Fi modem dialing real BBSes** — `ATDT bbs.fozztexx.com:23` in WOZ Monitor and you're online, on a 1976 machine.
 - 💾 **A cartridge ecosystem unique to POM1** — the P-LAB CodeTank ships **3 ready-to-flip cartridges** (GAME1/2/3): arcade games, a dungeon crawler, a LOGO turtle, graphics demos.
 - 🔬 **Cycle-accurate down to the bus** — SID, TMS9918, cassette and modem all run on the same 1.022727 MHz clock; tempo follows emulation speed, not wall-clock. Klaus Dormann's 6502 test pinned in CI.
-- 🛠️ **Write your own — without leaving the app** — the in-app **DevBench** assembles 6502 asm, compiles C, runs BASIC, or eats a Woz hex dump, then boots it in one click.
+- 🛠️ **Write your own — without leaving the app** — the in-app **DevBench** assembles 6502 asm, compiles C, runs BASIC or LOGO turtle graphics, or eats a Woz hex dump, then boots it in one click.
 
 ---
 
@@ -291,7 +291,7 @@ Boot POM1, open **DevBench → POM1 Bench**, type code, hit **▶ Run**. No SDK,
 | 🎨 **P-LAB TMS9918** | 256×192, 15 colours, **32 hardware sprites** — flashed into a CodeTank cartridge |
 | 🌈 **Uncle Bernie GEN2 HGR** | 280×192 Apple-II-style **HIRES colour** |
 
-**Pick a language** — **Assembly** (`ca65`/`ld65`), **C** (`cc65`/`cl65`), **BASIC** (Integer or Applesoft, types your listing at the prompt — works in the browser too), or **Woz hex** (paste a Monitor dump, zero toolchain).
+**Pick a language** — **Assembly** (`ca65`/`ld65`), **C** (`cc65`/`cl65`), **BASIC** (Integer or Applesoft, injected at the prompt — works in the browser too), **LOGO** (turtle graphics on the GEN2 HGR or TMS9918 card, with a live REPL you can type into — browser too), or **Woz hex** (paste a Monitor dump, zero toolchain).
 
 ### 🌈 The party trick: graphics BASIC on a 1976 machine
 

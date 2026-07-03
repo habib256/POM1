@@ -13,6 +13,11 @@
 ; prints to the Apple-1 text terminal. SPACE advances to the next category
 ; (wraps); ESC quits to Wozmon.
 ;
+; Colour: each category is drawn in its own HGR artifact colour (context-dependent)
+; — the blit keeps one NTSC column-parity per dest byte ($55 / $2A) and sets the
+; palette high bit, giving CREATURES green, TROLLKIND orange, UNLIVING blue, FAUNA
+; violet, MAGICK white, MUSIC orange (cat_col_* tables + colourise_row).
+;
 ; Blit: byte-aligned STA fast path (sprites sit at HGR byte columns, so each
 ; 16x16 sprite is 16 rows x 3 bytes stored straight into the framebuffer via the
 ; hgr_lo/hgr_hi scanline table — no per-pixel plotting, no bit shifting). One
@@ -60,6 +65,13 @@ d2:         .res 1
 d3:         .res 1
 d4:         .res 1
 d5:         .res 1
+; Per-category HGR artifact colour (see cat_col_* tables + draw_sprite). col_ev /
+; col_od are the column-parity masks for even / odd dest byte columns ($55 or $2A,
+; or $7F for white); col_hi is the palette high bit ($00 = green/violet family,
+; $80 = blue/orange). Loaded once per category in show_cat.
+col_ev:     .res 1
+col_od:     .res 1
+col_hi:     .res 1
 
 .code
 
@@ -97,6 +109,13 @@ show_cat:
         STA nm_lo
         LDA cat_name_hi,X
         STA nm_hi
+        ; context-dependent colour: this category's HGR artifact colour.
+        LDA cat_col_ev,X
+        STA col_ev
+        LDA cat_col_od,X
+        STA col_od
+        LDA cat_col_hi,X
+        STA col_hi
 
         ; print "category (N) ..." header to the text terminal
         LDA nm_lo
@@ -238,6 +257,8 @@ draw_sprite:
         LDA dblR,X
         STA d5
 
+        JSR colourise_row       ; tint d0..d5 with the category's HGR colour
+
         ; --- paint d0..d5 onto two scanlines: cur_y = top_y + gline*2, +1 ---
         LDA gline
         ASL
@@ -293,6 +314,40 @@ blit_row6:
         STA (ptr_lo),Y
         RTS
 
+; -----------------------------------------------------------------------------
+; colourise_row -- give d0..d5 this category's HGR artifact colour: keep one
+;   column-parity per dest byte (col_ev for even bytes d0/d2/d4, col_od for odd
+;   bytes d1/d3/d5) and set the palette high bit (col_hi). White categories use
+;   col_ev = col_od = $7F, so the mask is a no-op and the sprite stays white.
+;   Called once per source row (16x per sprite) before painting.
+; -----------------------------------------------------------------------------
+colourise_row:
+        LDA d0
+        AND col_ev
+        ORA col_hi
+        STA d0
+        LDA d1
+        AND col_od
+        ORA col_hi
+        STA d1
+        LDA d2
+        AND col_ev
+        ORA col_hi
+        STA d2
+        LDA d3
+        AND col_od
+        ORA col_hi
+        STA d3
+        LDA d4
+        AND col_ev
+        ORA col_hi
+        STA d4
+        LDA d5
+        AND col_od
+        ORA col_hi
+        STA d5
+        RTS
+
 
 ; -----------------------------------------------------------------------------
 ; Category dispatch tables (parallel arrays, indexed by cur_cat).
@@ -312,6 +367,20 @@ cat_name_lo:
 cat_name_hi:
         .byte >name_creatures, >name_trollkind, >name_unliving
         .byte >name_fauna, >name_magick, >name_music
+
+; Per-category HGR artifact colour. Each column-parity mask keeps only the pixels
+; of one NTSC phase ($55 / $2A alternating even/odd dest byte), and the high bit
+; picks the palette family — together the four chromatic HGR colours, plus $7F/$7F
+; = white (all pixels kept). One colour per category (only one is on screen at a
+; time), rotated for variety + a bit of theme:
+;   CREATURES green · TROLLKIND orange · UNLIVING blue · FAUNA violet ·
+;   MAGICK white · MUSIC orange
+cat_col_ev:
+        .byte $55, $2A, $55, $2A, $7F, $2A
+cat_col_od:
+        .byte $2A, $55, $2A, $55, $7F, $55
+cat_col_hi:
+        .byte $00, $80, $80, $00, $00, $80
 
 str_intro:
         .byte $0D

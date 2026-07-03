@@ -12,7 +12,7 @@ Grouped by subsystem; deferred / externally-blocked last. Only open items live h
 
 ### GEN2 beam engine — Phase 4: composite OpenEmulator (rendu optionnel, non bloquant)
 
-> Phases 0-3 + 5 + **chemin composite CPU (`RenderMode::CompositeOECpu`) livrés** → `[CHANGELOG.md](CHANGELOG.md)`. Le LUT MAME reste le fast-path v1 par défaut ; le composite est un toggle du menu GEN2. Reste seulement le chemin GPU-shader, optionnel :
+> Phases 0-3 + 5 + **chemin composite CPU (`RenderMode::CompositeOECpu`) livrés** → `[CHANGELOG.md](CHANGELOG.md)`. **Le composite OpenEmulator est désormais le rendu par défaut de l'app** (`gen2RenderMode=1`) ; le LUT MAME reste dispo via le menu GEN2 (et reste le défaut de la `GraphicsCard` standalone, pour la golden image). Reste seulement le chemin GPU-shader, optionnel :
 
 - [ ] **Chemin GPU shader (desktop)** `[L · nice]` — optionnel : porter `NtscPostProcessor` POM2 (même noyaux FIR + matrice que le chemin CPU déjà livré) si le *Shared video texture layer* (livré) est exploité ; le CPU couvre déjà WASM + desktop, donc **reportable** tant qu'aucun besoin de perf n'apparaît.
 
@@ -25,19 +25,13 @@ Grouped by subsystem; deferred / externally-blocked last. Only open items live h
 
 ---
 
-
-
 ## 🛠️ Dev tooling
-
-
 
 ### POM1 Bench
 
 > **Phases A-E + bundle cc65 (asm/C) + BASIC + compilateur natif livrés** → `[CHANGELOG.md](CHANGELOG.md)`. Reste ouvert :
 
 - [ ] **WASM cc65 — vérif navigateur** `[S · nice]` — la chaîne cc65-en-WASM est bundlée + câblée au bouton du Bench (asm + C + TMS + GEN2, glue Node-vérifiée byte-identique au natif des deux côtés) → `[CHANGELOG.md](CHANGELOG.md)`. Reste à **ouvrir** `POM1.html` **et tester à la main** New + un sketch asm + un sketch C (non testable headless) ; le chemin TMS-C n'a pas été vérifié individuellement en Node (même mécanisme `buildC` que GEN2-C).
-
-
 
 ### BASIC dans le Bench
 
@@ -50,25 +44,17 @@ Grouped by subsystem; deferred / externally-blocked last. Only open items live h
 
 ### LOGO dans le Bench
 
-> **Interpréteur V2.6 + injection + 10 sketches + REPL interactif (send/écho/historique + Break Ctrl-G) livrés** → `[CHANGELOG.md](CHANGELOG.md)`. LOGO est le **4ᵉ langage** du dialogue *New* (`kP1Languages[]` « LOGO — injected listing »), deux cibles interpréteur (LOGO TMS9918 idx 14, cold `4000R`, `Codetank_GAME3.rom` bank Lower ; LOGO GEN2 HGR idx 15, cold `6000R`, `roms/logo-gen2.rom`). Chemin `injectLogo()` (mode 6) + `LogoProgramLoader` C++ pur (peuple `proc_table` en source ASCII brut + `n_procs`, feed d'**une** ligne d'entrée) ; coloration `langLogo()` ; pin `bench_logo_inject_smoke` (`proc_table` `$E431`/`$B431`, `n_procs` `$0260`/`$02E3`). Après Run, une **entrée REPL** (`IBenchHost::replActive/replSend/replBreak`) feed les lignes tapées live une à une vers le REPL résident (écho console + historique ↑/↓ ; **Break** Ctrl-G abort un `REPEAT FOREVER` sans figer le CPU ; sortie texte sur l'**écran Apple-1**). WASM-safe.
->
-> Reste ouvert (nice-to-have) :
+> **Interpréteur V2.6 + injection (`injectLogo` / `LogoProgramLoader`) + 10 sketches `sketchs/logo/` + REPL interactif (send / écho / historique ↑↓ / Break Ctrl-G) livrés** → `[CHANGELOG.md](CHANGELOG.md)`. LOGO est le **4ᵉ langage** du *New*, deux cibles (TMS9918 `4000R`, GEN2 HGR `6000R`), WASM-safe, pin `bench_logo_inject_smoke`. Reste ouvert (nice-to-have) :
 > - [ ] **Livre d'exemples LOGO dans le popup *Examples*** `[S · solid]` — les 10 `.logo` de `sketchs/logo/` existent (et sont préchargés MEMFS côté web) mais ne sont atteignables que par *File → Load* ; les câbler dans `kP1Examples[]`/`examples_` (groupe « LOGO », ouverture 1-clic) comme les exemples asm/C, pour la découvrabilité.
 > - [ ] **Read-back / LIST round-trip** `[M · nice]` — l'inverse de `LogoProgramLoader` : reparser le `proc_table` résident → source, pour « récupérer depuis la machine » ce qui a été défini au REPL et pour un Verify reflétant l'état réel. Prérequis d'un **inject à chaud** (append de procs + bump `n_procs` sans cold-reset, flux incrémental proche du vrai REPL).
 
-
-
 ### Éditeur DevBench — onglets multi-fichiers + Markdown
 
-> **Éditeur multi-documents + rendu Markdown (Preview/Edit) livrés** → `[CHANGELOG.md](CHANGELOG.md)`. Reste ouvert (nice-to-have) :
+> **Éditeur multi-documents, rendu Markdown (Preview/Edit), coloration Markdown en mode Edit, et garde de fermeture (popup Discard/Cancel sur onglet non sauvegardé) livrés** → `[CHANGELOG.md](CHANGELOG.md)`. Reste ouvert (nice-to-have) :
 
-- [ ] **Coloration Markdown en mode Edit** `[S · nice]` — `langDef("markdown")` retombe sur le texte brut ; ajouter une def crayon (titres `#`, `**gras`**, ``code``, liens) ou un highlighter dédié.
-- [ ] **Garde de fermeture si non sauvegardé** `[S · nice]` — un onglet *dirty* se ferme actuellement sans confirmation (le point « unsaved » prévient). Ajouter une popup « Discard / Cancel ».
-- [ ] **Vue Markdown split (édition + aperçu live)** `[M · nice]` — au lieu de la bascule, une vue côte-à-côte qui rafraîchit l'aperçu à la frappe.
+- [ ] **Vue Markdown split (édition + aperçu live)** `[M · nice]` — au lieu de la bascule Preview/Edit, une vue côte-à-côte qui rafraîchit l'aperçu à la frappe.
 
 ---
-
-
 
 ## 🔌 Peripherals & loaders
 
@@ -79,8 +65,6 @@ Grouped by subsystem; deferred / externally-blocked last. Only open items live h
 - [ ] **Terminal Card —** `Ctrl-K` **hand-over** `[S · nice]` — match the 8BitFlux toggle: a `Ctrl-K` byte suspends `$D010`/`$D011` injection until `Ctrl-T` re-attaches. Useful once a script bootstrapped a program and the user wants to play without dropping the session. Hook: `injectionSuspended` next to `escapePending` / `eightBitMode` in `TerminalCard.cpp`.
 
 ---
-
-
 
 ## 🖼️ Visuals & UX
 
@@ -93,8 +77,6 @@ Grouped by subsystem; deferred / externally-blocked last. Only open items live h
 
 ---
 
-
-
 ## 🔧 Infra & technical debt
 
 > **Durcissement désérialisation (audit 2026-05-31) livré** → `[CHANGELOG.md](CHANGELOG.md)`.
@@ -102,8 +84,6 @@ Grouped by subsystem; deferred / externally-blocked last. Only open items live h
 - [ ] **Snapshot residual gaps** `[M · nice]` — base format + 12-card per-card payloads + CPU section landed (May 2026). Remaining: cassette mid-stream playback position (re-load tape file by path on snapshot-load + seek to saved `playbackIndex`); WiFiModem / TerminalCard graceful "drop and reconnect" on load (currently kept disconnected); libresidfp internal filter integrators / oscillator phase (engine doesn't expose them — would need an upstream patch); SHA-256 footer (mentioned in `SnapshotIO.h` as v2 sweetener).
 - [ ] **Scriptable runtime IPC** `[M · nice]` — `--cmd-fd <N>` (or Unix socket) reading line-delimited commands while the emulator runs — same verbs as CLI flags, but for stateful sequences. Telnet on `:6502` carries keystrokes + display; this channel carries control without polluting the keyboard stream. Depends on CLI-verb + snapshot work above.
 - [ ] **External** `presets.json` `[S · nice]` — `MainWindow_Presets.cpp` already flags itself as the migration target. Move `kMachinePresets[]` to JSON under `doc/` (or next to the executable) so users add presets without recompiling. Loader in `MainWindow_Presets.cpp`, keep the C++ table as fallback.
-
-
 
 ### State rewind — raffinements (MVP livré)
 
@@ -113,8 +93,6 @@ Grouped by subsystem; deferred / externally-blocked last. Only open items live h
 - [ ] **Seek cost on card-heavy presets** `[S · nice]` — `rewindSeekTo` reuses `loadSnapshotFromBuffer`, whose FLAGS dispatch re-applies card setters (may reload ROMs) every slider tick. Skip re-apply when the flag set is unchanged to keep dragging smooth.
 
 ---
-
-
 
 ## ⏸️ Deferred / conditional · 🚫 Blocked on external
 

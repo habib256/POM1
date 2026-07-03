@@ -289,13 +289,54 @@ static const TextEditor::LanguageDefinition& langLogo()
     return lang;
 }
 
+// Markdown — a light "pencil" highlighter for the DevBench doc editor's Edit mode
+// (Preview renders the real formatting). Regex tokens, first-match-wins per the
+// ImGuiColorTextEdit tokenizer, so order matters: code spans before emphasis (both
+// share `*`/backtick), bold before italic. Line-anchored constructs (# headings,
+// >quotes, - bullets) can't be start-of-line-anchored in this per-position matcher,
+// so a bare `#`/`>`/`-` mid-prose may tint too — acceptable for an editing aid.
+static const TextEditor::LanguageDefinition& langMarkdown()
+{
+    static bool inited = false;
+    static TextEditor::LanguageDefinition lang;
+    if (inited) return lang;
+
+    using PI = TextEditor::PaletteIndex;
+    // `code span`  → String colour.
+    lang.mTokenRegexStrings.push_back({ "`[^`]*`", PI::String });
+    // [text](url) link → KnownIdentifier.
+    lang.mTokenRegexStrings.push_back({ "\\[[^\\]]*\\]\\([^)]*\\)", PI::KnownIdentifier });
+    // ![alt](img) is caught by the link rule above (leading ! stays Default).
+    // **bold** / __bold__ → Keyword (before the single-delimiter italic rules).
+    lang.mTokenRegexStrings.push_back({ "\\*\\*[^*]+\\*\\*", PI::Keyword });
+    lang.mTokenRegexStrings.push_back({ "__[^_]+__",         PI::Keyword });
+    // *italic* / _italic_ → Number (a distinct tint from bold).
+    lang.mTokenRegexStrings.push_back({ "\\*[^*]+\\*", PI::Number });
+    lang.mTokenRegexStrings.push_back({ "_[^_]+_",     PI::Number });
+    // # … through ###### … heading (space after the hashes) → Preprocessor.
+    lang.mTokenRegexStrings.push_back({ "#{1,6}[ \\t][^\\n]*", PI::Preprocessor });
+    // Bullet / quote markers at a token boundary → Punctuation.
+    lang.mTokenRegexStrings.push_back({ "[>]|[-*+][ \\t]", PI::Punctuation });
+
+    lang.mCommentStart      = "\x01";   // Markdown has no code-style comments
+    lang.mCommentEnd        = "\x01";
+    lang.mSingleLineComment = "\x01";
+    lang.mCaseSensitive     = true;
+    lang.mAutoIndentation   = false;
+    lang.mName              = "Markdown";
+
+    inited = true;
+    return lang;
+}
+
 const TextEditor::LanguageDefinition& langDef(const std::string& language)
 {
-    if (language == "6502")  return lang6502();
-    if (language == "68000") return lang68000();
-    if (language == "BASIC") return langBasic();
-    if (language == "C")     return langC();
-    if (language == "LOGO")  return langLogo();
+    if (language == "6502")     return lang6502();
+    if (language == "68000")    return lang68000();
+    if (language == "BASIC")    return langBasic();
+    if (language == "C")        return langC();
+    if (language == "LOGO")     return langLogo();
+    if (language == "markdown") return langMarkdown();
     static const TextEditor::LanguageDefinition plain;   // no highlighting
     return plain;
 }

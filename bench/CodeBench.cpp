@@ -126,6 +126,13 @@ void CodeBench::closeAllDocs()
     pendingNewChoose_ = true;                      // empty bench → render() opens the New chooser
 }
 
+bool CodeBench::anyDirty(int exceptUid) const
+{
+    for (const auto& d : docs_)
+        if (d->uid != exceptUid && d->dirty) return true;
+    return false;
+}
+
 bool CodeBench::loadStarterForTargetIfClean(int targetIndex)
 {
     ensureDocs();
@@ -801,10 +808,65 @@ void CodeBench::render(const char* title, bool* open)
         if (doRename) { renameDoc(renameUid_, renameBuf_); ImGui::CloseCurrentPopup(); }
         ImGui::EndPopup();
     }
-    // Apply at most one structural change per frame, most destructive first.
-    if (closeAllReq)              closeAllDocs();
-    else if (closeOthersUid >= 0) closeOtherDocs(closeOthersUid);
-    else if (closeUid >= 0)       closeDoc(closeUid);
+    // Apply at most one structural change per frame, most destructive first. A close
+    // that would discard UNSAVED edits pauses for a Discard/Cancel confirmation
+    // (below); a clean close happens immediately. We didn't erase the doc, so the
+    // tab whose X was clicked simply stays open until the user answers.
+    bool openCloseConfirm = false;
+    if (closeAllReq) {
+        if (anyDirty(-1)) { pendingCloseReq_ = CloseReq::All; openCloseConfirm = true; }
+        else closeAllDocs();
+    } else if (closeOthersUid >= 0) {
+        if (anyDirty(closeOthersUid)) {
+            pendingCloseReq_ = CloseReq::Others; pendingCloseUid_ = closeOthersUid; openCloseConfirm = true;
+        } else closeOtherDocs(closeOthersUid);
+    } else if (closeUid >= 0) {
+        bool dirty = false;
+        for (const auto& d : docs_) if (d->uid == closeUid) { dirty = d->dirty; break; }
+        if (dirty) { pendingCloseReq_ = CloseReq::One; pendingCloseUid_ = closeUid; openCloseConfirm = true; }
+        else closeDoc(closeUid);
+    }
+    if (openCloseConfirm) ImGui::OpenPopup("##benchcloseconfirm");
+
+    // Unsaved-changes guard: confirm before throwing away edits.
+    if (ImGui::BeginPopupModal("##benchcloseconfirm", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
+        std::string msg;
+        if (pendingCloseReq_ == CloseReq::One) {
+            std::string title = "this tab";
+            for (const auto& d : docs_) if (d->uid == pendingCloseUid_) { title = d->title; break; }
+            msg = ICON_FA_TRIANGLE_EXCLAMATION "  Discard unsaved changes to \"" + title + "\"?";
+        } else {
+            const int keep = (pendingCloseReq_ == CloseReq::Others) ? pendingCloseUid_ : -1;
+            int n = 0; for (const auto& d : docs_) if (d->uid != keep && d->dirty) ++n;
+            msg = std::string(ICON_FA_TRIANGLE_EXCLAMATION "  ") + std::to_string(n) +
+                  (n == 1 ? " tab has unsaved changes. Discard it?"
+                          : " tabs have unsaved changes. Discard them?");
+        }
+        ImGui::TextUnformatted(msg.c_str());
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.55f, 0.18f, 0.18f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.72f, 0.24f, 0.24f, 1.0f));
+        const bool discard = ImGui::Button("Discard", ImVec2(120, 0));
+        ImGui::PopStyleColor(2);
+        ImGui::SameLine();
+        const bool cancel = ImGui::Button("Cancel", ImVec2(120, 0)) ||
+                            ImGui::IsKeyPressed(ImGuiKey_Escape);
+        if (discard) {
+            switch (pendingCloseReq_) {
+                case CloseReq::One:    closeDoc(pendingCloseUid_);        break;
+                case CloseReq::Others: closeOtherDocs(pendingCloseUid_);  break;
+                case CloseReq::All:    closeAllDocs();                    break;
+                default: break;
+            }
+            pendingCloseReq_ = CloseReq::None;
+            ImGui::CloseCurrentPopup();
+        } else if (cancel) {
+            pendingCloseReq_ = CloseReq::None;   // keep the tab(s); nothing discarded
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
     // The last tab may have just closed: finish this frame's window now; the empty
     // bench check at the top of render() opens the New chooser next frame.
     if (docs_.empty()) { ImGui::End(); return; }

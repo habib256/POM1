@@ -414,7 +414,11 @@ private:
     bool gen2RandomDramNoiseEnabled    = true;
     // GEN2 HGR cosmetic monitor controls — per-window state, not silicon.
     int  gen2MonitorMode = 0;       // 0=Colour, 1=Green, 2=Amber, 3=Mono
-    int  gen2RenderMode  = 0;       // 0=NTSC MAME (LUT), 1=Composite OpenEmulator CPU
+    // 0=NTSC MAME (LUT), 1=Composite OpenEmulator CPU. Default = OpenEmulator
+    // composite (the more faithful NTSC decode). NB: GraphicsCard's OWN member
+    // default stays MameLut so the headless golden dump (--dump-gen2-frame builds a
+    // fresh GraphicsCard) and gfx_regress_gen2 keep their MAME-LUT reference image.
+    int  gen2RenderMode  = 1;
     float gen2PhosphorPersistence = 0.0f;
     float gen2ScanlineAlpha = 0.0f;
     // UI mirror of Memory::isOutOfRangeStrictMode(). Resynced from the same
