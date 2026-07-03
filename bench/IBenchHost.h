@@ -176,6 +176,17 @@ public:
     // never available and the ImGui browser is the only path.
     virtual bool nativeFilePickerAvailable() const { return false; }
 
+    // ---- Interactive REPL (a resident, always-running, line-oriented interpreter
+    //      like APPLE-1 LOGO). When replActive() returns true CodeBench shows a
+    //      one-line input below the build console; each submitted line is handed to
+    //      replSend(), which the host feeds to the resident REPL over the keyboard
+    //      ONE line at a time (so the interpreter's REPEAT break-poll can't eat a
+    //      multi-line paste). Output shows on the machine's own screen/graphics
+    //      window. Default: no REPL. ----
+    virtual bool        replActive() const { return false; }
+    virtual std::string replPrompt() const { return "?"; }   // shown before the input
+    virtual void        replSend(const std::string& /*line*/) {}
+
     // ---- Serial monitor (a separate window the host owns) ----
     virtual bool hasSerial() const { return false; }
     virtual void openSerial()      {}

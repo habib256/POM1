@@ -158,6 +158,30 @@ void CodeBench::applyResult(const BuildResult& r)
     d->editor->SetErrorMarkers(em);
 }
 
+// Up/Down history recall for the interactive REPL input. Called by ImGui as the
+// InputText CallbackHistory handler (trampolined through the lambda in draw()).
+int CodeBench::onReplHistory(void* dataV)
+{
+    auto* data = static_cast<ImGuiInputTextCallbackData*>(dataV);
+    if (data->EventFlag != ImGuiInputTextFlags_CallbackHistory) return 0;
+    const int prev = replHistoryPos_;
+    if (data->EventKey == ImGuiKey_UpArrow) {
+        if (replHistoryPos_ == -1) replHistoryPos_ = static_cast<int>(replHistory_.size()) - 1;
+        else if (replHistoryPos_ > 0) --replHistoryPos_;
+    } else if (data->EventKey == ImGuiKey_DownArrow) {
+        if (replHistoryPos_ != -1) {
+            ++replHistoryPos_;
+            if (replHistoryPos_ >= static_cast<int>(replHistory_.size())) replHistoryPos_ = -1;
+        }
+    }
+    if (prev != replHistoryPos_) {
+        const char* s = (replHistoryPos_ >= 0) ? replHistory_[replHistoryPos_].c_str() : "";
+        data->DeleteChars(0, data->BufTextLen);
+        data->InsertChars(0, s);
+    }
+    return 0;
+}
+
 void CodeBench::drawNewDialog()
 {
     if (!ImGui::BeginPopup("##benchnewdlg")) return;
@@ -794,7 +818,9 @@ void CodeBench::render(const char* title, bool* open)
     const float kConsoleChildH = 124.0f;
     const float consoleBlock   = showConsole_ ? (rowH + kConsoleChildH + spacingY) : 0.0f;
     const float mdToggleBlock  = act.isMarkdown ? rowH : 0.0f;
-    float editorH = avail.y - consoleBlock - kStatusBarH - spacingY - mdToggleBlock;
+    const bool  replOn         = host_->replActive();       // live interactive REPL
+    const float replBlock      = replOn ? rowH : 0.0f;      // one input row
+    float editorH = avail.y - consoleBlock - replBlock - kStatusBarH - spacingY - mdToggleBlock;
     if (editorH < 100.0f) editorH = 100.0f;
 
     std::string mdBack;   // a Back-arrow click → reopen this path after render
@@ -948,6 +974,54 @@ void CodeBench::render(const char* title, bool* open)
         }
         ImGui::EndChild();
         ImGui::PopStyleColor();
+    }
+
+    // ---- Interactive REPL input (LOGO): feed one typed line to the resident
+    //      interpreter, echo it into the console. Output shows on the card /
+    //      Apple-1 screen windows. ----
+    if (replOn) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.90f, 0.60f, 1.0f));
+        ImGui::TextUnformatted(host_->replPrompt().c_str());
+        ImGui::PopStyleColor();
+        ImGui::SameLine();
+        const float sendW = 64.0f;
+        ImGui::SetNextItemWidth(avail.x - sendW - ImGui::GetStyle().ItemSpacing.x -
+                                ImGui::CalcTextSize(host_->replPrompt().c_str()).x -
+                                ImGui::GetStyle().ItemSpacing.x);
+        if (replFocus_) { ImGui::SetKeyboardFocusHere(); replFocus_ = false; }
+        auto submit = [&]() {
+            std::string line = replInput_;
+            // trim trailing whitespace/newlines
+            while (!line.empty() && (line.back() == '\n' || line.back() == '\r' ||
+                                     line.back() == ' '  || line.back() == '\t')) line.pop_back();
+            if (!line.empty()) {
+                // Echo the SENT line into the console (a record of what you typed);
+                // the interpreter's own output (OK / errors / PRINT) shows on the
+                // Apple-1 screen window, not here.
+                console_ += "\xE2\x80\xBA " + line + "\n";   // "› line"
+                showConsole_ = true;
+                if (replHistory_.empty() || replHistory_.back() != line)
+                    replHistory_.push_back(line);
+                host_->replSend(line);
+            }
+            replInput_[0] = '\0';
+            replHistoryPos_ = -1;
+            replFocus_ = true;   // keep focus for the next command
+        };
+        const bool entered = ImGui::InputText(
+            "##logorepl", replInput_, sizeof(replInput_),
+            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackHistory,
+            [](ImGuiInputTextCallbackData* d) {
+                return static_cast<CodeBench*>(d->UserData)->onReplHistory(d);
+            },
+            this);
+        if (entered) submit();
+        ImGui::SameLine();
+        if (ImGui::Button("Send", ImVec2(sendW, 0))) submit();
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Send this line to the live LOGO interpreter (Enter).\n"
+                              "Up/Down recalls previous commands. Turtle draws on the\n"
+                              "graphics card window; PRINT/errors on the Apple-1 screen.");
     }
 
     // Mirror the bench status line into the host's MAIN status bar (full width —

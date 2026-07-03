@@ -65,6 +65,13 @@ public:
     bool hasSerial() const override { return true; }
     void openSerial() override;
 
+    // Interactive LOGO REPL: live while a LOGO target has been run/prepared (the
+    // resident interpreter is at its prompt). replSend feeds one line over the
+    // keyboard FIFO. See injectLogo / logoReplActive_.
+    bool        replActive() const override;
+    std::string replPrompt() const override { return "LOGO \xE2\x80\xBA"; }  // "LOGO ›"
+    void        replSend(const std::string& line) override;
+
 private:
     void               probe() const;   // lazy cc65 toolchain detection
     void               applyTargetPreset(int target, bool force);   // onTargetSelected / selectTargetExplicit core
@@ -74,6 +81,10 @@ private:
     // BASIC deploy (mode 4): cold-start the in-ROM interpreter + type the listing
     // via the keyboard FIFO (no compiler — identical on desktop and WASM).
     bench::BuildResult injectBasic(int target, const std::string& src, bool run);
+    // LOGO deploy (mode 6): cold-start the resident APPLE-1 LOGO V2.6 interpreter,
+    // poke its procedure table directly (LogoProgramLoader) + feed ONE entry line
+    // (no per-line keyboard typing). Pure C++, identical on desktop and WASM.
+    bench::BuildResult injectLogo(int target, const std::string& src, bool run);
 #if !POM1_IS_WASM
     // BASIC native compile (mode 5, DESKTOP only): basicnative::compile -> ca65 prog
     // + minimal card runtime (+ float runtime if used), ld65 against basicc_native.cfg,
@@ -134,6 +145,11 @@ private:
     int  injectSavedRamKB_     = 0;
     bool injectSavedOorStrict_ = false;
     void restoreRelaxedMachine();        // revert a pending OOR/RAM relax (no-op if none)
+
+    // A LOGO interpreter is resident + cold-started (set by injectLogo's run/prep
+    // paths, cleared when any non-LOGO target disturbs the machine). Gates the
+    // Bench's interactive REPL input (replActive/replSend).
+    bool logoReplActive_ = false;
 };
 
 #endif // POM1_BENCH_HOST_H

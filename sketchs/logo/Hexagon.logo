@@ -1,0 +1,3 @@
+CS
+SETPC 5
+REPEAT 6 [ FD 45 TR 60 ]

@@ -470,6 +470,33 @@ add_test(NAME bench_basic_inject_smoke COMMAND test_bench_basic_inject
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(bench_basic_inject_smoke PROPERTIES TIMEOUT 60)
 
+# -- Bench LOGO injection smoke test -----------------------------------------
+# Pins the Bench "LOGO" language path (Pom1BenchHost::injectLogo, mode 6): the
+# LogoProgramLoader pokes a TO … END procedure into the resident interpreter's
+# proc_table + feeds the call line, on BOTH LOGO cards (TMS9918 CodeTank $4000,
+# GEN2 HGR $6000), asserting the turtle draws into each framebuffer. Pins the
+# proc_table / n_procs addresses (fail on an interpreter relink). Needs roms/ ->
+# WORKING_DIRECTORY is the repo root.
+add_executable(test_bench_logo_inject
+    bench_logo_inject_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/LogoProgramLoader.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_bench_logo_inject PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_bench_logo_inject PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_bench_logo_inject PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_bench_logo_inject PRIVATE ws2_32)
+endif()
+add_test(NAME bench_logo_inject_smoke COMMAND test_bench_logo_inject
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(bench_logo_inject_smoke PROPERTIES TIMEOUT 120)
+
 # -- Applesoft GEN2 interpreter smoke test -----------------------------------
 # Boots the sketchs/gen2/applesoft_gen2 ROM and checks the renumbered core runs
 # (PRINT 1000+7 -> 1007) plus HGR/HPLOT and GR/PLOT draw into the framebuffers.

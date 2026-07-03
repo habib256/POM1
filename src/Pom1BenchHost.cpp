@@ -2,6 +2,7 @@
 #include "Pom1BenchHost.h"
 
 #include "BasicTokeniserApplesoft.h"        // basic::compile — Applesoft tokeniser (GEN2/TMS)
+#include "LogoProgramLoader.h"              // logo::compile — LOGO proc-table injector
 #include "BasicTokeniserInteger.h"          // ibasic::compile — Integer BASIC tokeniser ($E000)
 #include "BasicCompilerApplesoft.h"         // basicnative::compile — native standalone 6502
 #include "MainWindow_ImGui.h"     // mw_ members (friend) + EmulationController
@@ -327,6 +328,31 @@ static const char* kSketchBasicApplesoftGen2 =
     "40 GR : COLOR=13 : PLOT 20,20\n"
     "50 TEXT : HOME : VTAB 12 : HTAB 12 : PRINT \"HELLO GEN2\"\n";
 
+// LOGO starters. The Bench cold-starts the resident APPLE-1 LOGO V2.6 interpreter,
+// then pokes the procedure table directly (LogoProgramLoader) and feeds ONE entry
+// line — no per-line keyboard typing (which the REPEAT break-poll would drop). The
+// TO MAIN … END / MAIN shape is the recommended idiom: the body is poked, only the
+// bare "MAIN" call is queued. Pure C++, so both variants run on WASM too.
+// NOTE the dialect: turns are TR (turn right) / TL (turn left) — NOT RT/LT. Nested
+// REPEAT is supported one level deep (the outer square-rosette below). More runnable
+// programs (machine-neutral, from the LOGO manual §11) live in sketchs/logo/.
+static const char* kSketchLogoTms =          // LOGO TMS9918 (CodeTank lower, 4000R)
+    "TO MAIN\n"
+    "  CS\n"
+    "  REPEAT 40 [ REPEAT 4 [ FD 60 TR 90 ] TR 10]\n"
+    "END\n"
+    "MAIN\n";
+static const char* kSketchLogoGen2 =         // LOGO GEN2 HGR ($6000, 6000R)
+    "TO SQUARE\n"
+    "  REPEAT 4 [ FD 50 TR 90 ]\n"
+    "END\n"
+    "TO FLOWER\n"
+    "  REPEAT 36 [ TR 10 SQUARE ]\n"
+    "END\n"
+    "CS\n"
+    "SETPC 13\n"
+    "FLOWER\n";
+
 static const char* kBenchEmbeddedCfg =
     "MEMORY {\n"
     "    ZP:  start = $0000, size = $0030, type = rw, define = yes;\n"
@@ -362,6 +388,24 @@ std::string codeTankDevRomReadPath() {
     for (const char* c : {"roms/codetank/CODETANKDEV.rom",
                           "../roms/codetank/CODETANKDEV.rom",
                           "../../roms/codetank/CODETANKDEV.rom"})
+        if (fs::exists(c, ec)) return c;
+    return {};
+}
+
+// APPLE-1 LOGO V2.6 lives in the LOWER bank of Codetank_GAME3.rom (4000R with the
+// jumper Lower). That cartridge ships under roms/codetank/; unlike the asm/C flash
+// slot it is never rewritten, so a read-only bundled copy is fine. Returns "" if
+// absent anywhere.
+std::string codeTankLogoRomReadPath() {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (const char* env = std::getenv("POM1_CODETANK_DEV_DIR"); env && *env) {
+        std::string p = (fs::path(env) / "Codetank_GAME3.rom").string();
+        if (fs::exists(p, ec)) return p;
+    }
+    for (const char* c : {"roms/codetank/Codetank_GAME3.rom",
+                          "../roms/codetank/Codetank_GAME3.rom",
+                          "../../roms/codetank/Codetank_GAME3.rom"})
         if (fs::exists(c, ec)) return c;
     return {};
 }
@@ -493,13 +537,24 @@ const P1T kP1Targets[] = {
     // the VDP at $CC00/$CC01 — NOT a CodeTank cartridge, so codetankRom = false).
     { "Applesoft GEN2 (native, 0300R)",          2, nullptr,    "BASIC", 5, false, false, kSketchBasicApplesoftGen2 },
     { "Applesoft TMS9918 (native, 0300R)",       1, nullptr,    "BASIC", 5, false, false, kSketchBasicApplesoftGen2 },
+    // Targets 14-15: APPLE-1 LOGO V2.6 turtle interpreter — listing INJECTION (mode
+    // 6, injectLogo). The resident interpreter is cold-started, then LogoProgramLoader
+    // pokes its procedure table directly + feeds ONE entry line (no keyboard typing —
+    // the REPEAT break-poll would drop pasted lines). cfg = cold-start command.
+    //   14 LOGO TMS9918 — Codetank_GAME3.rom LOWER bank ($4000, jumper Lower), preset 1,
+    //      16 KB-strict (proc_table $E431, n_procs $0260). codetankRom = true.
+    //   15 LOGO GEN2 HGR — roms/logo-gen2.rom loaded at $6000, preset 2, 48 KB
+    //      (proc_table $B431, n_procs $02E3).
+    { "LOGO TMS9918 (interpreter, 4000R)",        1, "4000R",   "LOGO",  6, false, true,  kSketchLogoTms  },
+    { "LOGO GEN2 HGR (interpreter, 6000R)",       2, "6000R",   "LOGO",  6, false, false, kSketchLogoGen2 },
 };
 const int kP1TargetCount = static_cast<int>(sizeof(kP1Targets) / sizeof(kP1Targets[0]));
 
 // New-dialog axes (language x machine -> target index, resolved by targetFor).
 // kP1*Hints are parallel to the labels and surface as combo-entry tooltips.
 const char* const kP1Languages[] = { "Assembly  —  ca65 / ld65", "C  —  cc65 / cl65",
-                                     "BASIC  —  injected listing" };
+                                     "BASIC  —  injected listing",
+                                     "LOGO  —  injected listing" };
 const char* const kP1LanguageHints[] = {
     "MOS 6502 assembler (cc65's ca65 + ld65). Links against the apple1 / tms9918 /\n"
     "gen2 equate libraries under dev/lib via the per-target linker .cfg.",
@@ -509,6 +564,10 @@ const char* const kP1LanguageHints[] = {
     "time and loads it directly (instant, no per-character typing, no 127-char line\n"
     "cap). Pure C++, so it works in the web (WASM) build too. Integer BASIC (Apple-1\n"
     "dual-rom) + Applesoft on microSD / GEN2 HGR / TMS9918.",
+    "APPLE-1 LOGO V2.6 turtle graphics. POM1 cold-starts the resident interpreter,\n"
+    "pokes your TO … END procedures straight into its procedure table and feeds one\n"
+    "entry line — no per-character typing. Pure C++ (works on WASM). Runs on the\n"
+    "TMS9918 (CodeTank) card or Uncle Bernie's GEN2 HGR card.",
 };
 // The "Target" combo is per-language: asm/C show the three graphics machines,
 // BASIC shows its four interpreters (CodeBench filters by targetFor()). Each is
@@ -525,6 +584,8 @@ const char* const kP1Machines[]  = {
     "Integer BASIC (Apple-1 dual-rom)  (interpreter)", // 6  BASIC -> target 7
     "Applesoft GEN2 HGR  (native compile)",      // 7  BASIC -> target 12 (desktop only)
     "Applesoft TMS9918  (native compile)",       // 8  BASIC -> target 13 (desktop only)
+    "LOGO TMS9918  (interpreter)",               // 9  LOGO  -> target 14
+    "LOGO GEN2 HGR  (interpreter)",              // 10 LOGO  -> target 15
 };
 const char* const kP1MachineHints[] = {
     "Stock Apple-1: 40x24 text printed through the WozMon ECHO routine ($FFEF).\n"
@@ -552,6 +613,12 @@ const char* const kP1MachineHints[] = {
     "Applesoft TMS9918 (native compile) — COMPILES the listing to standalone 6502\n"
     "(no interpreter, ~20x faster), links the minimal TMS9918 runtime + VDP lib,\n"
     "loads + runs at $0300 on the TMS9918 card (preset 1). Desktop only.",
+    "APPLE-1 LOGO V2.6 on the P-LAB TMS9918 card — the turtle interpreter in the\n"
+    "LOWER bank of Codetank_GAME3.rom ($4000, jumper Lower), cold start 4000R, 16 KB.\n"
+    "Procedures poked into the proc table; entry line fed to the REPL. 256x192 bitmap.",
+    "APPLE-1 LOGO V2.6 on Uncle Bernie's GEN2 HGR card — interpreter loaded at $6000\n"
+    "(roms/logo-gen2.rom), cold start 6000R, 48 KB (preset 2). Same injection path,\n"
+    "280x192 HIRES turtle with the GEN2 artifact palette. Manual: sketchs/.../tool_logo.",
 };
 
 // Graduated learning examples (inline sources) on the Apple-1 text target. They
@@ -1548,10 +1615,11 @@ const std::vector<std::string>& Pom1BenchHost::machineHints()  const { return ma
 
 int Pom1BenchHost::targetFor(int language, int machine) const
 {
-    // languages: 0=asm, 1=C, 2=BASIC. machines: 0=Apple-1 text, 1=TMS9918,
+    // languages: 0=asm, 1=C, 2=BASIC, 3=LOGO. machines: 0=Apple-1 text, 1=TMS9918,
     // 2=GEN2 HGR (asm/C use these three); 3=Applesoft Lite + microSD, 4=Applesoft
     // GEN2 HGR, 5=Applesoft TMS9918, 6=Integer BASIC (Apple-1 dual-rom) (BASIC uses
-    // these four). CodeBench's New dialog shows only the machines valid for the lang.
+    // these four); 9=LOGO TMS9918, 10=LOGO GEN2 HGR (LOGO uses these two). CodeBench's
+    // New dialog shows only the machines valid for the language.
     if (language == 0) return (machine >= 0 && machine <= 2) ? machine     : -1;  // asm 0..2
     if (language == 1) return (machine >= 0 && machine <= 2) ? 3 + machine : -1;  // C   3..5
     if (language == 2) {                                                          // BASIC
@@ -1564,6 +1632,13 @@ int Pom1BenchHost::targetFor(int language, int machine) const
             case 7: return 12;   // Applesoft GEN2 (native compile, $0300) — desktop only
             case 8: return 13;   // Applesoft TMS9918 (native compile, $0300) — desktop only
 #endif
+        }
+        return -1;
+    }
+    if (language == 3) {                                                          // LOGO
+        switch (machine) {
+            case 9:  return 14;  // LOGO TMS9918 (CodeTank $4000)
+            case 10: return 15;  // LOGO GEN2 HGR ($6000)
         }
         return -1;
     }
@@ -1658,6 +1733,22 @@ int Pom1BenchHost::targetForPath(const std::string& path) const
     }
     if (ext == ".bas" || ext == ".ibas") return 7;     // Integer BASIC (tokenised)
 
+    // LOGO source (".logo"). Both LOGO targets are interpreter injections; follow the
+    // live/path-tagged card: GEN2/HGR -> LOGO GEN2 (15), otherwise LOGO TMS9918 (14,
+    // the primary CodeTank platform and the bare-Apple-1 default).
+    if (ext == ".logo") {
+        const bool gen2path = p.find("/gen2") != std::string::npos ||
+                              p.find("/hgr") != std::string::npos ||
+                              p.find("graphic hgr") != std::string::npos;
+        const bool tmspath  = p.find("/tms9918") != std::string::npos ||
+                              p.find("/codetank") != std::string::npos ||
+                              p.find("/tool_logo") != std::string::npos;
+        if (gen2path) return 15;
+        if (tmspath)  return 14;
+        if (mw_ && mw_->graphicsCardEnabled) return 15;   // LOGO GEN2 ($6000)
+        return 14;                                        // LOGO TMS9918 ($4000)
+    }
+
     const bool cMode   = (ext == ".c");
     const bool asmMode = (ext == ".s" || ext == ".asm");
     if (!cMode && !asmMode) return -1;                 // unknown type -> "do nothing"
@@ -1710,6 +1801,7 @@ bench::BuildResult Pom1BenchHost::selectTargetExplicit(int target)
     applyTargetPreset(target, /*force=*/true);     // switch the profile (preset)
     if (target < 0 || target >= kP1TargetCount) { r.status = "bad target"; return r; }
     const P1T& t = kP1Targets[p1(target)];
+    if (t.mode != 6) logoReplActive_ = false;      // leaving LOGO → REPL gone
 
     if (t.mode == 4) {
         // BASIC: cold-start the matching interpreter (empty listing, no RUN) so its
@@ -1719,6 +1811,13 @@ bench::BuildResult Pom1BenchHost::selectTargetExplicit(int target)
         r.ok = ib.ok;
         r.status = ib.ok ? (std::string(t.label) + " — ready") : ib.status;
         if (!ib.ok) { r.console = ib.console; r.showConsole = true; }   // surface ROM errors
+    } else if (t.mode == 6) {
+        // LOGO: cold-start the resident interpreter to its `?` prompt (empty listing,
+        // no RUN — the same prep path as BASIC), so it's ready for Run to poke procs.
+        bench::BuildResult il = injectLogo(target, std::string(), /*run=*/false);
+        r.ok = il.ok;
+        r.status = il.ok ? (std::string(t.label) + " — ready") : il.status;
+        if (!il.ok) { r.console = il.console; r.showConsole = true; }   // surface ROM errors
     } else if (t.mode == 0 || t.mode == 3 || t.mode == 5) {
         // asm / C / native BASIC: make the cc65 toolchain ready so Verify/Run work
         // immediately (mode 5 drives ca65/ld65 directly, same toolchain as asm).
@@ -2192,6 +2291,173 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
     return r;
 }
 
+// LOGO deploy (mode 6). Unlike BASIC there is no tokenised memory image: an APPLE-1
+// LOGO procedure is stored as its RAW ASCII source in the interpreter's proc_table
+// (the interpreter re-parses each body line at run time). LogoProgramLoader turns
+// the listing into proc_table writes + ONE entry line; we cold-start the resident
+// interpreter, poke the table while the CPU is parked, queue the entry line, and
+// resume the REPL live (startCpu). Feeding only one short line means the REPEAT
+// break-poll can never eat queued type-ahead (procedure bodies never touch the
+// keyboard). Pure C++ loader → identical on desktop + WASM.
+//
+// RAM: NO relax (contrast injectBasic). The TMS CodeTank machine keeps its natural
+// 8 KB Parmigiani DUAL-BANK ($0000-$0FFF + $E000-$EFFF) because PROCBSS lives at
+// $E431 in the HIGH bank — forcing a linear 16 KB view (as the Applesoft path does)
+// would unback $E000 and silently drop every proc_table write. GEN2 (preset 2,
+// 48 KB) already covers $6000 (code) + $B431 (PROCBSS).
+bench::BuildResult Pom1BenchHost::injectLogo(int target, const std::string& src, bool run)
+{
+    bench::BuildResult r; r.showConsole = true;
+    auto* emu = mw_ ? mw_->emulation.get() : nullptr;
+    if (!emu) { r.status = "no emulator"; r.ok = false; return r; }
+
+    const int idx = p1(target);
+    const bool tms = (idx == 14);   // 14 = LOGO TMS9918 (CodeTank), 15 = LOGO GEN2 HGR
+    const logo::Target ltgt = tms ? logo::targetTms() : logo::targetGen2();
+    const std::string interp = tms ? "APPLE-1 LOGO (TMS9918)" : "APPLE-1 LOGO (GEN2 HGR)";
+    const uint16_t coldEntry = ltgt.coldEntry;   // 0x4000 (TMS) / 0x6000 (GEN2)
+    const bool haveSrc = !src.empty();
+
+    namespace fs = std::filesystem;
+    std::error_code ec;
+
+    // 0) Parse the listing host-side FIRST (pure — touches no machine state). A parse
+    //    error aborts before any preset switch, exactly like a BASIC tokenise error.
+    logo::Result prog;
+    if (haveSrc) {
+        prog = logo::compile(src, ltgt);
+        if (!prog.ok) {
+            emu->copySnapshot(mw_->uiSnapshot);
+            r.console = "[bench] " + interp + ": LOGO parse FAILED — " + prog.error + "\n";
+            r.status  = interp + ": parse error";
+            r.ok = false;
+            return r;
+        }
+        // Verify = parse-check only; leave the machine completely alone.
+        if (!run) {
+            char buf[224];
+            std::snprintf(buf, sizeof(buf),
+                "[bench] %s: parsed OK — %d procedure(s), %d immediate line(s), entry '%s' "
+                "(Run to poke the proc table + launch)\n",
+                interp.c_str(), prog.procCount, prog.immediateCount,
+                prog.entry.empty() ? "(none)" : prog.entry.c_str());
+            r.console = buf;
+            if (!prog.warning.empty()) r.console += "[bench] note: " + prog.warning + "\n";
+            std::snprintf(buf, sizeof(buf), "%s: parsed (%d procs)", interp.c_str(), prog.procCount);
+            r.status = buf; r.ok = true;
+            return r;
+        }
+    }
+
+    // From here we (re)program the machine, so any prior LOGO REPL is void until a
+    // fresh cold-start succeeds below.
+    logoReplActive_ = false;
+
+    // 1) Resolve + validate the interpreter ROM UP FRONT so a missing ROM aborts with
+    //    the machine untouched (no preset switch, no half-plugged card).
+    std::string tmsCartPath, gen2RomPath;
+    if (tms) {
+        tmsCartPath = codeTankLogoRomReadPath();
+        if (tmsCartPath.empty()) {
+            r.console = "[bench] " + interp +
+                ": Codetank_GAME3.rom not found — build it with "
+                "tools/build_codetank_rom.py --rom=3\n"
+                "[bench] aborting injection; machine left unchanged.\n";
+            r.status = interp + ": ROM not found"; r.ok = false; return r;
+        }
+    } else {
+        for (const char* c : {"roms/logo-gen2.rom", "../roms/logo-gen2.rom",
+                              "../../roms/logo-gen2.rom"})
+            if (fs::exists(c, ec)) { gen2RomPath = c; break; }
+        if (gen2RomPath.empty()) {
+            r.console = "[bench] " + interp + ": roms/logo-gen2.rom not found.\n"
+                        "[bench] aborting injection; machine left unchanged.\n";
+            r.status = interp + ": ROM not found"; r.ok = false; return r;
+        }
+    }
+
+    // 2) Plug the interpreter's machine. For TMS, pre-load the LOGO cartridge (lower
+    //    bank) BEFORE draining the deferred plugs so enabling CodeTank doesn't
+    //    auto-probe the default GAME1 image, then pin the jumper to LOWER (4000R ->
+    //    LOGO). GEN2 loads the interpreter into RAM at $6000 after the reset.
+    onTargetSelected(target);
+    if (tms) {
+        std::string err;
+        if (!emu->loadCodeTankRom(tmsCartPath, err)) {
+            r.console = "[bench] " + interp + ": Codetank_GAME3.rom load FAILED — " + err + "\n";
+            r.status = interp + ": ROM load failed"; r.ok = false; return r;
+        }
+        mw_->pendingCodeTankRomPath.clear();
+    }
+    mw_->finalizePendingCardPlugs();
+
+    std::string romErr; bool romOk = true;
+    if (tms) {
+        mw_->codeTankJumper = CodeTank::Jumper::Lower16;   // LOGO lives in the LOWER bank
+        emu->setCodeTankJumper(mw_->codeTankJumper);
+        if (!mw_->tms9918Enabled)  { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
+        if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCodeTankEnabled(true); }
+        emu->hardReset(/*animateBoot=*/false);
+    } else {
+        mw_->showGraphicsCard = true;
+        emu->hardReset(/*animateBoot=*/false);
+        romOk = emu->loadInterpreterRom(gen2RomPath, 0x6000, romErr);
+    }
+    if (!romOk) {
+        emu->copySnapshot(mw_->uiSnapshot);
+        r.console = "[bench] " + interp + ": ROM (re)load FAILED — "
+                    + (romErr.empty() ? "unknown error" : romErr) + "\n";
+        r.status = interp + ": ROM load failed"; r.ok = false; return r;
+    }
+
+    // 3) Cold-start the interpreter to its `?` prompt: `main` initialises zero page,
+    //    the turtle, the LFSR seed and zeroes n_procs, then parks in the REPL's
+    //    keyboard-poll. RAM (incl. PROCBSS) is left as `main` set it.
+    constexpr uint64_t kColdStartCycles = 12'000'000;
+    emu->runFromSync(coldEntry, kColdStartCycles);
+
+    // Prep-only call (selectTargetExplicit passes an empty listing, run=false): the
+    // interpreter is at its prompt — report ready without poking anything.
+    if (!haveSrc) {
+        emu->copySnapshot(mw_->uiSnapshot);
+        logoReplActive_ = true;   // interpreter live at its prompt → REPL input usable
+        r.status = interp + " — ready"; r.ok = true; return r;
+    }
+
+    // 4) Poke the procedure table + n_procs while the CPU is parked (n_procs was just
+    //    zeroed by cold-start, so the table is ours to fill), then queue the single
+    //    entry line and resume the REPL live. The async loop drains the queued keys
+    //    into $D010 as it runs; the REPL reads the entry line and executes it.
+    std::vector<std::pair<uint16_t, uint8_t>> writes;
+    writes.reserve(prog.writes.size());
+    for (const logo::Write& w : prog.writes) writes.emplace_back(w.addr, w.value);
+    emu->writeMemoryBatch(writes);
+
+    for (char c : prog.entry) emu->queueKey(c);
+    if (!prog.entry.empty()) emu->queueKey('\r');
+    emu->startCpu();
+    emu->copySnapshot(mw_->uiSnapshot);
+
+    char buf[256];
+    if (prog.entry.empty()) {
+        std::snprintf(buf, sizeof(buf),
+            "[bench] %s: poked %d procedure(s) into the proc table — no entry point, "
+            "nothing launched (type a call at the REPL)\n", interp.c_str(), prog.procCount);
+    } else {
+        std::snprintf(buf, sizeof(buf),
+            "[bench] %s: poked %d procedure(s) → running '%s' (proc table injected, "
+            "no keyboard typing)\n", interp.c_str(), prog.procCount, prog.entry.c_str());
+    }
+    r.console = buf;
+    if (!prog.warning.empty()) r.console += "[bench] note: " + prog.warning + "\n";
+    r.console += "[bench] LOGO REPL live — type commands below (e.g. a proc call, FD 50, "
+                 "or TO … END) to drive the turtle interactively.\n";
+    logoReplActive_ = true;   // interpreter resident + running → REPL input usable
+    r.status = interp + (prog.entry.empty() ? ": procedures loaded" : ": running (injected)");
+    r.ok = true;
+    return r;
+}
+
 #if !POM1_IS_WASM
 // BASIC native compile (mode 5, DESKTOP). basicnative::compile turns the Applesoft
 // listing into ca65 assembly for a STANDALONE 6502 program (no interpreter, ~20x
@@ -2442,6 +2708,10 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     // (A BASIC target re-applies the relax inside injectBasic.)
     restoreRelaxedMachine();
 
+    // Any non-LOGO build reprograms/hard-resets the machine → a resident LOGO REPL
+    // is gone. (LOGO's own mode 6 manages the flag inside injectLogo.)
+    if (t.mode != 6) logoReplActive_ = false;
+
     BuildLogMeta logMeta;
     logMeta.action = run ? "run" : "verify";
     logMeta.target = &t;
@@ -2460,6 +2730,10 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
 
     if (t.mode == 4) {     // BASIC: tokenise/compile the listing host-side and load
         return injectBasic(target, src, run);   // the image — no typing (WASM too).
+    }
+
+    if (t.mode == 6) {     // LOGO: poke the procedure table + feed one entry line
+        return injectLogo(target, src, run);    // (no per-line typing — WASM too).
     }
 
     if (t.mode == 5) {     // BASIC native compile -> standalone 6502, no interpreter.
@@ -3070,7 +3344,7 @@ bool Pom1BenchHost::toolchainReady(int target) const
 {
     if (target < 0 || target >= kP1TargetCount) return false;
     const P1T& t = kP1Targets[p1(target)];
-    if (t.mode == 1 || t.mode == 4) return true;   // hex + BASIC need no toolchain
+    if (t.mode == 1 || t.mode == 4 || t.mode == 6) return true;   // hex + BASIC + LOGO need no toolchain
 #if POM1_IS_WASM
     return t.mode == 0 || t.mode == 3;   // asm + C compile via the bundled WASM cc65
 #else
@@ -3090,6 +3364,7 @@ std::string Pom1BenchHost::toolchainHint(int target) const
     const P1T& t = kP1Targets[p1(target)];
     if (t.mode == 1) return "";
     if (t.mode == 4) return "BASIC — no compiler (injected)";   // desktop + WASM
+    if (t.mode == 6) return "LOGO — no compiler (injected)";    // desktop + WASM
 #if POM1_IS_WASM
     if (t.mode == 5) return "native compile is desktop-only";
     return "cc65 (WASM) ready";
@@ -3120,6 +3395,9 @@ std::string Pom1BenchHost::modeLabel(int target) const
     if (t.mode == 5)     // BASIC native compile: standalone 6502 by card
         return (idx == 13) ? "Mode: Applesoft TMS9918 (native)"
                            : "Mode: Applesoft GEN2 (native)";
+    if (t.mode == 6)     // LOGO: interpreter by card
+        return (idx == 14) ? "Mode: LOGO + CodeTank (TMS9918)"
+                           : "Mode: LOGO + GEN2 HGR";
 
     const char* language = (t.mode == 3) ? "C" : "ASM";
     const char* machine = "Apple-1";
@@ -3231,4 +3509,28 @@ bool Pom1BenchHost::nativeFilePickerAvailable() const
 void Pom1BenchHost::openSerial()
 {
     mw_->showTelemetry = true;
+}
+
+// ---- Interactive LOGO REPL --------------------------------------------------
+
+bool Pom1BenchHost::replActive() const
+{
+    return logoReplActive_ && mw_ && mw_->emulation;
+}
+
+void Pom1BenchHost::replSend(const std::string& line)
+{
+    if (!replActive()) return;
+    auto* emu = mw_->emulation.get();
+    // Feed the line one character at a time over the keyboard FIFO, then a CR, so
+    // the resident REPL reads + executes it exactly as if typed (setKeyPressed
+    // forces uppercase like the real Apple-1 keyboard). Only ONE line is ever
+    // queued per submit, so the interpreter's REPEAT break-poll can't eat any
+    // type-ahead. Strip control bytes; the interpreter's line buffer caps at 60.
+    for (char c : line) {
+        if (static_cast<unsigned char>(c) >= 0x20 && static_cast<unsigned char>(c) < 0x7F)
+            emu->queueKey(c);
+    }
+    emu->queueKey('\r');
+    emu->startCpu();   // ensure the emulation thread is running to drain the keys
 }

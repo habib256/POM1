@@ -115,6 +115,8 @@ set(SOURCES
     ${POM1_SRC_DIR}/BasicTokeniserApplesoft.cpp
     ${POM1_SRC_DIR}/BasicTokeniserInteger.cpp
     ${POM1_SRC_DIR}/BasicCompilerApplesoft.cpp
+    ${POM1_SRC_DIR}/LogoProgramLoader.cpp
+    ${POM1_SRC_DIR}/X11ErrorGuard.cpp
     ${POM1_SRC_DIR}/CassetteDevice.cpp
     ${POM1_SRC_DIR}/CassetteDeck_ImGui.cpp
     ${POM1_SRC_DIR}/CliDispatcher.cpp
@@ -538,6 +540,20 @@ else()
     target_link_libraries(${PROJECT_NAME} ${GLFW_TARGET})
     if(NOT POM1_USE_METAL)
         target_link_libraries(${PROJECT_NAME} ${OPENGL_LIBRARIES})
+    endif()
+
+    # Linux/X11: link libX11 so X11ErrorGuard.cpp can install a NON-FATAL Xlib
+    # error handler (otherwise a stray clipboard BadWindow exits the app — GLFW's
+    # X11 backend already pulls libX11 transitively, this just lets us reference
+    # XSetErrorHandler directly). No-op stub if X11 is absent (headless build box,
+    # Wayland-only, etc.); never reached on macOS/Windows.
+    if(UNIX AND NOT APPLE)
+        find_package(X11 QUIET)
+        if(X11_FOUND)
+            target_link_libraries(${PROJECT_NAME} ${X11_LIBRARIES})
+            target_include_directories(${PROJECT_NAME} PRIVATE ${X11_INCLUDE_DIR})
+            target_compile_definitions(${PROJECT_NAME} PRIVATE POM1_HAS_X11=1)
+        endif()
     endif()
 
     # macOS-specific frameworks

@@ -241,12 +241,61 @@ static const TextEditor::LanguageDefinition& langC()
     return lang;
 }
 
+// APPLE-1 LOGO V2.6 turtle graphics (Bench targets 14/15). Keywords are the
+// interpreter's command set (both the 2-letter and long forms) plus the control /
+// procedure words. `:var` reads a variable/parameter; strings are `"WORD`; numbers
+// are unsigned integers (no negatives, no floats — use BK for backward moves).
+// Case-insensitive (real Apple-1 input is forced uppercase). There are no comments.
+static const TextEditor::LanguageDefinition& langLogo()
+{
+    static bool inited = false;
+    static TextEditor::LanguageDefinition lang;
+    if (inited) return lang;
+
+    static const char* const kKeywords[] = {
+        // turtle movement / pen / screen (short + long forms)
+        "FD","FORWARD","BK","BACK","TR","RIGHT","TL","LEFT","PU","PENUP","PD","PENDOWN",
+        "HOME","CS","CLEARSCREEN","SETXY","SETH","SETPC",
+        // control flow
+        "REPEAT","FOREVER","IF","IFELSE","STOP","TO","END",
+        // variables / arithmetic / console / misc
+        "MAKE","RANDOM","PRINT","WAIT","PAUSE","BYE","HELP",
+        // sprites / bitmap text / demos (CodeTank superset)
+        "SETSHAPE","LABEL","SAY","LIST","EDIT","DEMO","DEM2",
+    };
+    for (auto* k : kKeywords) lang.mKeywords.insert(k);
+
+    using PI = TextEditor::PaletteIndex;
+    // A word literal: a bare double-quote then non-space chars (PRINT "HELLO).
+    lang.mTokenRegexStrings.push_back({ "\\\"[^ \\t\\[\\]]*", PI::String });
+    // A variable / parameter reference: :NAME.
+    lang.mTokenRegexStrings.push_back({ ":[a-zA-Z][a-zA-Z0-9]*", PI::Identifier });
+    // Unsigned integers (LOGO has no floats or negative literals).
+    lang.mTokenRegexStrings.push_back({ "[0-9]+", PI::Number });
+    // Identifiers + keywords.
+    lang.mTokenRegexStrings.push_back({ "[a-zA-Z][a-zA-Z0-9]*", PI::Identifier });
+    // Brackets + operators (< > = <= >= <>, + - * /).
+    lang.mTokenRegexStrings.push_back({ "[\\[\\]\\(\\)\\-\\+\\*\\/\\=\\<\\>\\:]",
+                                        PI::Punctuation });
+
+    lang.mCommentStart      = "\x01";  // LOGO has no block comments (SOH sentinel)
+    lang.mCommentEnd        = "\x01";
+    lang.mSingleLineComment = "\x01";  // …and no line comments either
+    lang.mCaseSensitive     = false;   // input is forced uppercase
+    lang.mAutoIndentation   = false;
+    lang.mName              = "LOGO";
+
+    inited = true;
+    return lang;
+}
+
 const TextEditor::LanguageDefinition& langDef(const std::string& language)
 {
     if (language == "6502")  return lang6502();
     if (language == "68000") return lang68000();
     if (language == "BASIC") return langBasic();
     if (language == "C")     return langC();
+    if (language == "LOGO")  return langLogo();
     static const TextEditor::LanguageDefinition plain;   // no highlighting
     return plain;
 }

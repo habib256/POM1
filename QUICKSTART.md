@@ -70,6 +70,12 @@ IDE that compiles and runs without leaving the window. Full target reference:
 > package manager (see [`doc/DEVBENCH.md`](doc/DEVBENCH.md)). Prefer no toolchain
 > at all? Pick the **Wozmon hex** target and Upload — it loads Woz Monitor hex
 > dumps with no compiler.
+>
+> Not into 6502? **New → Language BASIC or LOGO** needs no toolchain either: BASIC
+> is tokenised and LOGO's turtle procedures are injected straight into the resident
+> interpreter — both run instantly, on desktop **and** the web build. LOGO offers a
+> TMS9918 and a GEN2 HGR turtle machine (`REPEAT 4 [ FD 60 RT 90 ]`); see the
+> [LOGO section](doc/DEVBENCH.md#logo--two-turtle-machines) of the DevBench guide.
 
 From here:
 - **Assembly** → [`sketchs/doc/Programming_Apple1_ASM.md`](sketchs/doc/Programming_Apple1_ASM.md)

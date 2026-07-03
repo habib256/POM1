@@ -9,6 +9,7 @@
 // pull in imgui_impl_metal instead.
 #include "PomRenderer.h"
 #include "CliDispatcher.h"
+#include "X11ErrorGuard.h"
 #include "MainWindow_ImGui.h"
 #include "IconsFontAwesome6.h"
 #include "Logger.h"
@@ -677,6 +678,11 @@ int main(int argc, char* argv[])
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
         return -1;
+
+    // Make raw Xlib protocol errors non-fatal (Linux/X11 only; no-op elsewhere).
+    // GLFW's error callback above never sees these — a stray clipboard BadWindow
+    // would otherwise hit Xlib's default handler and exit() the whole emulator.
+    pom1InstallX11ErrorGuard();
 
     // OpenGL / GLSL context hints
 #if defined(POM1_HAS_METAL) && POM1_HAS_METAL

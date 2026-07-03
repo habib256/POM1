@@ -1,0 +1,3 @@
+CS
+SETPC 9
+REPEAT 8 [ FD 80 TR 135 ]

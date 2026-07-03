@@ -1,0 +1,17 @@
+TO TREE :LEN
+  IF :LEN < 8 [ STOP ]
+  FD :LEN
+  TR 30
+  TREE :LEN - 12
+  TL 60
+  TREE :LEN - 12
+  TR 30
+  BK :LEN
+END
+CS
+PU
+BK 80
+PD
+SETPC 5
+TREE 60
+

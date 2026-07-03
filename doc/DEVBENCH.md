@@ -118,6 +118,7 @@ time you switch tabs (the status-bar mode and the toolbar follow the front tab):
 | `.hex` / `.txt` | load Woz-Monitor hex |
 | `.apf` | **Applesoft** BASIC — interpreter follows the path (see below). All four targets **compile** (tokeniser) |
 | `.bas` / `.ibas` | **Integer** BASIC ($E000) — **compile** (tokeniser); cold-start + image @ `pp` + RUN ($EFEC) |
+| `.logo` | **APPLE-1 LOGO** — **inject** (`LogoProgramLoader` pokes the proc table + feeds one call line); GEN2/HGR path → GEN2, else TMS9918 |
 | `.md` / `.markdown` | render as a document (Edit/Preview toggle) — see below |
 | anything else | **do nothing** (Verify/Run report "nothing to build") |
 
@@ -154,6 +155,57 @@ The graphics variants (GEN2/TMS9918) add the Apple II graphics command set
 (`TEXT/GR/HGR/COLOR=/HCOLOR=/PLOT/HLIN/VLIN/HPLOT`, `PRINT` → the card's screen,
 `APRINT` → the Apple-1 terminal). The BASIC editor **hides the gutter line
 numbers** — the program's own line numbers (10, 20, …) are what count.
+
+### LOGO — two turtle machines
+
+*New* → language **LOGO** offers two machines, each cold-starting the resident
+**APPLE-1 LOGO V2.6** turtle interpreter (`sketchs/tms9918/tool_logo/TMS_Logo_16k.asm`;
+manual → [`APPLE-1_LOGO-2.6-MANUAL.md`](../sketchs/tms9918/tool_logo/APPLE-1_LOGO-2.6-MANUAL.md)).
+
+| Machine | Interpreter | Boot | Deploy |
+|---|---|---|---|
+| LOGO TMS9918 | `roms/codetank/Codetank_GAME3.rom` **lower** bank (CodeTank `$4000`, jumper Lower) | `4000R` | **inject** (proc table + entry line) |
+| LOGO GEN2 HGR | `roms/logo-gen2.rom` (`$6000`, GEN2 card) | `6000R` | **inject** (proc table + entry line) |
+
+Unlike Applesoft there is **no tokenised memory image**: a LOGO procedure is stored
+as its **raw ASCII source** in the interpreter's `proc_table` (the interpreter
+re-parses each body line at run time). So the LOGO path **injects** rather than
+compiles — `LogoProgramLoader` (pure C++, WASM-safe) parses the listing into:
+
+- **procedures** (`TO NAME :p1 :p2` … `END`) → poked straight into `proc_table`
+  (244-byte slots: 6-byte space-padded name, `n_params`, 2 param names, `body_len`,
+  ≤224-byte CR-separated body) with `n_procs` set to the count, and
+- one **entry line** — a single immediate call (e.g. `MAIN`, or the sole immediate
+  command; several immediate lines are wrapped into a synthesized driver procedure).
+
+On **Run**, `injectLogo` cold-starts the interpreter to its `?` prompt (so `main`
+inits the turtle + zeroes `n_procs`), pokes the proc table while the CPU is parked
+(`writeMemoryBatch`), queues **only the entry line**, and resumes the REPL. Feeding
+one short line is deliberate: LOGO's `REPEAT` break-poll would eat queued type-ahead,
+so a *pasted* multi-line program drops every line after the first `REPEAT` — but
+procedure **bodies never travel the keyboard** here, so that never bites. **Verify**
+parses the listing host-side and reports the procedure/entry summary without touching
+the machine.
+
+Addresses (fixed by the LOGO RAM linker cfg, stable across CODE placement, pinned by
+`bench_logo_inject_smoke`): `proc_table` `$E431` (TMS) / `$B431` (GEN2), `n_procs`
+`$0260` / `$02E3`. **The TMS machine keeps its 8 KB Parmigiani dual-bank** — PROCBSS
+lives in the `$E000-$EFFF` high bank, so (unlike the Applesoft TMS path) it must
+*not* be relaxed to a linear 16 KB view, which would unback `$E000`.
+
+Ready-to-run, **machine-neutral** `.logo` programs live in
+[`sketchs/logo/`](../sketchs/logo/) (rosette, polygons, stars, recursive flower/tree,
+random rays/meadow) — the LOGO counterpart of `sketchs/basic_applesoft/`. Turns are
+`TR`/`TL` (**not** `RT`/`LT`); nested `REPEAT` is one level deep.
+
+**Interactive REPL.** Because the interpreter stays resident at its `?` prompt after
+Run, a one-line **REPL input** appears below the build console (only for LOGO targets).
+Type a procedure call, a turtle command (`FD 50`), or even a `TO … END` definition and
+press Enter — the line is fed to the live interpreter (one line at a time, Up/Down
+recalls history) and echoed into the console as a record of what you sent. The turtle
+draws on the graphics-card window and the interpreter's own text output — the `?`
+prompt, `OK`, `PRINT`, error messages — shows on the **Apple-1 screen window** (that's
+its job). It lets you drive and extend a running program without a re-cold-start.
 
 ### Markdown documents
 
