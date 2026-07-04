@@ -350,6 +350,8 @@ void MainWindow_ImGui::renderMenuBar()
             // Pom1BenchHost, whose targets() is Woz-hex-only under POM1_IS_WASM.
             ImGui::MenuItem("POM1 Bench (sketch editor)...", nullptr, &showBench);
             ImGui::MenuItem("Telemetry Side Channel...", nullptr, &showTelemetry);
+            ImGui::Separator();
+            // --- TMS9918 group: VDP inspector + paint + sprite editors ---------
             // Always available here (unlike the card windows, which only appear
             // when the TMS9918 is plugged) — a dev-side VDP inspector. Opening it
             // plugs the TMS9918 so there is a live VDP to inspect.
@@ -360,29 +362,6 @@ void MainWindow_ImGui::renderMenuBar()
                     emulation->setTMS9918Enabled(true);
                     sidSpecialEditionEnabled = false;   // TMS9918 evicts A1-AUDIO SE
                     setStatusMessage("TMS9918 plugged for VDP Inspector", 2.0f);
-                }
-            }
-            // HGR paint editor — draws live into the GEN2 HGR framebuffer with
-            // faithful NTSC artifact colours. Opening it plugs the GEN2 card so
-            // there is a live framebuffer to paint into (the render loop also
-            // guards this, but enabling here makes the menu action immediate).
-            if (ImGui::MenuItem("HGR Paint Editor...", nullptr, &showHGRPaintEditor)) {
-                if (showHGRPaintEditor && !graphicsCardEnabled) {
-                    graphicsCardEnabled = true;
-                    showGraphicsCard = true;
-                    emulation->setHgrFramebufferAttached(true);
-                    setStatusMessage("GEN2 HGR card plugged for HGR Paint Editor", 2.0f);
-                }
-            }
-            // HGR sprite/shape editor — edits a byte-aligned HIRES bitmap (Apple II
-            // has no hardware sprites), previews it over the live page and stamps
-            // the raw bytes. Opening it plugs the GEN2 card (render loop also guards).
-            if (ImGui::MenuItem("HGR Sprite Editor...", nullptr, &showHGRSpriteEditor)) {
-                if (showHGRSpriteEditor && !graphicsCardEnabled) {
-                    graphicsCardEnabled = true;
-                    showGraphicsCard = true;
-                    emulation->setHgrFramebufferAttached(true);
-                    setStatusMessage("GEN2 HGR card plugged for HGR Sprite Editor", 2.0f);
                 }
             }
             // TMS9918 paint editor — draws live into the P-LAB Graphic Card VRAM
@@ -405,6 +384,31 @@ void MainWindow_ImGui::renderMenuBar()
                     pendingTms9918Enable = true;
                     showTMS9918 = true;
                     setStatusMessage("TMS9918 card plugged for TMS9918 Sprite Editor", 2.0f);
+                }
+            }
+            ImGui::Separator();
+            // --- HGR (GEN2) group: paint + sprite editors ----------------------
+            // HGR paint editor — draws live into the GEN2 HGR framebuffer with
+            // faithful NTSC artifact colours. Opening it plugs the GEN2 card so
+            // there is a live framebuffer to paint into (the render loop also
+            // guards this, but enabling here makes the menu action immediate).
+            if (ImGui::MenuItem("HGR Paint Editor...", nullptr, &showHGRPaintEditor)) {
+                if (showHGRPaintEditor && !graphicsCardEnabled) {
+                    graphicsCardEnabled = true;
+                    showGraphicsCard = true;
+                    emulation->setHgrFramebufferAttached(true);
+                    setStatusMessage("GEN2 HGR card plugged for HGR Paint Editor", 2.0f);
+                }
+            }
+            // HGR sprite/shape editor — edits a byte-aligned HIRES bitmap (Apple II
+            // has no hardware sprites), previews it over the live page and stamps
+            // the raw bytes. Opening it plugs the GEN2 card (render loop also guards).
+            if (ImGui::MenuItem("HGR Sprite Editor...", nullptr, &showHGRSpriteEditor)) {
+                if (showHGRSpriteEditor && !graphicsCardEnabled) {
+                    graphicsCardEnabled = true;
+                    showGraphicsCard = true;
+                    emulation->setHgrFramebufferAttached(true);
+                    setStatusMessage("GEN2 HGR card plugged for HGR Sprite Editor", 2.0f);
                 }
             }
             ImGui::Separator();
