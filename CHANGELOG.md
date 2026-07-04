@@ -10,6 +10,17 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — HiDPI UI font scaling (Linux / Windows)
+
+- **The UI font auto-scales to the monitor's DPI on startup** (`main_imgui.cpp`,
+  `glfwGetWindowContentScale`, GLFW 3.3+): on Linux/X11 and Windows — where GLFW
+  does not scale the framebuffer — a high-DPI monitor no longer renders the whole
+  UI tiny. macOS (Retina handled by `io.DisplayFramebufferScale`) and WASM (the
+  browser owns devicePixelRatio) are deliberately left untouched. **Display
+  Settings** gains an *Auto (follow monitor DPI)* toggle + a manual **UI font
+  scale** slider (0.75–3.0×) driving `io.FontGlobalScale`, replacing the manual
+  poke it documented.
+
 ### Added — DevBench editor polish + GEN2 default = OpenEmulator composite
 
 - **Markdown syntax highlighting in the editor's Edit mode** (`bench/BenchLang.cpp`
