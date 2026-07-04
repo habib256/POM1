@@ -653,6 +653,13 @@ void MainWindow_ImGui::renderMenuBar()
                 if (ImGui::MenuItem(kMachinePresets[i].name, ramLabel))
                     applyMachineConfig(i);
             };
+            // Re-open the full-screen boot profile chooser mid-session — a
+            // one-click way back to "pick a machine / language / editor" without
+            // restarting POM1. Any pick there dismisses it and applies the config.
+            if (ImGui::MenuItem("Profile Chooser...")) {
+                showProfileChooser = true;
+            }
+            ImGui::Separator();
             // Greyed, non-clickable section titles (DevBench profiles first,
             // then the real machine configurations).
             ImGui::TextDisabled("Apple-1 Development");
@@ -1481,20 +1488,6 @@ void MainWindow_ImGui::renderStatusBar()
         }
         std::string ramText = ramOss.str();
 
-        std::string tapeText;
-        if (uiSnapshot.cassetteLoadedTape) {
-            std::ostringstream oss;
-            oss << "| TAPE: " << (uiSnapshot.cassettePlaybackActive ? "READ" : "READY")
-                << " (" << uiSnapshot.cassetteLoadedTransitionCount << " tr)";
-            tapeText = oss.str();
-        } else if (uiSnapshot.cassetteRecordedTape) {
-            std::ostringstream oss;
-            oss << "| TAPE OUT: " << uiSnapshot.cassetteRecordedTransitionCount << " tr";
-            tapeText = oss.str();
-        } else {
-            tapeText = "| TAPE: empty";
-        }
-
         std::string audioText = !uiSnapshot.cassetteAudioAvailable ? "| AUDIO OFF" : "";
 
         std::string siliconText;
@@ -1515,9 +1508,8 @@ void MainWindow_ImGui::renderStatusBar()
             ImGui::CalcTextSize(speedText.c_str()).x +
             ImGui::CalcTextSize(ramText.c_str()).x +
             ImGui::CalcTextSize(siliconText.c_str()).x +
-            ImGui::CalcTextSize(tapeText.c_str()).x +
             (audioText.empty() ? 0.0f : ImGui::CalcTextSize(audioText.c_str()).x) +
-            spacing * 6.0f;
+            spacing * 5.0f;
 
         ImGui::SameLine();
         ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowWidth() - rightWidth - 16.0f));
@@ -1539,17 +1531,6 @@ void MainWindow_ImGui::renderStatusBar()
             ? ImVec4(0.85f, 0.55f, 0.25f, 1.0f)   // ambre = silicium réel
             : ImVec4(0.55f, 0.55f, 0.95f, 1.0f),  // bleu  = fantasy permissif
             "%s", siliconText.c_str());
-
-        ImGui::SameLine();
-        if (uiSnapshot.cassetteLoadedTape) {
-            ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.25f, 1.0f),
-                               "%s", tapeText.c_str());
-        } else if (uiSnapshot.cassetteRecordedTape) {
-            ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.25f, 1.0f),
-                               "%s", tapeText.c_str());
-        } else {
-            ImGui::Text("%s", tapeText.c_str());
-        }
 
         if (!uiSnapshot.cassetteAudioAvailable) {
             ImGui::SameLine();
