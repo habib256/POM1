@@ -17,7 +17,7 @@ emitted the HGR slice). Emitters:
                                              0x20-0x7F, bit 7 = left, asm.
     hud  -> dev/lib/tms9918/font_hud8x8.inc  TMS9918 HUD subset (char codes
                                              56..92), bit 7 = left, asm.
-    cpp  -> hgrpaint/HgrFont.cpp              full CP437 (256 glyphs) C++ table for
+    cpp  -> src/hgrpaint/HgrFont.cpp          full CP437 (256 glyphs) C++ table for
                                              the HGR Paint editor's Text tool,
                                              bit 0 = left (host-side, not 6502).
 
@@ -193,7 +193,7 @@ def emit_cpp(glyphs: Dict[int, List[int]]) -> str:
 
     Host-side C++ (not 6502): the editor's Text tool stamps these glyphs into the
     HGR page through the pure model's plotPage(), so it lives in the portable
-    hgrpaint/ toolkit. Same encoding as the master: bit 0 = leftmost pixel, rows
+    src/hgrpaint/ toolkit. Same encoding as the master: bit 0 = leftmost pixel, rows
     top->bottom, 7 px/glyph (values <= 0x7F). Declared in HgrFont.h.
     """
     out = [

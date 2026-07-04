@@ -2,7 +2,7 @@
 
 Kit de prompt-engineering pour produire, avec un générateur d'images IA (calibré sur
 **Nano Banana / Gemini**), des images qui se convertissent proprement en Apple II HGR via
-l'importeur ii-pix-style de POM1 (`hgrpaint/HgrConvert.cpp`, éditeur HGR Paint → Import).
+l'importeur ii-pix-style de POM1 (`src/hgrpaint/HgrConvert.cpp`, éditeur HGR Paint → Import).
 
 Le HGR affiche **280×192**, en **4:3** (pixels non carrés → l'image est écrasée
 horizontalement), avec seulement **6 couleurs** issues de l'artifacting NTSC, plus un
@@ -12,7 +12,7 @@ qui survit au HGR » sont deux objectifs opposés : il faut une source proche d'
 
 ## Les 6 couleurs HGR — valeurs hex EXACTES
 
-Cibles des aplats purs, extraites de `hgrpaint/HgrConvert.cpp` (`kPalette[]`, palette MAME,
+Cibles des aplats purs, extraites de `src/hgrpaint/HgrConvert.cpp` (`kPalette[]`, palette MAME,
 verbatim depuis `GraphicsCard.cpp`) :
 
 | Couleur | Hex       | Remarque                              |
