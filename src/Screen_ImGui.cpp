@@ -525,15 +525,19 @@ void Screen_ImGui::render()
     }
 
     if (useCharmapRenderer) {
-        if (monitorMode == MonitorMode::Green) {
-            textColor = ImVec4(0.45f, 1.0f, 0.45f, 1.0f);
-            windowBg = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
-        } else if (monitorMode == MonitorMode::Amber) {
-            textColor = ImVec4(1.0f, 0.88f, 0.35f, 1.0f);
-            windowBg = ImVec4(0.01f, 0.003f, 0.0f, 1.0f);
-        } else {
-            textColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
-            windowBg = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
+        // Per-phosphor tints. The background is a faint phosphor-coloured black
+        // rather than pure #000 — a real tube's unlit glass keeps a low ambient
+        // glow of its phosphor, which reads as more "CRT" than a dead-black field
+        // and gives the lit dots something warm to bloom against.
+        if (monitorMode == MonitorMode::Green) {          // P1 phosphor (blue-green)
+            textColor = ImVec4(0.42f, 1.0f, 0.52f, 1.0f);
+            windowBg  = ImVec4(0.0f, 0.020f, 0.008f, 1.0f);
+        } else if (monitorMode == MonitorMode::Amber) {   // P3 phosphor (warm amber)
+            textColor = ImVec4(1.0f, 0.82f, 0.32f, 1.0f);
+            windowBg  = ImVec4(0.024f, 0.011f, 0.0f, 1.0f);
+        } else {                                          // white / P4 (slightly cool)
+            textColor = ImVec4(0.96f, 0.98f, 1.0f, 1.0f);
+            windowBg  = ImVec4(0.006f, 0.006f, 0.010f, 1.0f);
         }
     }
 
@@ -591,6 +595,15 @@ void Screen_ImGui::render()
         cursorPos.y + std::max(0.0f, (avail.y - screenSize.y) * 0.5f)));
     ImGui::Dummy(screenSize);
     const ImVec2 rasterMin = ImGui::GetItemRectMin();
+    // Snap the draw rect to whole display pixels. The framebuffer is nearest-
+    // sampled, so a fractional origin/size makes some Apple-1 dots land one
+    // display pixel wider than their neighbours — a visible shimmer, worst while
+    // resizing. Rounding origin AND size keeps the dot pitch uniform across the
+    // raster. Layout still reserved the un-snapped screenSize above; every draw
+    // pass (glyph FB, phosphor bloom, CRT backdrop/scanlines, DRAM dots) shares
+    // this snapped rect so they stay pixel-aligned with each other.
+    const ImVec2 drawMin(std::floor(rasterMin.x + 0.5f), std::floor(rasterMin.y + 0.5f));
+    const ImVec2 drawSize(std::floor(screenSize.x + 0.5f), std::floor(screenSize.y + 0.5f));
 
     std::vector<char> renderBuffer;
     int renderTopRow = 0;
@@ -615,9 +628,8 @@ void Screen_ImGui::render()
     // real CRT) without reintroducing the hard dark bars that used to bisect
     // every glyph when the whole overlay sat on top.
     if (crtEffect) {
-        const ImVec2 absP0 = rasterMin;
-        const ImVec2 absP1 = ImVec2(rasterMin.x + screenSize.x, rasterMin.y + screenSize.y);
-        drawCRTBackdrop(absP0.x, absP0.y, absP1.x, absP1.y, useCharmapRenderer);
+        drawCRTBackdrop(drawMin.x, drawMin.y,
+                        drawMin.x + drawSize.x, drawMin.y + drawSize.y, useCharmapRenderer);
     }
 
     {
@@ -671,18 +683,22 @@ void Screen_ImGui::render()
             const ImTextureID fbTex = pom1::renderer()
                                         ? pom1::renderer()->asImTextureID(screenFbTexture)
                                         : (ImTextureID)0;
-            const ImVec2 fbP0 = rasterMin;
-            const ImVec2 fbP1(rasterMin.x + screenSize.x, rasterMin.y + screenSize.y);
+            const ImVec2 fbP0 = drawMin;
+            const ImVec2 fbP1(drawMin.x + drawSize.x, drawMin.y + drawSize.y);
 
             // Phosphor bloom — recovers the soft halo the old per-glyph atlas
             // baked, now as an OVERLAY rather than a baked texture. Redraw the
-            // same FB a few times, spread by sub-dot offsets at low alpha, BEHIND
-            // the crisp pass below — so the lit-dot cores stay sharp (full-alpha
-            // image on top) while a faint halo blooms around them. Horizontal-
-            // dominant, matching the composite-video smear of real Apple-1 dots.
+            // same FB several times, spread by sub-dot offsets at low alpha,
+            // BEHIND the crisp pass below — so the lit-dot cores stay sharp
+            // (full-alpha image on top) while a soft halo blooms around them.
+            // Three rings: a tight core halo (rounds each dot), a mid horizontal
+            // pair, and a wide low-alpha horizontal bleed that mimics the
+            // composite-video smear of real Apple-1 dots. The halo colour is the
+            // phosphor tint pulled a little toward white — a hot phosphor
+            // desaturates at the core of its glow.
             if (phosphorGlow) {
-                const float dotW = screenSize.x / static_cast<float>(kFbWidth);
-                const float dotH = screenSize.y / static_cast<float>(kFbHeight);
+                const float dotW = drawSize.x / static_cast<float>(kFbWidth);
+                const float dotH = drawSize.y / static_cast<float>(kFbHeight);
                 float glowA;   // per-mode base alpha (amber/mono phosphors bloom more)
                 switch (monitorMode) {
                 case MonitorMode::Amber:      glowA = 0.20f; break;
@@ -690,16 +706,21 @@ void Screen_ImGui::render()
                 case MonitorMode::Green:
                 default:                      glowA = 0.16f; break;
                 }
+                ImVec4 glowBase = textColor;
+                glowBase.x += (1.0f - glowBase.x) * 0.18f;
+                glowBase.y += (1.0f - glowBase.y) * 0.18f;
+                glowBase.z += (1.0f - glowBase.z) * 0.18f;
                 struct GlowTap { float dx, dy, w; };
                 static constexpr GlowTap kGlow[] = {
-                    {-0.7f,  0.0f, 1.00f}, { 0.7f,  0.0f, 1.00f},   // near horizontal
-                    {-1.4f,  0.0f, 0.45f}, { 1.4f,  0.0f, 0.45f},   // far horizontal
-                    { 0.0f, -0.7f, 0.55f}, { 0.0f,  0.7f, 0.55f},   // vertical
-                    {-0.7f, -0.7f, 0.30f}, { 0.7f, -0.7f, 0.30f},   // diagonals
-                    {-0.7f,  0.7f, 0.30f}, { 0.7f,  0.7f, 0.30f},   //  (rounds the halo)
+                    {-0.6f,  0.0f, 1.00f}, { 0.6f,  0.0f, 1.00f},   // tight core (H)
+                    { 0.0f, -0.6f, 0.62f}, { 0.0f,  0.6f, 0.62f},   //   core (V)
+                    {-0.6f, -0.6f, 0.34f}, { 0.6f, -0.6f, 0.34f},   //   core (diag)
+                    {-0.6f,  0.6f, 0.34f}, { 0.6f,  0.6f, 0.34f},   //   (rounds the halo)
+                    {-1.3f,  0.0f, 0.44f}, { 1.3f,  0.0f, 0.44f},   // mid horizontal
+                    {-2.4f,  0.0f, 0.18f}, { 2.4f,  0.0f, 0.18f},   // wide composite bleed
                 };
                 for (const GlowTap& g : kGlow) {
-                    ImVec4 gf = textColor; gf.w = glowA * g.w;
+                    ImVec4 gf = glowBase; gf.w = glowA * g.w;
                     const ImU32 gc = ImGui::ColorConvertFloat4ToU32(gf);
                     const float ox = g.dx * dotW, oy = g.dy * dotH;
                     drawList->AddImage(fbTex,
@@ -718,8 +739,8 @@ void Screen_ImGui::render()
             for (int y = 0; y < SCREEN_HEIGHT; ++y) {
                 for (int x = 0; x < SCREEN_WIDTH; ++x) {
                     unsigned char c = static_cast<unsigned char>(effective[y * SCREEN_WIDTH + x]);
-                    const float px = rasterMin.x + static_cast<float>(x) * scaledCellW;
-                    const float py = rasterMin.y + static_cast<float>(y) * scaledCellH;
+                    const float px = drawMin.x + static_cast<float>(x) * scaledCellW;
+                    const float py = drawMin.y + static_cast<float>(y) * scaledCellH;
                     if (useCharmapRenderer) {
                         if (c == 0) continue;
                         const unsigned char glyph = static_cast<unsigned char>(c & 0x7F);
@@ -743,18 +764,16 @@ void Screen_ImGui::render()
     // (drawCRTScanlines) keeps the scanline pattern visible across the text
     // without the hard bisecting bars that the pre-split version produced.
     if (crtEffect) {
-        const ImVec2 absP0 = rasterMin;
-        const ImVec2 absP1 = ImVec2(rasterMin.x + screenSize.x, rasterMin.y + screenSize.y);
-        drawCRTScanlines(absP0.x, absP0.y, absP1.x, absP1.y, useCharmapRenderer);
+        drawCRTScanlines(drawMin.x, drawMin.y,
+                         drawMin.x + drawSize.x, drawMin.y + drawSize.y, useCharmapRenderer);
     }
     // DRAM refresh crosstalk dots — painted on top of scanlines so they
     // remain visible inside the dark mesh. Drawn regardless of crtEffect and
     // of silicon mode: shown by default (dramRefreshDotsEnabled = true) as a
     // permanent part of the Apple-1 screen look.
     if (dramRefreshDotsEnabled) {
-        const ImVec2 absP0 = rasterMin;
-        const ImVec2 absP1 = ImVec2(rasterMin.x + screenSize.x, rasterMin.y + screenSize.y);
-        drawCRTRefreshDots(absP0.x, absP0.y, absP1.x, absP1.y, useCharmapRenderer);
+        drawCRTRefreshDots(drawMin.x, drawMin.y,
+                           drawMin.x + drawSize.x, drawMin.y + drawSize.y, useCharmapRenderer);
     }
 
     ImGui::PopFont();
