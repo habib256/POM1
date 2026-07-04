@@ -218,14 +218,14 @@ set_tests_properties(symbols_smoke PROPERTIES TIMEOUT 5)
 # per-byte shared high-bit palette behaviour, addressing). No GL/ImGui.
 add_executable(test_hgr_paint_plot
     hgr_paint_plot_smoke_test.cpp
-    ${CMAKE_SOURCE_DIR}/hgrpaint/HgrPaintModel.cpp
-    ${CMAKE_SOURCE_DIR}/hgrpaint/HgrFont.cpp
+    ${CMAKE_SOURCE_DIR}/src/hgrpaint/HgrPaintModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/hgrpaint/HgrFont.cpp
     ${CMAKE_SOURCE_DIR}/src/GraphicsCard.cpp
     ${CMAKE_SOURCE_DIR}/src/Gen2VideoScanner.cpp
 )
 target_include_directories(test_hgr_paint_plot PRIVATE
     ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/hgrpaint)
+    ${CMAKE_SOURCE_DIR}/src/hgrpaint)
 
 add_test(NAME hgr_paint_plot_smoke
          COMMAND test_hgr_paint_plot)
@@ -236,15 +236,15 @@ set_tests_properties(hgr_paint_plot_smoke PROPERTIES TIMEOUT 5)
 # conservation. No GL/ImGui; image decoding (stb) is excluded so it stays pure.
 add_executable(test_hgr_convert
     hgr_convert_smoke_test.cpp
-    ${CMAKE_SOURCE_DIR}/hgrpaint/Cam16.cpp
-    ${CMAKE_SOURCE_DIR}/hgrpaint/HgrConvert.cpp
-    ${CMAKE_SOURCE_DIR}/hgrpaint/HgrPaintModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/hgrpaint/Cam16.cpp
+    ${CMAKE_SOURCE_DIR}/src/hgrpaint/HgrConvert.cpp
+    ${CMAKE_SOURCE_DIR}/src/hgrpaint/HgrPaintModel.cpp
     ${CMAKE_SOURCE_DIR}/src/GraphicsCard.cpp
     ${CMAKE_SOURCE_DIR}/src/Gen2VideoScanner.cpp
 )
 target_include_directories(test_hgr_convert PRIVATE
     ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/hgrpaint)
+    ${CMAKE_SOURCE_DIR}/src/hgrpaint)
 
 add_test(NAME hgr_convert_smoke
          COMMAND test_hgr_convert)
@@ -255,9 +255,9 @@ set_tests_properties(hgr_convert_smoke PROPERTIES TIMEOUT 15)
 # exe-relative / POM1_CC65_DIR cc65 probe a packaged DevBench relies on.
 add_executable(test_process_util
     process_util_smoke_test.cpp
-    ${CMAKE_SOURCE_DIR}/bench/ProcessUtil.cpp
+    ${CMAKE_SOURCE_DIR}/src/bench/ProcessUtil.cpp
 )
-target_include_directories(test_process_util PRIVATE ${CMAKE_SOURCE_DIR}/bench)
+target_include_directories(test_process_util PRIVATE ${CMAKE_SOURCE_DIR}/src/bench)
 
 add_test(NAME process_util_smoke COMMAND test_process_util)
 set_tests_properties(process_util_smoke PROPERTIES TIMEOUT 5)
@@ -1047,14 +1047,14 @@ set_tests_properties(codetank_smoke PROPERTIES TIMEOUT 5)
 # rule and colorAt() round-trips. No GL/ImGui/emulator dependency.
 add_executable(test_tms_paint_plot
     tms_paint_plot_smoke_test.cpp
-    ${CMAKE_SOURCE_DIR}/tmspaint/TmsPaintModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/tmspaint/TmsPaintModel.cpp
     ${CMAKE_SOURCE_DIR}/src/TMS9918.cpp
     ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
 )
 target_include_directories(test_tms_paint_plot PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui
-    ${CMAKE_SOURCE_DIR}/tmspaint)
+    ${CMAKE_SOURCE_DIR}/src/tmspaint)
 add_test(NAME tms_paint_plot_smoke COMMAND test_tms_paint_plot)
 set_tests_properties(tms_paint_plot_smoke PROPERTIES TIMEOUT 5)
 
@@ -1067,14 +1067,14 @@ set_tests_properties(tms_paint_plot_smoke PROPERTIES TIMEOUT 5)
 # incl. all four 16×16 quadrants + the Early-Clock shift. No GL/ImGui dependency.
 add_executable(test_tms_sprite_plot
     tms_sprite_plot_smoke_test.cpp
-    ${CMAKE_SOURCE_DIR}/tmssprite/TmsSpriteModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/tmssprite/TmsSpriteModel.cpp
     ${CMAKE_SOURCE_DIR}/src/TMS9918.cpp
     ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
 )
 target_include_directories(test_tms_sprite_plot PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui
-    ${CMAKE_SOURCE_DIR}/tmssprite)
+    ${CMAKE_SOURCE_DIR}/src/tmssprite)
 add_test(NAME tms_sprite_plot_smoke COMMAND test_tms_sprite_plot)
 set_tests_properties(tms_sprite_plot_smoke PROPERTIES TIMEOUT 5)
 
@@ -1086,12 +1086,12 @@ set_tests_properties(tms_sprite_plot_smoke PROPERTIES TIMEOUT 5)
 # off-page cells are clipped. No GL/ImGui/emulator dependency.
 add_executable(test_hgr_sprite_blit
     hgr_sprite_blit_smoke_test.cpp
-    ${CMAKE_SOURCE_DIR}/hgrsprite/HgrSpriteBlit.cpp
-    ${CMAKE_SOURCE_DIR}/hgrpaint/HgrPaintModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/hgrsprite/HgrSpriteBlit.cpp
+    ${CMAKE_SOURCE_DIR}/src/hgrpaint/HgrPaintModel.cpp
 )
 target_include_directories(test_hgr_sprite_blit PRIVATE
-    ${CMAKE_SOURCE_DIR}/hgrpaint
-    ${CMAKE_SOURCE_DIR}/hgrsprite)
+    ${CMAKE_SOURCE_DIR}/src/hgrpaint
+    ${CMAKE_SOURCE_DIR}/src/hgrsprite)
 add_test(NAME hgr_sprite_blit_smoke COMMAND test_hgr_sprite_blit)
 set_tests_properties(hgr_sprite_blit_smoke PROPERTIES TIMEOUT 5)
 
@@ -1103,12 +1103,12 @@ set_tests_properties(hgr_sprite_blit_smoke PROPERTIES TIMEOUT 5)
 # plus the [a-z0-9_] name sanitizer. No GL/ImGui/emulator dependency.
 add_executable(test_sprite_asm_export
     sprite_asm_export_smoke_test.cpp
-    ${CMAKE_SOURCE_DIR}/hgrsprite/HgrSpriteAsmExport.cpp
-    ${CMAKE_SOURCE_DIR}/tmssprite/TmsSpriteAsmExport.cpp
+    ${CMAKE_SOURCE_DIR}/src/hgrsprite/HgrSpriteAsmExport.cpp
+    ${CMAKE_SOURCE_DIR}/src/tmssprite/TmsSpriteAsmExport.cpp
 )
 target_include_directories(test_sprite_asm_export PRIVATE
-    ${CMAKE_SOURCE_DIR}/hgrsprite
-    ${CMAKE_SOURCE_DIR}/tmssprite)
+    ${CMAKE_SOURCE_DIR}/src/hgrsprite
+    ${CMAKE_SOURCE_DIR}/src/tmssprite)
 add_test(NAME sprite_asm_export_smoke COMMAND test_sprite_asm_export)
 set_tests_properties(sprite_asm_export_smoke PROPERTIES TIMEOUT 5)
 
@@ -1120,17 +1120,17 @@ set_tests_properties(sprite_asm_export_smoke PROPERTIES TIMEOUT 5)
 # (calls the converter directly with synthetic RGBA, like hgr_convert_smoke).
 add_executable(test_tms_convert
     tms_convert_smoke_test.cpp
-    ${CMAKE_SOURCE_DIR}/tmspaint/TmsConvert.cpp
-    ${CMAKE_SOURCE_DIR}/tmspaint/TmsPaintModel.cpp
-    ${CMAKE_SOURCE_DIR}/hgrpaint/Cam16.cpp
+    ${CMAKE_SOURCE_DIR}/src/tmspaint/TmsConvert.cpp
+    ${CMAKE_SOURCE_DIR}/src/tmspaint/TmsPaintModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/hgrpaint/Cam16.cpp
     ${CMAKE_SOURCE_DIR}/src/TMS9918.cpp
     ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
 )
 target_include_directories(test_tms_convert PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui
-    ${CMAKE_SOURCE_DIR}/tmspaint
-    ${CMAKE_SOURCE_DIR}/hgrpaint)
+    ${CMAKE_SOURCE_DIR}/src/tmspaint
+    ${CMAKE_SOURCE_DIR}/src/hgrpaint)
 add_test(NAME tms_convert_smoke COMMAND test_tms_convert)
 set_tests_properties(tms_convert_smoke PROPERTIES TIMEOUT 15)
 

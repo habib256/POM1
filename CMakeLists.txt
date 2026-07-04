@@ -167,26 +167,26 @@ set(SOURCES
     ${POM1_SRC_DIR}/Logger.cpp
     ${POM1_SRC_DIR}/third_party/ImGuiColorTextEdit/TextEditor.cpp
     ${POM1_SRC_DIR}/Pom1BenchHost.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/bench/ProcessUtil.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/bench/BenchLang.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/bench/CodeBench.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/bench/Markdown.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintEditor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrFont.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintModel.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/Cam16.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrConvert.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrImageDecode.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsPaintModel.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsPaintEditor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsConvert.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsImageDecode.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/tmssprite/TmsSpriteModel.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/tmssprite/TmsSpriteEditor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/tmssprite/TmsSpriteAsmExport.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrsprite/HgrSpriteBlit.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrsprite/HgrSpriteEditor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrsprite/HgrSpriteAsmExport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bench/ProcessUtil.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bench/BenchLang.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bench/CodeBench.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bench/Markdown.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/HgrPaintEditor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/HgrFont.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/HgrPaintModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/Cam16.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/HgrConvert.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/HgrImageDecode.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint/TmsPaintModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint/TmsPaintEditor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint/TmsConvert.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint/TmsImageDecode.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmssprite/TmsSpriteModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmssprite/TmsSpriteEditor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmssprite/TmsSpriteAsmExport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrsprite/HgrSpriteBlit.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrsprite/HgrSpriteEditor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrsprite/HgrSpriteAsmExport.cpp
 )
 
 set(HEADERS
@@ -206,22 +206,22 @@ set(HEADERS
     ${POM1_SRC_DIR}/MemoryViewer_ImGui.h
     ${POM1_SRC_DIR}/Pom1HgrPaintHost.h
     ${POM1_SRC_DIR}/Pom1TmsPaintHost.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsPaintModel.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/ITmsPaintHost.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsPaintEditor.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint/TmsConvert.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/tmssprite/TmsSpriteModel.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/tmssprite/TmsSpriteEditor.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/tmssprite/TmsSpriteAsmExport.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrsprite/HgrSpriteBlit.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrsprite/HgrSpriteEditor.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrsprite/HgrSpriteAsmExport.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintEditor.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrFont.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrPaintModel.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/IHgrPaintHost.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/Cam16.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint/HgrConvert.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint/TmsPaintModel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint/ITmsPaintHost.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint/TmsPaintEditor.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint/TmsConvert.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmssprite/TmsSpriteModel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmssprite/TmsSpriteEditor.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmssprite/TmsSpriteAsmExport.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrsprite/HgrSpriteBlit.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrsprite/HgrSpriteEditor.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrsprite/HgrSpriteAsmExport.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/HgrPaintEditor.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/HgrFont.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/HgrPaintModel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/IHgrPaintHost.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/Cam16.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/HgrConvert.h
     ${POM1_SRC_DIR}/MicroSD.h
     ${POM1_SRC_DIR}/JukeBox.h
     ${POM1_SRC_DIR}/CodeTank.h
@@ -327,11 +327,11 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${POM1_SRC_DIR}
     ${POM1_SRC_DIR}/third_party/ImGuiColorTextEdit
     ${POM1_SRC_DIR}/third_party/stb   # so portable hgrpaint/ can #include "stb_image.h" bare
-    ${CMAKE_CURRENT_SOURCE_DIR}/bench
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrpaint
-    ${CMAKE_CURRENT_SOURCE_DIR}/tmspaint
-    ${CMAKE_CURRENT_SOURCE_DIR}/tmssprite
-    ${CMAKE_CURRENT_SOURCE_DIR}/hgrsprite
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bench
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmssprite
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrsprite
 )
 
 # libresidfp (vendored, third_party/libresidfp). PUBLIC include dir on the

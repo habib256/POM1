@@ -45,7 +45,7 @@ MASTER = REPO / "dev" / "lib" / "gen2" / "bbfont_cp437.inc"
 OUT_HGR = REPO / "dev" / "lib" / "gen2c" / "gen2_bbfont.inc"
 OUT_TMS = REPO / "dev" / "lib" / "tms9918" / "bbfont_tms.inc"
 OUT_HUD = REPO / "dev" / "lib" / "tms9918" / "font_hud8x8.inc"
-OUT_CPP = REPO / "hgrpaint" / "HgrFont.cpp"
+OUT_CPP = REPO / "src" / "hgrpaint" / "HgrFont.cpp"
 
 BYTE_RE = re.compile(r"\$([0-9A-Fa-f]{2})")
 IDX_RE = re.compile(r";\s*\$([0-9A-Fa-f]{2})")
