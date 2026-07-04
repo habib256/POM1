@@ -1,9 +1,0 @@
-{
-  "profile": "tms9918",
-  "language": "asm",
-  "cfg": "sketchs/tms9918/demo_mandel/apple1_mandel_codetank.cfg",
-  "extraAsm": [
-    "dev/lib/tms9918/tms9918m2.asm",
-    "dev/lib/tms9918/tms9918_pad.asm"
-  ]
-}

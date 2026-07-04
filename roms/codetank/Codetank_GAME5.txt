@@ -1,3 +1,0 @@
-Codetank_GAME5.rom — TMS9918 P-LAB CodeTank cartridge (Nino C demos)
-  Lower jumper: 4000R → nino-democ (1=Screen1 2=Screen2 0=Wozmon)
-  Upper jumper: 4000R → demo_screen1 (text/reverse/charset/sprites/input)

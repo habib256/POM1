@@ -1,5 +1,0 @@
-{
-  "profile": "gen2",
-  "language": "asm",
-  "cfg": "dev/cc65/apple1_gen2.cfg"
-}
