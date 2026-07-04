@@ -78,7 +78,7 @@ public:
     float scale = 1.4f;
     /** Multiplicateur de la taille de police en mode Host ASCII uniquement. */
     float hostAsciiGlyphScale = 1.5f;
-    bool crtEffect = true;           // on by default: CRT scanlines + phosphor band tint
+    bool crtEffect = false;          // off by default: no CRT scanlines / phosphor band tint
     // Soft phosphor bloom around lit charmap dots (overlay pass behind the crisp
     // text framebuffer). On by default — recovers the halo the old per-glyph
     // atlas baked, without re-introducing its double-resample garbling.
