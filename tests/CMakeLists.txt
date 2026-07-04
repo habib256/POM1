@@ -1459,26 +1459,6 @@ if(Python3_FOUND)
 endif()
 
 
-# ── GEN2 masked sprite engine — draw/restore round trip (cc65-gated) ─────────
-# Builds sketchs/gen2/demo_sprengine's phased SELFTEST binary with the real
-# cc65 toolchain (gen2_sprmask.s kernels + gen2_sprengine.c engine +
-# build_preshift_sprites.py --masked banks), runs it headless and captures the
-# GEN2 framebuffer at three deterministic --dump-after-cycles points: the
-# decor must be non-uniform, the masked sprites visible, and the save-under +
-# masked-draw + restore round trip must leave the frame SHA-identical to the
-# pre-draw background (palette bit included). Skips (77) without cc65 or the
-# POM1 binary.
-if(Python3_FOUND)
-    add_test(NAME gen2_sprengine_roundtrip
-             COMMAND ${Python3_EXECUTABLE}
-                     "${CMAKE_SOURCE_DIR}/tools/test_sprengine_gen2.py"
-                     --pom1 "$<TARGET_FILE:pom1_imgui>"
-                     --repo "${CMAKE_SOURCE_DIR}"
-             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-    set_tests_properties(gen2_sprengine_roundtrip PROPERTIES
-                         TIMEOUT 180 SKIP_RETURN_CODE 77)
-endif()
-
 # ── CodeTank burn-readiness — the "Claudio gate" ─────────────────────────────
 # Every CodeTank ROM bank is exercised under the harshest real-silicon
 # conditions POM1 can model (--silicon-strict + --vram-noise + --dram-refresh),
@@ -1487,8 +1467,9 @@ endif()
 # Rationale: these .rom files get burned into a 28c256 and tested on Claudio
 # Parmigiani's Replica-1 1:1 with a real NMOS TMS9918A — a regression that
 # slips through here becomes a real-hardware disappointment. --quick runs the
-# first checkpoint of each of the 10 scenarios (~90 s); the full sweep is
+# first checkpoint of each GAME1-4 scenario; the full sweep is
 # `python3 tools/verify_codetank_roms.py` before an actual EPROM burn.
+# (GAME5/6 banks were retired in the July-2026 cleanup — see SCENARIOS.)
 if(Python3_FOUND)
     add_test(NAME codetank_claudio_gate
              COMMAND ${Python3_EXECUTABLE}

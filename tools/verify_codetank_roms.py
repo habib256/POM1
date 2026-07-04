@@ -110,43 +110,11 @@ SCENARIOS = [
     ("GAME4-upper-Animals", "Codetank_GAME4.rom", "upper",
      [],
      [6 * M, 14 * M]),
-    # GAME5 lower — nino-democ menu (TMS screen1) -> Screen2 demo (2)
-    # -> Return back to the redrawn menu.
-    ("GAME5-lower-NinoDemo", "Codetank_GAME5.rom", "lower",
-     [(6 * M, "2"), (14 * M, "\r")],
-     [12 * M, 18 * M]),
-    # GAME5 upper — demo_screen1: auto demo (charset + 32 sprites), then
-    # the "WRITE HERE:" line editor — type HI + Return (an EMPTY line
-    # would exit to Wozmon), it echoes and re-prompts.
-    ("GAME5-upper-Screen1", "Codetank_GAME5.rom", "upper",
-     [(10 * M, "HI"), (12 * M, "\r")],
-     [8 * M, 16 * M]),
-    # GAME6 lower — menu -> Maze3D (1, run-in-place $4200). RETURN at 8 M
-    # dismisses the title (its keycode seeds the maze — key VALUES only,
-    # paste-jitter-proof); the help screen auto-dismisses after ~3 s, so
-    # gameplay starts ~11.8 M. AZERTY moves: Z=forward D=turn-right
-    # M=map toggle. First checkpoint = 3D corridor after the Z move,
-    # second = the top-down dungeon map.
-    ("GAME6-lower-Maze3D", "Codetank_GAME6.rom", "lower",
-     [(6 * M, "1"), (8 * M, "\r"), (12 * M, "z"), (15 * M, "d"),
-      (18 * M, "m")],
-     [13 * M, 20 * M]),
-    # GAME6 lower — menu -> OrbitalPool (2, packed ROM->RAM $0280, state
-    # page relocated to $0F00). A=angle, SPACE=fire.
-    ("GAME6-lower-OrbitalPool", "Codetank_GAME6.rom", "lower",
-     [(6 * M, "2"), (10 * M, "a"), (12 * M, " ")],
-     [9 * M, 16 * M]),
-    # GAME6 lower — menu -> Stars (3, packed): free-running parallax.
-    ("GAME6-lower-Stars", "Codetank_GAME6.rom", "lower",
-     [(6 * M, "3")],
-     [9 * M, 14 * M]),
-    # GAME6 upper — TMS_SilBench boots its own menu on the Apple-1 TEXT
-    # display (TMS untouched until a test runs — checkpoints must be
-    # post-key): '1' = T01 GFX1 RENDER, '2' = T02 GFX2 RENDER, each
-    # leaves its visual on screen through the ~1.3 s hold + next menu.
-    ("GAME6-upper-SilBench", "Codetank_GAME6.rom", "upper",
-     [(6 * M, "1"), (10 * M, "2")],
-     [8 * M, 13 * M]),
+    # NOTE: GAME5 (nino-democ / screen1) and GAME6 (Maze3D / OrbitalPool /
+    # Stars / SilBench) were retired in the July-2026 cleanup (their .rom
+    # banks + source demos removed from the tree). The canonical burn-ready
+    # CodeTank library is GAME1-4; add scenarios back here if those banks
+    # are ever rebuilt.
 ]
 
 DROP_RE = re.compile(r"^\[TMS9918 DROP")
