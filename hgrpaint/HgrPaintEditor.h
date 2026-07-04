@@ -91,6 +91,11 @@ private:
     bool textPlaced = false;
     int  textX = 0, textY = 0, textHomeX = 0;
     char textBuf[256] = {0};
+    // Set when the caret is (re)placed by a canvas click so the tool panel grabs
+    // keyboard focus into the text box next frame. Without it the host app's key
+    // path sees WantTextInput=false and routes typing to the emulated Apple-1
+    // keyboard instead of this InputText.
+    bool focusTextInput = false;
     // The navigator thumbnail is always shown when the image overflows the
     // viewport, and Save always stamps the POM1HGR screen-hole tag.
 

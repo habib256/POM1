@@ -108,14 +108,6 @@ private:
     // Tab "Rename…" context-menu action: target doc + the in-flight input buffer.
     int  renameUid_      = -1;
     char renameBuf_[128] = "";
-    // Interactive REPL (shown when host_->replActive()): one-line input + command
-    // history (Up/Down recall). Sent lines are echoed into console_ and fed to the
-    // host's resident interpreter via replSend().
-    char replInput_[128] = "";
-    std::vector<std::string> replHistory_;   // submitted lines, oldest first
-    int  replHistoryPos_ = -1;               // -1 = editing a fresh line
-    bool replFocus_      = false;            // request keyboard focus next frame
-    int  onReplHistory(void* data);          // ImGuiInputTextCallbackData* (Up/Down)
 };
 
 } // namespace bench

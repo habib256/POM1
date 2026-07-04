@@ -694,10 +694,20 @@ void hgrpaint::HgrPaintEditor::renderToolPanel()
             ? "Type, Enter to stamp in the current colour. Click to move the caret."
             : "Click the canvas to place the text caret.");
         ImGui::SetNextItemWidth(-FLT_MIN);
+        // A freshly placed caret pulls focus here so keystrokes go to this box
+        // (making WantTextInput true) rather than the emulated Apple-1 keyboard.
+        if (focusTextInput) { ImGui::SetKeyboardFocusHere(); focusTextInput = false; }
         const bool enter = ImGui::InputText("##textbuf", textBuf, sizeof(textBuf),
                                             ImGuiInputTextFlags_EnterReturnsTrue);
         const bool stamp = ImGui::Button("Stamp") || enter;
-        if (stamp && textPlaced && textBuf[0]) { stampText(textBuf, color); textBuf[0] = '\0'; }
+        if (stamp && textPlaced && textBuf[0]) {
+            stampText(textBuf, color); textBuf[0] = '\0';
+            // Enter deactivates the InputText (EnterReturnsTrue), which would leak
+            // the next keystrokes to the emulated Apple-1 keyboard. Re-arm focus so
+            // the caret (advanced by stampText) stays hot for continuous typing.
+            // Only for the Enter path — a mouse Stamp click shouldn't steal focus.
+            if (enter) focusTextInput = true;
+        }
         ImGui::SameLine();
         ImGui::TextDisabled(textPlaced ? "@ %d,%d" : "(no caret)", textX, textY);
     }
@@ -1050,7 +1060,11 @@ void hgrpaint::HgrPaintEditor::renderCanvas(const std::vector<uint8_t>& memory)
                 selX0 = selX1 = lx; selY0 = selY1 = ly;
             } else if (tool == Tool::Text && !grMode) {
                 // Place / move the caret; glyphs are stamped from the tool panel.
+                // Grab keyboard focus into the text box next frame so typing lands
+                // there instead of leaking to the emulated Apple-1 keyboard (the
+                // host key path only yields when an ImGui text field WantTextInput).
                 textPlaced = true; textX = lx; textY = ly; textHomeX = lx;
+                focusTextInput = true;
             } else if (tool == Tool::Select || tool == Tool::Text) {
                 // Select / Text are HIRES-only; ignore the click in GR mode.
             } else {

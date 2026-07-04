@@ -22,6 +22,13 @@
 // rendered screens (Apple 1 text, GraphicsCard, TMS9918, GT6144, dialogs).
 #include "TerminalCard.h"
 #include "GraphicsCard.h"
+#endif
+
+// stb_image_write implementation — compiled on ALL platforms (this TU is the
+// single impl site). The desktop screenshot path above is one user; the HGR/TMS
+// paint + sprite editors' savePng (Pom1HgrPaintHost / Pom1TmsPaintHost) call
+// stbi_write_png unconditionally, so WASM needs the impl linked too — without
+// this outside the !WASM guard the WASM link fails with undefined stbi_write_png.
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #if defined(__clang__) || defined(__GNUC__)
 #pragma GCC diagnostic push
@@ -30,7 +37,6 @@
 #include "third_party/stb/stb_image_write.h"
 #if defined(__clang__) || defined(__GNUC__)
 #pragma GCC diagnostic pop
-#endif
 #endif
 
 #if POM1_IS_WASM

@@ -2445,7 +2445,8 @@ bench::BuildResult Pom1BenchHost::injectLogo(int target, const std::string& src,
     if (prog.entry.empty()) {
         std::snprintf(buf, sizeof(buf),
             "[bench] %s: poked %d procedure(s) into the proc table — no entry point, "
-            "nothing launched (type a call at the REPL)\n", interp.c_str(), prog.procCount);
+            "nothing launched (type a call at the LOGO prompt in the Apple-1 screen "
+            "window)\n", interp.c_str(), prog.procCount);
     } else {
         std::snprintf(buf, sizeof(buf),
             "[bench] %s: poked %d procedure(s) → running '%s' (proc table injected, "
@@ -2453,8 +2454,9 @@ bench::BuildResult Pom1BenchHost::injectLogo(int target, const std::string& src,
     }
     r.console = buf;
     if (!prog.warning.empty()) r.console += "[bench] note: " + prog.warning + "\n";
-    r.console += "[bench] LOGO REPL live — type commands below (e.g. a proc call, FD 50, "
-                 "or TO … END) to drive the turtle interactively.\n";
+    r.console += "[bench] LOGO is live at its prompt — type commands in the Apple-1 "
+                 "screen window (e.g. a proc call, FD 50, or TO … END) to drive the "
+                 "turtle interactively.\n";
     logoReplActive_ = true;   // interpreter resident + running → REPL input usable
     r.status = interp + (prog.entry.empty() ? ": procedures loaded" : ": running (injected)");
     r.ok = true;
