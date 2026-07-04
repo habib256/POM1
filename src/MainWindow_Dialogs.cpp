@@ -2123,6 +2123,43 @@ void MainWindow_ImGui::renderScreenConfigDialog()
         }
 
         ImGui::Spacing();
+        ImGui::Text("UI Scale (HiDPI)");
+        ImGui::Separator();
+        {
+            ImGuiIO& io = ImGui::GetIO();
+            float detected = 1.0f;
+#if !POM1_IS_WASM
+            if (window) {
+                float xs = 1.0f, ys = 1.0f;
+                glfwGetWindowContentScale(window, &xs, &ys);
+                if (xs > 0.1f) detected = xs;
+            }
+#endif
+            // Latch the manual slider to whatever scale main_imgui seeded from the
+            // monitor DPI at boot, the first time this dialog opens.
+            if (!uiHiDpiInit_) {
+                uiHiDpiManualScale_ = io.FontGlobalScale > 0.1f ? io.FontGlobalScale : 1.0f;
+                uiHiDpiInit_ = true;
+            }
+            if (ImGui::Checkbox("Auto (follow monitor DPI)", &uiHiDpiAuto_) && uiHiDpiAuto_)
+                uiHiDpiManualScale_ = detected;
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Scale the whole UI font by the monitor's content scale.\n"
+                                  "Turn off to pin a fixed scale with the slider.");
+            if (uiHiDpiAuto_) {
+                io.FontGlobalScale = detected;   // live-follow while the dialog is open
+                ImGui::BeginDisabled();
+                float shown = detected;
+                ImGui::SliderFloat("UI font scale", &shown, 0.75f, 3.0f, "%.2f×");
+                ImGui::EndDisabled();
+            } else {
+                if (ImGui::SliderFloat("UI font scale", &uiHiDpiManualScale_, 0.75f, 3.0f, "%.2f×"))
+                    io.FontGlobalScale = uiHiDpiManualScale_;
+            }
+            ImGui::TextDisabled("Detected monitor scale: %.2f×", detected);
+        }
+
+        ImGui::Spacing();
         if (ImGui::Button("Close")) {
             showScreenConfig = false;
         }

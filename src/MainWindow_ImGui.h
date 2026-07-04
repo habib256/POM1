@@ -447,6 +447,15 @@ private:
     bool oorStrictModeEnabled = false;
     bool fullscreen = false;
 
+    // HiDPI UI font scaling (Display Settings). Auto = follow the monitor's
+    // content scale each frame the dialog is open; otherwise use the manual
+    // slider. Both drive ImGui::GetIO().FontGlobalScale, which main_imgui seeds
+    // from the monitor DPI at boot (desktop non-macOS). uiHiDpiInit_ latches the
+    // manual value to the boot scale on first Display-Settings open.
+    bool uiHiDpiAuto_ = true;
+    float uiHiDpiManualScale_ = 1.0f;
+    bool uiHiDpiInit_ = false;
+
     // Keyboard input
     bool keyboardAutorepeat = false;  // default off: TTL keyboard has no repeat
     bool nextCharIsRepeat = false;    // set by handleGlfwKey, consumed by handleGlfwChar
