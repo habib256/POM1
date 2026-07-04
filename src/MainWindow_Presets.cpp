@@ -588,6 +588,9 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     showGen2WorkbenchPhoto   = false;
     showKeyboardPhoto        = false;
     showWozPhoto             = false;
+    showCopsonApple1Photo    = false;
+    showHappyWozPhoto        = false;
+    showPlabTms9918Photo     = false;
     showScreenConfig         = false;
     showMemoryConfig         = false;
     showLoadDialog           = false;
@@ -792,7 +795,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
         else if (n == "Apple-1 Demo Session (1976)")          showWozJobsRectPhoto = true;
         else if (n == "P-LAB TMS9918 Card (Photo)")           showTmsBoardPhoto = true;
         else if (n == "GEN2 Video Workbench (Photo)")         showGen2WorkbenchPhoto = true;
-        else if (n == "Apple-1 Keyboard (Photo)")             showKeyboardPhoto = true;
+        else if (n == "Apple-1 ASCII Keyboard")               showKeyboardPhoto = true;
         else if (n == "Steve Wozniak (Photo)")                showWozPhoto = true;
         // Tutorial windows — names MUST match the titles used in
         // renderTutorialXxxWindow() calls (MainWindow_Dialogs.cpp).
