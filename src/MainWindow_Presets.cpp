@@ -501,6 +501,45 @@ void MainWindow_ImGui::defaultOsWindowSize(int presetIndex, int& outW, int& outH
     outH = glfwH;
 }
 
+#if POM1_IS_WASM
+// WASM canvas size for a preset — the browser analog of defaultOsWindowSize,
+// but deliberately WITHOUT the POM1 Fantasy floor: on the web the canvas IS
+// the whole app surface, so a bare Apple-1 profile should give a small canvas
+// and a fully-loaded profile a large one (that is what "adapt to each profile"
+// means here). Uses the preset's *declared* layout table so the size is right
+// the instant the profile changes, even though the card windows only plug in
+// ~15 frames later (pendingCardEnableFrames) — waiting on the live ImGui
+// bounding box would lag the switch.
+void MainWindow_ImGui::computeWasmCanvasSize(int presetIndex, int& outW, int& outH) const
+{
+    outW = wasmCanvasPixelW;
+    outH = wasmCanvasPixelH;
+    if (presetIndex < 0 || presetIndex >= kMachinePresetCount) return;
+    const MachineConfig& cfg = kMachinePresets[presetIndex];
+
+    ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
+    const ImVec2 charSize = ImGui::CalcTextSize("M");
+    ImGui::PopFont();
+    const ImVec2 cell = Screen_ImGui::computeApple1CellDimensions(charSize);
+    const float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale
+                     + kApple1ImGuiWinPadW;
+    const float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale
+                     + kApple1ImGuiWinPadH;
+    const ImVec2 extent = computePresetLayoutExtent(cfg, ImVec2(sw, sh));
+
+    // Base = Apple-1 screen window + chrome (same as the old per-frame path).
+    int w = static_cast<int>(sw) + kApple1GlfwExtraW;
+    int h = static_cast<int>(std::ceil(sh + apple1LayoutVerticalChrome()));
+    if (extent.x > 0.0f && extent.y > 0.0f) {
+        w = std::max(w, static_cast<int>(std::ceil(extent.x + 8.0f)));
+        h = std::max(h, static_cast<int>(std::ceil(extent.y + 8.0f)));
+    }
+    // Same clamps the per-frame path used: floor for usability, cap for safety.
+    outW = std::min(std::max(w, 320), 4096);
+    outH = std::min(std::max(h, 240), 4096);
+}
+#endif
+
 void MainWindow_ImGui::applyMachineConfig(int presetIndex)
 {
     if (presetIndex < 0 || presetIndex >= kMachinePresetCount) return;
@@ -927,6 +966,15 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
         defaultOsWindowSize(presetIndex, glfwW, glfwH);
         glfwSetWindowSize(window, glfwW, glfwH);
     }
+#else
+    // WASM: resize the HTML canvas to the incoming profile — ONCE, here, on the
+    // profile change (not every frame). We store the target in wasmCanvasPixelW/H;
+    // the main loop (main_imgui.cpp) issues emscripten_set_canvas_element_size
+    // only when the element size actually differs, so no profile change means no
+    // resize. In browser fullscreen the main loop uses the CSS viewport instead
+    // and reads this value again only when fullscreen is exited.
+    (void)layoutLoaded;
+    computeWasmCanvasSize(presetIndex, wasmCanvasPixelW, wasmCanvasPixelH);
 #endif
 
     activePresetIndex = presetIndex;

@@ -786,60 +786,11 @@ void MainWindow_ImGui::render()
     renderStatusBar();
 
 #if POM1_IS_WASM
-    // Taille canvas Web : menu + toolbar + trou + fenêtre Apple 1 + barre de statut (+ marge).
-    {
-        ImGuiIO& wasmIo = ImGui::GetIO();
-        if (fullscreen) {
-            wasmCanvasPixelW = (int)wasmIo.DisplaySize.x;
-            wasmCanvasPixelH = (int)wasmIo.DisplaySize.y;
-        } else {
-            ImGui::PushFont(wasmIo.Fonts->Fonts[0]);
-            ImVec2 charSize = ImGui::CalcTextSize("M");
-            ImGui::PopFont();
-            const ImVec2 cell = Screen_ImGui::computeApple1CellDimensions(charSize);
-            float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale + kApple1ImGuiWinPadW;
-            float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale + kApple1ImGuiWinPadH;
-            wasmCanvasPixelW = (int)sw + kApple1GlfwExtraW;
-            wasmCanvasPixelH = (int)std::ceil(sh + apple1LayoutVerticalChrome());
-            // Grow the canvas to fit the ACTUAL ImGui desktop — the bounding box
-            // of every visible top-level window (the live, user-tuned ini layout,
-            // not the hard-coded preset default) — so the canvas matches the
-            // arrangement exactly (no clipping, no empty margin) and tracks the
-            // windows as they are moved/resized. This block runs at end-of-frame,
-            // so every window's Pos/Size is already settled.
-            ImVec2 live(0.0f, 0.0f);
-            const ImVec2 disp = wasmIo.DisplaySize;
-            const ImGuiContext& g = *ImGui::GetCurrentContext();
-            for (ImGuiWindow* w : g.Windows) {
-                if (!w->WasActive) continue;                     // hidden/closed this frame
-                if (w->Flags & (ImGuiWindowFlags_ChildWindow |   // children live inside parents
-                                ImGuiWindowFlags_Popup |         // transient — must not grow the canvas
-                                ImGuiWindowFlags_Tooltip)) continue;
-                // CRITICAL: skip viewport-SPANNING chrome — the main menu bar and
-                // the status bar are full-width, so their right edge tracks the
-                // canvas; counting them would grow the canvas by the pad every
-                // frame (runaway → "bar extends to infinity"). Only sub-viewport
-                // content (the Apple-1 screen + floating panels) drives the size.
-                if (disp.x > 0.0f && w->Size.x >= disp.x - 1.0f) continue;
-                if (disp.y > 0.0f && w->Size.y >= disp.y - 1.0f) continue;
-                live.x = ImMax(live.x, w->Pos.x + w->Size.x);
-                live.y = ImMax(live.y, w->Pos.y + w->Size.y);
-            }
-            if (live.x > 0.0f && live.y > 0.0f) {
-                wasmCanvasPixelW = std::max(wasmCanvasPixelW, (int)std::ceil(live.x + 8.0f));
-                wasmCanvasPixelH = std::max(wasmCanvasPixelH, (int)std::ceil(live.y + 8.0f));
-            }
-            // Hard safety cap: never let the canvas run away, whatever the layout.
-            wasmCanvasPixelW = std::min(wasmCanvasPixelW, 4096);
-            wasmCanvasPixelH = std::min(wasmCanvasPixelH, 4096);
-        }
-        if (wasmCanvasPixelW < 320) {
-            wasmCanvasPixelW = 320;
-        }
-        if (wasmCanvasPixelH < 240) {
-            wasmCanvasPixelH = 240;
-        }
-    }
+    // Canvas Web : la taille (hors plein écran) est fixée UNE fois par changement
+    // de profil dans applyMachineConfig → computeWasmCanvasSize, jamais recalculée
+    // par frame. En plein écran navigateur c'est la boucle principale
+    // (main_imgui.cpp) qui suit la taille CSS du viewport ; wasmCanvasPixelW/H
+    // n'est relu qu'à la sortie du plein écran. Rien à faire ici en fin de frame.
 #endif
 
     // Après tous les widgets (barre d’outils, menus, débogueur) pour que la vitesse

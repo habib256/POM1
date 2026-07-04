@@ -631,6 +631,14 @@ private:
     // Default OS-window size for a preset (layout bounding box, floored at the
     // POM1 Fantasy frame). Shared by applyMachineConfig + resetActivePresetLayout.
     void defaultOsWindowSize(int presetIndex, int& outW, int& outH) const;
+#if POM1_IS_WASM
+    // WASM canvas pixel size for a preset. Like defaultOsWindowSize but WITHOUT
+    // the Fantasy floor, so each profile's canvas shrinks/grows to its own
+    // declared layout extent. Computed once per profile change in
+    // applyMachineConfig (never per-frame) — the main loop then pushes
+    // wasmCanvasPixelW/H to the #canvas element.
+    void computeWasmCanvasSize(int presetIndex, int& outW, int& outH) const;
+#endif
 
     // CPU execution functions
     void startCpu();
