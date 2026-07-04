@@ -59,6 +59,14 @@ public:
     virtual void beginBatch() {}
     virtual void endBatch() {}
 
+    // Sync the host's LIVE display to the page/mode the editor is now editing:
+    // grMode selects lo-res GR vs HIRES, page2 selects page 2 vs page 1. A POM1/
+    // POM2 host flips its graphics soft switches (GRAPHICS + full screen + the
+    // page + HIRES/lo-res) so the on-screen card follows the editor's HGR/HGR2/
+    // GR/GR2 selector. Default no-op keeps the portable editor + headless/test
+    // hosts unaffected (their canvas is rendered from the page bytes regardless).
+    virtual void setDisplayMode(bool grMode, bool page2) { (void)grMode; (void)page2; }
+
     // Render an editor page into a kHiresWidth×kHiresHeight RGBA buffer through the
     // host's real video pipeline — the same renderer its screen uses, so the canvas
     // is pixel-identical to the emulator. `mono` selects a monochrome render for the
@@ -109,6 +117,13 @@ public:
     // (default: WASM, or Linux without zenity/kdialog) pickFilePath is never
     // available and the ImGui browser is the only path.
     virtual bool nativeFilePickerAvailable() const { return false; }
+
+    // Initial directory the file browser (native picker AND the ImGui fallback)
+    // should open in on first use. Empty (the default) = the portable editor
+    // falls back to the process CWD, keeping it standalone for POM2. POM1's host
+    // returns the writable sdcard/HGR/ folder so painted pages round-trip with
+    // the microSD SD CARD OS. Mirrors IBenchHost::browseDir().
+    virtual std::string browseDir() const { return {}; }
 
     // The host's built-in HGR sprite library, grouped by category, or empty when
     // the host ships none (the default). POM1 parses dev/lib/gen2/sprites/*.asm;

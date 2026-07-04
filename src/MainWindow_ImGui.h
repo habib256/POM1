@@ -227,6 +227,11 @@ private:
     bool showHardwareReference = false;
     bool showSoftwareReference = false;
     bool showWelcome = false;  // First-boot greeting panel next to the Apple 1 screen
+    // Boot profile chooser: a full-viewport preset selector shown before any
+    // other UI at startup when no explicit --preset was given. See
+    // renderProfileChooser() / the boot gate in render().
+    bool showProfileChooser = false;
+    bool bootChooserDecided = false;
     // Tutorials (Help > Tutorials). Each opens its own non-blocking window.
     bool showTutorialIntegerBasic = false;
     bool showTutorialApplesoft = false;
@@ -550,6 +555,10 @@ private:
     // binary loads `address` is the destination; for hex dumps the address
     // comes from the file (pass 0). Returns true on success.
     bool performMemoryLoad(const std::string& path, int fileType, uint16_t address);
+    // software/ sub-directory of the single active "content" card (reverse of
+    // performMemoryLoad's auto-enable map), or "" when ambiguous (0 or ≥2 cards).
+    // Seeds the Load/Save Memory picker into the right folder. See FileDialogs.
+    std::string memoryContextSubdir() const;
     void pasteCode();
     // Feed text through the Apple-1 keyboard FIFO (CR-normalised, printable,
     // capped at 4096). Public: the WASM browser-paste hook (pom1_paste_text in
@@ -565,6 +574,22 @@ private:
     void configMemory();
     void about();
     void applyMachineConfig(int presetIndex);
+    // Boot helpers: applyBootConfig applies a preset then layers the CLI
+    // overrides on top (the former first-frame block); called either from the
+    // boot gate (explicit --preset) or when the profile chooser is picked.
+    void applyBootConfig(int presetIndex);
+    void applyBootCliOverrides();
+    void renderProfileChooser();
+    // Boot straight into a graphical language environment from the chooser
+    // (Applesoft-on-video or LOGO on GEN2 HGR / TMS9918). Unlike a plain machine
+    // preset these are DevBench "targets": cold-start the in-ROM interpreter on
+    // the matching graphics card and drop its starter demo into the Bench editor.
+    // benchLang / benchMachine are the DevBench New-dialog axes (resolved via
+    // Pom1BenchHost::targetFor so a kP1Targets[] reorder can't desync this).
+    void launchLanguageFromChooser(int benchLang, int benchMachine);
+    // Open a pixel-art editor straight from the chooser: plug the matching
+    // graphics machine (GEN2 HGR or TMS9918) and raise its Paint editor window.
+    void launchPaintEditorFromChooser(bool tms);
     void finalizePendingCardPlugs();
     void applyPendingLayout(const char* windowName);
     // Restore every window (and the main OS window) to the active preset's

@@ -47,6 +47,27 @@ bool Pom1HgrPaintHost::nativeFilePickerAvailable() const
     return pom1::NativeFileDialog::isAvailable();
 }
 
+// Open the file browser in sdcard/HGR/. That folder is on the microSD card's
+// writable filesystem (on macOS software/ is a read-only symlink, sdcard/ is
+// seeded writable), so a painted page saved there as NAME#062000 is directly
+// loadable from the Apple-1 with the SD CARD OS ("CD HGR" then "LOAD NAME").
+// Create the sub-dir on demand; fall back to "" (→ editor uses CWD) if there
+// is no sdcard/ root at all.
+std::string Pom1HgrPaintHost::browseDir() const
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    for (const char* root : {"sdcard", "../sdcard", "../../sdcard"}) {
+        if (!fs::is_directory(root, ec)) continue;
+        fs::path hgr = fs::path(root) / "HGR";
+        if (!fs::is_directory(hgr, ec)) fs::create_directories(hgr, ec);
+        fs::path canon = fs::canonical(hgr, ec);
+        if (!ec) return canon.string();
+        return hgr.string();   // creation failed to canonicalise — still usable
+    }
+    return std::string();
+}
+
 // ── Built-in HGR sprite library (dev/lib/gen2/sprites/*.asm) ─────────────────
 // The GEN2 HGR SCROLL-O-SPRITES catalogue is shipped as ca65 sources: each
 // sprite is 16 rows × 3 bytes emitted as `.byte $xx, ...` under a per-sprite
@@ -125,6 +146,10 @@ std::vector<hgrpaint::DevSpriteCategory> Pom1HgrPaintHost::devSprites()
 void Pom1HgrPaintHost::pokeByte(uint16_t addr, uint8_t value) { writer_.poke(addr, value); }
 void Pom1HgrPaintHost::beginBatch() { writer_.begin(); }
 void Pom1HgrPaintHost::endBatch()   { writer_.end(); }
+void Pom1HgrPaintHost::setDisplayMode(bool grMode, bool page2)
+{
+    if (emu_) emu_->setGen2DisplayMode(grMode, page2);
+}
 
 void Pom1HgrPaintHost::renderHgrPage(const uint8_t* page8k, uint32_t* outRgba, bool mono,
                                      bool grMode)
@@ -154,7 +179,9 @@ void Pom1HgrPaintHost::renderHgrPage(const uint8_t* page8k, uint32_t* outRgba, b
 
 bool Pom1HgrPaintHost::loadImage(const std::string& path, uint16_t baseAddr, std::string& err)
 {
-    return emu_ && emu_->loadBinaryToRam(path, baseAddr, err);
+    // pauseCpu=false: loading an image into the HGR framebuffer must NOT freeze
+    // the emulator (the CPU keeps running; the load is race-free under the lock).
+    return emu_ && emu_->loadBinaryToRam(path, baseAddr, err, /*pauseCpu=*/false);
 }
 
 bool Pom1HgrPaintHost::saveImage(const std::string& path, uint16_t baseAddr, int sizeBytes,

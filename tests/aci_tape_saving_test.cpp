@@ -141,6 +141,28 @@ bool verifyRoundTrip(const std::string& tapePath,
 
 int main(int argc, char** argv)
 {
+    // ── Unit regression: first $C000 toggle at cycle 0 ───────────────────────
+    // A fresh deck has currentCycle == 0. The recorder must NOT overload
+    // `lastOutputToggleCycle == 0` as its "not started" sentinel — otherwise the
+    // second toggle re-initialises the session and the first edge interval [0,T]
+    // is silently dropped (recordedInitialLevel is clobbered too). Toggles at
+    // cycles 0/100/200 must yield BOTH intervals.
+    {
+        CassetteDevice cd;                       // ctor → reset(): currentCycle = 0
+        cd.toggleOutput();                       // first edge AT cycle 0
+        cd.advanceCycles(100);
+        cd.toggleOutput();                       // edge at cycle 100 → interval [0,100]
+        cd.advanceCycles(100);
+        cd.toggleOutput();                       // edge at cycle 200 → interval [100,200]
+        const size_t n = cd.getRecordedTransitionCount();
+        if (n != 2) {
+            std::fprintf(stderr,
+                "FAIL: cycle-0 recording dropped an edge — got %zu intervals, expected 2\n", n);
+            return 1;
+        }
+        std::printf("cycle-0 recording: OK (2 intervals captured)\n");
+    }
+
     // Target range is configurable so the test can be narrowed/widened for
     // debugging. Defaults: 64 bytes at $0300-$033F — enough to exercise
     // multi-byte framing while keeping the test under ~2 s.

@@ -35,6 +35,13 @@ public:
     // creates the first document.
     bool loadStarterForTargetIfClean(int targetIndex);
 
+    // One-call path used by the boot profile chooser to jump straight into a
+    // graphical language environment: cold-start the target's interpreter via the
+    // host (selectTargetExplicit — switches machine preset + brings up the BASIC/
+    // LOGO prompt), load its starter demo into a clean editor tab, and surface the
+    // status/console. Returns the prepared target index, or -1 if out of range.
+    int prepareTargetWithStarter(int targetIndex);
+
 private:
     // One open file = one editor tab.
     struct Doc {

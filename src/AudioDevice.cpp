@@ -64,8 +64,25 @@
 #  endif
 #endif
 
+// GCC's -Wstringop-overflow mis-analyses miniaudio's 64-bit atomic loads
+// (ma_atomic_load_64 → __atomic_load_n) as writing 8 bytes "into a region of
+// size 0 … at address zero" — a false positive in the vendored implementation.
+// Silence it locally so the project keeps its warning profile intact.
 #define MINIAUDIO_IMPLEMENTATION
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wall"
+#pragma clang diagnostic ignored "-Wextra"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
 #include "third_party/miniaudio.h"
+#ifdef __clang__
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 #if defined(_WIN32)
 #  ifdef min

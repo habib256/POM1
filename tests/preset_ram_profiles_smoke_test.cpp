@@ -5,6 +5,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -94,16 +95,80 @@ int readmePresetRowCount(const std::string& readme)
     return count;
 }
 
+// The machine-config core of one preset entry (everything a DevBench mirror
+// must keep in lockstep — name/description/layout deliberately excluded).
+struct PresetEntry {
+    std::string name;
+    int ramKB;
+    std::string basicType;
+    std::vector<std::string> bools;   // ordered card-enable flags
+    std::string codeTankRom;          // "" when the field is nullptr
+};
+
+// Ordered list of the `true`/`false` tokens in an entry — the card-enable bool
+// vector. Layout placements carry no bools, so this is layout-independent.
+std::vector<std::string> boolTokens(const std::string& entry)
+{
+    std::vector<std::string> out;
+    for (std::size_t i = 0; i < entry.size();) {
+        const bool isT = entry.compare(i, 4, "true") == 0;
+        const bool isF = entry.compare(i, 5, "false") == 0;
+        const std::size_t len = isT ? 4 : (isF ? 5 : 0);
+        const bool boundaryL = i == 0 || !std::isalnum(static_cast<unsigned char>(entry[i - 1]));
+        const bool boundaryR = i + len >= entry.size() ||
+                               !std::isalnum(static_cast<unsigned char>(entry[i + len]));
+        if (len && boundaryL && boundaryR) {
+            out.push_back(isT ? "true" : "false");
+            i += len;
+        } else {
+            ++i;
+        }
+    }
+    return out;
+}
+
+// The CodeTank ROM path (the only "roms/..." literal in an entry), or "" when
+// the codeTankRomPath field is nullptr.
+std::string codeTankRom(const std::string& entry)
+{
+    const std::size_t begin = entry.find("\"roms/");
+    if (begin == std::string::npos) return "";
+    const std::size_t end = entry.find('"', begin + 1);
+    if (end == std::string::npos) return "";
+    return entry.substr(begin + 1, end - begin - 1);
+}
+
+// Ordered list of the integer arguments to every `presetItem(N)` call in the
+// Presets menu source. The `auto presetItem = [&](int i)` lambda definition has
+// a space before `=` (no `(` immediately after the name) so it is not matched.
+std::vector<int> menuPresetIndices(const std::string& menu)
+{
+    std::vector<int> out;
+    const std::string key = "presetItem(";
+    std::size_t pos = 0;
+    while ((pos = menu.find(key, pos)) != std::string::npos) {
+        std::size_t j = pos + key.size();
+        while (j < menu.size() && std::isspace(static_cast<unsigned char>(menu[j]))) ++j;
+        if (j < menu.size() && std::isdigit(static_cast<unsigned char>(menu[j]))) {
+            out.push_back(std::atoi(menu.c_str() + j));
+        }
+        pos = j;
+    }
+    return out;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
 {
     // argv[1] = MainWindow_Presets.cpp (required);
-    // argv[2] = README.md (optional — enables the preset-count lockstep check).
+    // argv[2] = README.md (optional — enables the preset-count lockstep check);
+    // argv[3] = MainWindow_Menu.cpp (optional — enables the menu-completeness check).
     assert(argc >= 2);
     const std::string source = readFile(argv[1]);
 
     std::vector<std::string> failures;
+    std::vector<PresetEntry> entries;   // one per kMachinePresets[] entry, in order
     int presets = 0;
     int excluded = 0;
     int checked = 0;
@@ -135,6 +200,7 @@ int main(int argc, char** argv)
             const std::string name = firstQuotedString(entry);
             const int ramKB = ramKbBeforeBasicType(entry);
             const std::string basicType = basicTypeToken(entry);
+            entries.push_back({name, ramKB, basicType, boolTokens(entry), codeTankRom(entry)});
             const std::string lowerName = lowerAscii(name);
             const bool fantasy = lowerName.find("fantasy") != std::string::npos;
             if (!fantasy) {
@@ -190,6 +256,55 @@ int main(int argc, char** argv)
         }
     }
 
+    // DevBench mirror guard: presets 0/1/2 (the CC65 / TMS9918 / GEN2 HGR
+    // Development Benches) must mirror the machine config of the real presets
+    // 4 / 9 / 11 (CLAUDE.md: "Each MIRRORS an existing preset's machine config").
+    // name/description/layout legitimately differ; RAM, BASIC, the card bool
+    // vector and the CodeTank ROM must not.
+    const std::pair<int, int> mirrors[] = {{0, 4}, {1, 9}, {2, 11}};
+    for (const auto& m : mirrors) {
+        if (m.first >= static_cast<int>(entries.size()) ||
+            m.second >= static_cast<int>(entries.size())) {
+            failures.push_back("DevBench mirror pair (" + std::to_string(m.first) + ","
+                               + std::to_string(m.second) + ") out of range");
+            continue;
+        }
+        const PresetEntry& a = entries[m.first];
+        const PresetEntry& b = entries[m.second];
+        if (a.ramKB != b.ramKB || a.basicType != b.basicType ||
+            a.bools != b.bools || a.codeTankRom != b.codeTankRom) {
+            failures.push_back("DevBench preset " + std::to_string(m.first) + " (" + a.name
+                               + ") no longer mirrors preset " + std::to_string(m.second)
+                               + " (" + b.name + ")");
+        }
+    }
+
+    // Menu-completeness guard: MainWindow_Menu.cpp hardcodes presetItem(N) — the
+    // one preset site not driven by kMachinePresetCount — so a new preset would
+    // be reachable via --preset yet invisible in the GUI. Require the menu to list
+    // every index exactly once.
+    if (argc >= 4) {
+        const std::string menu = readFile(argv[3]);
+        const std::vector<int> menuIdx = menuPresetIndices(menu);
+        std::vector<bool> seen(entries.size(), false);
+        for (int n : menuIdx) {
+            if (n < 0 || n >= static_cast<int>(entries.size())) {
+                failures.push_back("Presets menu references preset " + std::to_string(n)
+                                   + " outside [0," + std::to_string(static_cast<int>(entries.size()) - 1) + "]");
+            } else if (seen[static_cast<std::size_t>(n)]) {
+                failures.push_back("Presets menu lists preset " + std::to_string(n) + " more than once");
+            } else {
+                seen[static_cast<std::size_t>(n)] = true;
+            }
+        }
+        for (std::size_t i = 0; i < entries.size(); ++i) {
+            if (!seen[i]) {
+                failures.push_back("Presets menu is missing preset " + std::to_string(i)
+                                   + " (" + entries[i].name + ")");
+            }
+        }
+    }
+
     if (!failures.empty()) {
         std::cerr << "Preset realism invariant failed:\n";
         for (const auto& failure : failures) {
@@ -205,6 +320,10 @@ int main(int argc, char** argv)
     if (readmeRows >= 0) {
         std::cout << " README preset table matches source (" << readmeRows
                   << " rows == " << presets << " entries).";
+    }
+    std::cout << " DevBench mirrors (0/1/2 == 4/9/11) hold.";
+    if (argc >= 4) {
+        std::cout << " Presets menu lists all " << presets << " presets.";
     }
     std::cout << "\n";
     return 0;

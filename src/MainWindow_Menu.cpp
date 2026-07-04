@@ -38,6 +38,10 @@ void MainWindow_ImGui::renderMenuBar()
             jukeBoxChipMode = JukeBox::ChipMode::Flash;
             cffa1Enabled = false;
             microSDEnabled = false;
+            // setJukeBoxEnabled(true) → setMicroSDEnabled(false) → setIECCardEnabled(false)
+            // on the bus; mirror the IEC UI flag or its window keeps rendering an
+            // unplugged card (renderIECCardWindow gates on iecCardEnabled).
+            iecCardEnabled = false;
             wifiModemEnabled = false;
             sidEnabled = false;
             codeTankEnabled = false;
@@ -475,6 +479,10 @@ void MainWindow_ImGui::renderMenuBar()
                 if (cffa1Enabled) {
                     microSDEnabled = false; // sync UI
                     jukeBoxEnabled = false;
+                    // setCFFA1Enabled → setMicroSDEnabled(false) → setIECCardEnabled(false)
+                    // on the bus; mirror the IEC UI flag or its window keeps rendering
+                    // an unplugged card (renderIECCardWindow gates on iecCardEnabled).
+                    iecCardEnabled = false;
                 }
             }
             showHardwareTooltip(
@@ -551,6 +559,14 @@ void MainWindow_ImGui::renderMenuBar()
                         // Mutually exclusive with the prototype SID and with TMS9918.
                         sidEnabled = false;
                         tms9918Enabled = false;
+                        if (codeTankEnabled) {
+                            // setSIDSpecialEditionEnabled → setTMS9918Enabled(false)
+                            // cascade-unplugs CodeTank (its daughterboard); mirror
+                            // the UI flags like the TMS9918 toggle path does.
+                            codeTankEnabled = false;
+                            showCodeTankLibrary = false;
+                            codeTankPendingWozRunAt = 0.0;
+                        }
                     }
                 }
             }
@@ -747,6 +763,10 @@ void MainWindow_ImGui::renderToolbar()
             jukeBoxChipMode = JukeBox::ChipMode::Flash;
             cffa1Enabled = false;
             microSDEnabled = false;
+            // setJukeBoxEnabled(true) → setMicroSDEnabled(false) → setIECCardEnabled(false)
+            // on the bus; mirror the IEC UI flag or its window keeps rendering an
+            // unplugged card (renderIECCardWindow gates on iecCardEnabled).
+            iecCardEnabled = false;
             wifiModemEnabled = false;
             sidEnabled = false;
             codeTankEnabled = false;
@@ -826,6 +846,12 @@ void MainWindow_ImGui::renderToolbar()
             if (microSDEnabled) {
                 cffa1Enabled = false; // mutual exclusion
                 jukeBoxEnabled = false;
+            } else {
+                // setMicroSDEnabled(false) → setIECCardEnabled(false) on the bus;
+                // mirror the IEC UI flag or its window keeps rendering an unplugged
+                // card (renderIECCardWindow gates on iecCardEnabled). Matches the
+                // Hardware-menu microSD path.
+                iecCardEnabled = false;
             }
             setStatusMessage(microSDEnabled ? "P-LAB microSD Card plugged - type 8000R"
                                             : "P-LAB microSD Card unplugged", 2.0f);
@@ -845,6 +871,10 @@ void MainWindow_ImGui::renderToolbar()
             if (cffa1Enabled) {
                 microSDEnabled = false; // mutual exclusion
                 jukeBoxEnabled = false;
+                // setCFFA1Enabled → setMicroSDEnabled(false) → setIECCardEnabled(false)
+                // on the bus; mirror the IEC UI flag or its window keeps rendering
+                // an unplugged card. Matches the Hardware-menu CFFA1 path.
+                iecCardEnabled = false;
             }
             setStatusMessage(cffa1Enabled ? "CFFA1 CompactFlash plugged - type 9006R"
                                           : "CFFA1 CompactFlash unplugged", 2.0f);

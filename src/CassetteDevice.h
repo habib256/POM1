@@ -282,6 +282,11 @@ private:
     bool outputLevel = false;
     bool recordedInitialLevel = false;
     uint64_t lastOutputToggleCycle = 0;
+    // True once a recording session has captured its initial level. Explicit
+    // sentinel because `lastOutputToggleCycle == 0` can't mean "not started" —
+    // cycle 0 is a valid toggle time. Not serialized: reconstructed on
+    // deserialize from lastOutputToggleCycle/recordedDurations.
+    bool recordingStarted_ = false;
     std::vector<uint32_t> recordedDurations;
 
     bool inputLevel = false;

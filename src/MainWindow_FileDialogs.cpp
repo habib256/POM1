@@ -50,6 +50,21 @@ std::string resolveDataDir(std::initializer_list<const char*> probes)
     return std::string();
 }
 
+// Append a context sub-directory to a resolved base dir, but only when that
+// sub-directory actually exists on disk. `base` is a canonical absolute path
+// (from resolveDataDir); `sub` is a plain folder name like "Graphic HGR" (or
+// empty). Returns `base` unchanged when `sub` is empty or missing — so the
+// picker never opens on a non-existent path.
+std::string resolveMemoryDefaultDir(const std::string& base, const std::string& sub)
+{
+    if (base.empty() || sub.empty()) return base;
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path candidate = fs::path(base) / sub;
+    if (fs::is_directory(candidate, ec)) return candidate.string();
+    return base;
+}
+
 // "name.bin" → "bin" (lowercase). Empty when there's no extension.
 std::string lowerExt(const std::string& path)
 {
@@ -60,6 +75,33 @@ std::string lowerExt(const std::string& path)
                    [](unsigned char c) { return std::tolower(c); });
     return ext;
 }
+}
+
+// Returns the software/ sub-directory matching the SINGLE active "content" card,
+// or "" when zero or more-than-one such card is plugged (ambiguous → stay at the
+// software/ root). This is the reverse of the auto-enable-by-source-dir mapping
+// in performMemoryLoad(): loading from software/Graphic HGR/ enables GEN2, so
+// with GEN2 the sole content card we default the picker back into Graphic HGR/.
+// microSD is intentionally excluded (its content lives on the SD filesystem, not
+// under software/); CodeTank implies tms9918Enabled so it maps to Graphic TMS9918.
+std::string MainWindow_ImGui::memoryContextSubdir() const
+{
+    struct { bool on; const char* dir; } cards[] = {
+        { graphicsCardEnabled, "Graphic HGR" },
+        { tms9918Enabled,      "Graphic TMS9918" },
+        { sidEnabled,          "SOUND SID" },
+        { wifiModemEnabled,    "NET" },
+        { a1ioRtcEnabled,      "a1io_rtc" },
+        { gt6144Enabled,       "Graphic gt-6144" },
+    };
+    const char* found = nullptr;
+    for (const auto& c : cards) {
+        if (c.on) {
+            if (found) return std::string();   // ≥2 content cards → ambiguous
+            found = c.dir;
+        }
+    }
+    return found ? std::string(found) : std::string();
 }
 
 void MainWindow_ImGui::loadMemory()
@@ -75,7 +117,9 @@ void MainWindow_ImGui::loadMemory()
             { "Binary (*.bin)", {"bin"} },
             { "Hex dump / Woz monitor (*.txt)", {"txt"} },
         };
-        std::string defDir = resolveDataDir({"software", "../software", "../../software"});
+        std::string defDir = resolveMemoryDefaultDir(
+            resolveDataDir({"software", "../software", "../../software"}),
+            memoryContextSubdir());
         std::string picked;
         if (!pom1::NativeFileDialog::openFile(window, "Load Memory",
                                               defDir, filters, picked))
@@ -293,7 +337,12 @@ void MainWindow_ImGui::renderLoadDialog()
                     for (const auto& d : dirs) {
                         if (std::filesystem::is_directory(d)) {
                             loadDlg.softAsmRoot = std::filesystem::canonical(d).string();
-                            loadDlg.currentDir = loadDlg.softAsmRoot;
+                            // Start inside the active card's sub-folder when it is
+                            // the sole content card (loadDlg.reset() clears these on
+                            // every open, so this re-seeds the context each time).
+                            // softAsmRoot stays the root so ".." nav is still confined.
+                            loadDlg.currentDir = resolveMemoryDefaultDir(
+                                loadDlg.softAsmRoot, memoryContextSubdir());
                             break;
                         }
                     }
@@ -705,8 +754,9 @@ void MainWindow_ImGui::renderSaveDialog()
                     filters.push_back({"Binary (*.bin)", {"bin"}});
                 else
                     filters.push_back({"Hex dump (*.txt)", {"txt"}});
-                std::string defDir = resolveDataDir({"software", "../software",
-                                                     "../../software"});
+                std::string defDir = resolveMemoryDefaultDir(
+                    resolveDataDir({"software", "../software", "../../software"}),
+                    memoryContextSubdir());
                 std::string picked;
                 if (!pom1::NativeFileDialog::saveFile(window, "Save Memory",
                                                       defDir, path,

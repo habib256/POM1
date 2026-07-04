@@ -209,6 +209,47 @@ int main() {
         std::printf("[T5] OK — no-breakpoint path clean\n");
     }
 
+    // ---- Test 6: breakpoint on an ISR entry reached via IRQ -----------
+    // Regression: run() must service a pending interrupt (which vectors PC to
+    // the handler) and THEN test the breakpoint, so a breakpoint on the ISR
+    // entry fires BEFORE the first handler instruction. The old order folded
+    // vectoring + first-instruction into one atomic step(), silently stepping
+    // over the breakpoint (the "break in my ISR" case).
+    {
+        Memory memory;
+        memory.setTestMode(true);
+        memory.setWriteInRom(true);
+        uint8_t* ram = memory.getMemoryPointerMutable();
+
+        // Main program spins at $0400; ISR at $0500 sets A=$AA then RTI.
+        ram[0x0400] = 0x4C; ram[0x0401] = 0x00; ram[0x0402] = 0x04;  // JMP $0400
+        ram[0x0500] = 0xA9; ram[0x0501] = 0xAA;                      // LDA #$AA
+        ram[0x0502] = 0x40;                                          // RTI
+        ram[0xFFFE] = 0x00; ram[0xFFFF] = 0x05;                      // IRQ vector -> $0500
+
+        M6502 cpu(&memory);
+        cpu.setProgramCounter(0x0400);
+        cpu.setStackPointer(0xFF);
+        cpu.setAccumulator(0x11);          // sentinel: ISR body must not overwrite it
+        cpu.setStatusRegister(0x20);       // U set, I CLEAR so the IRQ is serviced
+        cpu.setBreakpoint(0x0500);         // breakpoint on the ISR entry
+        cpu.setIRQ(1);
+        cpu.start();
+        cpu.run(200);
+
+        // The breakpoint fired at the ISR entry, before LDA #$AA executed.
+        assert(cpu.getProgramCounter() == 0x0500);
+        assert(cpu.isBreakpointTripped());
+        assert(!cpu.isRunning());
+        assert(cpu.getAccumulator() == 0x11);          // ISR body did NOT run
+        // The interrupt entry DID happen (3 bytes pushed) — proves we reached
+        // $0500 by vectoring, and the I flag was set by IRQ entry.
+        assert(cpu.getStackPointer() == 0xFC);
+        assert((cpu.getStatusRegister() & 0x04) != 0); // I set by handleIRQ
+        std::printf("[T6] OK — IRQ-vectored breakpoint at $%04X, A=$%02X (ISR body skipped)\n",
+                    cpu.getProgramCounter(), cpu.getAccumulator());
+    }
+
     std::printf("OK\n");
     return 0;
 }

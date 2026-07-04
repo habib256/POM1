@@ -29,6 +29,37 @@ using hgrpaint::HgrColor;
 
 namespace {
 
+// microSD "SD CARD OS" tagged-filename helpers. That firmware stores no header:
+// a file's type + load address live in its NAME, as "NAME#TTAAAA" (TT = type,
+// 06 = binary; AAAA = hex load address). So an HGR page saved for $2000 must be
+// named "NAME#062000" for `@L NAME` / `LOAD NAME` to place it at $2000. See
+// src/MicroSD.cpp::parseTag. `loadAddr` is the page base ($2000/$4000, or the
+// $0400/$0800 lo-res base — same convention, type still 06 = binary).
+std::string sdCardTag(uint16_t loadAddr)
+{
+    char t[8];
+    std::snprintf(t, sizeof(t), "#06%04X", loadAddr);
+    return std::string(t);
+}
+
+// Turn a raw basename into an SD-CARD-OS-loadable default: strip a legacy ".hgr"
+// extension, and append "#06AAAA" unless the name is already tagged (contains
+// '#'). Empty → "IMAGE". Keeps the round-trip @S/@L compatible.
+std::string sdCardDefaultName(std::string base, uint16_t loadAddr)
+{
+    // Drop a trailing ".hgr" (any case) — the tag replaces the extension.
+    auto dot = base.find_last_of('.');
+    if (dot != std::string::npos) {
+        std::string ext = base.substr(dot + 1);
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (ext == "hgr") base.erase(dot);
+    }
+    if (base.empty()) base = "IMAGE";
+    if (base.find('#') != std::string::npos) return base;   // already tagged
+    return base + sdCardTag(loadAddr);
+}
+
 // Fixed zoom ladder (HGR-09), 1x .. 16x. Mouse-wheel + Fit step the index.
 const int kZoomLadder[] = { 1, 2, 3, 4, 6, 8, 12, 16 };
 const int kZoomLadderCount = static_cast<int>(sizeof(kZoomLadder) / sizeof(kZoomLadder[0]));
@@ -567,7 +598,14 @@ void hgrpaint::HgrPaintEditor::renderTopBar()
         if (i != 0) ImGui::SameLine();
         const bool sel = (grMode == kPages[i].gr && page2 == kPages[i].p2);
         if (sel) ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(58, 96, 150, 255));
-        if (ImGui::Button(kPages[i].label)) switchPage(kPages[i].gr, kPages[i].p2);
+        if (ImGui::Button(kPages[i].label)) {
+            switchPage(kPages[i].gr, kPages[i].p2);
+            // Drive the live card's soft switches to the picked page/mode so the
+            // GEN2 screen follows the editor. Done on every click (even re-picking
+            // the current page) so it also re-asserts the display if a program had
+            // left the card in text/another page.
+            if (host) host->setDisplayMode(kPages[i].gr, kPages[i].p2);
+        }
         if (sel) ImGui::PopStyleColor();
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("%s — switch page/mode (clears undo history)", kPages[i].tip);
@@ -646,7 +684,7 @@ void hgrpaint::HgrPaintEditor::renderToolPanel()
         if (ImGui::Button("Copy")) copySelection(false);
         ImGui::SameLine();
         if (ImGui::Button("Cut"))  copySelection(true);
-        if (ImGui::Button("Paste") && clip.w > 0) {
+        if (ImGui::Button("Paste") && clip.w > 0 && !grMode) {   // paste is a no-op in lo-res GR
             if (dragging) { commitStroke(); dragging = false; }   // flush an open stroke
             pasting = true; pasteX = std::min(selX0, selX1); pasteY = std::min(selY0, selY1);
         }
@@ -1095,10 +1133,6 @@ void hgrpaint::HgrPaintEditor::renderCanvas(const std::vector<uint8_t>& memory)
 
 void hgrpaint::HgrPaintEditor::openImportPreview(const std::string& path)
 {
-    if (grMode) {   // the ii-pix importer targets the HIRES NTSC page only
-        status = "Image import is HIRES-only; switch to HGR/HGR2";
-        return;
-    }
     int w = 0, h = 0;
     std::vector<uint8_t> rgba;
     std::string err;
@@ -1144,7 +1178,9 @@ void hgrpaint::HgrPaintEditor::renderImportPreview()
     if (!ImGui::BeginPopupModal("Import preview##hgr", nullptr, ImGuiWindowFlags_NoCollapse))
         return;
 
-    ImGui::TextUnformatted("Image \xE2\x86\x92 HGR  (ii-pix: CAM16-UCS perceptual dithering)");
+    ImGui::TextUnformatted(grMode
+        ? "Image \xE2\x86\x92 GR lo-res  (40x48 blocks, CAM16-UCS perceptual dithering)"
+        : "Image \xE2\x86\x92 HGR  (ii-pix: CAM16-UCS perceptual dithering)");
     ImGui::TextDisabled("%s  \xE2\x80\x94  %d x %d source", importSrcName.c_str(), importSrcW, importSrcH);
     ImGui::Separator();
 
@@ -1190,11 +1226,17 @@ void hgrpaint::HgrPaintEditor::renderImportPreview()
             opt.cropX0 = importCropX0; opt.cropY0 = importCropY0;
             opt.cropX1 = importCropX1; opt.cropY1 = importCropY1;
         }
+        // GR (lo-res) has no NTSC coupling — a flat 40×48 grid of 16-colour blocks
+        // in a 1 KB text page — so it uses the simple block quantiser and renders
+        // through the host with grMode=true. HIRES keeps the ii-pix path.
         importPage.assign(kHiresSize, 0);
-        hgrpaint::imageToHgrPage(importSrcRgba.data(), importSrcW, importSrcH, opt, importPage.data());
+        if (grMode)
+            hgrpaint::imageToGrPage(importSrcRgba.data(), importSrcW, importSrcH, opt, importPage.data());
+        else
+            hgrpaint::imageToHgrPage(importSrcRgba.data(), importSrcW, importSrcH, opt, importPage.data());
         importPreview.assign(static_cast<size_t>(kHiresWidth) * kHiresHeight, 0);
         if (host) {
-            host->renderHgrPage(importPage.data(), importPreview.data(), false);
+            host->renderHgrPage(importPage.data(), importPreview.data(), false, grMode);
             importPreviewTex = host->uploadTexture(importPreviewTex, importPreview.data(),
                                                    kHiresWidth, kHiresHeight, /*linear=*/false);
         }
@@ -1352,7 +1394,12 @@ void hgrpaint::HgrPaintEditor::renderImportPreview()
 
     if (ImGui::Button("Apply to page", ImVec2(130, 0)) && !importPage.empty()) {
         beginStroke(true);
-        for (int off = 0; off < static_cast<int>(shadow.size()); ++off) {
+        // Bound by pageBytes(), not shadow.size(): in GR mode baseAddr() is $0400
+        // and the live page is only 0x400 bytes (the importer fills just those),
+        // so iterating the full 0x2000 shadow would poke zeros past the page — see
+        // the same guard on the save path.
+        const int limit = std::min(pageBytes(), static_cast<int>(shadow.size()));
+        for (int off = 0; off < limit; ++off) {
             if (importPage[off] == shadow[off]) continue;
             const uint16_t addr = static_cast<uint16_t>(baseAddr() + off);
             stroke.push_back({addr, shadow[off], importPage[off]});
@@ -1374,15 +1421,23 @@ void hgrpaint::HgrPaintEditor::openFileBrowser(bool forSave, int saveKind, bool 
     browserImport = importMode;
     browserSaveKind = saveKind;
     if (browserDir.empty()) {
-        std::error_code ec;
-        browserDir = std::filesystem::current_path(ec).string();
-        if (ec || browserDir.empty()) browserDir = ".";
+        // Prefer the host's context folder (POM1 → sdcard/HGR/), else the CWD.
+        if (host) browserDir = host->browseDir();
+        if (browserDir.empty()) {
+            std::error_code ec;
+            browserDir = std::filesystem::current_path(ec).string();
+            if (ec || browserDir.empty()) browserDir = ".";
+        }
     }
     // Seed a default filename for Save from the current path's basename.
     std::string defName;
     if (forSave) {
         std::string base = std::filesystem::path(filePath).filename().string();
-        if (base.empty()) base = (saveKind == 1) ? "image.png" : "image.hgr";
+        if (saveKind == 1) {                          // PNG export
+            if (base.empty()) base = "image.png";
+        } else {                                      // raw HGR page → SD-card tag
+            base = sdCardDefaultName(base, baseAddr());
+        }
         std::snprintf(browserSaveName, sizeof(browserSaveName), "%s", base.c_str());
         defName = base;
     }
@@ -1395,7 +1450,14 @@ void hgrpaint::HgrPaintEditor::openFileBrowser(bool forSave, int saveKind, bool 
         if (importMode)        { title = "Import picture";  desc = "Images (PNG, JPG, BMP)"; ext = "png,jpg,jpeg,bmp,gif,tga"; }
         else if (saveKind == 1){ title = "Export PNG";      desc = "PNG image";             ext = "png"; }
         else                   { title = forSave ? "Save HGR image" : "Load HGR image";
-                                 desc  = "HGR/raw page";     ext = "hgr"; }
+                                 // No extension filter: SD CARD OS images are named
+                                 // NAME#062000 (no extension), so *.hgr would hide
+                                 // them. Empty ext = all files, and on save it also
+                                 // disables saveFile's single-extension auto-append
+                                 // so the #06 tag isn't mangled into "...#062000.hgr".
+                                 desc = forSave ? "HGR raw (saved as NAME#06xxxx)"
+                                                : "HGR raw / SD-card image (NAME#06xxxx)";
+                                 ext  = ""; }
         std::string picked;
         if (host->pickFilePath(forSave, title, desc, ext, browserDir, defName, picked)) {
             // Track where the user went so the next pick + the ImGui fallback
@@ -1431,11 +1493,24 @@ bool hgrpaint::HgrPaintEditor::performFileAction(bool forSave, int saveKind,
     if (!forSave) {                                       // Load raw page
         std::snprintf(filePath, sizeof(filePath), "%s", fullPath.c_str());
         std::string err;
-        if (host && host->loadImage(filePath, baseAddr(), err))
-            status = "Loaded " + name + " into $" + (page2 ? "4000" : "2000");
-        else
-            status = "Load failed: " + (err.empty() ? std::string("(bad file)") : err);
-        return true;
+        // Purge the page first: loadImage writes only the file's own length, so a
+        // file shorter than the full page (e.g. an 8184-byte "no screen-hole"
+        // dump) would otherwise leave a stale tail. renderCanvas re-reads VRAM
+        // into `shadow` next frame, so the canvas reflects the load by itself.
+        if (host) {
+            host->beginBatch();
+            for (int off = 0; off < pageBytes(); ++off)
+                host->pokeByte(static_cast<uint16_t>(baseAddr() + off), 0);
+            host->endBatch();
+        }
+        if (host && host->loadImage(filePath, baseAddr(), err)) {
+            char addr[8];
+            std::snprintf(addr, sizeof(addr), "%04X", baseAddr());  // grMode-aware
+            status = "Loaded " + name + " into $" + addr;
+            return true;
+        }
+        status = "Load failed: " + (err.empty() ? std::string("(bad file)") : err);
+        return false;                                     // surface the failure
     }
 
     // Save (raw page dump or PNG export).
@@ -1448,6 +1523,18 @@ bool hgrpaint::HgrPaintEditor::performFileAction(bool forSave, int saveKind,
         status = ok ? ("Exported PNG: " + fullPath)
                     : ("PNG export failed: " + (err.empty() ? std::string("(error)") : err));
     } else {                                              // raw page dump
+        // Guarantee the SD-CARD-OS tag: if the final name has no '#', append
+        // "#06AAAA" (type 06 = binary, AAAA = page load address) so the file is
+        // directly `@L NAME` / `LOAD NAME`-able at its page address on the
+        // Apple-1. Operates on the basename only; the directory is preserved.
+        fs::path outP(fullPath);
+        if (outP.filename().string().find('#') == std::string::npos) {
+            outP = outP.parent_path() /
+                   sdCardDefaultName(outP.filename().string(), baseAddr());
+        }
+        const std::string outPath = outP.string();
+        std::snprintf(filePath, sizeof(filePath), "%s", outPath.c_str());
+
         // HIRES only: bake the POM1HGR tag into the unused screen-hole bytes
         // ($1FF8-$1FFF) — past the last displayed byte, so invisible. The lo-res
         // page is just 1 KB and has no such screen hole, so skip it.
@@ -1460,9 +1547,10 @@ bool hgrpaint::HgrPaintEditor::performFileAction(bool forSave, int saveKind,
                                          static_cast<uint8_t>(kTag[i]));
             }
         }
-        ok = host && host->saveImage(fullPath, baseAddr(), pageBytes(), err);
-        status = ok ? (grMode ? "Saved 1 KB lo-res GR page"
-                              : "Saved 8 KB HGR (+POM1HGR tag)")
+        ok = host && host->saveImage(outPath, baseAddr(), pageBytes(), err);
+        const std::string outName = fs::path(outPath).filename().string();
+        status = ok ? (grMode ? ("Saved 1 KB lo-res GR page: " + outName)
+                              : ("Saved 8 KB HGR (+POM1HGR tag): " + outName))
                     : ("Save failed: " + (err.empty() ? std::string("(error)") : err));
     }
     return ok;
@@ -1481,7 +1569,8 @@ void hgrpaint::HgrPaintEditor::renderFileBrowser()
 
     ImGui::TextUnformatted(browserForSave
         ? (browserSaveKind == 1 ? "Save PNG export" : "Save HGR image (8 KB)")
-        : (browserImport ? "Import picture (PNG / JPG / BMP) — converted to HGR"
+        : (browserImport ? (grMode ? "Import picture (PNG / JPG / BMP) — converted to GR (lo-res)"
+                                    : "Import picture (PNG / JPG / BMP) — converted to HGR")
                          : "Load HGR image (pick a file — 8 KB ones are highlighted)"));
     ImGui::TextDisabled("%s", browserDir.c_str());
     ImGui::Separator();
@@ -1571,10 +1660,13 @@ void hgrpaint::HgrPaintEditor::renderFileRow()
     if (ImGui::Button("Load")) openFileBrowser(false);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Open a file picker and load a raw 8 KB HGR image");
     ImGui::SameLine();
-    if (ImGui::Button("Import" ICON_FA_IMAGE)) openFileBrowser(false, 0, /*importMode=*/true);
+    if (ImGui::Button(ICON_FA_IMAGE " Import")) openFileBrowser(false, 0, /*importMode=*/true);
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Import a PNG/JPG picture and convert it to HGR\n"
-                          "(ii-pix-style: CAM16-UCS perceptual dithering vs the true NTSC colours)");
+        ImGui::SetTooltip(grMode
+            ? "Import a PNG/JPG picture and convert it to GR (lo-res)\n"
+              "(40x48 blocks, quantised to the 16 lo-res colours with CAM16-UCS dithering)"
+            : "Import a PNG/JPG picture and convert it to HGR\n"
+              "(ii-pix-style: CAM16-UCS perceptual dithering vs the true NTSC colours)");
     ImGui::SameLine();
     if (ImGui::Button("Save")) openFileBrowser(true, /*kind=*/0);
     ImGui::SameLine();
@@ -1636,7 +1728,7 @@ void hgrpaint::HgrPaintEditor::handleShortcuts()
         if (pressed(ImGuiKey_Y)) doRedo();
         if (pressed(ImGuiKey_C)) copySelection(false);
         if (pressed(ImGuiKey_X)) copySelection(true);
-        if (pressed(ImGuiKey_V) && clip.w > 0) {
+        if (pressed(ImGuiKey_V) && clip.w > 0 && !grMode) {   // pasteFloatingAt is a no-op in lo-res GR
             if (dragging) { commitStroke(); dragging = false; }   // flush an open stroke
             pasting = true;
             pasteX = hasSel ? std::min(selX0, selX1) : 0;

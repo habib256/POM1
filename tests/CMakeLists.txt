@@ -410,7 +410,8 @@ target_include_directories(test_preset_ram_profiles PRIVATE ${CMAKE_SOURCE_DIR}/
 add_test(NAME preset_ram_profiles_smoke
          COMMAND test_preset_ram_profiles
                  "${CMAKE_SOURCE_DIR}/src/MainWindow_Presets.cpp"
-                 "${CMAKE_SOURCE_DIR}/README.md")
+                 "${CMAKE_SOURCE_DIR}/README.md"
+                 "${CMAKE_SOURCE_DIR}/src/MainWindow_Menu.cpp")
 set_tests_properties(preset_ram_profiles_smoke PROPERTIES TIMEOUT 5)
 
 # -- Standard 8 KB dual-bank Memory mapping ------------------------------------

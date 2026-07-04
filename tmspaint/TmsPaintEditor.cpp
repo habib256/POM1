@@ -23,6 +23,31 @@
 
 namespace {
 
+// microSD "SD CARD OS" tagged-filename helpers (see src/MicroSD.cpp::parseTag).
+// A file's type + load address live in its NAME as "NAME#TTAAAA". A raw 16 KB
+// VRAM dump is not directly displayable (VRAM sits behind $CC00/$CC01), so the
+// tag address is the CPU-RAM address the SD OS `@L NAME` drops the 16 KB at for
+// the resident TMSLOAD utility to copy into VRAM — a FIXED $0800 (type 06 = BIN).
+// DIAPO streams via the MCU and ignores the address; the tag is for TMSLOAD.
+constexpr uint16_t kSdLoadAddr = 0x0800;
+
+std::string sdCardDefaultName(std::string base)
+{
+    // Drop a legacy ".tms" extension (any case) — the tag replaces it.
+    auto dot = base.find_last_of('.');
+    if (dot != std::string::npos) {
+        std::string ext = base.substr(dot + 1);
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (ext == "tms") base.erase(dot);
+    }
+    if (base.empty()) base = "IMAGE";
+    if (base.find('#') != std::string::npos) return base;   // already tagged
+    char t[8];
+    std::snprintf(t, sizeof(t), "#06%04X", kSdLoadAddr);
+    return base + t;
+}
+
 // Fixed zoom ladder (texture pixels → screen). Mouse-wheel + Fit step the index.
 const int kZoomLadder[] = { 1, 2, 3, 4, 6, 8, 12, 16 };
 const int kZoomLadderCount = static_cast<int>(sizeof(kZoomLadder) / sizeof(kZoomLadder[0]));
@@ -836,14 +861,22 @@ void tmspaint::TmsPaintEditor::openFileBrowser(bool forSave, int saveKind, bool 
     browserImport = importMode;
     browserSaveKind = saveKind;
     if (browserDir.empty()) {
-        std::error_code ec;
-        browserDir = std::filesystem::current_path(ec).string();
-        if (ec || browserDir.empty()) browserDir = ".";
+        // Prefer the host's context folder (POM1 → sdcard/TMS/), else the CWD.
+        if (host) browserDir = host->browseDir();
+        if (browserDir.empty()) {
+            std::error_code ec;
+            browserDir = std::filesystem::current_path(ec).string();
+            if (ec || browserDir.empty()) browserDir = ".";
+        }
     }
     std::string defName;
     if (forSave) {
         std::string base = std::filesystem::path(filePath).filename().string();
-        if (base.empty()) base = (saveKind == 1) ? "image.png" : "image.tms";
+        if (saveKind == 1) {                          // PNG export
+            if (base.empty()) base = "image.png";
+        } else {                                      // raw VRAM → SD-card tag
+            base = sdCardDefaultName(base);
+        }
         std::snprintf(browserSaveName, sizeof(browserSaveName), "%s", base.c_str());
         defName = base;
     }
@@ -856,7 +889,14 @@ void tmspaint::TmsPaintEditor::openFileBrowser(bool forSave, int saveKind, bool 
         if (importMode)        { title = "Import picture"; desc = "Images (PNG, JPG, BMP)"; ext = "png,jpg,jpeg,bmp,gif,tga"; }
         else if (saveKind == 1){ title = "Export PNG";     desc = "PNG image";             ext = "png"; }
         else                   { title = forSave ? "Save VRAM image" : "Load VRAM image";
-                                 desc  = "TMS VRAM image";  ext = "tms"; }
+                                 // No extension filter: SD-card exports are named
+                                 // NAME#060800 (no extension), so *.tms would hide
+                                 // them. Empty ext = all files, and on save it also
+                                 // disables the single-extension auto-append so the
+                                 // #06 tag isn't mangled into "...#060800.tms".
+                                 desc = forSave ? "TMS VRAM (saved as NAME#060800)"
+                                                : "TMS VRAM / SD-card image (NAME#060800)";
+                                 ext  = ""; }
         std::string picked;
         if (host->pickFilePath(forSave, title, desc, ext, browserDir, defName, picked)) {
             std::filesystem::path pp(picked);
@@ -893,14 +933,24 @@ bool tmspaint::TmsPaintEditor::performFileAction(bool forSave, int saveKind,
     }
 
     // Save (raw VRAM dump or PNG export).
-    std::snprintf(filePath, sizeof(filePath), "%s", fullPath.c_str());
+    std::string outPath = fullPath;
+    if (saveKind != 1) {
+        // Guarantee the SD-CARD-OS tag on a raw VRAM save: if the name has no
+        // '#', append "#060800" so `@L NAME` drops the 16 KB at $0800 for the
+        // resident TMSLOAD utility. Basename only; directory preserved.
+        fs::path outP(fullPath);
+        if (outP.filename().string().find('#') == std::string::npos)
+            outP = outP.parent_path() / sdCardDefaultName(outP.filename().string());
+        outPath = outP.string();
+    }
+    std::snprintf(filePath, sizeof(filePath), "%s", outPath.c_str());
     std::string err;
     bool ok = false;
     if (saveKind == 1)
-        ok = host && host->savePng(fullPath, canvasRgba.data(), kGfx2Width, kGfx2Height, err);
+        ok = host && host->savePng(outPath, canvasRgba.data(), kGfx2Width, kGfx2Height, err);
     else
-        ok = host && host->saveVram(fullPath, err);
-    status = ok ? ("Saved: " + fullPath)
+        ok = host && host->saveVram(outPath, err);
+    status = ok ? ("Saved: " + fs::path(outPath).filename().string())
                 : ((saveKind == 1 ? "PNG export failed: " : "Save failed: ")
                    + (err.empty() ? std::string("(error)") : err));
     return ok;
@@ -1210,7 +1260,7 @@ void tmspaint::TmsPaintEditor::renderFileRow()
     if (ImGui::Button("Load")) openFileBrowser(false);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Open a file picker and load a raw 16 KB VRAM image");
     ImGui::SameLine();
-    if (ImGui::Button("Import" ICON_FA_IMAGE)) openFileBrowser(false, 0, /*importMode=*/true);
+    if (ImGui::Button(ICON_FA_IMAGE " Import")) openFileBrowser(false, 0, /*importMode=*/true);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Import a PNG/JPG picture and convert it to TMS9918\n"
                           "(ii-pix style: CAM16-UCS perceptual dithering vs the 15 palette colours)");

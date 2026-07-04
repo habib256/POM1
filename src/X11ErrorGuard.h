@@ -19,4 +19,19 @@
 // Install a non-fatal Xlib error handler (Linux/X11 only; no-op elsewhere).
 void pom1InstallX11ErrorGuard();
 
+// Map POM1's GLFW window onto the screen via raw Xlib (XMapWindow), bypassing
+// glfwShowWindow(). GLFW 3.3's X11 backend blocks in waitForVisibilityNotify()
+// whenever it maps a window (both inside glfwCreateWindow when GLFW_VISIBLE is
+// set, and inside glfwShowWindow) — on some X servers / window managers the
+// expected VisibilityNotify event never arrives and GLFW spins forever, so the
+// window is created but never rendered. Upstream dropped that wait in 3.4.
+//
+// The workaround: create the window with GLFW_VISIBLE=FALSE (so GLFW never runs
+// the wait), then map it here directly. Returns true if the window was mapped as
+// an X11 window; false if it is not X11 (e.g. a Wayland GLFW build/session) so
+// the caller can fall back to glfwShowWindow(). No-op stub returning false on
+// every non-X11 platform. All GLFW-native/Xlib inclusion stays in the .cpp.
+struct GLFWwindow;
+bool pom1ShowGlfwWindowX11(struct GLFWwindow* window);
+
 #endif // POM1_X11_ERROR_GUARD_H

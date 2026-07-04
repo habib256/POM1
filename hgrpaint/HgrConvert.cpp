@@ -268,6 +268,77 @@ void hgrDecodeScanlineRgb(const uint8_t bytes[40], uint32_t out[280])
     }
 }
 
+void imageToGrPage(const uint8_t* rgba, int srcW, int srcH,
+                   const ImportOptions& opt, uint8_t* outPage)
+{
+    // GR (Apple II lo-res) has none of HGR's NTSC coupling: it is a flat grid of
+    // kGrCols×kGrRows blocks, each a single one-of-16 palette index (kPalette here
+    // is bit-identical to GraphicsCard::kApple2Palette). So the importer is the
+    // simple case — resample to block resolution, quantise each block to the
+    // nearest palette colour in CAM16-UCS, and Floyd-Steinberg / jarvis-mod
+    // diffuse the residual in linear RGB (same machinery + knobs as the TMS
+    // Multicolor path). Output is the 1 KB text-page layout via plotGrBlock.
+    constexpr int W = kGrCols, H = kGrRows;
+    std::fill(outPage, outPage + static_cast<size_t>(0x400), uint8_t{0});
+    if (!rgba || srcW <= 0 || srcH <= 0) return;
+
+    // Per-palette CAM16 (scoring) + linear RGB (diffusion) — all 16 colours are
+    // candidates (index 0 = black is a legal block, unlike TMS's transparent 0).
+    Cam16Ucs cam[16];
+    LinRgb   lin[16];
+    for (int i = 0; i < 16; ++i) {
+        cam[i] = srgb8ToCam16Ucs(kPalette[i].r, kPalette[i].g, kPalette[i].b);
+        lin[i] = {srgb8ToLinearF(kPalette[i].r), srgb8ToLinearF(kPalette[i].g),
+                  srgb8ToLinearF(kPalette[i].b)};
+    }
+
+    std::vector<LinRgb> tlin;
+    int ox0, oy0, ow, oh;
+    resampleToLinearRgb(rgba, srcW, srcH, W, H, opt, tlin, ox0, oy0, ow, oh);
+
+    const KernelSpec& ker = kernelSpec(opt.kernel);
+    const float cw = opt.chromaWeight;
+    std::vector<LinRgb> errRow[3];
+    for (auto& e : errRow) e.assign(W, LinRgb{0, 0, 0});
+    const int colLo = ox0, colHi = ox0 + ow;
+    auto addErr = [&](std::vector<LinRgb>& buf, int xx, const LinRgb& d) {
+        if (xx >= colLo && xx < colHi) buf[xx] = buf[xx] + d;
+    };
+    auto rotateErrRows = [&] {
+        std::swap(errRow[0], errRow[1]);
+        std::swap(errRow[1], errRow[2]);
+        std::fill(errRow[2].begin(), errRow[2].end(), LinRgb{0, 0, 0});
+    };
+
+    for (int by = 0; by < H; ++by) {
+        if (by < oy0 || by >= oy0 + oh) { rotateErrRows(); continue; }
+        for (int bx = 0; bx < W; ++bx) {
+            if (bx < colLo || bx >= colHi) continue;   // letterbox stays black
+            const LinRgb want = clamp01(tlin[static_cast<size_t>(by) * W + bx]
+                                        + errRow[0][bx]);
+            const Cam16Ucs wantCam = linearSrgbToCam16Ucs(want.r, want.g, want.b);
+            int best = 0;
+            float bestCost = std::numeric_limits<float>::max();
+            for (int i = 0; i < 16; ++i) {
+                const float c = perceptualCost(cam[i], wantCam, cw);
+                if (c < bestCost) { bestCost = c; best = i; }
+            }
+            if (opt.dither) {
+                const LinRgb res = scale(want - lin[best], opt.diffusion);
+                for (int d = 1; d <= ker.fwdReach; ++d)
+                    addErr(errRow[0], bx + d, scale(res, ker.fwd[d - 1]));
+                for (int r = 1; r <= ker.belowRows; ++r)
+                    for (int dx = -2; dx <= 4; ++dx) {
+                        const float wgt = ker.below[r - 1][dx + 2];
+                        if (wgt != 0.0f) addErr(errRow[r], bx + dx, scale(res, wgt));
+                    }
+            }
+            plotGrBlock(outPage, bx, by, best);
+        }
+        rotateErrRows();
+    }
+}
+
 void imageToHgrPage(const uint8_t* rgba, int srcW, int srcH,
                     const ImportOptions& opt, uint8_t* outPage, ImportStats* stats)
 {

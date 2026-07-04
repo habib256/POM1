@@ -67,10 +67,9 @@ TmsSpriteEditor::~TmsSpriteEditor()
 void TmsSpriteEditor::releaseGL()
 {
     if (host) {
-        if (previewTex) host->destroyTexture(previewTex);
         if (sheetTex)   host->destroyTexture(sheetTex);
     }
-    previewTex = sheetTex = nullptr;
+    sheetTex = nullptr;
 }
 
 // ── Shadow / mode / SAT ─────────────────────────────────────────────────────
@@ -646,7 +645,7 @@ void TmsSpriteEditor::renderToolPanel()
 
     ImGui::Separator();
 
-    // Preview placement.
+    // On-screen sprite placement (SAT X/Y — visible on the Graphic Card window).
     ImGui::TextUnformatted("Screen position");
     ImGui::SetNextItemWidth(150);
     if (ImGui::SliderInt("X", &previewX_, 0, 255)) { ensureModeApplied(); }
@@ -908,30 +907,6 @@ void TmsSpriteEditor::renderSpriteBank()
     }
 }
 
-void TmsSpriteEditor::renderPreview()
-{
-    if (!host) return;
-    ImGui::Separator();
-    ImGui::TextUnformatted("Live card");
-    if (!host->liveFramebuffer(previewRgba.data())) {
-        ImGui::TextDisabled("(no framebuffer)");
-        return;
-    }
-    previewTex = host->uploadTexture(previewTex, previewRgba.data(), 256, 192, false);
-    const ImTextureID id = host->textureToImTexture(previewTex);
-    const ImVec2 pos = ImGui::GetCursorScreenPos();
-    const float scale = 1.0f;
-    ImGui::Image(id, ImVec2(256 * scale, 192 * scale));
-    // Outline the sprite bounds so the user can find it.
-    if (modeApplied) {
-        const int N = nDim() * (magnified_ ? 2 : 1);
-        int sxp = previewX_ - (earlyClock_ ? 32 : 0);
-        const ImVec2 a(pos.x + sxp * scale, pos.y + previewY_ * scale);
-        const ImVec2 b(a.x + N * scale, a.y + N * scale);
-        ImGui::GetWindowDrawList()->AddRect(a, b, IM_COL32(255,255,0,200));
-    }
-}
-
 void TmsSpriteEditor::render()
 {
     if (!dragging) refreshShadow();   // don't revert an in-progress stroke
@@ -949,7 +924,6 @@ void TmsSpriteEditor::render()
     ImGui::SameLine();
     ImGui::BeginChild("##sidepane", ImVec2(0, 0));
     renderToolPanel();
-    renderPreview();
     ImGui::EndChild();
 
     renderFileBrowser();

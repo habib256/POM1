@@ -508,25 +508,28 @@ static void ejectTapeForAciProgramOutput(EmulationController* emu, bench::BuildR
 struct P1T { const char* label; int preset; const char* cfg; const char* lang; int mode;
              bool needsCl65; bool codetankRom; const char* sketch; };
 const P1T kP1Targets[] = {
-    { "Apple-1 dual 4K/8K (asm)",         0, "apple1_4k.cfg",   "6502",  0, false, false, kSketchAsm            },
-    { "P-LAB TMS9918 Graphic Card (asm)", 1, "codetank.cfg",    "6502",  0, false, true,  kSketchAsmTms         },
-    { "Uncle Bernie GEN2 HGR (asm)",      2, "apple1_gen2.cfg", "6502",  0, false, false, kSketchAsmGen2        },
-    { "Apple-1 dual 4K/8K (C)",           0, "C-plain",         "C",     3, true,  false, kSketchCText          },
-    { "P-LAB TMS9918 CodeTank ROM (C)",   1, "C",               "C",     3, true,  true,  kSketchC              },
-    { "Uncle Bernie GEN2 HGR (C)",        2, "C-gen2",          "C",     3, true,  false, kSketchGen2C          },
-    { "Wozmon hex (any machine)",        -1, "",                "hex",   1, false, false, kSketchHex            },
-    { "Integer BASIC (interpreter, E000R)",      0, "E000R",    "BASIC", 4, false, false, kSketchBasicInteger   },
-    { "Applesoft Lite (interpreter, microSD 6000R)", 8, "6000R","BASIC", 4, false, false, kSketchBasicApplesoft },
+    // .preset column: named preset indices (md::kPreset*) so a kMachinePresets[]
+    // reorder is a one-line edit here + in MainWindow_Internal.h, never a silent
+    // DevBench mismatch. -1 = "any machine" (no preset switch).
+    { "Apple-1 dual 4K/8K (asm)",         md::kPresetCC65Bench,    "apple1_4k.cfg",   "6502",  0, false, false, kSketchAsm            },
+    { "P-LAB TMS9918 Graphic Card (asm)", md::kPresetTMS9918Bench, "codetank.cfg",    "6502",  0, false, true,  kSketchAsmTms         },
+    { "Uncle Bernie GEN2 HGR (asm)",      md::kPresetGen2Bench,    "apple1_gen2.cfg", "6502",  0, false, false, kSketchAsmGen2        },
+    { "Apple-1 dual 4K/8K (C)",           md::kPresetCC65Bench,    "C-plain",         "C",     3, true,  false, kSketchCText          },
+    { "P-LAB TMS9918 CodeTank ROM (C)",   md::kPresetTMS9918Bench, "C",               "C",     3, true,  true,  kSketchC              },
+    { "Uncle Bernie GEN2 HGR (C)",        md::kPresetGen2Bench,    "C-gen2",          "C",     3, true,  false, kSketchGen2C          },
+    { "Wozmon hex (any machine)",         -1,                      "",                "hex",   1, false, false, kSketchHex            },
+    { "Integer BASIC (interpreter, E000R)",          md::kPresetCC65Bench, "E000R", "BASIC", 4, false, false, kSketchBasicInteger   },
+    { "Applesoft Lite (interpreter, microSD 6000R)", md::kPresetMicroSD,   "6000R", "BASIC", 4, false, false, kSketchBasicApplesoft },
     // Target 9: Applesoft GEN2 — BASIC injection on the GEN2 card (preset 2),
     // applesoft-gen2 interpreter ROM loaded HIGH in RAM at $9800 (HIMEM just
     // below it) so BASIC owns ~37 KB of $0801-$97FF — real-silicon faithful.
-    { "Applesoft GEN2 (interpreter, 9800R)",     2, "9800R",    "BASIC", 4, false, false, kSketchBasicApplesoftGen2 },
+    { "Applesoft GEN2 (interpreter, 9800R)",     md::kPresetGen2Bench, "9800R", "BASIC", 4, false, false, kSketchBasicApplesoftGen2 },
     // Target 10: Applesoft Lite on a bare Apple-1 — the CFFA1 flavour ROM at
     // $E000 (roms/applesoft-lite-cffa1.rom), cold start E000R, 64 KB-relaxed.
-    { "Applesoft Lite (interpreter, Apple-1 E000R)", 0, "E000R","BASIC", 4, false, false, kSketchBasicApplesoft     },
+    { "Applesoft Lite (interpreter, Apple-1 E000R)", md::kPresetCC65Bench, "E000R", "BASIC", 4, false, false, kSketchBasicApplesoft     },
     // Target 11: Applesoft TMS9918 — the applesoft-tms9918 interpreter as a
     // CodeTank ROM cartridge ($4000-$7FFF), preset 1, cold start 4000R.
-    { "Applesoft TMS9918 (interpreter, 4000R)",  1, "4000R",    "BASIC", 4, false, true,  kSketchBasicApplesoftGen2 },
+    { "Applesoft TMS9918 (interpreter, 4000R)",  md::kPresetTMS9918Bench, "4000R", "BASIC", 4, false, true,  kSketchBasicApplesoftGen2 },
     // Targets 12-13: NATIVE Applesoft compiler (basicnative::compile) — standalone
     // 6502, NO interpreter (~20x faster). Mode 5 routes to compileBasicNative(),
     // which mirrors tools/basicc_native.sh (ca65 prog + minimal runtime + optional
@@ -535,8 +538,8 @@ const P1T kP1Targets[] = {
     // only — guarded out of the WASM target table (see the ctor). GEN2 = preset 2
     // (HGR page 1 framebuffer); TMS = preset 1 (code runs from $0300 RAM, draws to
     // the VDP at $CC00/$CC01 — NOT a CodeTank cartridge, so codetankRom = false).
-    { "Applesoft GEN2 (native, 0300R)",          2, nullptr,    "BASIC", 5, false, false, kSketchBasicApplesoftGen2 },
-    { "Applesoft TMS9918 (native, 0300R)",       1, nullptr,    "BASIC", 5, false, false, kSketchBasicApplesoftGen2 },
+    { "Applesoft GEN2 (native, 0300R)",          md::kPresetGen2Bench,    nullptr, "BASIC", 5, false, false, kSketchBasicApplesoftGen2 },
+    { "Applesoft TMS9918 (native, 0300R)",       md::kPresetTMS9918Bench, nullptr, "BASIC", 5, false, false, kSketchBasicApplesoftGen2 },
     // Targets 14-15: APPLE-1 LOGO V2.6 turtle interpreter — listing INJECTION (mode
     // 6, injectLogo). The resident interpreter is cold-started, then LogoProgramLoader
     // pokes its procedure table directly + feeds ONE entry line (no keyboard typing —
@@ -545,8 +548,8 @@ const P1T kP1Targets[] = {
     //      16 KB-strict (proc_table $E431, n_procs $0260). codetankRom = true.
     //   15 LOGO GEN2 HGR — roms/logo-gen2.rom loaded at $6000, preset 2, 48 KB
     //      (proc_table $B431, n_procs $02E3).
-    { "LOGO TMS9918 (interpreter, 4000R)",        1, "4000R",   "LOGO",  6, false, true,  kSketchLogoTms  },
-    { "LOGO GEN2 HGR (interpreter, 6000R)",       2, "6000R",   "LOGO",  6, false, false, kSketchLogoGen2 },
+    { "LOGO TMS9918 (interpreter, 4000R)",        md::kPresetTMS9918Bench, "4000R", "LOGO",  6, false, true,  kSketchLogoTms  },
+    { "LOGO GEN2 HGR (interpreter, 6000R)",       md::kPresetGen2Bench,    "6000R", "LOGO",  6, false, false, kSketchLogoGen2 },
 };
 const int kP1TargetCount = static_cast<int>(sizeof(kP1Targets) / sizeof(kP1Targets[0]));
 
@@ -1845,9 +1848,9 @@ void Pom1BenchHost::applyTargetPreset(int target, bool force)
     if (!force && (sourcePathLooksPortable(activeSourcePath_)        ||
                    sourcePathLooksApplesoftSketch(activeSourcePath_) ||
                    sourcePathLooksIntegerSketch(activeSourcePath_))) {
-        const bool haveCard = (t.preset == 2) ? mw_->graphicsCardEnabled
-                            : (t.preset == 1) ? mw_->tms9918Enabled
-                            : (t.preset == 8) ? mw_->microSDEnabled
+        const bool haveCard = (t.preset == md::kPresetGen2Bench)    ? mw_->graphicsCardEnabled
+                            : (t.preset == md::kPresetTMS9918Bench) ? mw_->tms9918Enabled
+                            : (t.preset == md::kPresetMicroSD)      ? mw_->microSDEnabled
                             : true;
         if (haveCard) return;
     }
@@ -2478,7 +2481,7 @@ bench::BuildResult Pom1BenchHost::compileBasicNative(int target, const std::stri
     namespace fs = std::filesystem;
     bench::BuildResult r; r.showConsole = true;
     const P1T& t = kP1Targets[p1(target)];
-    const bool gen2 = (t.preset == 2);   // GEN2 HGR card; else TMS9918 (preset 1)
+    const bool gen2 = (t.preset == md::kPresetGen2Bench);   // GEN2 HGR card; else TMS9918 bench
 
     probe();
     if (!toolchainOk_) {
@@ -3140,7 +3143,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             if (!emu->loadBinaryToRam(stagePath, stageAddr, error)) { r.status = "dual-bank stage load failed: " + error; r.ok = false; return r; }
             if (emu->loadBinary(runPath, runAddr, error, &loaded)) {
                 emu->copySnapshot(mw_->uiSnapshot);
-                if (t.preset == 2) mw_->showGraphicsCard = true;
+                if (t.preset == md::kPresetGen2Bench) mw_->showGraphicsCard = true;
                 char msg[176]; std::snprintf(msg, sizeof(msg), "Built dual-bank ($%04X+$%04X) run @ $%04X",
                                              proj.loAddr, proj.hiAddr, runAddr);
                 r.status = msg; r.ok = true;
@@ -3183,7 +3186,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         std::string error; int bytesLoaded = 0;
         if (emu->loadBinary(binB.string(), entry, error, &bytesLoaded)) {
             emu->copySnapshot(mw_->uiSnapshot);
-            if (gen2c && t.preset == 2) mw_->showGraphicsCard = true;
+            if (gen2c && t.preset == md::kPresetGen2Bench) mw_->showGraphicsCard = true;
             char msg[160]; std::snprintf(msg, sizeof(msg), "Built %d B run @ $%04X", bytesLoaded, entry);
             r.status = msg; r.ok = true;
         } else { r.status = "load failed: " + error; r.ok = false; }
@@ -3237,7 +3240,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     }
     if (emu->loadBinary(binB.string(), entry, error, &bytesLoaded)) {
         emu->copySnapshot(mw_->uiSnapshot);
-        if (t.preset == 2) mw_->showGraphicsCard = true;
+        if (t.preset == md::kPresetGen2Bench) mw_->showGraphicsCard = true;
         char msg[160]; std::snprintf(msg, sizeof(msg), "Built %d B run @ $%04X", bytesLoaded, entry);
         r.status = msg; r.ok = true;
     } else { r.status = "load failed: " + error; r.ok = false; }
@@ -3332,7 +3335,7 @@ bench::BuildResult Pom1BenchHost::pollBuild()
     std::string error; int bytesLoaded = 0;
     if (emu->loadBinary("/tmp/pom1_bench.bin", wasmJobEntry_, error, &bytesLoaded)) {
         emu->copySnapshot(mw_->uiSnapshot);
-        if (t.preset == 2) mw_->showGraphicsCard = true;
+        if (t.preset == md::kPresetGen2Bench) mw_->showGraphicsCard = true;
         char msg[160]; std::snprintf(msg, sizeof(msg), "Built %d B run @ $%04X", bytesLoaded, wasmJobEntry_);
         r.status = msg; r.ok = true;
     } else { r.status = "load failed: " + error; r.ok = false; }

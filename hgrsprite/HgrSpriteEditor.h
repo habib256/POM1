@@ -6,8 +6,8 @@
 // rectangle of HIRES bytes (wBytes × hRows, byte-aligned) a program blits onto
 // the screen. The editor draws that rectangle at pixel granularity through the
 // faithful hgrpaint colour model (7 px/byte, shared palette high bit, artifact
-// colour), previews it IN CONTEXT non-destructively over the live HGR page, and
-// stamps / exports the raw bytes on demand. Sibling of tmssprite/TmsSpriteEditor.
+// colour) and stamps / exports the raw bytes on demand, non-destructively until
+// an explicit Stamp. Sibling of tmssprite/TmsSpriteEditor.
 //
 // Reuses the hgrpaint::IHgrPaintHost seam verbatim (Pom1HgrPaintHost already
 // implements it — poke / renderHgrPage / file I/O / textures) so no new host is
@@ -37,7 +37,7 @@ public:
     ~HgrSpriteEditor();
 
     // Draw the window body (caller wraps in Begin/End). `memory` is the live 64 KB
-    // host memory snapshot — the read source for the in-context preview thumbnail.
+    // host memory snapshot — the read source for the "grab from page" tool.
     void render(const std::vector<uint8_t>& memory);
 
     // Destroy GPU textures via the host. Call from the app shutdown path BEFORE
@@ -53,11 +53,6 @@ private:
 
     // The editor's OWN 8 KB HGR page holding the sprite at byte-column 0, row 0.
     std::vector<uint8_t> scratch;
-
-    // In-context preview: live page rendered through the NTSC pipeline, sprite
-    // composited on top. Uploaded to a host-owned texture.
-    std::vector<uint32_t> previewRgba;    // kHiresWidth*kHiresHeight
-    void* previewTex = nullptr;
 
     // Side-by-side colour view: the sprite decoded through the real NTSC pipeline
     // (mono shape at ×1, single-colour clocks at ×2) so the colour bascules read
@@ -164,7 +159,6 @@ private:
     void renderToolPanel(const std::vector<uint8_t>& memory);
     void renderCanvas();
     void renderColorCanvas();   // read-only NTSC colour view beside the B&W canvas
-    void renderPreview(const std::vector<uint8_t>& memory);
     void handleShortcuts();
 };
 

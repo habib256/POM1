@@ -154,6 +154,21 @@ struct MachineConfig {
 extern const MachineConfig kMachinePresets[];
 extern const int kMachinePresetCount;
 
+// Named indices into kMachinePresets[] that other subsystems depend on by
+// position (DevBench targets in Pom1BenchHost's kP1Targets[], the reverse
+// applyMachineConfig auto-open). Anchoring them here means a preset reorder is
+// a one-line edit instead of a silent DevBench breakage across scattered
+// `t.preset == N` comparisons. Pinned by preset_ram_profiles_smoke.
+inline constexpr int kPresetCC65Bench      = 0;   // Apple-1 CC65 Development Bench
+inline constexpr int kPresetTMS9918Bench   = 1;   // Apple-1 TMS9918 Development Bench
+inline constexpr int kPresetGen2Bench      = 2;   // Apple-1 GEN2 HGR Development Bench
+inline constexpr int kPresetIntegerCassette = 4;  // Apple-1 with ACI & Integer BASIC cassette
+inline constexpr int kPresetMicroSD        = 8;   // P-LAB microSD + Applesoft Lite
+inline constexpr int kPresetTMS9918Card    = 9;   // P-LAB Apple-1 with TMS9918 + CodeTank
+inline constexpr int kPresetGen2Color      = 11;  // Uncle Bernie's GEN2 HGR Color
+// POM1 Multiplexing Fantasy is always the LAST preset (invariant — see
+// applyMachineConfig / the "default = last" contract). Use kMachinePresetCount-1.
+
 /// Compute the axis-aligned bounding box (in ImGui screen coordinates)
 /// that encloses every sized placement in `cfg.layout`. Entries whose size
 /// is (0, 0) — "no size override" — contribute only their position and a

@@ -182,6 +182,8 @@ private :
     int tmp;
     int cycles;
     uint8_t lastFetchedOpcode = 0; // executeOpcode → Unoff* cycle lookup
+    int pendingInterruptCycles_ = 0; // 7-cycle interrupt-entry cost, folded into
+                                     // `cycles` by executeInstruction()
     // `run()` polls this every loop iteration; `stop()` clears it. It is
     // written lock-free by EmulationController::stopCpu() (off the emulation
     // thread) to abort a slice already inside run() within one instruction,
@@ -286,6 +288,12 @@ private :
     void Unoff3(void);
     void Hang(void);
     void executeOpcode(void);
+    // step() split so run() can test a breakpoint on an ISR entry that an IRQ/NMI
+    // just vectored to, before its first instruction executes. serviceInterrupts()
+    // takes at most one pending interrupt (NMI > IRQ) and vectors PC;
+    // executeInstruction() runs the opcode and folds in pendingInterruptCycles_.
+    void serviceInterrupts(void);
+    void executeInstruction(void);
 
     struct OpcodeEntry {
         void (M6502::*addrMode)();

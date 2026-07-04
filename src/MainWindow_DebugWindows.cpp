@@ -895,8 +895,11 @@ void MainWindow_ImGui::renderMemoryMapGridWindow()
 
 void MainWindow_ImGui::renderMemoryBarWindow()
 {
-    applyPendingLayout("Memory Map Bar");
+    // Size default FIRST, then applyPendingLayout LAST so the preset's saved size
+    // wins (applyPendingLayout also calls SetNextWindowSize; the reverse order let
+    // this default clobber the preset — see CLAUDE.md invariant).
     ImGui::SetNextWindowSize(ImVec2(420, 520), ImGuiCond_FirstUseEver);
+    applyPendingLayout("Memory Map Bar");
     if (!ImGui::Begin("Memory Map Bar", &showMemoryBar)) {
         ImGui::End();
         return;
@@ -1349,8 +1352,10 @@ void MainWindow_ImGui::renderMemoryBarWindow()
 
 void MainWindow_ImGui::renderMemoryBarHorizontalWindow()
 {
-    applyPendingLayout("Memory Map Bar (Horizontal)");
+    // Size default FIRST, then applyPendingLayout LAST so the preset's saved size
+    // wins (see renderMemoryBarWindow / the CLAUDE.md invariant).
     ImGui::SetNextWindowSize(ImVec2(720, 78), ImGuiCond_FirstUseEver);
+    applyPendingLayout("Memory Map Bar (Horizontal)");
     if (!ImGui::Begin("Memory Map Bar (Horizontal)", &showMemoryBarH)) {
         ImGui::End();
         return;

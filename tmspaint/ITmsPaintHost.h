@@ -111,6 +111,12 @@ public:
     // the editor must NOT fall back to its built-in ImGui browser.
     virtual bool nativeFilePickerAvailable() const { return false; }
 
+    // Initial directory the file browser (native + ImGui fallback) opens in on
+    // first use. Empty (default) = process CWD (keeps the portable editor
+    // standalone). POM1's host returns the writable sdcard/TMS/ folder. Mirrors
+    // hgrpaint/IHgrPaintHost.h::browseDir and IBenchHost::browseDir.
+    virtual std::string browseDir() const { return {}; }
+
     // The host's built-in TMS9918 sprite library, grouped by category, or empty
     // when the host ships none (the default). POM1 parses dev/lib/tms9918/
     // sprites_*.asm; the sprite editor shows a browser so you can drop a ready-made

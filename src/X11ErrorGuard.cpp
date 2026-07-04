@@ -11,6 +11,12 @@
 #include <X11/Xlib.h>
 #include <cstdio>
 
+// Native GLFW access (glfwGetX11Display / glfwGetX11Window). glfw3native.h pulls
+// in Xlib itself under GLFW_EXPOSE_NATIVE_X11 — already included above.
+#include <GLFW/glfw3.h>
+#define GLFW_EXPOSE_NATIVE_X11
+#include <GLFW/glfw3native.h>
+
 namespace {
 
 // Non-fatal replacement for Xlib's default error handler (which exits). Logs the
@@ -38,8 +44,25 @@ void pom1InstallX11ErrorGuard()
     XSetErrorHandler(pom1X11ErrorHandler);
 }
 
+bool pom1ShowGlfwWindowX11(GLFWwindow* window)
+{
+    if (!window)
+        return false;
+    // glfwGetX11Window() returns None (0) when the window is not an X11 window
+    // (e.g. a Wayland session on an X11-capable GLFW build) — signal the caller
+    // to fall back to glfwShowWindow() in that case.
+    Display* dpy = glfwGetX11Display();
+    Window   xw  = glfwGetX11Window(window);
+    if (!dpy || xw == 0)
+        return false;
+    XMapWindow(dpy, xw);
+    XFlush(dpy);
+    return true;
+}
+
 #else  // !POM1_HAS_X11
 
 void pom1InstallX11ErrorGuard() {}
+bool pom1ShowGlfwWindowX11(struct GLFWwindow*) { return false; }
 
 #endif

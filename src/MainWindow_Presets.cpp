@@ -12,10 +12,13 @@
 #include "POM1Build.h"
 #include "Logger.h"
 #include "CodeBench.h"   // codeBench_->loadStarterForTargetIfClean() in DevBench presets
+#include "Pom1BenchHost.h" // benchHost_->targetFor / selectTargetExplicit for the chooser's language launch
 #include "ProcessUtil.h" // bench::executableDir() for exe-relative ini_defaults/
 
 #include "imgui.h"
 #include "imgui_internal.h"
+#include "IconsFontAwesome6.h"
+#include "PomRenderer.h"   // POM1 icon + Apple-50 logo textures on the chooser
 
 #if !POM1_IS_WASM
 #include <GLFW/glfw3.h>
@@ -26,6 +29,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -950,6 +954,311 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     setStatusMessage(std::string("Preset: ") + cfg.name, 3.0f);
 }
 
+// Boot profile chooser — a full-viewport preset selector shown before any other
+// UI at startup (see the boot gate in render()). Picking a profile applies it
+// via applyBootConfig() and dismisses the chooser. Preset indices come from the
+// named kPreset* constants (MainWindow_Internal.h); POM1 Fantasy is always the
+// last preset (kMachinePresetCount - 1).
+void MainWindow_ImGui::renderProfileChooser()
+{
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(vp->Pos, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(vp->Size, ImGuiCond_Always);
+    // Dark, focused backdrop so the selector reads as a boot screen.
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(10, 12, 18, 255));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f);
+    ImGui::Begin("##ProfileChooser", nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBringToFrontOnFocus |
+                 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar);
+
+    const float winW = ImGui::GetWindowWidth();
+    // Three side-by-side columns (Machines / Create / Development). Clamp to the
+    // viewport so a small OS window at boot never pushes the columns off-screen.
+    const float colW = std::min(1080.0f, winW - 40.0f);
+    const float indent = (winW - colW) * 0.5f;
+
+    // Anchor the column near the top of the viewport (small margin), rather
+    // than vertically centered.
+    ImGui::Dummy(ImVec2(0.0f, 24.0f));
+
+    auto centeredScaledText = [&](const char* txt, float scale, ImU32 col) {
+        ImGui::SetWindowFontScale(scale);
+        const float tw = ImGui::CalcTextSize(txt).x;
+        ImGui::SetCursorPosX((winW - tw) * 0.5f);
+        ImGui::PushStyleColor(ImGuiCol_Text, col);
+        ImGui::TextUnformatted(txt);
+        ImGui::PopStyleColor();
+        ImGui::SetWindowFontScale(1.0f);
+    };
+    // A chooser button carries an action: apply a machine preset, or launch a
+    // graphical language (a DevBench BASIC/LOGO target). -1 fields = "not this".
+    int chosenPreset      = -1;
+    int chosenLang        = -1;   // DevBench language axis (2=BASIC, 3=LOGO)
+    int chosenMachine     = -1;   // DevBench machine axis (see kP1Machines[])
+    int chosenPaint       = -1;   // 0 = HGR Painter, 1 = TMS9918 Painter
+    // A profile row: accent-coloured button (width w) + a dim wrapped description.
+    // onClick writes the chosen action; the caller runs it after ImGui::End().
+    auto actionButton = [&](const char* label, const char* desc,
+                            ImU32 base, ImU32 hov, ImU32 act, float w, float h,
+                            const std::function<void()>& onClick) {
+        ImGui::PushStyleColor(ImGuiCol_Button, base);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hov);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, act);
+        if (ImGui::Button(label, ImVec2(w, h))) onClick();
+        ImGui::PopStyleColor(3);
+        if (desc && *desc) {
+            ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + w);
+            ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(133, 143, 163, 255));
+            ImGui::TextWrapped("%s", desc);
+            ImGui::PopStyleColor();
+            ImGui::PopTextWrapPos();
+        }
+    };
+    auto presetButton = [&](const char* label, const char* desc, int preset,
+                            ImU32 base, ImU32 hov, ImU32 act, float w, float h) {
+        actionButton(label, desc, base, hov, act, w, h,
+                     [&, preset]() { chosenPreset = preset; });
+    };
+    auto langButton = [&](const char* label, const char* desc, int lang, int machine,
+                          ImU32 base, ImU32 hov, ImU32 act, float w, float h) {
+        actionButton(label, desc, base, hov, act, w, h,
+                     [&, lang, machine]() { chosenLang = lang; chosenMachine = machine; });
+    };
+    auto columnHeader = [&](const char* txt) {
+        ImGui::TextColored(ImVec4(0.55f, 0.60f, 0.70f, 1.0f), "%s", txt);
+        ImGui::Dummy(ImVec2(0.0f, 4.0f));
+    };
+
+    // Title — a red apple glyph next to the "POM1" wordmark, the whole row
+    // centred. Drawn as two coloured segments at the same big font scale (a
+    // single Text can't mix colours), positioned on one baseline.
+    const float titleScale = 2.6f;
+    ImGui::SetWindowFontScale(titleScale);
+    const ImVec2 appleSz = ImGui::CalcTextSize(ICON_FA_APPLE_WHOLE);
+    const float  titleGap = ImGui::CalcTextSize(" ").x;
+    const ImVec2 wordSz = ImGui::CalcTextSize("POM1");
+    ImGui::SetWindowFontScale(1.0f);
+    const float rowW = appleSz.x + titleGap + wordSz.x;
+    const float rowY = ImGui::GetCursorPosY();
+    const float rowX = (winW - rowW) * 0.5f;
+    ImGui::SetCursorPos(ImVec2(rowX, rowY));
+    ImGui::SetWindowFontScale(titleScale);
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(214, 44, 44, 255));   // red apple
+    ImGui::TextUnformatted(ICON_FA_APPLE_WHOLE);
+    ImGui::PopStyleColor();
+    ImGui::SetCursorPos(ImVec2(rowX + appleSz.x + titleGap, rowY));
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(236, 240, 248, 255));
+    ImGui::TextUnformatted("POM1");
+    ImGui::PopStyleColor();
+    ImGui::SetWindowFontScale(1.0f);
+
+    ImGui::Dummy(ImVec2(0.0f, 2.0f));
+    centeredScaledText("Choose an Apple-1 profile", 1.15f, IM_COL32(150, 158, 172, 255));
+    ImGui::Dummy(ImVec2(0.0f, 26.0f));
+
+    // Top: the flagship "everything plugged" fantasy machine (always last
+    // preset) — amber accent, flanked by the POM1 app icon on each side. The
+    // row (icon · button · icon) spans colW; the button shrinks to leave room
+    // for the icons so the whole thing stays centred. Its caption is drawn
+    // centred BELOW the button so it reads as a headline for the selector.
+    ensureAppIconTexture();
+    const bool haveIcon = appIconTexture && appIconWidth > 0 && appIconHeight > 0;
+    const float fIcon = 52.0f;
+    const float fGap = 16.0f;
+    const float fBtnH = 62.0f;
+    const float fBtnW = colW - (haveIcon ? 2.0f * (fIcon + fGap) : 0.0f);
+    const float fRowX = (winW - colW) * 0.5f;
+    const float fRowY = ImGui::GetCursorPosY();
+    auto drawFantasyIcon = [&](float x) {
+        ImGui::SetCursorPos(ImVec2(x, fRowY + (fBtnH - fIcon) * 0.5f));
+        ImGui::Image(pom1::renderer()->asImTextureID(appIconTexture), ImVec2(fIcon, fIcon));
+    };
+    if (haveIcon) drawFantasyIcon(fRowX);
+    ImGui::SetCursorPos(ImVec2(fRowX + (haveIcon ? fIcon + fGap : 0.0f), fRowY));
+    presetButton(ICON_FA_STAR "  POM1 FANTASY Apple-1  " ICON_FA_STAR,
+                 /*desc*/ nullptr,
+                 kMachinePresetCount - 1,
+                 IM_COL32(150, 108, 30, 255), IM_COL32(190, 142, 46, 255),
+                 IM_COL32(120, 86, 22, 255), fBtnW, fBtnH);
+    if (haveIcon) drawFantasyIcon(fRowX + fIcon + fGap + fBtnW + fGap);
+    ImGui::SetCursorPosY(fRowY + fBtnH);
+    ImGui::Dummy(ImVec2(0.0f, 6.0f));
+    centeredScaledText("Everything plugged in at once — sound, Wi-Fi, microSD and terminal. "
+                       "The all-in-one machine to explore POM1.",
+                       1.0f, IM_COL32(133, 143, 163, 255));
+    ImGui::Dummy(ImVec2(0.0f, 22.0f));
+
+    // Three columns, each answering "what do you want to do?":
+    //   Machines (teal)  — boot a faithful single-card Apple-1 and use it.
+    //   Create   (violet)— write graphics programs in BASIC or LOGO (opens the
+    //                       Bench with the interpreter live + a starter demo).
+    //   Develop  (green) — hand-write 6502 assembly or C in the DevBench.
+    // Machine-axis indices in the Create column track kP1Machines[]
+    // (4 = Applesoft GEN2, 5 = Applesoft TMS, 9 = LOGO TMS, 10 = LOGO GEN2).
+    const ImU32 mB = IM_COL32(28, 68, 92, 255),  mH = IM_COL32(42, 96, 126, 255), mA = IM_COL32(20, 52, 74, 255);
+    const ImU32 vB = IM_COL32(74, 46, 96, 255),  vH = IM_COL32(102, 64, 132, 255), vA = IM_COL32(56, 34, 74, 255);
+    const ImU32 dB = IM_COL32(34, 74, 46, 255),  dH = IM_COL32(48, 100, 64, 255),  dA = IM_COL32(26, 56, 36, 255);
+    if (indent > 0.0f) ImGui::SetCursorPosX(indent);
+    if (ImGui::BeginTable("##profilecols", 3, ImGuiTableFlags_SizingStretchSame, ImVec2(colW, 0.0f))) {
+        ImGui::TableNextRow();
+
+        // Column 1 — faithful single-card machines (teal accent).
+        ImGui::TableNextColumn();
+        columnHeader(ICON_FA_MICROCHIP "  Machines");
+        const float mw = ImGui::GetContentRegionAvail().x;
+        presetButton("Apple-1 — Integer BASIC",
+                     "The original 1976 board with cassette. Type Integer BASIC or load "
+                     "programs from tape.",
+                     kPresetIntegerCassette, mB, mH, mA, mw, 46.0f);
+        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        presetButton("GEN2 HGR — Color",
+                     "Uncle Bernie's 280x192 color graphics card, 48 KB RAM. Run the HGR "
+                     "demos and games.",
+                     kPresetGen2Color, mB, mH, mA, mw, 46.0f);
+        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        presetButton("TMS9918 — CodeTank",
+                     "P-LAB video chip with the CodeTank game cartridge — sprites, tiles "
+                     "and three built-in games.",
+                     kPresetTMS9918Card, mB, mH, mA, mw, 46.0f);
+
+        // Column 2 — graphical languages (violet accent). Each boots the
+        // interpreter live on its card and opens the Bench with a matching demo.
+        ImGui::TableNextColumn();
+        columnHeader(ICON_FA_PALETTE "  Create");
+        const float vw = ImGui::GetContentRegionAvail().x;
+        langButton("Applesoft — HGR",
+                   "Color-graphics BASIC (HGR, HPLOT, HCOLOR) on the GEN2 card. Opens the "
+                   "editor with a demo ready to run.",
+                   /*BASIC*/ 2, /*Applesoft GEN2*/ 4, vB, vH, vA, vw, 46.0f);
+        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        langButton("Applesoft — TMS9918",
+                   "The same graphics BASIC driving the P-LAB TMS9918 chip. Opens the "
+                   "editor with a demo ready to run.",
+                   /*BASIC*/ 2, /*Applesoft TMS*/ 5, vB, vH, vA, vw, 46.0f);
+        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        langButton("LOGO — HGR",
+                   "Turtle graphics (LOGO V2.6) on the GEN2 HGR card. Draw with TO, "
+                   "REPEAT, FD and TR.",
+                   /*LOGO*/ 3, /*LOGO GEN2*/ 10, vB, vH, vA, vw, 46.0f);
+        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        langButton("LOGO — TMS9918",
+                   "Turtle graphics (LOGO V2.6) on the P-LAB TMS9918 card. Draw with TO, "
+                   "REPEAT, FD and TR.",
+                   /*LOGO*/ 3, /*LOGO TMS*/ 9, vB, vH, vA, vw, 46.0f);
+
+        // Column 3 — DevBench profiles (green accent).
+        ImGui::TableNextColumn();
+        columnHeader(ICON_FA_WRENCH "  Develop");
+        const float dw = ImGui::GetContentRegionAvail().x;
+        presetButton("Assembly / C — Text",
+                     "DevBench for hand-written 6502 assembly or C on the plain text "
+                     "Apple-1 (cc65 toolchain).",
+                     kPresetCC65Bench, dB, dH, dA, dw, 46.0f);
+        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        presetButton("Assembly / C — HGR",
+                     "DevBench targeting Uncle Bernie's GEN2 HGR color card (cc65 "
+                     "assembly or C).",
+                     kPresetGen2Bench, dB, dH, dA, dw, 46.0f);
+        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        presetButton("Assembly / C — TMS9918",
+                     "DevBench targeting the P-LAB TMS9918 card via the CodeTank "
+                     "cartridge (cc65 assembly or C).",
+                     kPresetTMS9918Bench, dB, dH, dA, dw, 46.0f);
+
+        ImGui::EndTable();
+    }
+
+    // Pixel-art tools: direct access to the HGR / TMS9918 Paint editors, centred
+    // below the columns. Each plugs its graphics card and opens the editor.
+    ImGui::Dummy(ImVec2(0.0f, 18.0f));
+    centeredScaledText(ICON_FA_PAINTBRUSH "  Paint editors", 1.0f, IM_COL32(140, 153, 179, 255));
+    ImGui::Dummy(ImVec2(0.0f, 4.0f));
+    {
+        const float pbW = 320.0f, pbGap = 16.0f, pbH = 44.0f;
+        const float rowW = 2.0f * pbW + pbGap;
+        if (winW > rowW) ImGui::SetCursorPosX((winW - rowW) * 0.5f);
+        const ImU32 pB = IM_COL32(150, 96, 34, 255), pH = IM_COL32(190, 128, 52, 255), pA = IM_COL32(120, 76, 26, 255);
+        ImGui::PushStyleColor(ImGuiCol_Button, pB);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, pH);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, pA);
+        if (ImGui::Button(ICON_FA_PAINTBRUSH "  HGR Painter", ImVec2(pbW, pbH))) chosenPaint = 0;
+        ImGui::SameLine(0.0f, pbGap);
+        if (ImGui::Button(ICON_FA_PAINTBRUSH "  TMS9918 Painter", ImVec2(pbW, pbH))) chosenPaint = 1;
+        ImGui::PopStyleColor(3);
+    }
+
+    // Footer anchored near the bottom of the viewport: a dim, centred nod to
+    // Apple's 50th anniversary (1976-2026).
+    const char* footer = "Celebrating 50 years of Apple  —  1976-2026";
+    const float footY = ImGui::GetWindowHeight() - ImGui::GetTextLineHeight() - 20.0f;
+    if (footY > ImGui::GetCursorPosY()) ImGui::SetCursorPosY(footY);
+    centeredScaledText(footer, 1.0f, IM_COL32(120, 128, 144, 255));
+
+    ImGui::End();
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor();
+
+    // Enter with nothing else picked = boot the flagship default (POM1 FANTASY),
+    // exactly like clicking the big amber button — a one-keystroke "just start".
+    if (chosenPreset < 0 && chosenLang < 0 &&
+        (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)))
+        chosenPreset = kMachinePresetCount - 1;
+
+    // Run the picked action after ImGui::End() (every path dismisses the chooser).
+    if (chosenPreset >= 0) {
+        applyBootConfig(chosenPreset);
+        showProfileChooser = false;
+    } else if (chosenLang >= 0) {
+        launchLanguageFromChooser(chosenLang, chosenMachine);
+        showProfileChooser = false;
+    } else if (chosenPaint >= 0) {
+        launchPaintEditorFromChooser(/*tms=*/chosenPaint == 1);
+        showProfileChooser = false;
+    }
+}
+
+// Open a pixel-art editor straight from the chooser. Plug the matching graphics
+// machine (its Paint editor needs a live card to draw into) and raise the editor
+// window — mirroring the Tools-menu actions that plug the card on open.
+void MainWindow_ImGui::launchPaintEditorFromChooser(bool tms)
+{
+    if (tms) {
+        applyBootConfig(kPresetTMS9918Card);
+        tms9918Enabled = true;
+        pendingTms9918Enable = true;
+        showTMS9918 = true;
+        showTMSPaintEditor = true;
+    } else {
+        applyBootConfig(kPresetGen2Color);
+        graphicsCardEnabled = true;
+        showGraphicsCard = true;
+        emulation->setHgrFramebufferAttached(true);
+        showHGRPaintEditor = true;
+    }
+}
+
+// Boot straight into a graphical language environment from the chooser. These
+// are DevBench "targets" (Applesoft-on-video or LOGO), not plain machine
+// presets: selectTargetExplicit() switches to the target's machine preset
+// (window layout + OS window size via applyMachineConfig) AND cold-starts the
+// in-ROM interpreter to its prompt, then we drop the target's starter demo into
+// the Bench editor so Run works immediately. Resolving the target through
+// targetFor() (not a literal kP1Targets[] index) keeps this robust against a
+// target-table reorder and against the WASM build's trimmed table.
+void MainWindow_ImGui::launchLanguageFromChooser(int benchLang, int benchMachine)
+{
+    ensureBench();
+    const int target = benchHost_->targetFor(benchLang, benchMachine);
+    if (target < 0) {
+        setStatusMessage("This graphical language target is unavailable", 3.0f);
+        return;
+    }
+    showBench = true;
+    codeBench_->prepareTargetWithStarter(target);
+    applyBootCliOverrides();
+}
+
 // GUI-free preset application for --headless. Mirrors the machine-config
 // essence of applyMachineConfig() — RAM size, strict modes, card plugs, BASIC
 // ROM, Krusader — but without ImGui (no ini/layout/window) and without the
@@ -1117,7 +1426,11 @@ bool copyIniDefaultsFileTo(const char* basename, const std::string& destPath)
 bool loadSizeFile(int idx, int& w, int& h)
 {
     std::ifstream f(sizePathForPreset(idx));
-    return bool(f && (f >> w >> h)) && w > 0 && h > 0;
+    // Reject a corrupt sidecar: parse failure, non-positive, or absurd dims that
+    // would be handed straight to glfwSetWindowSize. 16384 comfortably exceeds
+    // any real display while ruling out garbage like "2000000000".
+    return bool(f && (f >> w >> h)) &&
+           w > 0 && h > 0 && w <= 16384 && h <= 16384;
 }
 
 bool saveSizeFile(int idx, int w, int h)

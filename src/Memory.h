@@ -133,6 +133,12 @@ public:
     const Gen2VideoScanner::DisplayState& gen2DisplayState(void) const {
         return gen2Scanner.displayState();
     }
+    // Editor helper: drive the GEN2 soft switches to display a given page/mode
+    // (GRAPHICS + full screen + PAGE1/2 + HIRES/lo-res) exactly as a program's
+    // $C25x reads would. Used by the HGR Paint editor's HGR/HGR2/GR/GR2 selector
+    // so switching the edited page also flips what the live card shows. No-op
+    // when the GEN2 card is not attached.
+    void setGen2DisplayMode(bool grMode, bool page2);
     // 50/60 Hz vertical-rate jumper of the release card (NTSC color either way).
     void setGen2FiftyHz(bool on) { gen2Scanner.setFiftyHz(on); }
     bool isGen2FiftyHz(void) const { return gen2Scanner.isFiftyHz(); }
@@ -635,7 +641,7 @@ private :
     void resetGen2VideoEventJournal();
     std::unordered_set<uint32_t> oorWarned;  // key = (addr<<1)|isWrite; capped at 64
     void checkOutOfRangeAccess(uint16_t address, bool isWrite);
-    bool writeInRom;
+    bool writeInRom = false;   // ROM windows write-protected by default (see initMemory)
     std::string lastError;
     std::unique_ptr<CassetteDevice> cassetteDevice;
     // All expansion cards start UNPLUGGED. MainWindow::applyMachineConfig

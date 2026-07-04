@@ -906,56 +906,10 @@ def build_game6_upper_bank() -> bytes:
 
 
 # ---------------------------------------------------------------------------
-def build_game1() -> bytes:
-    print("\n========== Codetank_GAME1.rom ==========", file=sys.stderr)
-    lower = build_game1_lower_bank()
-    upper = build_game1_upper_bank()
-    rom = lower + upper
-    assert len(rom) == ROM_SIZE
-    return rom
-
-
-def build_game2() -> bytes:
-    print("\n========== Codetank_GAME2.rom ==========", file=sys.stderr)
-    lower = build_game2_lower_bank()
-    upper = build_game2_upper_bank()
-    rom = lower + upper
-    assert len(rom) == ROM_SIZE
-    return rom
-
-
-def build_game3() -> bytes:
-    print("\n========== Codetank_GAME3.rom ==========", file=sys.stderr)
-    lower = build_game3_lower_bank()
-    upper = build_game3_upper_bank()
-    rom = lower + upper
-    assert len(rom) == ROM_SIZE
-    return rom
-
-
-def build_game4() -> bytes:
-    print("\n========== Codetank_GAME4.rom ==========", file=sys.stderr)
-    lower = build_game4_lower_bank()
-    upper = build_game4_upper_bank()
-    rom = lower + upper
-    assert len(rom) == ROM_SIZE
-    return rom
-
-
-def build_game5() -> bytes:
-    print("\n========== Codetank_GAME5.rom ==========", file=sys.stderr)
-    lower = build_game5_lower_bank()
-    upper = build_game5_upper_bank()
-    rom = lower + upper
-    assert len(rom) == ROM_SIZE
-    return rom
-
-
-def build_game6() -> bytes:
-    print("\n========== Codetank_GAME6.rom ==========", file=sys.stderr)
-    lower = build_game6_lower_bank()
-    upper = build_game6_upper_bank()
-    rom = lower + upper
+def build_two_bank(rom_name: str, lower_fn, upper_fn) -> bytes:
+    """Concatenate a lower + upper 16 kB bank into a 32 kB CodeTank ROM."""
+    print(f"\n========== {rom_name} ==========", file=sys.stderr)
+    rom = lower_fn() + upper_fn()
     assert len(rom) == ROM_SIZE
     return rom
 
@@ -1038,52 +992,48 @@ SIDECAR_CODETANKDEV = (
 )
 
 
+# The cartridge catalogue: one row per selectable ROM. GAME1-6 are lower+upper
+# bank concatenations (the per-bank builders carry the real per-game variation);
+# CODETANKDEV is built whole (lower/upper builders = None). `needs_cl65` marks
+# carts with a cc65 C bank. Adding a cart is one row here — no main() edits.
+CARTS = [
+    # key,   filename,              sidecar,             lower_builder,           upper_builder,           needs_cl65
+    ("1",   "Codetank_GAME1.rom",  SIDECAR_GAME1,       build_game1_lower_bank,  build_game1_upper_bank,  False),
+    ("2",   "Codetank_GAME2.rom",  SIDECAR_GAME2,       build_game2_lower_bank,  build_game2_upper_bank,  False),
+    ("3",   "Codetank_GAME3.rom",  SIDECAR_GAME3,       build_game3_lower_bank,  build_game3_upper_bank,  False),
+    ("4",   "Codetank_GAME4.rom",  SIDECAR_GAME4,       build_game4_lower_bank,  build_game4_upper_bank,  True),
+    ("5",   "Codetank_GAME5.rom",  SIDECAR_GAME5,       build_game5_lower_bank,  build_game5_upper_bank,  True),
+    ("6",   "Codetank_GAME6.rom",  SIDECAR_GAME6,       build_game6_lower_bank,  build_game6_upper_bank,  False),
+    ("dev", "CODETANKDEV.rom",     SIDECAR_CODETANKDEV, None,                    None,                    False),
+]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument(
-        "--rom", choices=("1", "2", "3", "4", "5", "6", "dev", "all"),
+        "--rom", choices=[c[0] for c in CARTS] + ["all"],
         default="all",
         help="Which CodeTank ROM to build (default: all — GAME1-6 + CODETANKDEV)",
     )
     args = ap.parse_args()
 
+    selected = [c for c in CARTS if args.rom in (c[0], "all")]
+
     need("ca65")
     need("ld65")
-    if args.rom in ("4", "5", "all"):
+    if any(needs_cl65 for *_, needs_cl65 in selected):
         need("cl65")               # GAME4 upper / GAME5 are cc65 C builds
 
     out_dir = ROOT / "roms" / "codetank"
-
-    if args.rom in ("1", "all"):
-        rom1 = build_game1()
-        write_rom(rom1, out_dir / "Codetank_GAME1.rom", SIDECAR_GAME1)
-
-    if args.rom in ("2", "all"):
-        rom2 = build_game2()
-        write_rom(rom2, out_dir / "Codetank_GAME2.rom", SIDECAR_GAME2)
-
-    if args.rom in ("3", "all"):
-        rom3 = build_game3()
-        write_rom(rom3, out_dir / "Codetank_GAME3.rom", SIDECAR_GAME3)
-
-    if args.rom in ("4", "all"):
-        rom4 = build_game4()
-        write_rom(rom4, out_dir / "Codetank_GAME4.rom", SIDECAR_GAME4)
-
-    if args.rom in ("5", "all"):
-        rom5 = build_game5()
-        write_rom(rom5, out_dir / "Codetank_GAME5.rom", SIDECAR_GAME5)
-
-    if args.rom in ("6", "all"):
-        rom6 = build_game6()
-        write_rom(rom6, out_dir / "Codetank_GAME6.rom", SIDECAR_GAME6)
-
-    if args.rom in ("dev", "all"):
-        romd = build_codetankdev()
-        write_rom(romd, out_dir / "CODETANKDEV.rom", SIDECAR_CODETANKDEV)
+    for _key, fname, sidecar, lower_fn, upper_fn, _needs_cl65 in selected:
+        if lower_fn is None:                       # CODETANKDEV — built whole
+            rom = build_codetankdev()
+        else:
+            rom = build_two_bank(fname, lower_fn, upper_fn)
+        write_rom(rom, out_dir / fname, sidecar)
 
     return 0
 

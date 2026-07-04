@@ -49,6 +49,7 @@ public:
                       const std::string& defaultDir, const std::string& defaultName,
                       std::string& outPath) override;
     bool nativeFilePickerAvailable() const override;
+    std::string browseDir() const override;   // → sdcard/TMS/ (created if missing)
     std::vector<tmspaint::DevSpriteCategory> devSprites() override;
     void* uploadTexture(void* tex, const void* rgba,
                         int w, int h, bool linear) override;

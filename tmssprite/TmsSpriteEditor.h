@@ -8,8 +8,8 @@
 // on the host Graphic Card window in real time.
 //
 // Unlike the playfield paint editor the drawing surface is tiny (8×8 or 16×16),
-// so the canvas is a zoomed, gridded bitmap the editor rasterises itself; a small
-// live thumbnail of the chip's 256×192 framebuffer shows the sprite in context.
+// so the canvas is a zoomed, gridded bitmap the editor rasterises itself. The
+// sprite renders live on the Graphic Card window (via the SAT placement).
 //
 // Two geometries: 8×8 (one pattern slot) and 16×16 (four slots, TMS quadrant
 // order). Sprites carry ONE palette colour (from the SAT) with index 0 =
@@ -58,9 +58,8 @@ private:
     // 16 KB VRAM shadow, refreshed from the live chip each frame.
     std::vector<uint8_t> shadow;
 
-    // Live chip framebuffer (256×192) → thumbnail texture owned by the host.
+    // Scratch RGBA buffer (256×192) for the Save-PNG path (host->liveFramebuffer).
     std::vector<uint32_t> previewRgba;
-    void* previewTex = nullptr;
 
     // Sprite-bank browser: the whole sprite pattern table ($3800) rasterised from
     // live VRAM into a 128×128 sheet (16×16 slots of 8×8, or 8×8 sprites of 16×16),
@@ -156,7 +155,6 @@ private:
     void renderSpriteBank();      // VRAM sprite-table browser (click to select)
     void renderDevSprites();      // built-in sprite-library browser (click to load)
     void loadDevSprite(const tmspaint::DevSprite& s);
-    void renderPreview();
     void handleShortcuts();
 };
 

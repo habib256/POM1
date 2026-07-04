@@ -1462,211 +1462,90 @@ void MainWindow_ImGui::renderJukeBoxWindow()
 
 namespace {
 
-// Search a list of candidate parents for a `codetank/` library directory.
-// Mirrors the multi-cwd probe used elsewhere (build/, repo root, packaged
-// macOS bundle). Returns the first directory that exists, or an empty path.
+// First existing roms/codetank directory across the usual cwd candidates
+// (repo root, build/, one level deeper). Returns {} if none exists.
 std::filesystem::path resolveCodeTankLibraryRoot()
 {
     namespace fs = std::filesystem;
-    const char* parents[] = { "roms", "../roms", "../../roms" };
-    for (const char* p : parents) {
-        fs::path candidate = fs::path(p) / "codetank";
+    for (const char* p : { "roms/codetank", "../roms/codetank", "../../roms/codetank" }) {
         std::error_code ec;
-        if (fs::is_directory(candidate, ec)) return candidate;
-    }
-    // Fall back to the parent dir of the legacy single-file path so the
-    // user always sees `codetank.rom` even before the directory exists.
-    for (const char* p : parents) {
-        std::error_code ec;
-        if (std::filesystem::is_directory(p, ec)) return std::filesystem::path(p);
+        if (fs::is_directory(p, ec)) return p;
     }
     return {};
 }
 
-static std::string codeTankTrim(std::string s)
+struct CodeTankLibraryEntry {
+    std::filesystem::path path;
+    std::string           filename;      // display name (no parent dirs)
+    std::string           blurbLower;    // sidecar "Lower jumper:" payload (what Low boots)
+    std::string           blurbUpper;    // sidecar "Upper jumper:" payload (what Up boots)
+    bool                  upper = false; // per-row jumper switch: false=Lower, true=Upper
+    // Short line to show for the current switch position (falls back to the
+    // other bank if one side has no sidecar entry).
+    const std::string& blurb() const {
+        return upper ? (blurbUpper.empty() ? blurbLower : blurbUpper)
+                     : (blurbLower.empty() ? blurbUpper : blurbLower);
+    }
+};
+
+// Strip a leading "4000R → " / "4000R -> " boot prefix + surrounding whitespace.
+std::string codeTankStripBootPrefix(std::string s)
 {
-    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
-        s.erase(0, 1);
-    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))
-        s.pop_back();
+    const auto ws = [&] { std::size_t i = s.find_first_not_of(" \t"); s.erase(0, i == std::string::npos ? s.size() : i); };
+    ws();
+    if (s.rfind("4000R", 0) == 0 || s.rfind("4000r", 0) == 0) {
+        s.erase(0, 5); ws();
+        if (s.rfind("\xE2\x86\x92", 0) == 0) s.erase(0, 3);   // → (U+2192)
+        else if (s.rfind("->", 0) == 0)      s.erase(0, 2);
+        ws();
+    }
     return s;
 }
 
-static bool codeTankStartsWithCi(const std::string& s, size_t off, const char* lit)
+// Read the "Lower jumper:" / "Upper jumper:" payloads from a cartridge's .txt
+// sidecar into the entry (both empty when there is no sidecar).
+void codeTankReadSidecar(const std::filesystem::path& rom, CodeTankLibraryEntry& e)
 {
-    const size_t n = std::strlen(lit);
-    if (s.size() < off + n) return false;
-    for (size_t k = 0; k < n; k++) {
-        if (std::tolower(static_cast<unsigned char>(s[off + k]))
-            != std::tolower(static_cast<unsigned char>(lit[k])))
-            return false;
-    }
-    return true;
-}
-
-// Sidecar lines use "4000R → …" or "4000R -> …"; strip repeated leading
-// segments so the UI shows the human-facing blurb only.
-static void codeTankStripLeading4000rArrow(std::string& s)
-{
-    for (;;) {
-        size_t i = 0;
-        while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
-            ++i;
-        if (!codeTankStartsWithCi(s, i, "4000r")) break;
-        i += 5;
-        while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
-            ++i;
-        if (i + 2 < s.size()
-            && static_cast<unsigned char>(s[i]) == 0xe2
-            && static_cast<unsigned char>(s[i + 1]) == 0x86
-            && static_cast<unsigned char>(s[i + 2]) == 0x92) {
-            i += 3;
-        } else if (i + 1 < s.size() && s[i] == '-' && s[i + 1] == '>') {
-            i += 2;
-        } else {
-            break;
-        }
-        while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
-            ++i;
-        s.erase(0, i);
+    namespace fs = std::filesystem;
+    fs::path sidecar = rom; sidecar.replace_extension(".txt");
+    std::error_code ec;
+    if (!fs::is_regular_file(sidecar, ec)) return;
+    std::ifstream f(sidecar);
+    std::string line;
+    while (std::getline(f, line)) {
+        std::size_t b = line.find_first_not_of(" \t");
+        if (b == std::string::npos) continue;
+        std::string t = line.substr(b);
+        std::string key = t.substr(0, 13);
+        for (char& c : key) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        const std::size_t col = t.find(':');
+        if (col == std::string::npos) continue;
+        if (key.rfind("lower jumper:", 0) == 0)
+            e.blurbLower = codeTankStripBootPrefix(t.substr(col + 1));
+        else if (key.rfind("upper jumper:", 0) == 0)
+            e.blurbUpper = codeTankStripBootPrefix(t.substr(col + 1));
     }
 }
 
-static std::string codeTankJumperBlurbFromPayload(std::string payload)
-{
-    std::string s = codeTankTrim(std::move(payload));
-    codeTankStripLeading4000rArrow(s);
-    return codeTankTrim(std::move(s));
-}
-
-static bool codeTankLineIsTitleBlurb(const std::string& t)
-{
-    std::string lower = t;
-    for (char& c : lower) {
-        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
-    }
-    return lower.find("codetank cartridge") != std::string::npos;
-}
-
-static bool codeTankEntryIsDevRom(const std::string& filename)
-{
-    std::string lower = filename;
-    for (char& c : lower) {
-        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
-    }
-    return lower == "codetankdev.rom";
-}
-
-struct CodeTankLibraryEntry {
-    std::filesystem::path path;
-    std::string           filename; // display name (no parent dirs)
-    std::uintmax_t        size = 0; // bytes; 32768 is the only valid size
-    bool                  sidecarPresent = false;
-    std::string           bankLowerBlurb; // from sidecar "Lower jumper:" line
-    std::string           bankUpperBlurb; // from sidecar "Upper jumper:" line
-    std::string           sidecarExtra;   // other non-title lines from .txt
-    bool                  mirrored = false; // lower 16 kB == upper 16 kB
-};
-
-static void parseCodeTankSidecarText(std::string text, CodeTankLibraryEntry& e)
-{
-    e.bankLowerBlurb.clear();
-    e.bankUpperBlurb.clear();
-    e.sidecarExtra.clear();
-    if (text.empty()) return;
-    std::istringstream iss(std::move(text));
-    std::string        line;
-    while (std::getline(iss, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        const std::string t = codeTankTrim(line);
-        if (t.empty()) continue;
-        std::string keyTest = t;
-        for (char& c : keyTest) {
-            if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
-        }
-        if (keyTest.rfind("lower jumper:", 0) == 0) {
-            const size_t col = t.find(':');
-            if (col != std::string::npos)
-                e.bankLowerBlurb = codeTankJumperBlurbFromPayload(t.substr(col + 1));
-            continue;
-        }
-        if (keyTest.rfind("upper jumper:", 0) == 0) {
-            const size_t col = t.find(':');
-            if (col != std::string::npos)
-                e.bankUpperBlurb = codeTankJumperBlurbFromPayload(t.substr(col + 1));
-            continue;
-        }
-        if (codeTankLineIsTitleBlurb(t)) continue;
-        if (!e.sidecarExtra.empty()) e.sidecarExtra.push_back('\n');
-        e.sidecarExtra += t;
-    }
-}
-
+// Every 32 kB .rom/.bin under roms/codetank/, sorted by name.
 std::vector<CodeTankLibraryEntry> scanCodeTankLibrary()
 {
     namespace fs = std::filesystem;
     std::vector<CodeTankLibraryEntry> out;
-    fs::path root = resolveCodeTankLibraryRoot();
+    const fs::path root = resolveCodeTankLibraryRoot();
     if (root.empty()) return out;
     std::error_code ec;
-    // The "library" is every .rom / .bin under roms/codetank/ plus the
-    // legacy roms/codetank.rom (single-file shipped with POM1). Both ends
-    // up in the same `out` vector deduplicated by absolute path.
-    auto pushCandidate = [&](const fs::path& p) {
-        if (!fs::is_regular_file(p, ec)) return;
-        const auto sz = fs::file_size(p, ec);
-        if (ec || sz != 0x8000u) return;   // CodeTank ROMs are exactly 32 kB
-        const fs::path canon = fs::weakly_canonical(p, ec);
-        for (const auto& existing : out) {
-            std::error_code ec2;
-            if (fs::weakly_canonical(existing.path, ec2) == canon) return;
-        }
+    for (const auto& entry : fs::directory_iterator(root, ec)) {
+        const fs::path& p = entry.path();
+        const std::string ext = p.extension().string();
+        if (ext != ".rom" && ext != ".bin") continue;
+        if (fs::file_size(p, ec) != 0x8000u || ec) continue;   // 32 kB carts only
         CodeTankLibraryEntry e;
-        e.path     = p;
+        e.path  = p;
         e.filename = p.filename().string();
-        e.size     = sz;
-        // Mirror detection: a 32 kB ROM whose two 16 kB halves are byte-
-        // identical carries the same content under either jumper position
-        // (typical of `--layout=menu` ROMs). The library shows one button.
-        std::ifstream rf(p, std::ios::binary);
-        if (rf) {
-            std::vector<char> data(0x8000);
-            rf.read(data.data(), data.size());
-            if (rf.gcount() == static_cast<std::streamsize>(data.size())) {
-                e.mirrored = std::memcmp(data.data(),
-                                         data.data() + 0x4000, 0x4000) == 0;
-            }
-        }
-        // Optional sidecar description: same name, ".txt" extension.
-        fs::path sidecar = p; sidecar.replace_extension(".txt");
-        if (fs::is_regular_file(sidecar, ec)) {
-            std::ifstream f(sidecar);
-            std::string buf((std::istreambuf_iterator<char>(f)),
-                            std::istreambuf_iterator<char>());
-            while (!buf.empty() && (buf.back() == '\n' || buf.back() == '\r'
-                                    || buf.back() == ' ' || buf.back() == '\t'))
-                buf.pop_back();
-            e.sidecarPresent = true;
-            parseCodeTankSidecarText(std::move(buf), e);
-        }
+        codeTankReadSidecar(p, e);
         out.push_back(std::move(e));
-    };
-
-    // Walk roms/codetank/ if it exists.
-    if (fs::is_directory(root, ec) && root.filename() == "codetank") {
-        for (const auto& entry : fs::directory_iterator(root, ec)) {
-            const auto& p = entry.path();
-            const auto ext = p.extension().string();
-            if (ext == ".rom" || ext == ".bin") pushCandidate(p);
-        }
     }
-    // Always offer the shipped roms/codetank.rom (one parent up when root
-    // is roms/codetank, or `root/codetank.rom` if root is the roms/ dir
-    // because no `codetank/` subdirectory exists).
-    fs::path legacy = (root.filename() == "codetank")
-                      ? root.parent_path() / "codetank.rom"
-                      : root / "codetank.rom";
-    pushCandidate(legacy);
     std::sort(out.begin(), out.end(),
               [](const CodeTankLibraryEntry& a, const CodeTankLibraryEntry& b) {
                   return a.filename < b.filename;
@@ -1674,48 +1553,11 @@ std::vector<CodeTankLibraryEntry> scanCodeTankLibrary()
     return out;
 }
 
-void drawCodeTankConsoleHeader(bool codeTankOnline,
-                               bool tmsOnline,
-                               size_t romCount)
-{
-    const ImVec2 start = ImGui::GetCursorScreenPos();
-    const float width = std::max(360.0f, ImGui::GetContentRegionAvail().x);
-    const ImVec2 size(width, 76.0f);
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-
-    const ImVec2 end(start.x + size.x, start.y + size.y);
-    dl->AddRectFilledMultiColor(start, end,
-                                IM_COL32(8, 14, 20, 255),
-                                IM_COL32(20, 38, 48, 255),
-                                IM_COL32(14, 18, 28, 255),
-                                IM_COL32(5, 8, 14, 255));
-    dl->AddRect(start, end, IM_COL32(85, 210, 190, 190), 8.0f, 0, 1.5f);
-    for (float y = start.y + 8.0f; y < end.y - 6.0f; y += 6.0f) {
-        dl->AddLine(ImVec2(start.x + 8.0f, y), ImVec2(end.x - 8.0f, y),
-                    IM_COL32(255, 255, 255, 14));
-    }
-
-    dl->AddText(ImVec2(start.x + 18.0f, start.y + 16.0f),
-                IM_COL32(92, 245, 205, 255), "P-LAB CODETANK");
-    dl->AddText(ImVec2(start.x + 18.0f, start.y + 38.0f),
-                IM_COL32(240, 245, 255, 255), "APPLE-1 GAME CONSOLE");
-
-    char stats[128];
-    std::snprintf(stats, sizeof(stats), "%zu ROMS | 28C256 OK | TMS %s | CODETANK %s | 4000R",
-                  romCount,
-                  tmsOnline ? "ON" : "OFF",
-                  codeTankOnline ? "ON" : "OFF");
-    dl->AddText(ImVec2(start.x + 18.0f, start.y + 58.0f),
-                IM_COL32(255, 206, 94, 255), stats);
-
-    ImGui::Dummy(size);
-}
-
 } // namespace
 
 void MainWindow_ImGui::renderCodeTankLibraryWindow()
 {
-    ImGui::SetNextWindowSize(ImVec2(640, 520), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(460, 400), ImGuiCond_FirstUseEver);
     applyPendingLayout("P-LAB CodeTank Library");
     if (ImGui::Begin("P-LAB CodeTank Library", &showCodeTankLibrary)) {
         // Cache the scan across frames; refresh on the Refresh button. Static
@@ -1726,192 +1568,79 @@ void MainWindow_ImGui::renderCodeTankLibraryWindow()
             entries = scanCodeTankLibrary();
             firstScan = false;
         }
-        if (ImGui::SmallButton("Refresh")) {
+        if (ImGui::SmallButton("Refresh"))
             entries = scanCodeTankLibrary();
-        }
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Re-scan roms/codetank/ for cartridges");
-        ImGui::SameLine();
-        ImGui::TextDisabled("roms/codetank/  (32 kB .rom/.bin cartridges)");
-
         ImGui::Separator();
 
-        // Currently-loaded ROM (highlighted in green).
         const std::string& currentRom = uiSnapshot.codeTank.romPath;
-        drawCodeTankConsoleHeader(codeTankEnabled, tms9918Enabled, entries.size());
-        ImGui::Spacing();
 
-        ImGui::BeginChild("##codetank_lib_scroll",
-                          ImVec2(0, -ImGui::GetFrameHeightWithSpacing() - 8.0f));
+        // Insert a cartridge with the chosen jumper, cascade-plug the TMS9918
+        // host + CodeTank, hard-reset and auto-type 4000R after ~3 s.
+        auto plug = [&](const CodeTankLibraryEntry& e, CodeTank::Jumper j) {
+            std::string err;
+            if (!emulation->loadCodeTankRom(e.path.string(), err)) {
+                setStatusMessage("CodeTank load failed: " + err, 5.0f);
+                return;
+            }
+            codeTankJumper = j;
+            emulation->setCodeTankJumper(codeTankJumper);
+            if (jukeBoxEnabled) {
+                jukeBoxEnabled = false;
+                emulation->setJukeBoxEnabled(false);
+            }
+            // CodeTank is a daughterboard of the TMS9918 — auto-plug the host
+            // so the UI flags match what Memory's setCodeTankEnabled is about
+            // to do.
+            if (!tms9918Enabled) {
+                tms9918Enabled = true;
+                showTMS9918 = true;
+                emulation->setTMS9918Enabled(true);
+                sidSpecialEditionEnabled = false;
+            }
+            if (!codeTankEnabled) {
+                codeTankEnabled = true;
+                emulation->setCodeTankEnabled(true);
+            }
+            bringTms9918WindowToFront = true;
+            ImGui::SetWindowFocus("P-LAB Graphic Card (TMS9918)");
+            emulation->hardReset();
+            // Cold boot to Wozmon ~3 s wall clock before auto-run (realistic panel startup).
+            constexpr double kCodeTankColdBootSeconds = 3.0;
+            codeTankPendingWozRunAt = ImGui::GetTime() + kCodeTankColdBootSeconds;
+            setStatusMessage(std::string("CodeTank: ") + e.filename
+                                 + (j == CodeTank::Jumper::Upper16 ? " (upper)" : " (lower)")
+                                 + " — reset; 4000R in 3 s",
+                             4.0f);
+        };
+
         if (entries.empty()) {
             ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.25f, 1.0f),
                 ICON_FA_TRIANGLE_EXCLAMATION " No 32 kB ROMs in roms/codetank/.");
         } else {
-            // Reused by both Load buttons below — keeps state side-effects in
-            // one place so adding a new ROM type doesn't drift.
-            auto plug = [&](const CodeTankLibraryEntry& e, CodeTank::Jumper j,
-                            const char* halfTag) {
-                std::string err;
-                if (!emulation->loadCodeTankRom(e.path.string(), err)) {
-                    setStatusMessage("CodeTank load failed: " + err, 5.0f);
-                    return;
-                }
-                codeTankJumper = j;
-                emulation->setCodeTankJumper(codeTankJumper);
-                if (jukeBoxEnabled) {
-                    jukeBoxEnabled = false;
-                    emulation->setJukeBoxEnabled(false);
-                }
-                // CodeTank is a daughterboard of the TMS9918 — auto-plug the
-                // host so the UI flags match what Memory's setCodeTankEnabled
-                // is about to do.
-                if (!tms9918Enabled) {
-                    tms9918Enabled = true;
-                    showTMS9918 = true;
-                    emulation->setTMS9918Enabled(true);
-                    sidSpecialEditionEnabled = false;
-                }
-                if (!codeTankEnabled) {
-                    codeTankEnabled = true;
-                    emulation->setCodeTankEnabled(true);
-                }
-                bringTms9918WindowToFront = true;
-                ImGui::SetWindowFocus("P-LAB Graphic Card (TMS9918)");
-                emulation->hardReset();
-                // Cold boot to Wozmon ~3 s wall clock before auto-run (realistic panel startup).
-                constexpr double kCodeTankColdBootSeconds = 3.0;
-                codeTankPendingWozRunAt = ImGui::GetTime() + kCodeTankColdBootSeconds;
-                setStatusMessage(std::string("CodeTank: ") + e.filename + halfTag
-                                     + " — reset; 4000R in 3 s",
-                                 4.0f);
-            };
-
             for (size_t i = 0; i < entries.size(); ++i) {
-                const auto& e = entries[i];
+                auto& e = entries[i];
                 const bool isActive = (currentRom == e.path.string());
-                const bool isDevRom = codeTankEntryIsDevRom(e.filename);
                 ImGui::PushID(static_cast<int>(i));
-                ImGui::PushStyleColor(ImGuiCol_ChildBg,
-                                      isDevRom ? IM_COL32(34, 30, 18, 255)
-                                      : isActive ? IM_COL32(18, 42, 30, 255)
-                                               : IM_COL32(20, 22, 28, 255));
-                ImGui::PushStyleColor(ImGuiCol_Border,
-                                      isDevRom ? IM_COL32(255, 206, 94, 230)
-                                      : isActive ? IM_COL32(95, 240, 130, 210)
-                                               : IM_COL32(75, 80, 92, 180));
-                ImGui::BeginChild(
-                    "cart", ImVec2(0, 0),
-                    ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY,
-                    ImGuiWindowFlags_NoScrollbar);
-                if (isDevRom) {
-                    ImGui::PushStyleColor(ImGuiCol_Text,
-                                          ImVec4(1.0f, 0.78f, 0.30f, 1.0f));
-                    ImGui::Text(ICON_FA_MICROCHIP " DEV CART  %s", e.filename.c_str());
-                    ImGui::PopStyleColor();
-                } else if (isActive) {
-                    ImGui::PushStyleColor(ImGuiCol_Text,
-                                          ImVec4(0.4f, 0.95f, 0.4f, 1.0f));
-                    ImGui::Text(ICON_FA_PLAY " INSERTED  %s", e.filename.c_str());
-                    ImGui::PopStyleColor();
-                } else {
-                    ImGui::Text(ICON_FA_GAMEPAD " CARTRIDGE  %s", e.filename.c_str());
-                }
+                // Jumper switch (Low / Up) before the Run button.
+                if (ImGui::RadioButton("Low", !e.upper)) e.upper = false;
                 ImGui::SameLine();
-                ImGui::TextDisabled(isDevRom ? "DevBench lower bank only" : "32 KB / 2 x 16 KB");
-
-                ImGui::Separator();
-
-                const float ctBtnW =
-                    ImGui::CalcTextSize(isDevRom ? "Run Dev Bank" : "Run Upper Bank").x
-                    + ImGui::GetStyle().FramePadding.x * 2.0f;
-                auto drawBankRow = [&](const char* label, const std::string& blurb,
-                                       const char* emptyHint, CodeTank::Jumper jumper,
-                                       const char* halfTag) {
-                    if (ImGui::Button(label, ImVec2(ctBtnW, 0))) {
-                        plug(e, jumper, halfTag);
-                    }
-                    if (ImGui::IsItemHovered()) {
-                        ImGui::SetTooltip(
-                            "Insert this cartridge with %s 16 KB jumper, plug TMS9918,\nhard-reset and auto-type 4000R after ~3 s",
-                            jumper == CodeTank::Jumper::Lower16 ? "Lower" : "Upper");
-                    }
-                    ImGui::SameLine();
-                    ImGui::PushTextWrapPos(ImGui::GetCursorPos().x
-                                           + ImGui::GetContentRegionAvail().x);
-                    if (!blurb.empty())
-                        ImGui::TextWrapped("%s", blurb.c_str());
-                    else {
-                        ImGui::AlignTextToFramePadding();
-                        ImGui::TextDisabled("%s", emptyHint);
-                    }
-                    ImGui::PopTextWrapPos();
-                };
-
-                if (isDevRom) {
-                    if (ImGui::Button("Run Dev Bank##ct_dev", ImVec2(ctBtnW, 0))) {
-                        plug(e, CodeTank::Jumper::Lower16, " (dev)");
-                    }
-                    if (ImGui::IsItemHovered()) {
-                        ImGui::SetTooltip(
-                            "DevBench cartridge.\nLower bank only. Boots 4000R.");
-                    }
-                    ImGui::SameLine();
-                    ImGui::PushTextWrapPos(ImGui::GetCursorPos().x
-                                           + ImGui::GetContentRegionAvail().x);
-                    ImGui::TextWrapped(
-                        "DevBench flash ROM. Lower bank only; boots 4000R.");
-                    ImGui::PopTextWrapPos();
-                } else if (e.mirrored) {
-                    const std::string& mirBlurb =
-                        !e.bankLowerBlurb.empty() ? e.bankLowerBlurb
-                        : !e.bankUpperBlurb.empty()   ? e.bankUpperBlurb
-                                                      : std::string{};
-                    if (ImGui::Button("Run Lower Bank##ct_mir", ImVec2(ctBtnW, 0))) {
-                        plug(e, CodeTank::Jumper::Lower16, "");
-                    }
-                    if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("Insert this mirrored cartridge, plug TMS9918,\nhard-reset and auto-type 4000R after ~3 s");
-                    ImGui::SameLine();
-                    ImGui::PushTextWrapPos(ImGui::GetCursorPos().x
-                                           + ImGui::GetContentRegionAvail().x);
-                    if (!mirBlurb.empty())
-                        ImGui::TextWrapped("%s", mirBlurb.c_str());
-                    else {
-                        ImGui::AlignTextToFramePadding();
-                        ImGui::TextWrapped(
-                            "Mirrored banks — same 16 kB in both halves; one entry point.");
-                    }
-                    ImGui::PopTextWrapPos();
-                } else {
-                    drawBankRow("Run Lower Bank##ct_lo", e.bankLowerBlurb,
-                                "(no Lower jumper: line in sidecar)",
-                                CodeTank::Jumper::Lower16, " (lower)");
-                    drawBankRow("Run Upper Bank##ct_hi", e.bankUpperBlurb,
-                                "(no Upper jumper: line in sidecar)",
-                                CodeTank::Jumper::Upper16, " (upper)");
-                }
-                if (!e.sidecarExtra.empty()) {
-                    ImGui::Spacing();
-                    ImGui::TextWrapped("%s", e.sidecarExtra.c_str());
-                }
-                if (isDevRom) {
-                    ImGui::Spacing();
-                    ImGui::TextDisabled("Generated by POM1 Bench.");
-                } else if (!e.sidecarPresent) {
-                    ImGui::Spacing();
-                    ImGui::TextDisabled(
-                        "No label sidecar. Drop a matching .txt file next to the ROM for cabinet notes.");
-                }
-                ImGui::EndChild();
-                ImGui::PopStyleColor(2);
-                ImGui::Spacing();
+                if (ImGui::RadioButton("Up", e.upper)) e.upper = true;
+                ImGui::SameLine();
+                if (ImGui::Button("Run"))
+                    plug(e, e.upper ? CodeTank::Jumper::Upper16 : CodeTank::Jumper::Lower16);
+                ImGui::SameLine();
+                if (isActive)
+                    ImGui::TextColored(ImVec4(0.4f, 0.95f, 0.4f, 1.0f), "%s", e.filename.c_str());
+                else
+                    ImGui::TextUnformatted(e.filename.c_str());
+                if (!e.blurb().empty())
+                    ImGui::TextDisabled("%s", e.blurb().c_str());
                 ImGui::PopID();
             }
         }
-        ImGui::EndChild();
 
-        ImGui::Separator();
         if (codeTankEnabled) {
+            ImGui::Separator();
             if (ImGui::Button("Unplug CodeTank")) {
                 emulation->setCodeTankEnabled(false);
                 codeTankEnabled = false;
@@ -1919,12 +1648,7 @@ void MainWindow_ImGui::renderCodeTankLibraryWindow()
                 codeTankPendingWozRunAt = 0.0;
                 setStatusMessage("CodeTank unplugged", 2.0f);
             }
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Remove the daughterboard (TMS9918 host stays plugged)");
-            ImGui::SameLine();
         }
-        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
-            "CodeTank window: $4000-$7FFF. Coexists with TMS9918 ($CC00/$CC01).");
     }
     ImGui::End();
 }

@@ -417,6 +417,20 @@ uint8_t Memory::gen2SoftSwitchRead(uint16_t address)
     return static_cast<uint8_t>((gen2Scanner.hst0At(emuCycle) << 7) | low7);
 }
 
+void Memory::setGen2DisplayMode(bool grMode, bool page2)
+{
+    // Replay the four soft-switch reads a program does to show a page — GRAPHICS
+    // (TEXT off), full screen (MIXED off), PAGE1/2, HIRES/LORES. gen2SoftSwitchRead
+    // sets the scanner state and journals each flip at the current cycle, so the
+    // beam-race renderer picks up the new mode on the next frame. The returned
+    // floating-bus byte is irrelevant here.
+    if (!hgrFramebufferAttached) return;
+    gen2SoftSwitchRead(0xC250);                     // TEXT off  -> graphics
+    gen2SoftSwitchRead(0xC252);                     // MIXED off -> full screen
+    gen2SoftSwitchRead(page2 ? 0xC255 : 0xC254);    // PAGE2 / PAGE1
+    gen2SoftSwitchRead(grMode ? 0xC256 : 0xC257);   // LORES / HIRES
+}
+
 void Memory::resetGen2VideoEventJournal()
 {
     gen2RecordingEvents.clear();
@@ -577,7 +591,14 @@ void Memory::checkOutOfRangeAccess(uint16_t address, bool isWrite)
 
 void Memory::initMemory(){
     ramSize = 64;  // Ouaahh 64Kbytes !
-    writeInRom = true;
+    // Protect the ROM windows by default — the Woz Monitor ($FF00-$FFFF, incl.
+    // the reset vector) and ACI PROM ($C100-$C1FF) are physically unwriteable on
+    // real hardware, so a stray CPU `STA` there must be a no-op. The ROM loaders
+    // and configureResetVectors below write mem[] directly (not via memWrite), and
+    // every injection path (loadHexDump direct-writes; runFromSync / DevBench set
+    // writeInRom=true around their writes), so protection-by-default doesn't block
+    // any legitimate load. Settings → "Write-protect ROMs" toggles it live.
+    writeInRom = false;
     if (mem.size() < (size_t)(ramSize * 1024))
         mem.resize(ramSize * 1024, 0);
     // Power-on RAM fill. Mirror resetMemory() so the cold-boot profile is

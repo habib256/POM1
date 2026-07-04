@@ -721,6 +721,15 @@ int main(int argc, char* argv[])
     glfwWindowHintString(GLFW_WAYLAND_APP_ID,    "POM1");
 #endif
 #endif
+#if defined(POM1_HAS_X11)
+    // Create the window HIDDEN so GLFW's X11 backend does not run its
+    // waitForVisibilityNotify() inside glfwCreateWindow(). That wait hangs
+    // forever on some X servers / window managers (GLFW 3.3; fixed upstream in
+    // 3.4) — the window is created (WM shows an icon) but glfwCreateWindow never
+    // returns, so the render loop never starts. We map the window ourselves,
+    // right after creation, via pom1ShowGlfwWindowX11().
+    glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+#endif
     GLFWwindow* window = glfwCreateWindow(1274, 801, "POM1 v1.9.3 - Apple 1 Emulator", NULL, NULL);
     if (window == NULL)
         return -1;
@@ -747,6 +756,15 @@ int main(int argc, char* argv[])
             }
         }
     }
+#endif
+
+#if defined(POM1_HAS_X11)
+    // Now that the icon / WM properties are set, show the window ourselves (it
+    // was created hidden above to dodge GLFW 3.3's X11 visibility-wait hang). If
+    // this isn't an X11 window (Wayland GLFW build/session), fall back to the
+    // normal path — glfwShowWindow only runs the hanging wait on the X11 backend.
+    if (!pom1ShowGlfwWindowX11(window))
+        glfwShowWindow(window);
 #endif
 
 #if defined(POM1_HAS_METAL) && POM1_HAS_METAL
@@ -1027,6 +1045,22 @@ int main(int argc, char* argv[])
         glfwGetFramebufferSize(window, &display_w, &display_h);
         pom1::renderer()->clear(display_w, display_h, 0.45f, 0.55f, 0.60f, 1.00f);
         pom1::renderer()->renderDrawData(ImGui::GetDrawData());
+
+        // TEMP DEBUG: one-shot backbuffer dump when POM1_DEBUG_DUMP is set.
+        if (const char* dp = getenv("POM1_DEBUG_DUMP")) {
+            static int dbgFrame = 0;
+            ++dbgFrame;
+            if (dbgFrame % 60 == 0) fprintf(stderr, "[DBG] frame %d\n", dbgFrame);
+            if (dbgFrame == 40) {
+                int fbW = 0, fbH = 0; std::vector<uint8_t> buf;
+                bool ok = pom1::renderer()->readBackbufferRGBA(fbW, fbH, buf);
+                fprintf(stderr, "[DBG] readback ok=%d %dx%d bytes=%zu\n", ok, fbW, fbH, buf.size());
+                if (ok) {
+                    int rc = stbi_write_png(dp, fbW, fbH, 4, buf.data(), fbW * 4);
+                    fprintf(stderr, "[DBG] png rc=%d -> %s\n", rc, dp);
+                }
+            }
+        }
 
         if (auto* card = mainWindow.getEmulationController()
                 ? mainWindow.getEmulationController()->getTerminalCardIfEnabled()

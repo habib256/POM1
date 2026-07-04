@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -350,6 +351,23 @@ std::string kdialogFilter(const std::vector<FileFilter>& filters)
     return out;
 }
 
+// zenity 4 (GTK4) ONLY honours the initial folder when --filename has a
+// non-empty basename that is NOT itself an existing directory — a bare directory
+// path (with or without a trailing slash) is silently ignored (verified by
+// strace against zenity 4.0.1). So to open INSIDE `dir` we must give a
+// basename: prefer an existing regular file (nice — it pre-selects one), else a
+// synthetic non-existent name (GTK still switches to the folder, nothing
+// selected). Never return a subdirectory name — that would navigate into it.
+std::string zenityInitialFile(const std::string& dir)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+        if (it->is_regular_file(ec)) return it->path().filename().string();
+    }
+    return ".pom1";   // non-existent placeholder → GTK opens in `dir`
+}
+
 std::string runZenityOpen(const std::string& title,
                           const std::string& defaultDir,
                           const std::vector<FileFilter>& filters)
@@ -359,8 +377,9 @@ std::string runZenityOpen(const std::string& title,
         "--title=" + (title.empty() ? std::string("Open File") : title),
     };
     if (!defaultDir.empty()) {
-        // Trailing slash hints zenity to enter the dir rather than preselect.
-        argv.push_back("--filename=" + defaultDir + "/");
+        // Point at a file inside the dir so GTK4 zenity actually opens there
+        // (a directory-only --filename is ignored — see zenityInitialFile).
+        argv.push_back("--filename=" + defaultDir + "/" + zenityInitialFile(defaultDir));
     }
     for (const auto& f : filters) {
         std::string spec = "--file-filter=";
@@ -384,7 +403,10 @@ std::string runZenitySave(const std::string& title,
     };
     std::string filenameArg = "--filename=";
     if (!defaultDir.empty()) filenameArg += defaultDir + "/";
-    filenameArg += defaultName;
+    // A non-empty basename is required for GTK4 zenity to honour the initial
+    // folder (see zenityInitialFile); fall back to a placeholder when the caller
+    // gave no suggested name so the dialog still opens in defaultDir.
+    filenameArg += (defaultName.empty() && !defaultDir.empty()) ? ".pom1" : defaultName;
     if (filenameArg != "--filename=") argv.push_back(filenameArg);
     for (const auto& f : filters) {
         std::string spec = "--file-filter=";

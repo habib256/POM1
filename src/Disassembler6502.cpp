@@ -218,8 +218,16 @@ std::string annotateOperand6502(const uint8_t* mem, uint16_t pc,
     case AM_ABX: return dataAt(static_cast<uint16_t>(abs16 + x));
     case AM_ABY: return dataAt(static_cast<uint16_t>(abs16 + y));
     case AM_IND: {                        // JMP ($abs16)
+        // NMOS page-wrap bug: the high byte is fetched from the SAME page as the
+        // pointer (matches M6502::Ind — lo wraps &0xFF), so JMP ($xxFF) reads hi
+        // from $xx00, not the next page. rdword crosses the page and would
+        // mis-annotate exactly the page-boundary pointer this hint is most useful
+        // for spotting.
+        const uint16_t ptrHi = static_cast<uint16_t>((abs16 & 0xFF00) |
+                                                      ((abs16 + 1) & 0x00FF));
+        const uint16_t target = static_cast<uint16_t>(mem[abs16] | (mem[ptrHi] << 8));
         char t[24];
-        std::snprintf(t, sizeof(t), "-> $%04X", rdword(abs16));
+        std::snprintf(t, sizeof(t), "-> $%04X", target);
         return t;
     }
     case AM_IZX: return dataAt(rdzpword(static_cast<uint8_t>(lo + x)));

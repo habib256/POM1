@@ -430,10 +430,15 @@ void MemoryViewer_ImGui::renderSearchDialog()
 
 void MemoryViewer_ImGui::jumpToAddress(int address)
 {
-    // Clamp against 0x10000 (the address-space SIZE), not 0xFFFF, so the final
-    // row holding 0xFFF0..0xFFFF can sit on the bottom of the view — matches
-    // getViewportRange(). Using 0xFFFF leaves the last row one short of anchor.
-    startAddress = std::max(0, std::min(address, 0x10000 - (displayRows * bytesPerRow)));
+    // Hex view: clamp against 0x10000 (address-space SIZE), not 0xFFFF, so the
+    // final row holding 0xFFF0..0xFFFF can sit on the bottom of the view — matches
+    // getViewportRange(). The viewport height in bytes (displayRows*bytesPerRow)
+    // is meaningless in disasm mode where a "row" is a variable-length
+    // instruction, so there we allow any address up to 0xFFFF at the top (else
+    // e.g. $FF00, the Woz Monitor, could never anchor to the first line).
+    const int upperClamp = showDisasm ? 0xFFFF
+                                      : (0x10000 - (displayRows * bytesPerRow));
+    startAddress = std::max(0, std::min(address, upperClamp));
     startAddress = (startAddress / bytesPerRow) * bytesPerRow;
     if (!autoRefresh) {
         takeSnapshot();

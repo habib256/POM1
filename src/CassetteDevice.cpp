@@ -310,6 +310,13 @@ void CassetteDevice::deserialize(pom1::SnapshotReader& r)
     if (count) {
         r.readBytes(recordedDurations.data(), count * sizeof(uint32_t));
     }
+    // recordingStarted_ isn't serialized (would change the section layout);
+    // reconstruct it from the restored state — a recording is in progress iff
+    // its start was stamped at a non-zero cycle or an edge interval was already
+    // captured. (The only unreconstructable case is a session started at exactly
+    // cycle 0 with no interval yet — the same near-unreachable edge the flag
+    // fixes — which harmlessly re-initialises on the next toggle.)
+    recordingStarted_ = (lastOutputToggleCycle != 0) || !recordedDurations.empty();
     // Quiesce playback — PR2 deliberately doesn't restore in-flight tape
     // position (see header comment). The user re-presses PLAY.
     stopPulseAudio();
@@ -364,6 +371,7 @@ void CassetteDevice::reset()
     recordedInitialLevel = false;
     lastOutputToggleCycle = 0;
     recordedDurations.clear();
+    recordingStarted_ = false;   // recording cleared → next toggle starts fresh
     playbackPaused.store(false, std::memory_order_release);
     resetPlaybackState();
     stopPulseAudio();
@@ -570,7 +578,14 @@ void CassetteDevice::advanceCycles(int cycles)
 
 void CassetteDevice::beginRecordingIfNeeded()
 {
-    if (lastOutputToggleCycle == 0 && recordedDurations.empty()) {
+    // Track session start with an explicit flag: `lastOutputToggleCycle == 0`
+    // cannot be the "not yet recording" sentinel because 0 is a valid toggle
+    // time (a $C000 write on the very first instruction after a reset lands at
+    // cycle 0). The old guard then re-fired on the *second* toggle — clobbering
+    // recordedInitialLevel with the already-flipped level and dropping the first
+    // edge interval [0, T].
+    if (!recordingStarted_) {
+        recordingStarted_ = true;
         clearLiveAudioState();
         recordedInitialLevel = outputLevel;
         lastOutputToggleCycle = currentCycle;
@@ -777,6 +792,7 @@ void CassetteDevice::clearRecordedTape()
     recordedDurations.clear();
     recordedInitialLevel = outputLevel;
     lastOutputToggleCycle = 0;
+    recordingStarted_ = false;   // recording cleared → next toggle starts fresh
     clearLiveAudioState();
 }
 

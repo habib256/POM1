@@ -154,9 +154,12 @@ int main()
     // ── Cassette: toggle the $C000 output flip-flop a few times. Each
     //    toggle records a transition; `getRecordedTransitionCount()`
     //    reflects the buffer growth round-trip below.
-    // The first toggle arms recording (sets lastOutputToggleCycle = currentCycle)
-    // without pushing a sample; each subsequent toggle records one delta. Four
-    // toggles therefore yield three recorded transitions.
+    // armRecording() captures the initial level + baseline cycle WITHOUT pushing
+    // a sample; each subsequent toggle records one delta from the baseline. Here
+    // the baseline is cycle 0 (fresh deck), and four toggles at 100/200/300/400
+    // therefore yield four recorded transitions ([0,100] included). (Before the
+    // cycle-0 recording fix the [0,100] interval was dropped — the arm at cycle 0
+    // was silently re-taken by the first toggle — so this used to read 3.)
     auto& cassette = mem.getCassetteDevice();
     cassette.armRecording();
     for (int i = 0; i < 4; ++i) {
@@ -164,7 +167,7 @@ int main()
         cassette.toggleOutput();       // for the transition to land in recordedDurations
     }
     const size_t expectedRecordedTransitions = cassette.getRecordedTransitionCount();
-    assert(expectedRecordedTransitions == 3);
+    assert(expectedRecordedTransitions == 4);
 
     // ── GT-6144: latch a non-default FSM mode (control opcode = blanked).
     //    Phase-3 (224..255 byte&7=5) sets blanked=true.

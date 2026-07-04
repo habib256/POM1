@@ -47,6 +47,24 @@ bool Pom1TmsPaintHost::nativeFilePickerAvailable() const
     return pom1::NativeFileDialog::isAvailable();
 }
 
+// Open the file browser in sdcard/TMS/ — the microSD card's writable filesystem
+// (see Pom1HgrPaintHost::browseDir for why sdcard/ and not software/). Created on
+// demand; "" (→ editor uses CWD) when there is no sdcard/ root.
+std::string Pom1TmsPaintHost::browseDir() const
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    for (const char* root : {"sdcard", "../sdcard", "../../sdcard"}) {
+        if (!fs::is_directory(root, ec)) continue;
+        fs::path tms = fs::path(root) / "TMS";
+        if (!fs::is_directory(tms, ec)) fs::create_directories(tms, ec);
+        fs::path canon = fs::canonical(tms, ec);
+        if (!ec) return canon.string();
+        return tms.string();
+    }
+    return std::string();
+}
+
 // ── Built-in TMS9918 sprite library (dev/lib/tms9918/sprites_*.asm) ──────────
 // The SCROLL-O-SPRITES catalogue ships as ca65 sources: each 16×16 sprite is 32
 // `.byte` values under a `; slot NN/MM ... -- name` comment / `xxx_pat:` label

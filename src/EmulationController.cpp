@@ -239,6 +239,8 @@ void EmulationController::runCyclesSync(uint64_t cycles)
 {
     stopCpu();                               // pause the async emulation thread
     std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->clearWatchTrip();                // fresh slate — a stale trip would make
+                                             // run() break after one instruction
     cpu->start();                            // clear the CPU stop flag so run() executes
     uint64_t done = 0;
     while (done < cycles) {
@@ -255,6 +257,8 @@ void EmulationController::runFromSync(uint16_t entry, uint64_t maxCycles)
 {
     stopCpu();                               // pause the async emulation thread
     std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->clearWatchTrip();                // fresh slate — a stale trip would make
+                                             // run() break after one instruction
     cpu->setProgramCounter(entry);           // jump into the resident ROM routine
     cpu->start();                            // clear the CPU stop flag so run() executes
     uint64_t done = 0;
@@ -468,9 +472,14 @@ void EmulationController::readTms9918Framebuffer(uint32_t* out)
     memory->getTMS9918().copyActiveFramebuffer(out);
 }
 
-bool EmulationController::loadBinaryToRam(const std::string& path, uint16_t address, std::string& error)
+bool EmulationController::loadBinaryToRam(const std::string& path, uint16_t address, std::string& error,
+                                          bool pauseCpu)
 {
-    stopCpu();
+    // pauseCpu: DevBench wants the CPU stopped (and left stopped) before its
+    // load+run; HGR Paint wants it to keep running so a mid-session image load
+    // doesn't freeze the emulator. Either way the load happens under stateMutex,
+    // so it's race-free against a running slice.
+    if (pauseCpu) stopCpu();
     std::lock_guard<PriorityMutex> lock(stateMutex);
 
     int result = memory->loadBinary(path.c_str(), address);
@@ -855,6 +864,13 @@ Gen2VideoScanner::DisplayState EmulationController::getGen2DisplayState() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     return memory->gen2DisplayState();
+}
+
+void EmulationController::setGen2DisplayMode(bool grMode, bool page2)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setGen2DisplayMode(grMode, page2);
+    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 uint64_t EmulationController::getGen2ScannerCycle() const

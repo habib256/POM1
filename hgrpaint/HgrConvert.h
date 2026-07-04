@@ -85,6 +85,14 @@ void imageToHgrPage(const uint8_t* rgba, int srcW, int srcH,
                     const ImportOptions& opt, uint8_t* outPage,
                     ImportStats* stats = nullptr);
 
+// Convert a decoded RGBA image into a 1 KB Apple II lo-res (GR) text page. GR has
+// no NTSC coupling: each of kGrCols×kGrRows blocks is one flat palette index, so
+// this quantises each block to the nearest of the 16 colours in CAM16-UCS with
+// linear-RGB error diffusion (kernel/dither/chroma-weight knobs shared with the
+// HGR path). `outPage` must hold at least 0x400 bytes (text-page $0400 layout).
+void imageToGrPage(const uint8_t* rgba, int srcW, int srcH,
+                   const ImportOptions& opt, uint8_t* outPage);
+
 // Decode a PNG/JPG/BMP file to RGBA (4 bytes/pixel). Implemented in
 // HgrImageDecode.cpp (uses stb_image; the impl is linked from the host app), so
 // the pure converter above stays unit-testable without an image decoder.

@@ -37,7 +37,6 @@ namespace hgrsprite {
 HgrSpriteEditor::HgrSpriteEditor(hgrpaint::IHgrPaintHost* host_)
     : host(host_),
       scratch(hgrpaint::kHiresSize, 0),
-      previewRgba(static_cast<size_t>(hgrpaint::kHiresWidth) * hgrpaint::kHiresHeight, 0),
       colorRgba_(static_cast<size_t>(hgrpaint::kHiresWidth) * hgrpaint::kHiresHeight, 0)
 {
 }
@@ -46,8 +45,6 @@ HgrSpriteEditor::~HgrSpriteEditor() { releaseGL(); }
 
 void HgrSpriteEditor::releaseGL()
 {
-    if (host && previewTex) host->destroyTexture(previewTex);
-    previewTex = nullptr;
     if (host && colorTex_) host->destroyTexture(colorTex_);
     colorTex_ = nullptr;
 }
@@ -934,39 +931,6 @@ void HgrSpriteEditor::renderColorCanvas()
     ImGui::EndGroup();
 }
 
-void HgrSpriteEditor::renderPreview(const std::vector<uint8_t>& memory)
-{
-    if (!host) return;
-    ImGui::Separator();
-    ImGui::TextUnformatted("Live page preview");
-
-    const uint16_t base = pageBase();
-    const size_t need = static_cast<size_t>(base) + hgrpaint::kHiresSize;
-    if (memory.size() < need) { ImGui::TextDisabled("(page out of RAM)"); return; }
-
-    // Composite the sprite's REAL bytes into a copy of the live page, then decode
-    // the whole thing through the NTSC pipeline — so the preview shows exactly the
-    // stamp result (single-colour clocks at ×2, mono at ×1), not a swatch overlay.
-    std::vector<uint8_t> live(memory.begin() + base, memory.begin() + base + hgrpaint::kHiresSize);
-    std::vector<uint8_t> bytes; int wB = 0, hR = 0;
-    buildSpriteBytes(bytes, wB, hR);
-    stamp(bytes.data(), wB, hR, destByteCol_, destRow_,
-          [&](int off, uint8_t v) {
-              if (off >= 0 && off < static_cast<int>(live.size())) live[off] = v;
-          });
-    host->renderHgrPage(live.data(), previewRgba.data(), false, false);
-    const int m = magF();
-    previewTex = host->uploadTexture(previewTex, previewRgba.data(),
-                                     hgrpaint::kHiresWidth, hgrpaint::kHiresHeight, false);
-    const ImVec2 pos = ImGui::GetCursorScreenPos();
-    ImGui::Image(host->textureToImTexture(previewTex),
-                 ImVec2(hgrpaint::kHiresWidth, hgrpaint::kHiresHeight));
-    // Outline the sprite bounds (magnified footprint).
-    const ImVec2 a(pos.x + destByteCol_ * 7, pos.y + destRow_);
-    ImGui::GetWindowDrawList()->AddRect(a, ImVec2(a.x + wpx() * m, a.y + hRows_ * m),
-                                        IM_COL32(255,255,0,200));
-}
-
 void HgrSpriteEditor::render(const std::vector<uint8_t>& memory)
 {
     clampGeom();
@@ -993,7 +957,6 @@ void HgrSpriteEditor::render(const std::vector<uint8_t>& memory)
     ImGui::SameLine();
     ImGui::BeginChild("##hgrsidepane", ImVec2(0, 0));
     renderToolPanel(memory);
-    renderPreview(memory);
     ImGui::EndChild();
 
     renderFileBrowser();

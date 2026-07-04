@@ -1315,31 +1315,42 @@ void M6502::setNMI(void)
     NMI = 1;
 }
 
-void M6502::step(void)
+void M6502::serviceInterrupts(void)
 {
-    // The 6502 interrupt entry sequence costs 7 cycles. executeOpcode() resets
-    // the per-instruction counter below, so the entry cost is captured here and
-    // folded back into `cycles` after the opcode runs — that way advanceCycles()
-    // *and* run()'s cyclesExecuted / DRAM-refresh accounting both see it.
     // A real 6502 services at most ONE interrupt per instruction boundary, and
     // NMI takes priority over IRQ when both are pending. Servicing them as two
     // independent `if`s would push two frames (6 bytes), charge 14 cycles, and
     // take IRQ first — diverging from silicon. NMI is non-maskable; IRQ is
-    // gated by the I flag.
-    int interruptCycles = 0;
+    // gated by the I flag. handleNMI/handleIRQ vector PC to the handler; the
+    // 7-cycle entry cost is captured here and folded into `cycles` by
+    // executeInstruction() (executeOpcode resets the per-instruction counter).
+    pendingInterruptCycles_ = 0;
     if (NMI) {
         handleNMI();
-        interruptCycles += 7;
+        pendingInterruptCycles_ = 7;
     } else if (!(statusRegister & M6502::Status::I) && IRQ) {
         handleIRQ();
-        interruptCycles += 7;
+        pendingInterruptCycles_ = 7;
     }
+}
 
+void M6502::executeInstruction(void)
+{
+    // Assumes serviceInterrupts() already ran. Folds the interrupt-entry cost
+    // back in after the opcode so advanceCycles() *and* run()'s cyclesExecuted /
+    // DRAM-refresh accounting both see it.
     executeOpcode();
-    cycles += interruptCycles;
+    cycles += pendingInterruptCycles_;
+    pendingInterruptCycles_ = 0;
     if (memory != nullptr) {
         memory->advanceCycles(cycles);
     }
+}
+
+void M6502::step(void)
+{
+    serviceInterrupts();
+    executeInstruction();
 }
 
 int M6502::run(int maxCycles)
@@ -1348,11 +1359,22 @@ int M6502::run(int maxCycles)
     running.store(1, std::memory_order_relaxed);
 
     while (running.load(std::memory_order_relaxed) && cyclesExecuted < maxCycles) {
-        // PC-matched halt. The branch on `breakpointActive` is the
-        // hot-path cost when no breakpoint is armed (compiler folds to
-        // a single load + jcc, predicted not-taken). Fires *before* the
-        // instruction at the breakpoint address executes — typical
-        // debugger semantics, lets callers inspect state at entry.
+        // Service a pending IRQ/NMI FIRST (it vectors PC to the handler), THEN
+        // test the breakpoint. This way a breakpoint on an ISR entry reached via
+        // interrupt fires *before* the first handler instruction executes —
+        // exactly like the JMP/JSR path — instead of being stepped over because
+        // the old order folded vectoring + first-instruction into one atomic
+        // step(). A pending interrupt also correctly preempts a breakpoint on the
+        // instruction it interrupts; that breakpoint then fires after RTI.
+        serviceInterrupts();
+
+        // PC-matched halt. The branch on `breakpointActive` is the hot-path cost
+        // when no breakpoint is armed (compiler folds to a single load + jcc,
+        // predicted not-taken). Fires *before* the instruction at the breakpoint
+        // address executes — typical debugger semantics, lets callers inspect
+        // state at entry. (pendingInterruptCycles_ from an interrupt taken just
+        // above is dropped on this halt — 7 unaccounted cycles at the stop point,
+        // which is immaterial for a debugger breakpoint.)
         if (breakpointActive && programCounter == breakpointAddress) {
             std::ostringstream oss;
             oss << "breakpoint hit at $" << std::hex << std::uppercase
@@ -1363,7 +1385,7 @@ int M6502::run(int maxCycles)
             running.store(0, std::memory_order_relaxed);
             break;
         }
-        step();
+        executeInstruction();
         cyclesExecuted += cycles;
 
         // Memory watchpoint: the instruction just executed read/wrote a

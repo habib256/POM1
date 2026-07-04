@@ -151,6 +151,19 @@ bool CodeBench::loadStarterForTargetIfClean(int targetIndex)
     return true;
 }
 
+int CodeBench::prepareTargetWithStarter(int targetIndex)
+{
+    ensureDocs();
+    const auto& targets = host_->targets();
+    if (targetIndex < 0 || targetIndex >= static_cast<int>(targets.size())) return -1;
+    // Cold-start the interpreter + switch the machine preset, then load the
+    // starter (loadStarterForTargetIfClean also retargets the tab + syntax).
+    BuildResult pr = host_->selectTargetExplicit(targetIndex);
+    loadStarterForTargetIfClean(targetIndex);
+    applyResult(pr);
+    return targetIndex;
+}
+
 void CodeBench::applyResult(const BuildResult& r)
 {
     console_ = r.console;

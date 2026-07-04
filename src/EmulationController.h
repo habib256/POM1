@@ -183,7 +183,13 @@ public:
                      int* bytesLoaded = nullptr,
                      std::vector<std::pair<uint16_t,uint16_t>>* zones = nullptr);
     bool loadBinary(const std::string& path, uint16_t startAddress, std::string& error, int* bytesLoaded = nullptr);
-    bool loadBinaryToRam(const std::string& path, uint16_t address, std::string& error);
+    /// Load a binary blob into RAM at `address`. `pauseCpu` (default true) stops
+    /// the CPU and leaves it paused — DevBench's Run path relies on this (the
+    /// program load must be the final memory op). Pass false to load under the
+    /// state lock while the CPU keeps running (e.g. HGR Paint dropping an image
+    /// into the framebuffer must NOT freeze the emulator).
+    bool loadBinaryToRam(const std::string& path, uint16_t address, std::string& error,
+                         bool pauseCpu = true);
     /// Load a binary into RAM at `address` WITHOUT resetting/stopping the CPU
     /// (write-protect briefly lifted, like the ROM reloaders). Used by the BASIC
     /// injector to drop a sketch-built interpreter (e.g. roms/applesoft-gen2.rom) in
@@ -260,6 +266,9 @@ public:
     bool isGen2RandomDramNoise() const;
     // GEN2 HGR live state (for the SILICON STRICT inspector readout).
     Gen2VideoScanner::DisplayState getGen2DisplayState() const;
+    // Drive the GEN2 soft switches to show a given page/mode (HGR Paint editor's
+    // HGR/HGR2/GR/GR2 selector). No-op when the GEN2 card is unplugged.
+    void setGen2DisplayMode(bool grMode, bool page2);
     uint64_t getGen2ScannerCycle() const;
     uint64_t getGen2CyclesPerFrame() const;
     bool     isGen2InBlanking() const;          // HST0 = 1 outside the burst notch

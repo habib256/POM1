@@ -284,6 +284,187 @@ void MainWindow_ImGui::finalizePendingCardPlugs()
     }
 }
 
+void MainWindow_ImGui::applyBootConfig(int presetIndex)
+{
+    // Apply the chosen preset now that ImGui is ready, then layer the CLI
+    // overrides on top. applyMachineConfig handles the GLFW OS-window resize
+    // itself (restoring ini/preset_NN.size or a layout-derived default).
+    // Called from the boot gate (explicit --preset) or the profile chooser.
+    applyMachineConfig(presetIndex);
+    applyBootCliOverrides();
+}
+
+void MainWindow_ImGui::applyBootCliOverrides()
+{
+    // The P-LAB Terminal Card stays UNPLUGGED at startup regardless of the
+    if (terminalCardOverride) {
+        terminalCardEnabled = true;
+        pendingTerminalCardEnable = true;
+        emulation->setTerminalCardEnabled(true);
+    } else {
+        terminalCardEnabled = false;
+        pendingTerminalCardEnable = false;
+        showTerminalCard = false;
+        emulation->setTerminalCardEnabled(false);
+    }
+    if (telemetryPortOverride > 0 || !telemetryLogPath.empty()) {
+        if (telemetryPortOverride > 0)
+            emulation->setTelemetryListenPort(static_cast<uint16_t>(telemetryPortOverride));
+        if (!telemetryLogPath.empty())
+            emulation->setTelemetryLogFile(telemetryLogPath);
+        emulation->setTelemetryEnabled(true);
+    }
+    // CLI --enable / --disable: rewrite the pendingXxxEnable flags the
+    // deferred plug consumes. Also update the UI-facing bool so the
+    // toolbar chip and menu checkmark match the override before the
+    // plug actually fires. Applied after applyMachineConfig + the
+    // --terminal override so explicit --disable terminal can still
+    // override --terminal when both are set.
+    for (const auto& o : cardOverrides) {
+        switch (o.card) {
+            case pom1::CliCard::Aci:
+                aciEnabled = o.enable; pendingAciEnable = o.enable; break;
+            case pom1::CliCard::Sid:
+                sidEnabled = o.enable; pendingSidEnable = o.enable;
+                if (o.enable) { sidSpecialEditionEnabled = false; pendingSidSEEnable = false; }
+                break;
+            case pom1::CliCard::SidSE:
+                sidSpecialEditionEnabled = o.enable; pendingSidSEEnable = o.enable;
+                if (o.enable) { sidEnabled = false; pendingSidEnable = false;
+                                tms9918Enabled = false; pendingTms9918Enable = false;
+                                // SID-SE unplugs TMS9918, which yanks its CodeTank
+                                // daughterboard — mirror the Tms9918-disable case
+                                // below and the Hardware-menu SID-SE path.
+                                codeTankEnabled = false; pendingCodeTankEnable = false; }
+                break;
+            case pom1::CliCard::MicroSD:
+                microSDEnabled = o.enable; pendingMicroSDEnable = o.enable; break;
+            case pom1::CliCard::Tms9918:
+                tms9918Enabled = o.enable; pendingTms9918Enable = o.enable;
+                if (o.enable) { sidSpecialEditionEnabled = false; pendingSidSEEnable = false; }
+                // CodeTank is a daughterboard of the TMS9918 — yanking the
+                // host yanks the daughterboard with it.
+                if (!o.enable) { codeTankEnabled = false; pendingCodeTankEnable = false; }
+                break;
+            case pom1::CliCard::A1IoRtc:
+                a1ioRtcEnabled = o.enable; pendingA1ioRtcEnable = o.enable; break;
+            case pom1::CliCard::Hgr:
+                graphicsCardEnabled = o.enable;
+                emulation->setHgrFramebufferAttached(graphicsCardEnabled);
+                break;   // passive; no pending flag
+            case pom1::CliCard::Cffa1:
+                cffa1Enabled = o.enable; pendingCffa1Enable = o.enable; break;
+            case pom1::CliCard::Krusader: {
+                // Krusader is a ROM image, not a peripheral. Loading it
+                // is supported (reloadKrusader); unloading would require
+                // a hard reset to clear the ROM window — skipped, the
+                // user should pick a preset that doesn't include it.
+                if (o.enable) {
+                    std::string err;
+                    if (emulation->reloadKrusader(err))
+                        loadedRoms.push_back({"Krusader", 0xA000, 0xBFFF});
+                } else {
+                    pom1::log().warn("CLI",
+                        "--disable krusader: ROM unload not supported — pick a "
+                        "preset without Krusader instead.");
+                }
+                break;
+            }
+            case pom1::CliCard::WifiModem:
+                wifiModemEnabled = o.enable; pendingWifiModemEnable = o.enable; break;
+            case pom1::CliCard::TerminalCard:
+#if !POM1_IS_WASM
+                terminalCardEnabled = o.enable; pendingTerminalCardEnable = o.enable;
+                if (!o.enable) emulation->setTerminalCardEnabled(false);
+#endif
+                break;
+            case pom1::CliCard::JukeBox:
+                jukeBoxEnabled = o.enable; pendingJukeBoxEnable = o.enable;
+                if (o.enable) { codeTankEnabled = false; pendingCodeTankEnable = false; }
+                break;
+            case pom1::CliCard::CodeTank:
+                codeTankEnabled = o.enable; pendingCodeTankEnable = o.enable;
+                if (o.enable) {
+                    jukeBoxEnabled = false; pendingJukeBoxEnable = false;
+                    // CodeTank is a daughterboard of the TMS9918 — schedule
+                    // the host so finalizePendingCardPlugs() plugs it first
+                    // (TMS9918 is finalized before CodeTank in that order).
+                    tms9918Enabled = true; pendingTms9918Enable = true;
+                    sidSpecialEditionEnabled = false; pendingSidSEEnable = false;
+                }
+                break;
+            case pom1::CliCard::Pr40:
+                pr40Enabled = o.enable; pendingPr40Enable = o.enable;
+                if (!o.enable) emulation->setPR40Enabled(false);
+                break;
+            case pom1::CliCard::GT6144:
+                gt6144Enabled = o.enable; pendingGT6144Enable = o.enable;
+                if (!o.enable) emulation->setGT6144Enabled(false);
+                break;
+            case pom1::CliCard::IEC:
+                iecCardEnabled = o.enable; pendingIECCardEnable = o.enable;
+                if (o.enable) {
+                    microSDEnabled = true; pendingMicroSDEnable = true;
+                }
+                break;
+        }
+    }
+    if (sidChipOverride) {
+        // Applied directly: libresidfp accepts a chip-model swap at any
+        // time and will replay the last register state onto the new chip.
+        emulation->setSIDChipModel(*sidChipOverride);
+    }
+    if (jukeBoxJumperOverride) {
+        jukeBoxJumper        = *jukeBoxJumperOverride;
+        pendingJukeBoxJumper = *jukeBoxJumperOverride;
+    }
+    if (jukeBoxChipModeOverride) {
+        jukeBoxChipMode        = *jukeBoxChipModeOverride;
+        pendingJukeBoxChipMode = *jukeBoxChipModeOverride;
+    }
+    if (codeTankJumperOverride) {
+        codeTankJumper        = *codeTankJumperOverride;
+        pendingCodeTankJumper = *codeTankJumperOverride;
+    }
+    if (!codeTankRomPathOverride.empty()) {
+        pendingCodeTankRomPath = codeTankRomPathOverride;
+        codeTankRomPathOverride.clear();
+    }
+    if (siliconStrictModeOverride) {
+        // Override the preset default (set by applyMachineConfig from
+        // !fantasyPreset). Applied directly: the flag has no plug rail.
+        const bool v = *siliconStrictModeOverride;
+        emulation->setSiliconStrictMode(v);
+        siliconStrictModeEnabled = v;
+        emulation->setCpuDecimalBugNMOS(v);
+        cpuDecimalBugEnabled = v;
+    }
+    if (dramRefreshOverride) {
+        // --dram-refresh / --no-dram-refresh: override the preset default
+        // (applyMachineConfig sets dramRefreshEnabled = !fantasyPreset).
+        // Mirror the headless path so the flag works in GUI mode too.
+        const bool v = *dramRefreshOverride;
+        emulation->setDramRefreshEnabled(v);
+        dramRefreshEnabled = v;
+    }
+    if (initialExecutionSpeed) {
+        executionSpeed = *initialExecutionSpeed;
+        emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
+    }
+    if (cpuMaxSpeedOnBoot) {
+        executionSpeed = 1000000;
+        emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
+    }
+    // --tape preload is done later, inside the deferred-card-enable
+    // handler, so that setACIEnabled(true) has actually flipped
+    // CassetteDevice::aciActive before loadTape() decides between
+    // pulse mode and audio-stream mode. See that block for details.
+
+    // --tape preload is done later, inside the deferred-card-enable handler,
+    // so that setACIEnabled(true) has actually flipped CassetteDevice::aciActive
+    // before loadTape() decides between pulse mode and audio-stream mode.
+}
+
 void MainWindow_ImGui::render()
 {
     float deltaTime = ImGui::GetIO().DeltaTime;
@@ -366,6 +547,24 @@ void MainWindow_ImGui::render()
     }
 #endif
 
+    // Boot profile chooser. On the very first frame decide the boot flow: an
+    // explicit --preset (defaultPresetIndex >= 0) boots straight in via
+    // applyBootConfig; otherwise raise a full-viewport profile selector and
+    // suppress ALL other UI (menu bar, toolbar, windows) until the user picks —
+    // applyBootConfig then runs from renderProfileChooser(). Headless never
+    // reaches render(), so it is unaffected.
+    if (!bootChooserDecided) {
+        bootChooserDecided = true;
+        if (defaultPresetIndex >= 0 && defaultPresetIndex < kMachinePresetCount)
+            applyBootConfig(defaultPresetIndex);
+        else
+            showProfileChooser = true;
+    }
+    if (showProfileChooser) {
+        renderProfileChooser();
+        return;
+    }
+
     // Fenêtre principale avec menu
     if (ImGui::BeginMainMenuBar()) {
         renderMenuBar();
@@ -392,167 +591,10 @@ void MainWindow_ImGui::render()
                                 ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize(ImVec2(sw, sh), ImGuiCond_FirstUseEver);
         firstFrame = false;
-
-        // Apply default preset now that ImGui is ready. applyMachineConfig
-        // now handles the GLFW OS-window resize itself — either restoring
-        // the saved size from ini/preset_NN.size (if the user has run this
-        // preset before) or computing a default from the preset's layout
-        // extent. See MainWindow_Presets.cpp.
-        int idx = (defaultPresetIndex >= 0 && defaultPresetIndex < kMachinePresetCount)
-                  ? defaultPresetIndex : (kMachinePresetCount - 1);
-        applyMachineConfig(idx);
-        if (terminalCardOverride) {
-            terminalCardEnabled = true;
-            emulation->setTerminalCardEnabled(true);
-        }
-        if (telemetryPortOverride > 0 || !telemetryLogPath.empty()) {
-            if (telemetryPortOverride > 0)
-                emulation->setTelemetryListenPort(static_cast<uint16_t>(telemetryPortOverride));
-            if (!telemetryLogPath.empty())
-                emulation->setTelemetryLogFile(telemetryLogPath);
-            emulation->setTelemetryEnabled(true);
-        }
-        // CLI --enable / --disable: rewrite the pendingXxxEnable flags the
-        // deferred plug consumes. Also update the UI-facing bool so the
-        // toolbar chip and menu checkmark match the override before the
-        // plug actually fires. Applied after applyMachineConfig + the
-        // --terminal override so explicit --disable terminal can still
-        // override --terminal when both are set.
-        for (const auto& o : cardOverrides) {
-            switch (o.card) {
-                case pom1::CliCard::Aci:
-                    aciEnabled = o.enable; pendingAciEnable = o.enable; break;
-                case pom1::CliCard::Sid:
-                    sidEnabled = o.enable; pendingSidEnable = o.enable;
-                    if (o.enable) { sidSpecialEditionEnabled = false; pendingSidSEEnable = false; }
-                    break;
-                case pom1::CliCard::SidSE:
-                    sidSpecialEditionEnabled = o.enable; pendingSidSEEnable = o.enable;
-                    if (o.enable) { sidEnabled = false; pendingSidEnable = false;
-                                    tms9918Enabled = false; pendingTms9918Enable = false; }
-                    break;
-                case pom1::CliCard::MicroSD:
-                    microSDEnabled = o.enable; pendingMicroSDEnable = o.enable; break;
-                case pom1::CliCard::Tms9918:
-                    tms9918Enabled = o.enable; pendingTms9918Enable = o.enable;
-                    if (o.enable) { sidSpecialEditionEnabled = false; pendingSidSEEnable = false; }
-                    // CodeTank is a daughterboard of the TMS9918 — yanking the
-                    // host yanks the daughterboard with it.
-                    if (!o.enable) { codeTankEnabled = false; pendingCodeTankEnable = false; }
-                    break;
-                case pom1::CliCard::A1IoRtc:
-                    a1ioRtcEnabled = o.enable; pendingA1ioRtcEnable = o.enable; break;
-                case pom1::CliCard::Hgr:
-                    graphicsCardEnabled = o.enable;
-                    emulation->setHgrFramebufferAttached(graphicsCardEnabled);
-                    break;   // passive; no pending flag
-                case pom1::CliCard::Cffa1:
-                    cffa1Enabled = o.enable; pendingCffa1Enable = o.enable; break;
-                case pom1::CliCard::Krusader: {
-                    // Krusader is a ROM image, not a peripheral. Loading it
-                    // is supported (reloadKrusader); unloading would require
-                    // a hard reset to clear the ROM window — skipped, the
-                    // user should pick a preset that doesn't include it.
-                    if (o.enable) {
-                        std::string err;
-                        if (emulation->reloadKrusader(err))
-                            loadedRoms.push_back({"Krusader", 0xA000, 0xBFFF});
-                    } else {
-                        pom1::log().warn("CLI",
-                            "--disable krusader: ROM unload not supported — pick a "
-                            "preset without Krusader instead.");
-                    }
-                    break;
-                }
-                case pom1::CliCard::WifiModem:
-                    wifiModemEnabled = o.enable; pendingWifiModemEnable = o.enable; break;
-                case pom1::CliCard::TerminalCard:
-#if !POM1_IS_WASM
-                    terminalCardEnabled = o.enable; pendingTerminalCardEnable = o.enable;
-                    if (!o.enable) emulation->setTerminalCardEnabled(false);
-#endif
-                    break;
-                case pom1::CliCard::JukeBox:
-                    jukeBoxEnabled = o.enable; pendingJukeBoxEnable = o.enable;
-                    if (o.enable) { codeTankEnabled = false; pendingCodeTankEnable = false; }
-                    break;
-                case pom1::CliCard::CodeTank:
-                    codeTankEnabled = o.enable; pendingCodeTankEnable = o.enable;
-                    if (o.enable) {
-                        jukeBoxEnabled = false; pendingJukeBoxEnable = false;
-                        // CodeTank is a daughterboard of the TMS9918 — schedule
-                        // the host so finalizePendingCardPlugs() plugs it first
-                        // (TMS9918 is finalized before CodeTank in that order).
-                        tms9918Enabled = true; pendingTms9918Enable = true;
-                        sidSpecialEditionEnabled = false; pendingSidSEEnable = false;
-                    }
-                    break;
-                case pom1::CliCard::Pr40:
-                    pr40Enabled = o.enable; pendingPr40Enable = o.enable;
-                    if (!o.enable) emulation->setPR40Enabled(false);
-                    break;
-                case pom1::CliCard::GT6144:
-                    gt6144Enabled = o.enable; pendingGT6144Enable = o.enable;
-                    if (!o.enable) emulation->setGT6144Enabled(false);
-                    break;
-                case pom1::CliCard::IEC:
-                    iecCardEnabled = o.enable; pendingIECCardEnable = o.enable;
-                    if (o.enable) {
-                        microSDEnabled = true; pendingMicroSDEnable = true;
-                    }
-                    break;
-            }
-        }
-        if (sidChipOverride) {
-            // Applied directly: libresidfp accepts a chip-model swap at any
-            // time and will replay the last register state onto the new chip.
-            emulation->setSIDChipModel(*sidChipOverride);
-        }
-        if (jukeBoxJumperOverride) {
-            jukeBoxJumper        = *jukeBoxJumperOverride;
-            pendingJukeBoxJumper = *jukeBoxJumperOverride;
-        }
-        if (jukeBoxChipModeOverride) {
-            jukeBoxChipMode        = *jukeBoxChipModeOverride;
-            pendingJukeBoxChipMode = *jukeBoxChipModeOverride;
-        }
-        if (codeTankJumperOverride) {
-            codeTankJumper        = *codeTankJumperOverride;
-            pendingCodeTankJumper = *codeTankJumperOverride;
-        }
-        if (!codeTankRomPathOverride.empty()) {
-            pendingCodeTankRomPath = codeTankRomPathOverride;
-            codeTankRomPathOverride.clear();
-        }
-        if (siliconStrictModeOverride) {
-            // Override the preset default (set by applyMachineConfig from
-            // !fantasyPreset). Applied directly: the flag has no plug rail.
-            const bool v = *siliconStrictModeOverride;
-            emulation->setSiliconStrictMode(v);
-            siliconStrictModeEnabled = v;
-            emulation->setCpuDecimalBugNMOS(v);
-            cpuDecimalBugEnabled = v;
-        }
-        if (dramRefreshOverride) {
-            // --dram-refresh / --no-dram-refresh: override the preset default
-            // (applyMachineConfig sets dramRefreshEnabled = !fantasyPreset).
-            // Mirror the headless path so the flag works in GUI mode too.
-            const bool v = *dramRefreshOverride;
-            emulation->setDramRefreshEnabled(v);
-            dramRefreshEnabled = v;
-        }
-        if (initialExecutionSpeed) {
-            executionSpeed = *initialExecutionSpeed;
-            emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
-        }
-        if (cpuMaxSpeedOnBoot) {
-            executionSpeed = 1000000;
-            emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
-        }
-        // --tape preload is done later, inside the deferred-card-enable
-        // handler, so that setACIEnabled(true) has actually flipped
-        // CassetteDevice::aciActive before loadTape() decides between
-        // pulse mode and audio-stream mode. See that block for details.
+        // Boot machine config (applyBootConfig) is applied from the boot gate
+        // above — either straight in on an explicit --preset, or once the user
+        // picks a profile in renderProfileChooser(). Nothing preset-related
+        // happens here anymore; this block only sizes the Apple 1 screen window.
     }
 
     // Resize Apple 1 screen window on fullscreen transitions
@@ -834,11 +876,11 @@ void MainWindow_ImGui::hardReset()
     loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
     loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
     microSDEnabled = true;
-#if !POM1_IS_WASM
-    terminalCardEnabled = true;
-    emulation->setTerminalCardEnabled(true);
-    showTerminalCard = true;
-#endif
+    // A hard reset is a power-cycle of the Apple-1: it must NOT auto-connect the
+    // P-LAB Terminal Card (which opens a TCP listener on :6502). The card keeps
+    // whatever state the user left it in — like the cassette deck above, and
+    // matching the startup behaviour. --terminal and the Hardware menu still
+    // plug it on demand.
     setStatusMessage("Hard reset done - Memory cleared", 2.0f);
 }
 

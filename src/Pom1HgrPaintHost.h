@@ -37,6 +37,7 @@ public:
     void endBatch() override;
     void renderHgrPage(const uint8_t* page8k, uint32_t* outRgba, bool mono,
                        bool grMode = false) override;
+    void setDisplayMode(bool grMode, bool page2) override;   // GEN2 soft switches
     bool loadImage(const std::string& path, uint16_t baseAddr, std::string& err) override;
     bool saveImage(const std::string& path, uint16_t baseAddr, int sizeBytes,
                    std::string& err) override;
@@ -47,6 +48,7 @@ public:
                       const std::string& defaultDir, const std::string& defaultName,
                       std::string& outPath) override;
     bool nativeFilePickerAvailable() const override;
+    std::string browseDir() const override;   // → sdcard/HGR/ (created if missing)
     std::vector<hgrpaint::DevSpriteCategory> devSprites() override;
     void* uploadTexture(void* tex, const void* rgba,
                         int w, int h, bool linear) override;

@@ -87,17 +87,23 @@ sd_send_byte:
 ; sd_recv_byte -- request next byte from MCU. Returns A = byte.
 ; ----------------------------------------------------------------------------
 sd_recv_byte:
+        ; Switching DDRA to input makes the MCU load the next response byte onto
+        ; PORTA and raise MCU_STROBE (see MicroSD.cpp: DDRA==$00 ->
+        ; prepareNextResponseByte). So the ORDER is: go input, wait for the byte,
+        ; READ it, THEN pulse CPU_STROBE to acknowledge. Pulsing the strobe BEFORE
+        ; reading is wrong — the rising edge (in input mode) advances the response
+        ; index and drops MCU_STROBE, so the wait loop below would spin forever.
         LDA     #$00
-        STA     SD_VIA_DDRA             ; PORTA = input
-        LDA     #SD_CPU_STROBE
-        STA     SD_VIA_PORTB            ; raise CPU_STROBE → request byte
+        STA     SD_VIA_DDRA             ; PORTA = input → MCU presents a byte, raises MCU_STROBE
 @wait:  LDA     SD_VIA_PORTB
         AND     #SD_MCU_STROBE
-        BEQ     @wait                   ; wait for MCU to put byte on PORTA
-        LDA     SD_VIA_PORTA            ; read byte
+        BEQ     @wait                   ; wait until the byte is ready
+        LDA     SD_VIA_PORTA            ; read the byte BEFORE acknowledging
         PHA
+        LDA     #SD_CPU_STROBE
+        STA     SD_VIA_PORTB            ; raise CPU_STROBE → ack (advance index, MCU drops strobe)
         LDA     #$00
-        STA     SD_VIA_PORTB            ; drop CPU_STROBE → ack receipt
+        STA     SD_VIA_PORTB            ; drop CPU_STROBE → MCU prepares the next byte
         LDA     #$FF
         STA     SD_VIA_DDRA             ; restore default output
         PLA

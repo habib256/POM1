@@ -138,6 +138,16 @@ bool plotPixel(uint8_t* vram, Mode m, int x, int y, int color)
         newPat |= mask;                                  // pixel → foreground
     } else if (color == bg) {
         newPat &= static_cast<uint8_t>(~mask);           // pixel → background
+    } else if (color == 0) {
+        // Colour 0 is the transparent/background colour in Graphics II — it must
+        // NOT be assigned to a colour SLOT via the clash path below, which would
+        // recolour up to 7 OTHER pixels of the cell to 0 (the eraser blanking an
+        // entire 8-pixel run). Clear the pattern bit so the pixel falls to this
+        // cell's background slot, leaving the colour table untouched. On a fresh
+        // cell bg is already 0 so this is truly transparent; in a two-non-zero-
+        // colour cell it becomes the background ink — non-destructive, and
+        // consistent with the HGR eraser (which likewise just clears the bit).
+        newPat &= static_cast<uint8_t>(~mask);
     } else {
         // Colour clash: reassign whichever slot disturbs fewer OTHER pixels of
         // this cell. otherSet pixels currently use fg, 7-otherSet use bg.
