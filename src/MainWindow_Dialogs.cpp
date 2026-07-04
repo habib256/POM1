@@ -58,6 +58,7 @@ static const char kKeyboardPhotoFile[] = "a-1_Keyboard.png";
 static const char kWozPhotoFile[] = "Woz.png";
 static const char kCopsonApple1PhotoFile[] = "CopsonApple1_2k.jpg";
 static const char kHappyWozPhotoFile[] = "apple-1-Happy-Woz.jpg";
+static const char kPlabTms9918PhotoFile[] = "P-LAB_TMS9918.png";
 
 /** Generic cwd + exe-relative probe for files expected under pic/. */
 static std::string find_pic_file_path(const char* relBasename)
@@ -798,6 +799,49 @@ void MainWindow_ImGui::renderHappyWozPhotoWindow()
         } else {
             ImGui::TextWrapped(
                 "Happy Woz Apple-1 photo not found (expected pic/%s).", kHappyWozPhotoFile);
+        }
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::ensurePlabTms9918PhotoTexture()
+{
+    if (plabTms9918PhotoTexture != 0 || plabTms9918PhotoLoadTried)
+        return;
+    plabTms9918PhotoLoadTried = true;
+
+    const std::string path = find_pic_file_path(kPlabTms9918PhotoFile);
+    if (path.empty()) {
+        pom1::log().warn("Images",
+            std::string("P-LAB TMS9918 board photo not found (expected pic/") + kPlabTms9918PhotoFile + ")");
+        return;
+    }
+
+    int w = 0, h = 0, channels = 0;
+    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
+    if (!pixels || w <= 0 || h <= 0) {
+        if (pixels) stbi_image_free(pixels);
+        pom1::log().warn("Images", "Could not decode P-LAB TMS9918 board photo: " + path);
+        return;
+    }
+
+    plabTms9918PhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
+    plabTms9918PhotoWidth = w;
+    plabTms9918PhotoHeight = h;
+}
+
+void MainWindow_ImGui::renderPlabTms9918PhotoWindow()
+{
+    ensurePlabTms9918PhotoTexture();
+
+    applyPendingLayout("P-LAB TMS9918 Board (Photo)");
+    ImGui::SetNextWindowSizeConstraints(ImVec2(200, 160), ImVec2(FLT_MAX, FLT_MAX));
+    if (ImGui::Begin("P-LAB TMS9918 Board (Photo)", &showPlabTms9918Photo)) {
+        if (plabTms9918PhotoTexture != 0 && plabTms9918PhotoWidth > 0 && plabTms9918PhotoHeight > 0) {
+            drawFittedCenteredImage(plabTms9918PhotoTexture, plabTms9918PhotoWidth, plabTms9918PhotoHeight);
+        } else {
+            ImGui::TextWrapped(
+                "P-LAB TMS9918 board photo not found (expected pic/%s).", kPlabTms9918PhotoFile);
         }
     }
     ImGui::End();

@@ -337,6 +337,11 @@ private:
     int happyWozPhotoHeight = 0;
     bool happyWozPhotoLoadTried = false;
     bool showHappyWozPhoto = false;
+    pom1::Texture* plabTms9918PhotoTexture = nullptr;
+    int plabTms9918PhotoWidth = 0;
+    int plabTms9918PhotoHeight = 0;
+    bool plabTms9918PhotoLoadTried = false;
+    bool showPlabTms9918Photo = false;
     bool showTMS9918 = false;
     bool tms9918Enabled = false;
     pom1::Texture* tms9918Texture = nullptr;
@@ -502,6 +507,8 @@ private:
     void renderCopsonApple1PhotoWindow();
     void ensureHappyWozPhotoTexture();
     void renderHappyWozPhotoWindow();
+    void ensurePlabTms9918PhotoTexture();
+    void renderPlabTms9918PhotoWindow();
     void ensurePR40MechPhotoTexture();
     void renderSpecialThanksWindow();
     void renderHardwareReferenceWindow();

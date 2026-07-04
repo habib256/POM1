@@ -1625,6 +1625,7 @@ MainWindow_ImGui::windowRegistry()
         { "WozPhoto",             "Steve Wozniak (Photo)",                     &MW::showWozPhoto,           K::Info,        true  },
         { "CopsonApple1Photo",    "Apple-1 (Copson) Photo",                    &MW::showCopsonApple1Photo,  K::Info,        true  },
         { "HappyWozPhoto",        "Apple-1 Happy Woz (Photo)",                 &MW::showHappyWozPhoto,      K::Info,        true  },
+        { "PlabTms9918Photo",     "P-LAB TMS9918 Board (Photo)",               &MW::showPlabTms9918Photo,   K::Info,        true  },
         // ── Transient dialogs — NOT persisted (would re-pop a file/config op) ─────────────────────────────────────────────────
         { "ScreenConfig",         "Display Settings",                          &MW::showScreenConfig,       K::Dialog,      false },
         { "MemoryConfig",         "Memory Settings",                           &MW::showMemoryConfig,       K::Dialog,      false },

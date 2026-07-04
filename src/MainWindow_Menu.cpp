@@ -748,6 +748,7 @@ void MainWindow_ImGui::renderMenuBar()
                 ImGui::MenuItem("Steve Wozniak (Photo)", nullptr, &showWozPhoto);
                 ImGui::MenuItem("Apple-1 (Copson) Photo", nullptr, &showCopsonApple1Photo);
                 ImGui::MenuItem("Apple-1 Happy Woz (Photo)", nullptr, &showHappyWozPhoto);
+                ImGui::MenuItem("P-LAB TMS9918 Board (Photo)", nullptr, &showPlabTms9918Photo);
                 ImGui::EndMenu();
             }
             ImGui::MenuItem("Ports & acknowledgements", nullptr, &showSpecialThanks);

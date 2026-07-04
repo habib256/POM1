@@ -696,6 +696,7 @@ void MainWindow_ImGui::render()
     if (showWozPhoto) renderWozPhotoWindow();
     if (showCopsonApple1Photo) renderCopsonApple1PhotoWindow();
     if (showHappyWozPhoto) renderHappyWozPhotoWindow();
+    if (showPlabTms9918Photo) renderPlabTms9918PhotoWindow();
     if (showScreenConfig) renderScreenConfigDialog();
     if (showMemoryConfig) renderMemoryConfigDialog();
     if (showLoadDialog) renderLoadDialog();
