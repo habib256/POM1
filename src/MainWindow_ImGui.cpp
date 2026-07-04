@@ -694,6 +694,8 @@ void MainWindow_ImGui::render()
     if (showGen2WorkbenchPhoto) renderGen2WorkbenchPhotoWindow();
     if (showKeyboardPhoto) renderKeyboardPhotoWindow();
     if (showWozPhoto) renderWozPhotoWindow();
+    if (showCopsonApple1Photo) renderCopsonApple1PhotoWindow();
+    if (showHappyWozPhoto) renderHappyWozPhotoWindow();
     if (showScreenConfig) renderScreenConfigDialog();
     if (showMemoryConfig) renderMemoryConfigDialog();
     if (showLoadDialog) renderLoadDialog();
@@ -858,8 +860,12 @@ void MainWindow_ImGui::quit()
 
 void MainWindow_ImGui::reset()
 {
-    emulation->softReset();
-    setStatusMessage("Soft reset done", 2.0f);
+    // The user-facing RESET (toolbar button, CPU menu, virtual keyboard's red
+    // key) matches the physical Apple-1 RESET line: a warm reset that always
+    // returns to the Woz Monitor '\' prompt, regardless of any "run on reset"
+    // vector a loaded program installed. RAM is preserved.
+    emulation->warmResetToMonitor();
+    setStatusMessage("RESET - back to Woz Monitor", 2.0f);
 }
 
 void MainWindow_ImGui::hardReset()

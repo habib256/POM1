@@ -435,6 +435,11 @@ void MainWindow_ImGui::renderMenuBar()
         }
 
         if (ImGui::BeginMenu("Hardware")) {
+            // The Apple-1 ASCII keyboard is real input hardware, not a photo:
+            // clicking its keycaps drives the same key queue as the physical
+            // keyboard (incl. CLEAR SCREEN and the red RESET). It heads the menu.
+            ImGui::MenuItem("Apple-1 ASCII Keyboard", nullptr, &showKeyboardPhoto);
+            ImGui::Separator();
             // --- 1976: original-era expansions ------------------------------
             if (ImGui::MenuItem("Woz ACI Cassette Interface (1976)", nullptr, &aciEnabled)) {
                 emulation->setACIEnabled(aciEnabled);
@@ -740,8 +745,9 @@ void MainWindow_ImGui::renderMenuBar()
                 ImGui::MenuItem("Apple-1 Demo Session (1976)", nullptr, &showWozJobsRectPhoto);
                 ImGui::MenuItem("P-LAB TMS9918 Card (Photo)", nullptr, &showTmsBoardPhoto);
                 ImGui::MenuItem("GEN2 Video Workbench (Photo)", nullptr, &showGen2WorkbenchPhoto);
-                ImGui::MenuItem("Apple-1 Keyboard (Photo)", nullptr, &showKeyboardPhoto);
                 ImGui::MenuItem("Steve Wozniak (Photo)", nullptr, &showWozPhoto);
+                ImGui::MenuItem("Apple-1 (Copson) Photo", nullptr, &showCopsonApple1Photo);
+                ImGui::MenuItem("Apple-1 Happy Woz (Photo)", nullptr, &showHappyWozPhoto);
                 ImGui::EndMenu();
             }
             ImGui::MenuItem("Ports & acknowledgements", nullptr, &showSpecialThanks);

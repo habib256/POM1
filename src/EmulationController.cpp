@@ -135,6 +135,23 @@ void EmulationController::softReset()
     wakeCv.notify_all();
 }
 
+void EmulationController::warmResetToMonitor()
+{
+    // Like softReset(), but force the RESET vector back to the Woz Monitor so a
+    // program that redirected preferredSoftResetVector can't hijack the red key.
+    // RAM is preserved (cpu->softReset, not hardReset) — exactly the physical
+    // Apple-1 RESET behaviour.
+    stopCpu();
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    preferredSoftResetVector = kDefaultResetVector;
+    memory->configureResetVectors(kDefaultResetVector);
+    cpu->softReset();
+    cpu->start();
+    runRequested.store(true);
+    publisher.publish(*memory, *cpu, runRequested.load());
+    wakeCv.notify_all();
+}
+
 void EmulationController::hardReset(bool animateBoot)
 {
     stopCpu();

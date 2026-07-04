@@ -56,6 +56,8 @@ static const char kGen2WorkbenchPhotoFile[] = "Gen2_Video_Workbench.jpg";
 static const char kPR40MechPhotoFile[] = "SWTPC PR-40 Printer.png";
 static const char kKeyboardPhotoFile[] = "a-1_Keyboard.png";
 static const char kWozPhotoFile[] = "Woz.png";
+static const char kCopsonApple1PhotoFile[] = "CopsonApple1_2k.jpg";
+static const char kHappyWozPhotoFile[] = "apple-1-Happy-Woz.jpg";
 
 /** Generic cwd + exe-relative probe for files expected under pic/. */
 static std::string find_pic_file_path(const char* relBasename)
@@ -451,12 +453,16 @@ namespace {
 //                small key legends (X-ON, BELL, CR...) name.
 //   ShiftMod  -> latches SHIFT (sticky, auto-released after the next Char).
 //   CtrlMod   -> latches CTRL  (sticky, auto-released after the next Char).
-//   Fixed     -> sends `base` verbatim (ESC, RETURN, LINE FEED, RUB OUT, CLEAR,
+//   Fixed     -> sends `base` verbatim (ESC, RETURN, LINE FEED, RUB OUT,
 //                SPACE), ignoring SHIFT/CTRL.
 //   Repeat    -> re-sends the last byte (the real REPT key's hold-to-repeat).
 //   Reset     -> the prominent red key: warm-resets the Apple-1.
+//   ClearScreen -> the CLEAR SCREEN key: on real hardware this is wired to the
+//                terminal's clear line, blanking the display directly (it never
+//                reaches the CPU), so it clears POM1's screen buffer rather than
+//                queueing a byte the Woz Monitor would just ignore.
 //   None      -> decorative (HERE IS answer-back, blank beige key): no-op.
-enum class KKind : uint8_t { Char, ShiftMod, CtrlMod, Fixed, Repeat, Reset, None };
+enum class KKind : uint8_t { Char, ShiftMod, CtrlMod, Fixed, Repeat, Reset, ClearScreen, None };
 struct KbdKey {
     float x, y, w, h;
     const char* glyphBot;  // main legend (for tooltip)
@@ -510,7 +516,7 @@ static const KbdKey kKbdKeys[] = {
     {0.7100f,0.4487f,0.0602f,0.1133f, ";","+",   KKind::Char, ';','+'},
     {0.7768f,0.4487f,0.0587f,0.1133f, "RUB OUT",nullptr,KKind::Fixed,'\x7f',0},
     {0.8458f,0.4487f,0.0529f,0.1133f, "REPT",nullptr,   KKind::Repeat, 0,0},
-    {0.9075f,0.4487f,0.0529f,0.1133f, "CLEAR",nullptr,  KKind::Fixed, '\x0c',0},
+    {0.9075f,0.4487f,0.0529f,0.1133f, "CLEAR",nullptr,  KKind::ClearScreen, 0,0},
     // --- row 4 (x-centres re-measured from keycap gaps) ---
     {0.0918f,0.5773f,0.0609f,0.1133f, "SHIFT",nullptr, KKind::ShiftMod, 0,0},
     {0.1571f,0.5773f,0.0609f,0.1133f, "Z",nullptr, KKind::Char, 'Z',0},
@@ -541,9 +547,9 @@ void MainWindow_ImGui::renderKeyboardPhotoWindow()
     // Default to a wide frame matching the photo's ~2.09:1 aspect (only on
     // first open; a saved preset/user layout takes precedence below).
     ImGui::SetNextWindowSize(ImVec2(820, 430), ImGuiCond_FirstUseEver);
-    applyPendingLayout("Apple-1 Keyboard (Photo)");
+    applyPendingLayout("Apple-1 ASCII Keyboard");
     ImGui::SetNextWindowSizeConstraints(ImVec2(360, 190), ImVec2(FLT_MAX, FLT_MAX));
-    if (ImGui::Begin("Apple-1 Keyboard (Photo)", &showKeyboardPhoto)) {
+    if (ImGui::Begin("Apple-1 ASCII Keyboard", &showKeyboardPhoto)) {
         auto* r = pom1::renderer();
         if (keyboardPhotoTexture != 0 && keyboardPhotoWidth > 0 && keyboardPhotoHeight > 0 && r) {
             // Fill the whole content region with the photo (centred, letterboxed).
@@ -632,6 +638,12 @@ void MainWindow_ImGui::sendKeyboardPhotoKey(int index)
     case KKind::Reset:
         reset();
         return;
+    case KKind::ClearScreen:
+        // Real CLEAR SCREEN is a hardware line to the terminal, not a keycode —
+        // blank POM1's display buffer directly and home the cursor.
+        if (screen) screen->clear();
+        keyboardPhotoLastKey = 0;
+        return;
     case KKind::Repeat:
         if (keyboardPhotoLastKey && emulation)
             emulation->queueKey(keyboardPhotoLastKey);
@@ -700,6 +712,92 @@ void MainWindow_ImGui::renderWozPhotoWindow()
         } else {
             ImGui::TextWrapped(
                 "Steve Wozniak photo not found (expected pic/%s).", kWozPhotoFile);
+        }
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::ensureCopsonApple1PhotoTexture()
+{
+    if (copsonApple1PhotoTexture != 0 || copsonApple1PhotoLoadTried)
+        return;
+    copsonApple1PhotoLoadTried = true;
+
+    const std::string path = find_pic_file_path(kCopsonApple1PhotoFile);
+    if (path.empty()) {
+        pom1::log().warn("Images",
+            std::string("Copson Apple-1 photo not found (expected pic/") + kCopsonApple1PhotoFile + ")");
+        return;
+    }
+
+    int w = 0, h = 0, channels = 0;
+    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
+    if (!pixels || w <= 0 || h <= 0) {
+        if (pixels) stbi_image_free(pixels);
+        pom1::log().warn("Images", "Could not decode Copson Apple-1 photo: " + path);
+        return;
+    }
+
+    copsonApple1PhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
+    copsonApple1PhotoWidth = w;
+    copsonApple1PhotoHeight = h;
+}
+
+void MainWindow_ImGui::renderCopsonApple1PhotoWindow()
+{
+    ensureCopsonApple1PhotoTexture();
+
+    applyPendingLayout("Apple-1 (Copson) Photo");
+    ImGui::SetNextWindowSizeConstraints(ImVec2(200, 160), ImVec2(FLT_MAX, FLT_MAX));
+    if (ImGui::Begin("Apple-1 (Copson) Photo", &showCopsonApple1Photo)) {
+        if (copsonApple1PhotoTexture != 0 && copsonApple1PhotoWidth > 0 && copsonApple1PhotoHeight > 0) {
+            drawFittedCenteredImage(copsonApple1PhotoTexture, copsonApple1PhotoWidth, copsonApple1PhotoHeight);
+        } else {
+            ImGui::TextWrapped(
+                "Copson Apple-1 photo not found (expected pic/%s).", kCopsonApple1PhotoFile);
+        }
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::ensureHappyWozPhotoTexture()
+{
+    if (happyWozPhotoTexture != 0 || happyWozPhotoLoadTried)
+        return;
+    happyWozPhotoLoadTried = true;
+
+    const std::string path = find_pic_file_path(kHappyWozPhotoFile);
+    if (path.empty()) {
+        pom1::log().warn("Images",
+            std::string("Happy Woz Apple-1 photo not found (expected pic/") + kHappyWozPhotoFile + ")");
+        return;
+    }
+
+    int w = 0, h = 0, channels = 0;
+    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
+    if (!pixels || w <= 0 || h <= 0) {
+        if (pixels) stbi_image_free(pixels);
+        pom1::log().warn("Images", "Could not decode Happy Woz Apple-1 photo: " + path);
+        return;
+    }
+
+    happyWozPhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
+    happyWozPhotoWidth = w;
+    happyWozPhotoHeight = h;
+}
+
+void MainWindow_ImGui::renderHappyWozPhotoWindow()
+{
+    ensureHappyWozPhotoTexture();
+
+    applyPendingLayout("Apple-1 Happy Woz (Photo)");
+    ImGui::SetNextWindowSizeConstraints(ImVec2(200, 160), ImVec2(FLT_MAX, FLT_MAX));
+    if (ImGui::Begin("Apple-1 Happy Woz (Photo)", &showHappyWozPhoto)) {
+        if (happyWozPhotoTexture != 0 && happyWozPhotoWidth > 0 && happyWozPhotoHeight > 0) {
+            drawFittedCenteredImage(happyWozPhotoTexture, happyWozPhotoWidth, happyWozPhotoHeight);
+        } else {
+            ImGui::TextWrapped(
+                "Happy Woz Apple-1 photo not found (expected pic/%s).", kHappyWozPhotoFile);
         }
     }
     ImGui::End();

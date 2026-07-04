@@ -74,6 +74,13 @@ public:
     void startCpu();
     void stopCpu();
     void softReset();
+    // The authentic Apple-1 red RESET key: a warm reset (RAM preserved) that
+    // ALWAYS vectors through the hardware RESET vector to the Woz Monitor
+    // ($FF00), regardless of any preferred soft-reset vector a loaded/run
+    // program installed. softReset() honours preferredSoftResetVector (so "run
+    // on reset" works); the physical red key never did — it always returned to
+    // the monitor '\' prompt. This is what the virtual keyboard's RESET uses.
+    void warmResetToMonitor();
     // animateBoot=true replays the cosmetic power-on scenario (garbage → black →
     // welcome, ~3 s of NE555-paced blinks). DevBench presets pass false so a
     // compile-and-run reset lands on a cleared screen immediately instead of

@@ -327,6 +327,16 @@ private:
     int wozPhotoHeight = 0;
     bool wozPhotoLoadTried = false;
     bool showWozPhoto = false;
+    pom1::Texture* copsonApple1PhotoTexture = nullptr;
+    int copsonApple1PhotoWidth = 0;
+    int copsonApple1PhotoHeight = 0;
+    bool copsonApple1PhotoLoadTried = false;
+    bool showCopsonApple1Photo = false;
+    pom1::Texture* happyWozPhotoTexture = nullptr;
+    int happyWozPhotoWidth = 0;
+    int happyWozPhotoHeight = 0;
+    bool happyWozPhotoLoadTried = false;
+    bool showHappyWozPhoto = false;
     bool showTMS9918 = false;
     bool tms9918Enabled = false;
     pom1::Texture* tms9918Texture = nullptr;
@@ -488,6 +498,10 @@ private:
     void sendKeyboardPhotoKey(int keyIndex);
     void ensureWozPhotoTexture();
     void renderWozPhotoWindow();
+    void ensureCopsonApple1PhotoTexture();
+    void renderCopsonApple1PhotoWindow();
+    void ensureHappyWozPhotoTexture();
+    void renderHappyWozPhotoWindow();
     void ensurePR40MechPhotoTexture();
     void renderSpecialThanksWindow();
     void renderHardwareReferenceWindow();
