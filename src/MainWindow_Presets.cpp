@@ -1582,6 +1582,9 @@ MainWindow_ImGui::windowRegistry()
         { "CassetteDeck",         "Apple-1 Cassette Deck",                     &MW::showCassetteDeck,       K::Peripheral,  true  },
         { "GraphicsCard",         "Uncle Bernie's GEN2 HGR Graphic Card",      &MW::showGraphicsCard,       K::Peripheral,  true  },
         { "HGRPaintEditor",       "HGR Paint Editor",                          &MW::showHGRPaintEditor,     K::Tool,        true  },
+        { "HGRSpriteEditor",      "HGR Sprite Editor",                         &MW::showHGRSpriteEditor,    K::Tool,        true  },
+        { "TMSPaintEditor",       "TMS9918 Paint Editor",                      &MW::showTMSPaintEditor,     K::Tool,        true  },
+        { "TMSSpriteEditor",      "TMS9918 Sprite Editor",                     &MW::showTMSSpriteEditor,    K::Tool,        true  },
         { "TMS9918",              "P-LAB Graphic Card (TMS9918)",              &MW::showTMS9918,            K::Peripheral,  true  },
         { "GT6144",               "SWTPC GT-6144 Graphic Terminal",            &MW::showGT6144,             K::Peripheral,  true  },
         { "IECCard",              "IEC Disk",                                  &MW::showIECCard,            K::Peripheral,  true  },
@@ -1618,8 +1621,10 @@ MainWindow_ImGui::windowRegistry()
         { "WozJobsRectPhoto",     "Apple-1 Demo Session (1976)",               &MW::showWozJobsRectPhoto,   K::Info,        true  },
         { "TmsBoardPhoto",        "P-LAB TMS9918 Card (Photo)",                &MW::showTmsBoardPhoto,      K::Info,        true  },
         { "Gen2WorkbenchPhoto",   "GEN2 Video Workbench (Photo)",              &MW::showGen2WorkbenchPhoto, K::Info,        true  },
-        { "KeyboardPhoto",        "Apple-1 Keyboard (Photo)",                  &MW::showKeyboardPhoto,      K::Info,        true  },
+        { "KeyboardPhoto",        "Apple-1 ASCII Keyboard",                    &MW::showKeyboardPhoto,      K::Peripheral,  true  },
         { "WozPhoto",             "Steve Wozniak (Photo)",                     &MW::showWozPhoto,           K::Info,        true  },
+        { "CopsonApple1Photo",    "Apple-1 (Copson) Photo",                    &MW::showCopsonApple1Photo,  K::Info,        true  },
+        { "HappyWozPhoto",        "Apple-1 Happy Woz (Photo)",                 &MW::showHappyWozPhoto,      K::Info,        true  },
         // ── Transient dialogs — NOT persisted (would re-pop a file/config op) ─────────────────────────────────────────────────
         { "ScreenConfig",         "Display Settings",                          &MW::showScreenConfig,       K::Dialog,      false },
         { "MemoryConfig",         "Memory Settings",                           &MW::showMemoryConfig,       K::Dialog,      false },
@@ -1629,6 +1634,11 @@ MainWindow_ImGui::windowRegistry()
         { "SaveTapeDialog",       "Save Tape",                                 &MW::showSaveTapeDialog,     K::Dialog,      false },
         { "LoadSnapshotDialog",   "Load Snapshot",                             &MW::showLoadSnapshotDialog, K::Dialog,      false },
         { "SaveSnapshotDialog",   "Save Snapshot",                             &MW::showSaveSnapshotDialog, K::Dialog,      false },
+        // Boot/relaunch profile selector — a full-viewport overlay, not a saved
+        // window. Persisting it would re-open the chooser over the machine on
+        // every load. Listed (persist=false) so the completeness audit accounts
+        // for every show* flag rather than silently omitting this one.
+        { "ProfileChooser",       "Profile Chooser",                           &MW::showProfileChooser,     K::Dialog,      false },
     };
     return kReg;
 }
