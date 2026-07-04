@@ -590,6 +590,12 @@ void Screen_ImGui::render()
     const ImVec2 screenSize(nomW * layoutScale, nomH * layoutScale);
 
     ImVec2 cursorPos = ImGui::GetCursorPos();
+    // Absolute rect of the WHOLE screen panel's content region (before centring
+    // the raster). The CRT scanlines + phosphor bands cover this full area, not
+    // just the centred text raster, so the scanline mesh runs edge-to-edge like
+    // a real tube — the black margins around the 40×24 grid get scanned too.
+    const ImVec2 crtFullMin = ImGui::GetCursorScreenPos();
+    const ImVec2 crtFullMax(crtFullMin.x + avail.x, crtFullMin.y + avail.y);
     ImGui::SetCursorPos(ImVec2(
         cursorPos.x + std::max(0.0f, (avail.x - screenSize.x) * 0.5f),
         cursorPos.y + std::max(0.0f, (avail.y - screenSize.y) * 0.5f)));
@@ -628,8 +634,8 @@ void Screen_ImGui::render()
     // real CRT) without reintroducing the hard dark bars that used to bisect
     // every glyph when the whole overlay sat on top.
     if (crtEffect) {
-        drawCRTBackdrop(drawMin.x, drawMin.y,
-                        drawMin.x + drawSize.x, drawMin.y + drawSize.y, useCharmapRenderer);
+        drawCRTBackdrop(crtFullMin.x, crtFullMin.y,
+                        crtFullMax.x, crtFullMax.y, useCharmapRenderer);
     }
 
     {
@@ -764,8 +770,8 @@ void Screen_ImGui::render()
     // (drawCRTScanlines) keeps the scanline pattern visible across the text
     // without the hard bisecting bars that the pre-split version produced.
     if (crtEffect) {
-        drawCRTScanlines(drawMin.x, drawMin.y,
-                         drawMin.x + drawSize.x, drawMin.y + drawSize.y, useCharmapRenderer);
+        drawCRTScanlines(crtFullMin.x, crtFullMin.y,
+                         crtFullMax.x, crtFullMax.y, useCharmapRenderer);
     }
     // DRAM refresh crosstalk dots — painted on top of scanlines so they
     // remain visible inside the dark mesh. Drawn regardless of crtEffect and
