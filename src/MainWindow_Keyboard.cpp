@@ -43,6 +43,9 @@ void MainWindow_ImGui::handleGlfwChar(unsigned int codepoint)
     nextCharIsRepeat = false;
 
     if (ImGui::GetIO().WantTextInput) return;
+    // The SID Tracker plays notes off the PC keyboard while focused — don't also
+    // send those keys to the Apple-1.
+    if (sidTrackerEditor && sidTrackerEditor->wantsKeyboard()) return;
     if (isRepeat && !keyboardAutorepeat) return;
     if (codepoint >= 32 && codepoint <= 126) {
         emulation->queueKey((char)codepoint);

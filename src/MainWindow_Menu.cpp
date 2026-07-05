@@ -393,11 +393,14 @@ void MainWindow_ImGui::renderMenuBar()
             // there is a live framebuffer to paint into (the render loop also
             // guards this, but enabling here makes the menu action immediate).
             if (ImGui::MenuItem("HGR Paint Editor...", nullptr, &showHGRPaintEditor)) {
-                if (showHGRPaintEditor && !graphicsCardEnabled) {
-                    graphicsCardEnabled = true;
-                    showGraphicsCard = true;
-                    emulation->setHgrFramebufferAttached(true);
-                    setStatusMessage("GEN2 HGR card plugged for HGR Paint Editor", 2.0f);
+                if (showHGRPaintEditor) {
+                    showBench = false;   // HGR Painter and POM1 Bench are mutually exclusive
+                    if (!graphicsCardEnabled) {
+                        graphicsCardEnabled = true;
+                        showGraphicsCard = true;
+                        emulation->setHgrFramebufferAttached(true);
+                        setStatusMessage("GEN2 HGR card plugged for HGR Paint Editor", 2.0f);
+                    }
                 }
             }
             // HGR sprite/shape editor — edits a byte-aligned HIRES bitmap (Apple II

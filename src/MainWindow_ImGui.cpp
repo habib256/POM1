@@ -799,7 +799,11 @@ void MainWindow_ImGui::render()
         applyPendingLayout("SID Tracker");
         if (ImGui::Begin("SID Tracker", &showSidTracker))
             sidTrackerEditor->render();
+        else
+            sidTrackerEditor->onWindowHidden();   // collapsed: release the keyboard grab
         ImGui::End();
+    } else if (sidTrackerEditor) {
+        sidTrackerEditor->onWindowHidden();        // closed: release the keyboard grab
     }
     if (tms9918Enabled && showTMS9918) renderTMS9918Window();
     // DevBench inspector: always available (reads the value snapshot, not the
