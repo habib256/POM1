@@ -20,6 +20,7 @@ an editor "sound effect" is exactly one of the data tables below plus a `JSR`.
 | [`beep.inc`](beep.inc) | `BEEP_TOGGLE = $C030` + the SFX data-format spec. Idempotent include guard. |
 | [`beep_sfx.asm`](beep_sfx.asm) | the data-driven player: `sfx_start` / `sfx_tick` / `sfx_active` / `sfx_play`. |
 | [`beep_sfx_bank.inc`](beep_sfx_bank.inc) | starter bank — `sfx_coin` (up-blip), `sfx_laser` (down sweep), `sfx_hit` (buzz + rest + thud). |
+| [`beep_sfx_bank50.inc`](beep_sfx_bank50.inc) | **50-cue bank** — pickups, lasers, explosions, movement, UI, bells, alarms, sci-fi, magic, water, fail (`sfx_coin`…`sfx_gameover`). The Beeper SFX editor loads the same 50 in its bank browser (mirror: `src/sfxbeep/SfxBank.h`). |
 
 ## SFX data format
 
