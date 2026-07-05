@@ -177,7 +177,9 @@ void SID::deserialize(SnapshotReader& r)
     // setChipModel rebuilds the libresidfp filter chain (taking chipMutex
     // internally) and writeRegister re-pokes each register so the engine
     // restarts in a consistent functional state.
-    setChipModel(static_cast<ChipModel>(model));
+    // Clamp to a known-good default on a corrupt snapshot byte (ChipModel is
+    // 0..1), mirroring IECCard/Drive1541::deserialize.
+    setChipModel(model <= 1 ? static_cast<ChipModel>(model) : ChipModel::MOS6581);
     for (uint8_t i = 0; i < kNumRegisters; ++i) {
         writeRegister(i, regs[i]);
     }

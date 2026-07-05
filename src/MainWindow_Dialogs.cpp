@@ -2135,6 +2135,11 @@ void MainWindow_ImGui::renderScreenConfigDialog()
                 if (xs > 0.1f) detected = xs;
             }
 #endif
+            // Clamp to the slider's own range so Auto mode (which drives
+            // io.FontGlobalScale = detected directly) and the manual latch can
+            // never push the font past what the slider can represent — a >300%
+            // monitor would otherwise scale the UI past the boot-time 3.0 cap.
+            detected = std::clamp(detected, 0.75f, 3.0f);
             // Latch the manual slider to whatever scale main_imgui seeded from the
             // monitor DPI at boot, the first time this dialog opens.
             if (!uiHiDpiInit_) {

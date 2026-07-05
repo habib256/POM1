@@ -141,9 +141,15 @@ void EmulationController::warmResetToMonitor()
     // program that redirected preferredSoftResetVector can't hijack the red key.
     // RAM is preserved (cpu->softReset, not hardReset) — exactly the physical
     // Apple-1 RESET behaviour.
+    //
+    // Only the in-memory RES vector is rewritten (cpu->softReset() reads it back
+    // below) — we deliberately do NOT touch the persistent preferredSoftResetVector
+    // member. That member is softReset()'s "run on reset" preference; clobbering it
+    // here would leak the red key's force-to-monitor into every LATER softReset()
+    // (e.g. the Terminal-Card telnet reset), sending it to the monitor instead of
+    // re-running the loaded program until the next program load re-armed it.
     stopCpu();
     std::lock_guard<PriorityMutex> lock(stateMutex);
-    preferredSoftResetVector = kDefaultResetVector;
     memory->configureResetVectors(kDefaultResetVector);
     cpu->softReset();
     cpu->start();

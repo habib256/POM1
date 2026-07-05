@@ -76,10 +76,12 @@ bool PeripheralBus::tryReadSlow(uint16_t address, uint8_t& valueOut, EntryMask m
             valueOut = e.onRead(address);
             return true;
         }
-        // Write-only entry: treat the read as consumed so it falls through
-        // to raw RAM (mirrors the original "no early return" behaviour for
-        // CFFA1's write-only register window).
-        return false;
+        // Write-only entry (e.g. CFFA1's register window): this entry can't
+        // service the read, so keep scanning any LOWER-priority entry that
+        // overlaps this address before falling through to raw RAM. (`continue`,
+        // not `return false` — the latter would let a high-priority write-only
+        // card mask a lower-priority reader at the same address.)
+        continue;
     }
     return false;
 }
@@ -99,11 +101,14 @@ bool PeripheralBus::tryWriteSlow(uint16_t address, uint8_t value, EntryMask mask
             e.onWrite(address, value);
             return true;
         }
-        // No write handler → fall through to the caller (which will hit raw
-        // RAM, ROM-protection, or whatever logic Memory has). Callers that
-        // want to block writes (e.g. ROM windows) should register an
-        // explicit no-op write handler instead of leaving onWrite empty.
-        return false;
+        // No write handler on this entry → keep scanning any LOWER-priority
+        // entry that overlaps this address before falling through to the caller
+        // (raw RAM, ROM-protection, or whatever logic Memory has). Callers that
+        // want to BLOCK writes (e.g. ROM windows) must register an explicit
+        // no-op write handler rather than leaving onWrite empty. (`continue`,
+        // not `return false` — the latter would let a high-priority read-only
+        // card mask a lower-priority writer at the same address.)
+        continue;
     }
     return false;
 }

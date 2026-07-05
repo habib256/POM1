@@ -714,7 +714,7 @@ private :
     PeripheralBus::Handle sidSEBusHandle = -1;       // A1-AUDIO SE: $CC00-$CC1F, priority 0 (shares sid instance)
     PeripheralBus::Handle tms9918BusHandle = -1;     // $CC00/$CC01, priority 10 (wins over SID)
     PeripheralBus::Handle cassetteToggleBusHandle = -1; // $C000-$C0FF read = toggle output
-    PeripheralBus::Handle cassetteInputBusHandle  = -1; // $C081 read = tape input (priority 1, wins over toggle)
+    PeripheralBus::Handle cassetteInputBusHandle  = -1; // $C081 read = tape input (priority 5, wins over toggle)
     // Juke-Box ROM windows. Two disjoint windows (one per RAM/ROM jumper);
     // at most one is enabled at a time. Priority 20 so the card wins over
     // overlapping peripherals.

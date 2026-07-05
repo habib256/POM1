@@ -81,5 +81,8 @@ void CodeTank::serialize(pom1::SnapshotWriter& w) const
 
 void CodeTank::deserialize(pom1::SnapshotReader& r)
 {
-    jumper = static_cast<Jumper>(r.readU8());
+    // Clamp the restored enum to a known-good default (Lower16) on a corrupt
+    // snapshot byte, mirroring IECCard/Drive1541::deserialize. Jumper is 0..1.
+    uint8_t v = r.readU8();
+    jumper = (v <= 1) ? static_cast<Jumper>(v) : Jumper::Lower16;
 }

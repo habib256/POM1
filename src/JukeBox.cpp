@@ -350,8 +350,10 @@ void JukeBox::serialize(pom1::SnapshotWriter& w) const
 
 void JukeBox::deserialize(pom1::SnapshotReader& r)
 {
-    jumper        = static_cast<Jumper>  (r.readU8());
-    chipMode      = static_cast<ChipMode>(r.readU8());
+    // Clamp enums restored from a (possibly corrupt) snapshot to a known-good
+    // default, mirroring IECCard/Drive1541::deserialize. Jumper/ChipMode are 0..1.
+    { uint8_t v = r.readU8(); jumper   = (v <= 1) ? static_cast<Jumper>(v)   : Jumper::RAM16_ROM32; }
+    { uint8_t v = r.readU8(); chipMode = (v <= 1) ? static_cast<ChipMode>(v) : ChipMode::Flash; }
     writable      = r.readU8() != 0;
     bankRegister  = r.readU8();
     pageCount     = r.readU8();

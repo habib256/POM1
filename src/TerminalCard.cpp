@@ -14,6 +14,8 @@
 namespace {
 // TELNET protocol constants (RFC 854 / RFC 857 / RFC 858).
 constexpr uint8_t TEL_IAC      = 0xFF;
+constexpr uint8_t TEL_SE       = 0xF0;   // subnegotiation end
+constexpr uint8_t TEL_SB       = 0xFA;   // subnegotiation begin
 constexpr uint8_t TEL_WILL     = 0xFB;
 constexpr uint8_t TEL_WONT     = 0xFC;
 constexpr uint8_t TEL_DO       = 0xFD;

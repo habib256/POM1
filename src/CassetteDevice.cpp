@@ -285,10 +285,11 @@ void CassetteDevice::serialize(pom1::SnapshotWriter& w) const
     // Recorded transitions: u32 count + u32 each. Bounded by user behaviour
     // (fresh recording = a few seconds = ~1k entries typical).
     w.writeU32(static_cast<uint32_t>(recordedDurations.size()));
-    if (!recordedDurations.empty()) {
-        w.writeBytes(recordedDurations.data(),
-                     recordedDurations.size() * sizeof(uint32_t));
-    }
+    // Explicit per-element little-endian encode (not a raw memcpy of the vector)
+    // so the section is endianness-independent — the same reason every other
+    // scalar goes through writeU32. Byte-identical to the old raw write on a
+    // little-endian host, so existing snapshots still load.
+    for (uint32_t d : recordedDurations) w.writeU32(d);
 }
 
 void CassetteDevice::deserialize(pom1::SnapshotReader& r)
@@ -307,9 +308,7 @@ void CassetteDevice::deserialize(pom1::SnapshotReader& r)
         return;
     }
     recordedDurations.assign(count, 0);
-    if (count) {
-        r.readBytes(recordedDurations.data(), count * sizeof(uint32_t));
-    }
+    for (uint32_t& d : recordedDurations) d = r.readU32();   // per-element LE, matches serialize()
     // recordingStarted_ isn't serialized (would change the section layout);
     // reconstruct it from the restored state — a recording is in progress iff
     // its start was stamped at a non-zero cycle or an edge interval was already

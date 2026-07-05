@@ -291,7 +291,8 @@ struct Codegen {
     }
 };
 
-// primary := NUM | VAR | '(' expr ')' | '-' primary | NOT primary | ABS '(' expr ')'
+// primary := NUM | VAR | '(' expr ')' | '-' primary | ABS '(' expr ')'
+// (NOT is handled in unary() at its Applesoft precedence, not here.)
 bool Codegen::primary(int d)
 {
     std::string Td = temp(d);
@@ -317,10 +318,6 @@ bool Codegen::primary(int d)
         // negate Td: Td = 0 - Td
         emit("\tsec"); emit("\tlda #0"); emit("\tsbc " + Td); emit("\tsta " + Td);
         emit("\tlda #0"); emit("\tsbc " + Td + "+1"); emit("\tsta " + Td + "+1"); return true; }
-    if (isKw("NOT")) { if (fp) return fail("NOT is not supported in the float phase"); adv();
-        if (!primary(d)) return false;
-        emit("\tlda " + Td); emit("\teor #$FF"); emit("\tsta " + Td);
-        emit("\tlda " + Td + "+1"); emit("\teor #$FF"); emit("\tsta " + Td + "+1"); return true; }
     if (isKw("ABS")) { adv(); if (cur().t != T::LParen) return fail("ABS expects '('"); adv();
         if (!expr(d)) return false; if (cur().t != T::RParen) return fail("expected ')'"); adv();
         if (fp) { emit("\tlda " + Td + "+3"); emit("\tand #$7F"); emit("\tsta " + Td + "+3"); return true; }
@@ -329,11 +326,26 @@ bool Codegen::primary(int d)
         emit("\tsec"); emit("\tlda #0"); emit("\tsbc " + Td); emit("\tsta " + Td);
         emit("\tlda #0"); emit("\tsbc " + Td + "+1"); emit("\tsta " + Td + "+1");
         emit(done + ":"); return true; }
-    // INT(x): truncate toward zero. In the integer phase values are already whole,
-    // so INT is the identity and links nothing; in float it calls fp_int.
+    // INT(x): Applesoft floors toward -infinity. In the integer phase values are
+    // already whole, so INT is the identity and links nothing.
     if (isKw("INT")) { adv(); if (cur().t != T::LParen) return fail("INT expects '('"); adv();
         if (!expr(d)) return false; if (cur().t != T::RParen) return fail("expected ')'"); adv();
-        if (fp) { copyV("FA", Td); emit("\tjsr fp_int"); copyV(Td, "FA"); }
+        if (fp) {
+            // fp_int truncates toward zero; that equals floor for x >= 0, but for
+            // a negative x with a fractional part floor(x) = trunc(x) - 1. Compute
+            // trunc, compare to the original x, and drop by 1 only when trunc > x.
+            const std::string Ts = temp(d + 1);                        // scratch: original x
+            copyV(Ts, Td);
+            copyV("FA", Td); emit("\tjsr fp_int"); copyV(Td, "FA");    // Td = trunc(x)
+            copyV("FA", Td); copyV("FB", Ts); emit("\tjsr fp_cmp");    // A = 0(trunc<x)/1(==)/2(trunc>x)
+            const std::string done = "Lint" + std::to_string(labelCounter++);
+            emit("\tcmp #2"); emit("\tbne " + done);                   // only trunc > x needs -1
+            copyV("FA", Td);
+            emit("\tlda #$00"); emit("\tsta FB"); emit("\tsta FB+1");
+            emit("\tlda #$80"); emit("\tsta FB+2"); emit("\tlda #$3F"); emit("\tsta FB+3");   // 1.0
+            emit("\tjsr fp_sub"); copyV(Td, "FA");                     // Td = trunc - 1
+            emit(done + ":");
+        }
         return true; }
     // SQR(x) / SIN(x) / COS(x): transcendental, float only (the auto-precision pass
     // forces the float phase whenever any appears, so fp is always true here). COS
@@ -349,7 +361,24 @@ bool Codegen::primary(int d)
     return fail("expected a value");
 }
 
-bool Codegen::unary(int d) { return primary(d); }
+bool Codegen::unary(int d)
+{
+    if (isKw("NOT")) {
+        if (fp) return fail("NOT is not supported in the float phase");
+        adv();
+        // Applesoft NOT binds LOOSER than the relational/arithmetic operators
+        // but TIGHTER than AND/OR, so its operand is everything at prec >= 3
+        // (relational and tighter): "NOT A = B" means "NOT (A = B)", and
+        // "A AND NOT B" means "A AND (NOT B)". Parsing it in primary() (as
+        // before) wrongly bound it tightest, giving "(NOT A) = B".
+        if (!binary(d, 3)) return false;
+        const std::string Td = temp(d);
+        emit("\tlda " + Td); emit("\teor #$FF"); emit("\tsta " + Td);
+        emit("\tlda " + Td + "+1"); emit("\teor #$FF"); emit("\tsta " + Td + "+1");
+        return true;
+    }
+    return primary(d);
+}
 
 // emit Ta = Ta <op> Tb
 void Codegen::binOp(const std::string& op, const std::string& a, const std::string& b)
@@ -383,31 +412,19 @@ void Codegen::binOp(const std::string& op, const std::string& a, const std::stri
 // float a = a <op> b  (4-byte binary32 temps; runtime ops on FA/FB)
 void Codegen::fpBinOp(const std::string& op, const std::string& a, const std::string& b)
 {
-    // Logical AND/OR on float truth values (0.0 = false, non-zero = true).
-    // Result is the canonical float 1.0 / 0.0. Reduce each operand to a 0/1 byte
-    // (true if any of the low 3 bytes or the masked exponent/sign is non-zero),
-    // combine, then materialise the float result -- never the fp_cmp path.
+    // Applesoft AND/OR are BITWISE on signed 16-bit integers, not logical: both
+    // operands are coerced to int16 (truncate toward zero) and combined bitwise
+    // (6 AND 3 = 2, 5 AND 2 = 0), then the whole result is a float. Match the ROM
+    // rather than the old logical-truth 1.0/0.0 semantics.
     if (op == "AND" || op == "OR") {
-        auto truthByte = [&](const std::string& t, const std::string& dst) {
-            emit("\tlda " + t + "+3"); emit("\tand #$7F");
-            emit("\tora " + t); emit("\tora " + t + "+1"); emit("\tora " + t + "+2");
-            std::string nz = "Ltb" + std::to_string(labelCounter);
-            std::string dn = "Ltd" + std::to_string(labelCounter++);
-            emit("\tbeq " + nz); emit("\tlda #1"); emit("\tjmp " + dn);
-            emit(nz + ":\tlda #0"); emit(dn + ":\tsta " + dst);
-        };
-        truthByte(a, "FA"); truthByte(b, "FB");
-        emit("\tlda FA"); emit(op == "AND" ? "\tand FB" : "\tora FB");
-        std::string fl = "Llo" + std::to_string(labelCounter);
-        std::string dn = "Lld" + std::to_string(labelCounter++);
-        emit("\tbeq " + fl);
-        emit("\tlda #$00"); emit("\tsta " + a); emit("\tsta " + a + "+1");
-        emit("\tlda #$80"); emit("\tsta " + a + "+2"); emit("\tlda #$3F"); emit("\tsta " + a + "+3");  // 1.0
-        emit("\tjmp " + dn);
-        emit(fl + ":");
-        emit("\tlda #$00"); emit("\tsta " + a); emit("\tsta " + a + "+1");
-        emit("\tsta " + a + "+2"); emit("\tsta " + a + "+3");                                          // 0.0
-        emit(dn + ":");
+        copyV("FA", a); emit("\tjsr fp_toint16");      // FA+0/1 = int16(a)
+        emit("\tlda FA");   emit("\tsta " + a);         // stash int16(a) in temp a (lo/hi)
+        emit("\tlda FA+1"); emit("\tsta " + a + "+1");
+        copyV("FA", b); emit("\tjsr fp_toint16");      // FA+0/1 = int16(b)
+        emit("\tlda " + a);        emit(op == "AND" ? "\tand FA"   : "\tora FA");   emit("\tsta FA");
+        emit("\tlda " + a + "+1"); emit(op == "AND" ? "\tand FA+1" : "\tora FA+1"); emit("\tsta FA+1");
+        emit("\tjsr fp_fromint16");                     // FA = float(a <op> b)
+        copyV(a, "FA");
         return;
     }
     copyV("FA", a); copyV("FB", b);
@@ -815,7 +832,12 @@ bool Codegen::statement()
         if (isKw("THEN")) {
             adv();
             if (cur().t == T::Num) { if (!checkTarget(static_cast<int>(cur().num), "THEN")) return false;
-                                     emit("\tjmp L" + std::to_string(cur().num)); adv(); }
+                                     emit("\tjmp L" + std::to_string(cur().num)); adv();
+                                     // In Applesoft everything after "THEN <line>" is still part of
+                                     // the (conditional) consequent — unreachable past the GOTO, but
+                                     // it must NOT leak out to run on the FALSE branch. Consume it here
+                                     // inside the THEN body instead of letting line() pick it up.
+                                     while (cur().t == T::Colon) { adv(); if (!statement()) return false; } }
             else { if (!statement()) return false;
                    while (cur().t == T::Colon) { adv(); if (!statement()) return false; } }
         } else if (isKw("GOTO")) {
@@ -932,6 +954,12 @@ bool Codegen::statement()
         if (!isOp("=")) return fail("expected '=' in assignment");
         adv();
         if (!expr(0)) return false;
+        // Integer-typed target (A%, lexed with an "_I" suffix) truncates toward
+        // zero on store (A% = 3.7 -> 3). Integer-phase values are already whole;
+        // in the float phase coerce via fp_int before storing the float.
+        if (fp && v.size() >= 2 && v.compare(v.size() - 2, 2, "_I") == 0) {
+            copyV("FA", temp(0)); emit("\tjsr fp_int"); copyV(temp(0), "FA");
+        }
         copyV(varLabel(v), temp(0));
         return true;
     }

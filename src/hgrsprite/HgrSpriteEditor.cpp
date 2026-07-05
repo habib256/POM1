@@ -168,7 +168,14 @@ void HgrSpriteEditor::floodFill(int x, int y, HgrColor c)
             st.emplace_back(nx, ny);
         }
     }
-    for (auto& p : region) hgrpaint::plotPage(scratch.data(), p.first, p.second, c);
+    // Sprites are a monochrome bit shape (see the transform paths' note): a fill
+    // lights raw bits like the pencil, never a chromatic parity pattern. Map any
+    // non-Black colour to White so a chromatic selection can't drive plotPage's
+    // parity-snap — which shifts even-column pixels one column left and would
+    // miss/double them. Today callers only pass White/Black; this keeps it safe
+    // if that ever changes.
+    const HgrColor stampC = (c == HgrColor::Black) ? HgrColor::Black : HgrColor::White;
+    for (auto& p : region) hgrpaint::plotPage(scratch.data(), p.first, p.second, stampC);
     commitRegionDiff(before);
     status = "Filled";
 }

@@ -156,6 +156,49 @@ int main()
         check("GOTO to missing line is caught", !g2.ok && has(g2.error, "99") && has(g2.error, "no such line"));
     }
 
+    // ---- Applesoft-fidelity regressions (bug hunt round 2) -----------------
+    // NOT binds LOOSER than the relational operators: "IF NOT A = B" means
+    // "NOT (A = B)", so the comparison (rt_cmp16) must be emitted BEFORE NOT's
+    // bitwise complement (the pre-fix code bound NOT tightest -> complement first).
+    {
+        std::string a = gen("10 IF NOT A = B THEN 100\n100 END\n");
+        size_t cmp = a.find("jsr rt_cmp16");
+        size_t eor = a.find("eor #$FF");
+        check("NOT precedence: compare before complement",
+              cmp != std::string::npos && eor != std::string::npos && cmp < eor);
+    }
+    // Applesoft AND/OR are BITWISE on int16, not logical truth. In the float
+    // phase: coerce each operand to int16 (fp_toint16), combine bitwise (and/ora
+    // FA), then back to float (fp_fromint16) -- never a 1.0/0.0 materialisation.
+    {
+        std::string a = genf("10 X=1/2\n20 Z=6 AND 3\n30 END\n");
+        check("float AND coerces via fp_toint16",  has(a, "jsr fp_toint16"));
+        check("float AND combines bitwise",        has(a, "and FA"));
+        check("float AND returns a float",         has(a, "jsr fp_fromint16"));
+    }
+    // INT floors toward -inf: fp_int truncates toward zero, so a negative
+    // fractional value is corrected down by 1 via a compare + subtract.
+    {
+        std::string a = genf("10 X=INT(Y)\n20 END\n");
+        check("INT floor: truncates (fp_int)",         has(a, "jsr fp_int"));
+        check("INT floor: compares trunc vs x",        has(a, "jsr fp_cmp"));
+        check("INT floor: drops by 1 when trunc > x",  has(a, "jsr fp_sub"));
+    }
+    // Integer-typed target A% truncates toward zero on store in the float phase.
+    {
+        std::string a = genf("10 A%=Y/2\n20 END\n");
+        check("A% store truncates via fp_int", has(a, "jsr fp_int") && has(a, "V_A_I"));
+    }
+    // "IF cond THEN <line> : stmts": the trailing statements are part of the
+    // (conditional) consequent and must NOT leak out to run on the FALSE branch.
+    // So no store to the tail var appears AFTER the IF's skip label.
+    {
+        std::string a = gen("10 IF A THEN 100 : B=2\n100 END\n");
+        size_t skip = a.find("Lif0:");
+        check("IF THEN <line> : tail stays inside the consequent",
+              skip != std::string::npos && a.find("sta V_B", skip) == std::string::npos);
+    }
+
     if (failures) { std::printf("basic_native_codegen: %d FAILED\n", failures); return 1; }
     std::printf("basic_native_codegen: OK\n");
     return 0;

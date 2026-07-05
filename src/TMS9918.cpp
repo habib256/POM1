@@ -1983,7 +1983,9 @@ void TMS9918::deserialize(pom1::SnapshotReader& r)
     lastScanlineRendered  = static_cast<int>(r.readU32());
     siliconStrictMode     = r.readU8() != 0;
     irqStrapped           = r.readU8() != 0;
-    chipType              = static_cast<ChipType>(r.readU8());
+    // Clamp to a known-good default on a corrupt snapshot byte (ChipType is
+    // 0..6), mirroring IECCard/Drive1541::deserialize.
+    { uint8_t v = r.readU8(); chipType = (v <= 6) ? static_cast<ChipType>(v) : ChipType::TMS9918A; }
     // Re-seat the transient beam-render cursor at the position implied by the
     // restored frameCycleCounter. Leaving it at the pre-restore value stalled
     // the progressive raster for up to a frame after a snapshot/rewind load

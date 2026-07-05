@@ -667,7 +667,11 @@ void IECCard::serialize(SnapshotWriter& w) const {
 }
 
 void IECCard::deserialize(SnapshotReader& r) {
-    std::array<bool, 4> h{}, d{};
+    // Size these from the bus API (kLineCount) rather than a hardcoded 4, so they
+    // stay in lockstep with serialize()'s bus_.hostBits()/driveBits() (and the
+    // restoreHostBits/restoreDriveBits parameter types) if the line count changes.
+    auto h = bus_.hostBits();
+    auto d = bus_.driveBits();
     for (auto& b : h) b = r.readU8() != 0;
     for (auto& b : d) b = r.readU8() != 0;
     bus_.restoreHostBits(h);

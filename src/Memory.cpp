@@ -302,9 +302,11 @@ Memory::Memory()
 
     // P-LAB CodeTank: fixed 16 kB ROM window at $4000-$7FFF, jumper selects
     // which 16 kB half of the 32 kB 28c256 is visible. No $CA00 latch.
-    // Priority 20 to win over the Juke-Box's $4000-$BFFF window when the
-    // user tries to plug both — the Memory layer enforces single-card use,
-    // but the priority is belt-and-suspenders.
+    // Priority 20 — the SAME as the Juke-Box's $4000-$BFFF window, so if both
+    // were somehow enabled the tie would be broken by registration order (the
+    // Juke-Box registers first, so it would actually win). Moot in practice:
+    // the Memory layer enforces single-card use (setCodeTankEnabled /
+    // setJukeBoxEnabled mutually evict), so the two are never live together.
     codeTankBusHandle = bus.registerHandle(
         "CodeTank", {CodeTank::kBase, CodeTank::kEnd}, /*priority*/ 20,
         [this](uint16_t a) { return codeTank->readByte(a); },
