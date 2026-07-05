@@ -1,0 +1,141 @@
+LOAD
+        ;********************************
+        ;* C64 KERNAL IEEE LOAD ROUTINE *
+        ;********************************
+        ;LOAD FROM CBM IEEE DEVICE
+        ;        
+        LDX SA          ;SAVE SA IN .X
+        JSR LUKING      ;TELL USER LOOKING
+        LDA #$60        ;SPECIAL LOAD COMMAND
+        STA SA
+        JSR OPENI       ;OPEN THE FILE
+        ;
+        LDA FA
+        JSR TALK        ;ESTABLISH THE CHANNEL
+        LDA SA
+        JSR TKSA        ;TELL IT TO LOAD
+        ;
+        JSR ACPTR       ;GET FIRST BYTE
+        STA EAL
+        ;        
+        LDA STATUS      ;TEST STATUS FOR ERROR
+        LSR 
+        LSR 
+        BCS LD90        ;FILE NOT FOUND...
+        JSR ACPTR       ;GET SECOND BYTE
+        STA EAH
+        ;
+        TXA             ;FIND OUT OLD SA
+        IF ZERO THEN 
+           ;SA=0 LOAD WHERE USER WANTS
+           LD16 EAL, SAL   
+        ELSE
+           ;SA<>0 USE DISK ADDRESS
+           LD16 SAL, EAL   
+        END IF        
+
+        JSR LODING      ;TELL USER LOADING        
+        
+LD40    LDA #$FD        ;MASK OFF TIMEOUT
+        AND STATUS
+        STA STATUS
+
+LD45    JSR ACPTR       ;GET BYTE OFF IEEE
+        TAX
+        LDA STATUS      ;WAS THERE A TIMEOUT?
+        LSR 
+        LSR 
+        BCS LD40        ;YES...TRY AGAIN                        
+        TXA
+        LDY VERCK       ;PERFORMING VERIFY?
+        BEQ LD50        ;NO...LOAD
+        LDY #0
+        CMP (EAL),Y     ;VERIFY IT
+        BEQ LD60        ;O.K....
+        LDA #SPERR      ;NO GOOD...VERIFY ERROR
+        JSR UDST        ;UPDATE STATUS
+        .BYTE $2C       ;SKIP NEXT STORE
+        ;
+LD50    STA (EAL),Y
+LD60    INC EAL         ;INCREMENT STORE ADDR
+        BNE LD64
+        INC EAH
+LD64    BIT STATUS      ;EOI?
+        BVC LD40        ;NO...CONTINUE LOAD
+        ;
+LD70    JSR UNTLK       ;CLOSE CHANNEL
+        JSR CLSEI       ;CLOSE THE FILE
+        BCC LD180       ;BRANCH ALWAYS
+        ;
+LD90    JMP ERROR4      ;FILE NOT FOUND
+        
+OPENI   LDA SA
+        BMI OP175       ;NO SA...DONE
+       
+        LDY FNLEN
+        BEQ OP175       ;NO FILE NAME...DONE
+        ;
+        LDA #0          ;CLEAR THE SERIAL STATUS
+        STA STATUS
+        ;
+        LDA FA
+        JSR LISTN       ;DEVICE LA TO LISTEN
+        ;
+        LDA SA
+        ORA #$F0
+        JSR SECND
+        ;
+        LDA STATUS      ;ANYBODY HOME?
+        BPL OP35        ;YES...CONTINUE
+        ;
+        ;THIS ROUTINE IS CALLED BY OTHER
+        ;KERNAL ROUTINES WHICH ARE CALLED
+        ;DIRECTLY BY OS.  KILL RETURN
+        ;ADDRESS TO RETURN TO OS.
+        ;
+        PLA
+        PLA
+        JMP DEVICE_NP
+        ;
+OP35    LDA FNLEN
+        BEQ OP45        ;NO NAME...DONE SEQUENCE
+        ;
+        ;SEND FILE NAME OVER SERIAL
+        ;
+        LDY #0
+OP40    LDA (FNADR),Y
+        JSR CIOUT
+        INY
+        CPY FNLEN
+        BNE OP40
+        ;
+OP45    JMP CUNLSN      ;JSR UNLSN: CLC: RTS        
+        
+UDST    ORA STATUS
+        STA STATUS
+        RTS
+        
+CLSEI   BIT SA
+        BMI CLSEI2
+        LDA FA
+        JSR LISTN
+        LDA SA
+        AND #$EF
+        ORA #$E0
+        JSR SECND
+        ;
+CUNLSN  JSR UNLSN       ;ENTRY FOR OPENI
+        ;
+CLSEI2  CLC
+        RTS
+        ;
+LD180   CLC             ;GOOD EXIT
+        ;
+        ; SET UP END LOAD ADDRESS
+        ;
+        LDX EAL
+        LDY EAH
+        ;
+OP175   CLC             ;FLAG GOOD OPEN
+OP180   RTS             ;EXIT IN PEACE
+

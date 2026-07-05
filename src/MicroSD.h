@@ -101,6 +101,8 @@ private:
     uint8_t t1LatchHi;     // $A007 - Timer 1 Latch High
     uint8_t t2CounterLo;   // $A008 - Timer 2 Counter Low
     uint8_t t2CounterHi;   // $A009 - Timer 2 Counter High
+    uint8_t t2LatchLo;     // T2 low-order latch (6522: immutable across counting;
+                           //   re-arm via $A009 reloads the low counter from it)
     uint8_t shiftReg;       // $A00A - Shift Register
     uint8_t acr;            // $A00B - Auxiliary Control Register
     uint8_t pcr;            // $A00C - Peripheral Control Register

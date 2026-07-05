@@ -1,0 +1,22 @@
+;=======================================================================================
+; APPLE1 SPECIFIC CODE
+;=======================================================================================
+
+sub woz_puts()
+   ldy #0
+   do
+      lda (ptr),y
+      if zero then exit do
+      jsr ECHO
+      iny
+   loop while not zero
+end sub
+
+sub getkey()
+   do
+      lda KEY_CTRL
+   loop while not negative
+   lda KEY_DATA
+   and #$7f   
+end sub   
+

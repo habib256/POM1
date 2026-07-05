@@ -1,0 +1,5 @@
+Syntax:
+PWD
+
+Prints on the screen the current working
+directory.

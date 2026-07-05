@@ -233,6 +233,12 @@ void TerminalCard::processIncomingByte(uint8_t byte)
             telnetState = TelnetState::VERB;
             return;
         }
+        // SB(250): subnegotiation begin — consume the whole body (option code +
+        // params) until IAC SE. Without this the body leaked into keyInjector.
+        if (byte == TEL_SB) {
+            telnetState = TelnetState::SB;
+            return;
+        }
         // IAC IAC = literal 255
         if (byte == 255) {
             telnetState = TelnetState::NORMAL;
@@ -242,6 +248,15 @@ void TerminalCard::processIncomingByte(uint8_t byte)
             telnetState = TelnetState::NORMAL;
             return;
         }
+    } else if (telnetState == TelnetState::SB) {
+        // Skip subnegotiation content until IAC SE (mirrors WiFiModem::processTelnetByte).
+        if (byte == TEL_IAC) telnetState = TelnetState::SB_IAC;
+        return;
+    } else if (telnetState == TelnetState::SB_IAC) {
+        if (byte == TEL_SE)       telnetState = TelnetState::NORMAL;   // end of subnegotiation
+        else if (byte == TEL_IAC) telnetState = TelnetState::SB;       // escaped 0xFF inside SB
+        else                      telnetState = TelnetState::NORMAL;   // malformed — resync
+        return;
     } else if (telnetState == TelnetState::VERB) {
         // Accept silently the legit replies to our proactive negotiation;
         // without this the server would cancel its own offer with DONT/WONT.

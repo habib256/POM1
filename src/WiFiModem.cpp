@@ -208,16 +208,27 @@ void WiFiModem::advanceCycles(int cycles)
             escapeArmed = false;
         }
     }
-    if (escapeCount >= 3) {
+    if (escapeCount == 3) {
         escapeGuardCycles += cycles;
         if (escapeGuardCycles >= ESCAPE_GUARD_CYCLES) {
-            // +++ with guard time after — return to command mode
+            // Exactly +++ with guard time after — return to command mode.
             escapeCount = 0;
             escapeGuardCycles = 0;
             escapeArmed = false;
             mode = ModemMode::COMMAND;
             atCmdBuffer.clear();
             enqueueRxString("\r\nOK\r\n");
+        }
+    } else if (escapeCount > 3) {
+        // 4+ consecutive '+' is NOT a valid 3-char escape (was: >= 3 escaped on
+        // any run). After the trailing guard, flush them as data and stay online,
+        // matching the non-'+' data path's "every buffered '+' is data" rule.
+        escapeGuardCycles += cycles;
+        if (escapeGuardCycles >= ESCAPE_GUARD_CYCLES) {
+            for (int i = 0; i < escapeCount; i++) sendToSocket('+');
+            escapeCount = 0;
+            escapeGuardCycles = 0;
+            escapeArmed = false;
         }
     }
 }

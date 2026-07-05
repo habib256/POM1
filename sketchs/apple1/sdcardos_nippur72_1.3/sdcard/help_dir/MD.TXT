@@ -1,0 +1,4 @@
+Syntax:
+MD path
+
+Creates the specified directory.

@@ -1,0 +1,19 @@
+;=======================================================================================
+; APPLE1 SPECIFIC DEFINES
+;=======================================================================================
+
+// TODO ascii encoding ?
+
+const WOZMON    = $FF1F      ; enters monitor
+const ECHO      = $FFEF      ; output ascii character in A (A not destroyed)
+const PRBYTE    = $FFDC      ; print hex byte in A (A destroyed)
+const PRHEX     = $FFE5      ; print hex digit in lower A (A destroyed)
+const KEY_DATA  = $d010      ; read key
+const KEY_CTRL  = $d011      ; control port
+const TERM_DATA = $d012      ; write ascii
+const TERM_CTRL = $d013      ; control port
+const INBUFFER  = $0200      ; woz monitor input buffer
+const INBUFSIZE = $80        ; woz monitor input buffer size
+const CR        = $0D        ; carriage return
+
+

@@ -1,0 +1,8 @@
+Syntax:
+LOAD filename
+
+Loads a file from the SD card. filename
+refers to a "tagged file name"
+described above. For convenience,
+filename can be partially given, the
+first matching file will be loaded.

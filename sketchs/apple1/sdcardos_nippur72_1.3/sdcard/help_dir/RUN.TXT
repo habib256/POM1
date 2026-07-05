@@ -1,0 +1,8 @@
+Syntax:
+RUN filename
+
+Same as LOAD but runs the file after
+loading it. Binary files are exectuted
+at the starting address specified in
+the file name tag; BASIC files are RUN
+from the BASIC interpreter.

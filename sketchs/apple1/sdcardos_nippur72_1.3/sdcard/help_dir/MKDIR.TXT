@@ -1,0 +1,4 @@
+Syntax:
+MKDIR path
+
+Creates the specified directory.

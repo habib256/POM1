@@ -1,0 +1,14 @@
+{
+    "extension": "prg",
+    "link": "apple1_jukebox.ld",
+    "start_address": "0x4000",
+    "cpu": "ROM6502",
+    "interrupt": "hardware_all",
+    "emulator": "echo",
+    "defines": {
+        "__APPLE1__": 1,
+        "APPLE1": 1,
+        "APPLE1_JUKEBOX": 1,
+        "__KICKC__": 1
+    }
+}

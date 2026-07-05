@@ -36,6 +36,7 @@ void MicroSD::reset()
     t1LatchHi = 0;
     t2CounterLo = 0;
     t2CounterHi = 0;
+    t2LatchLo = 0;
     shiftReg = 0;
     acr = 0;
     pcr = 0;
@@ -267,12 +268,15 @@ void MicroSD::writeRegister(uint16_t address, uint8_t value)
         t1LatchHi = value;
         break;
 
-    case 0x08: // T2 Counter Low (write = latch low)
-        t2CounterLo = value;
+    case 0x08: // T2 Counter Low write = load the low-order LATCH (6522 T2L-L)
+        t2LatchLo = value;
+        t2CounterLo = value;   // keep the read-back register in sync until it counts
         break;
 
-    case 0x09: // T2 Counter High — writing starts the timer (one-shot)
+    case 0x09: // T2 Counter High — writing loads T2C-H and reloads the low
+               // counter from the immutable latch, then starts (one-shot).
         t2CounterHi = value;
+        t2CounterLo = t2LatchLo;   // 6522: T2L-L -> T2C-L on T2C-H write (was: reused eroded lo)
         t2Running = true;
         ifr &= ~0x20; // clear T2 interrupt flag
         break;
@@ -338,8 +342,16 @@ void MicroSD::advanceCycles(int cycles)
         if (remaining <= 0) {
             ifr |= 0x40; // set T1 interrupt flag
             if (acr & 0x40) {
-                // Free-running mode: reload from latch
-                t1Counter = (static_cast<uint16_t>(t1LatchHi) << 8) | t1LatchLo;
+                // Free-running mode: reload from latch, but CARRY the overshoot
+                // (cycles past underflow) into the next period instead of
+                // discarding it — otherwise the timer drifts slow by up to one
+                // slice per period. Modulo the period so a slice spanning several
+                // periods lands at the correct phase.
+                const uint16_t latch = (static_cast<uint16_t>(t1LatchHi) << 8) | t1LatchLo;
+                const int period = static_cast<int>(latch) + 1;
+                int over = -remaining;                 // >= 0
+                if (period > 0) over %= period;
+                t1Counter = static_cast<uint16_t>(latch - static_cast<uint16_t>(over));
             } else {
                 // One-shot: stop
                 t1Running = false;
@@ -1259,6 +1271,9 @@ void MicroSD::deserialize(pom1::SnapshotReader& r)
     portB = r.readU8(); portA = r.readU8(); ddrB = r.readU8(); ddrA = r.readU8();
     t1LatchLo = r.readU8(); t1LatchHi = r.readU8();
     t2CounterLo = r.readU8(); t2CounterHi = r.readU8();
+    // t2LatchLo isn't serialized (keeps the section layout stable); reconstruct
+    // it from the counter low — the next $A008 write re-establishes the true latch.
+    t2LatchLo = t2CounterLo;
     shiftReg = r.readU8(); acr = r.readU8(); pcr = r.readU8();
     ifr = r.readU8(); ier = r.readU8();
     t1Counter = r.readU16();

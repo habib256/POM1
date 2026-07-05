@@ -1,0 +1,6 @@
+Syntax:
+READ filename startaddress
+
+Reads a binary file from the SD card 
+and loads it in memory at the specified
+address.

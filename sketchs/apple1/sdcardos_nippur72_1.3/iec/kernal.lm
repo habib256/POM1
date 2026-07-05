@@ -1,0 +1,213 @@
+/*
+===========================================================
+Value of ST variable:
+Bit #0: Timeout transfer direction 0=Input; 1=Output.
+Bit #1: 1 = Timeout occurred
+Bit #4: 1 = VERIFY error occurred (only during VERIFY)
+Bit #6: 1 = End of file has been reached
+Bit #7: 1 = Device is not present
+===========================================================
+*/
+
+; Adapted from https://commodore.international/kim-iec/kim1541_public.asm
+
+; zero page locations
+#ifdef C64
+STATUS = $90            ;I/O OPERATION STATUS BYTE
+C3P0   = $94            ;IEEE BUFFERED CHAR FLAG
+BSOUR  = $95            ;CHAR BUFFER FOR IEEE
+R2D2   = $A3            ;SERIAL BUS USAGE
+BSOUR1 = $A4            ;TEMP USED BY SERIAL ROUTINE
+COUNT  = $A5            ;TEMP USED BY SERIAL ROUTINE
+FNLEN  = $B7            ;FILENAME LENGTH
+FNADR  = $BB            ;FILENAME ADDRESS
+FA     = $BA            ;FILE PRIMARY ADDRESS
+SA     = $B9            ;FILE SECONDARY ADDRESS
+SAL    = $AC            ;START ADDR LOW BYTE FOR SAVE ROUTINE
+SAH    = $AD            ;START ADDR HIGH BYTE FOR SAVE ROUTINE
+EAL    = $AE            ;END ADDRESS LOW BYTE
+EAH    = $AF            ;END ADDRESS HIGH BYTE
+MEMUSS = $C3            ;USER SPECIFIED FILE LOAD ADDRESS
+VERCK  = $0A            ;LOAD OR VERIFY FLAG
+#endif
+
+#ifdef APPLE1
+   const STATUS  = 26             ;I/O OPERATION STATUS BYTE
+   const C3P0    = 14             ;IEEE BUFFERED CHAR FLAG      / Bit #7: 1 = Output cache dirty, must transfer cache contents upon next output to serial bus.
+   const BSOUR   = 18             ;CHAR BUFFER FOR IEEE         / Serial bus output cache, previous byte to be sent to serial bus.
+   const R2D2    = 19             ;SERIAL BUS USAGE             / EOI flag Bit #7: 0 = Send byte right after handshake; 1 = Do EOI delay first.
+   const BSOUR1  = $2a            ;TEMP USED BY SERIAL ROUTINE  / Byte buffer during serial bus input.
+   const COUNT   = $2b            ;TEMP USED BY SERIAL ROUTINE  / Bit counter during serial bus input/output.
+   const FNLEN   = $28            ;FILENAME LENGTH
+   const FNADR   = 8              ;FILENAME ADDRESS
+   const FA      = 22             ;FILE PRIMARY ADDRESS
+   const SA      = $29            ;FILE SECONDARY ADDRESS
+   const SAL     = 10             ;START ADDR LOW BYTE FOR SAVE ROUTINE
+   const SAH     = 11             ;START ADDR HIGH BYTE FOR SAVE ROUTINE
+   const EAL     = 12             ;END ADDRESS LOW BYTE
+   const EAH     = 13             ;END ADDRESS HIGH BYTE
+   ;const MEMUSS  = $24            ;USER SPECIFIED FILE LOAD ADDRESS
+   const VERCK   = 15             ;LOAD OR VERIFY FLAG   
+#endif
+
+SPERR  = 16             ;VERIFY ERROR IN STATUS
+FNAME  = $27            ;FILENAME
+
+#ifdef C64
+   const D2PRA  = $DD00    ;CIA2 PERIPHERAL DATA REGISTER A ON C64
+   const D2DDRA = $DD02    ;CIA2 PERIPHERAL DATA DIR REGISTER A ON C64
+   const D1T2H  = $DC07    ;CIA1 TIMER B HIGH BYTE VALUE
+   const D1ICR  = $DC0D    ;CIA1 INTERRUPT CONTROL REGISTER
+   const D1CRB  = $DC0F    ;CIA1 CONTROL REGISTER TIMER B
+   const TIMRB	 = $19      ;6526 CRB ENABLE ONE-SHOT TB
+
+   const BIT_ATN_OUT  = %00001000    ; ($08) CIA2 at $DD00 Bit 3: ATN OUT
+   const BIT_CLK_OUT  = %00010000    ; ($10) CIA2 at $DD00 Bit 4: CLOCK OUT
+   const BIT_DATA_OUT = %00100000    ; ($20) CIA2 at $DD00 Bit 5: DATA OUT
+   const BIT_CLK_IN   = %01000000    ; ($40) CIA2 at $DD00 Bit 6: CLOCK IN
+   const BIT_DATA_IN  = %10000000    ; ($80) CIA2 at $DD00 Bit 7: DATA IN
+#endif
+
+#ifdef APPLE1
+   const D2PRA  = $A000    ;VIA PORT B ON APPLE1
+   const D2DDRA = $A002    ;VIA PORT B DATA DIRECTION REGISTER ON APPLE1
+   const D1ACR  = $A00B    ;VIA ACR ON APPLE1
+   const D2IFR  = $A00D    ;VIA IFR ON APPLE1
+   const D2T2H  = $A009    ;VIA TIMER 2 HIGH BYTE
+
+   const TIMRB  = #%01000000  ; FREE RUNNING T1 T2 ONESHOT D1 
+
+   const BIT_ATN_OUT  = %00000100    ; Bit 2: ATN OUT
+   const BIT_CLK_OUT  = %00001000    ; Bit 3: CLOCK OUT
+   const BIT_DATA_OUT = %00010000    ; Bit 4: DATA OUT
+   const BIT_CLK_IN   = %00100000    ; Bit 5: CLOCK IN
+   const BIT_DATA_IN  = %01000000    ; Bit 6: DATA IN
+#endif
+
+/*
+byte *const VIA_PORTB   = (byte *) 0xA000;  // port B register
+byte *const VIA_PORTA   = (byte *) 0xA001;  // port A register
+byte *const VIA_DDRB    = (byte *) 0xA002;  // port A data direction register
+byte *const VIA_DDRA    = (byte *) 0xA003;  // port B data direction register
+byte *const VIA_T1CL    = (byte *) 0xA004;  // 
+byte *const VIA_T1CH    = (byte *) 0xA005;  // 
+byte *const VIA_T1LL    = (byte *) 0xA006;  // 
+byte *const VIA_T1LH    = (byte *) 0xA007;  // 
+byte *const VIA_T2CL    = (byte *) 0xA008;  // 
+byte *const VIA_T2CH    = (byte *) 0xA009;  // 
+byte *const VIA_SR      = (byte *) 0xA00A;  // 
+byte *const VIA_ACR     = (byte *) 0xA00B;  // 
+byte *const VIA_PCR     = (byte *) 0xA00C;  // 
+byte *const VIA_IFR     = (byte *) 0xA00D;  // 
+byte *const VIA_IER     = (byte *) 0xA00E;  // 
+byte *const VIA_PORTANH = (byte *) 0xA00F;  // 
+*/
+
+const PRA_INIT_VALUE = $FF-BIT_ATN_OUT-BIT_CLK_OUT-BIT_DATA_OUT-BIT_CLK_IN-BIT_DATA_IN   ; all IEC bits to "0"
+const PRA_INIT_DIR   = $FF-BIT_CLK_IN-BIT_DATA_IN                                        ; CLK_IN AND DATA_IN "0", others "1"
+
+; make "ASL A" compatible with "ASL"
+MACRO ASL "A"
+   ASL
+END MACRO
+
+include "kernal_serial.lm"   
+include "kernal_load.lm"
+include "kernal_save.lm"
+include "kernal_dir.lm"
+include "bin2bcd.lm"
+include "kernal_err.lm"
+include "kernal_cmd.lm"
+include "kernal_intbas_load.lm"
+include "kernal_intbas_save.lm"
+
+MACRO PRINTMSG const
+   #ifdef APPLE1
+      LD16 ptr, #{1}
+      call print_string        
+   #endif
+   #ifdef C64
+      LD16 ptr, #{1}
+      call print_string        
+   #endif
+END MACRO
+
+LUKING:
+   PRINTMSG #MSG_SEARCHING
+   RTS
+
+LODING:
+   LDA VERCK
+   IF ZERO THEN
+      PRINTMSG #MSG_LOADING        
+   ELSE
+      PRINTMSG #MSG_VERIFIYING
+   END IF
+   RTS
+        
+SAVING:
+   PRINTMSG #MSG_SAVING         
+   RTS
+
+ERROR4:
+   PRINTMSG #MSG_NOT_FOUND         
+   RTS
+
+DEVICE_NP:
+   PRINTMSG #MSG_DEVICE_NP
+   RTS
+
+MSG_SEARCHING:  BYTE "searching",13,0
+MSG_LOADING:    BYTE "loading",13,0
+MSG_VERIFIYING: BYTE "verifying",13,0
+MSG_SAVING:     BYTE "saving",13,0
+MSG_NOT_FOUND:  BYTE "?file not found",13,0
+MSG_DEVICE_NP:  BYTE "?device not present",13,0
+
+SUB print_string()
+   tya : pha
+   txa : pha
+   #ifdef APPLE1 
+      call woz_puts
+   #endif
+   #ifdef C64
+      lda ptr
+      ldy ptr+1
+      call PRNSTR
+   #endif
+   pla : tax
+   pla : tay
+END SUB
+
+SUB CalcFileNameLength()
+   LDY #$FF
+   DO
+      INY
+      LDA (FNADR),Y
+   LOOP WHILE NOT ZERO
+   STY FNLEN
+END SUB
+
+SUB InitPia()
+   CLD                 ; NO DECIMAL MODE
+   SEI                 ; NO INTERRUPTS
+
+   #ifdef C64
+      LD D2PRA, #%00000111         ;SETS ALL IEC BITS 7-3 TO LOW
+      LD D2DDRA, #%00111111        ;BIT 7,6 INPUT; 5,4,3 OUTPUT; 2,1,0 DONT CARE
+   #endif
+   
+   #ifdef APPLE1
+      LD D2PRA, #%00000000         ;SETS ALL IEC BITS 6-2 TO LOW; OTHER BITS DONT CARE
+      LD D2DDRA, #%00011111        ;I-II-OOO-X-O B7 INPUT (SD CARD); B6,5 INPUT; B4,3,2 OUTPUT; B1 DONT CARE; B0 OUTPUT SD CARD
+	   LD D1ACR, #TIMRB             ;FREE RUNNING T1 T2 ONESHOT D1  (#%01000000)
+   #endif
+
+   lda #0
+   sta STATUS      
+   sta C3P0      
+   sta BSOUR 
+   sta R2D2  
+   sta BSOUR1      
+
+END SUB

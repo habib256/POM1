@@ -72,11 +72,19 @@ def parse_tms_file(path: pathlib.Path):
             continue
         m = LABEL_RE.match(stripped)
         if m and (m.group(1).endswith("_pat") or m.group(1).endswith("_data")):
-            if cur_label is not None and len(cur_bytes) == 32:
-                sprites.append((cur_label, cur_bytes, cur_slot_comment))
             raw_lbl = m.group(1)
             # HGR : mêmes noms publics sans _ (convention projets asm existants).
-            cur_label = raw_lbl[1:] if raw_lbl.startswith("_") else raw_lbl
+            norm = raw_lbl[1:] if raw_lbl.startswith("_") else raw_lbl
+            # Alias label: a sprite can carry BOTH `foo_pat:` and `_foo_pat:`
+            # (C-linkage twin, as in sprites_fauna.asm). The second label is the
+            # SAME sprite, not a new one — don't restart it, and above all don't
+            # clobber the slot comment (pending was already consumed by the first
+            # label, so blindly reassigning would blank it out).
+            if norm == cur_label and not cur_bytes:
+                continue
+            if cur_label is not None and len(cur_bytes) == 32:
+                sprites.append((cur_label, cur_bytes, cur_slot_comment))
+            cur_label = norm
             cur_bytes = []
             cur_slot_comment = pending_slot_comment
             pending_slot_comment = ""

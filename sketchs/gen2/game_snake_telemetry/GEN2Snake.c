@@ -450,13 +450,25 @@ void main(void)
     emit_schema();
     tele_freerun();
 
-    /* Hold the title until the player picks a layout with '1' or '2', or AUTO-START
-     * with the QWERTY default after the timeout (under the DevBench the Apple-1
-     * keyboard is usually unfocused, and the harness drives play with no key).
-     * gen2_hgr_init() is re-asserted DURING this hold so the title appears once
-     * the GEN2 card finishes its deferred plug. */
+    /* Hold the title until the player picks a layout with '1' or '2', a telemetry
+     * harness drives play, or the title TIMES OUT to the QWERTY default.
+     *
+     * The timeout MUST be short and telemetry-INDEPENDENT: a standalone run has
+     * no harness, so tele_inlen() stays 0 forever and the game can only start via
+     * this timeout. The old hold reused the game-speed throttle (tick_spins=3565,
+     * ~0.33 s per poll x 90 = ~30 s), which looked like "Snake hangs waiting for
+     * telemetry" — it started promptly ONLY when a harness byte arrived. Here we
+     * force a SHORT poll delay so the title auto-starts in ~4 s unattended, and
+     * polls the keyboard ~45x/s so a quick 1/2 tap is never missed.
+     *
+     * tick_spins is set explicitly (not trusted from its initializer): on the
+     * -t none GEN2-C build initialised globals are unreliable, and this also
+     * decouples the menu cadence from the game speed. new_game() resets it to the
+     * real starting game speed. gen2_hgr_init() is re-asserted DURING the hold so
+     * the title appears once the GEN2 card finishes its deferred plug. */
     layout = 1u;                       /* default if the title times out */
-    for (t = 0; t < 90u; ++t) {
+    tick_spins = 240u;                 /* brief menu-poll delay (~22 ms/poll) */
+    for (t = 0; t < 180u; ++t) {       /* ~4 s title hold, then auto-start */
         unsigned char k;
         gen2_hgr_init();
         k = apple1_readkey();

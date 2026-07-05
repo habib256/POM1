@@ -1,0 +1,7 @@
+commands list:
+read, write, type, dump, load, save, 
+run, del, rm, dir, ls, cd, md, mkdir, 
+rd, rmdir, pwd, bas, jmp, time, test, 
+exit.
+
+use help command for more detailed help

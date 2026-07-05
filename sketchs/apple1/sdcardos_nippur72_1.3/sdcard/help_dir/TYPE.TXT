@@ -1,0 +1,7 @@
+Syntax:
+TYPE filename
+
+Reads the specified ASCII file from the
+SD card and prints it on the screen. 
+Press any key to stop the printing and 
+return to the command prompt.

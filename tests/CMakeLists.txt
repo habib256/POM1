@@ -1378,6 +1378,22 @@ target_include_directories(test_iec_bus_wired_and PRIVATE ${CMAKE_SOURCE_DIR}/sr
 add_test(NAME iec_bus_wired_and_smoke COMMAND test_iec_bus_wired_and)
 set_tests_properties(iec_bus_wired_and_smoke PROPERTIES TIMEOUT 5)
 
+# -- Drive1541 @ERR status-channel smoke --------------------------------------
+# Pins the error/status channel read: each @ERR (LISTEN/TALK/TKSA $6F, per the
+# SD OS kernal_err.lm ACPTR/ECHO loop) restarts the status from byte 0, so a
+# read interrupted before EOI does not replay a truncated status; a complete
+# read reverts the channel to "00, OK,00,00".
+add_executable(test_iec_error_channel
+    iec_error_channel_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/Drive1541.cpp
+    ${CMAKE_SOURCE_DIR}/src/D64Image.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
+)
+target_include_directories(test_iec_error_channel PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+add_test(NAME iec_error_channel_smoke COMMAND test_iec_error_channel)
+set_tests_properties(iec_error_channel_smoke PROPERTIES TIMEOUT 5)
+
 # -- State-rewind ring buffer smoke -------------------------------------------
 # Pins pom1::RewindBuffer: synthetic-blob delta round-trip (COPY/FULL/CHUNKED
 # section deltas, keyframe-boundary replay, budget eviction, truncateAfter)

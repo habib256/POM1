@@ -115,6 +115,20 @@ void Drive1541::openChannel(uint8_t secondary, bool isOpenCommand) {
     }
     activeListen_ = secondary;
     activeTalk_   = secondary;
+
+    if (secondary == 15) {
+        // Every @ERR read is a fresh LISTEN/TALK/TKSA $6F sequence (see the SD
+        // OS IEC kernel's IECERR: ACPTR/ECHO loop until STATUS!=0/EOI). The
+        // status message must therefore restart from byte 0 on each (re)open:
+        // a previous read interrupted before EOI — or a channel reused across
+        // reads — leaves errCursor_ mid-buffer with errBuilt_ still set, so the
+        // next talkByte() would resume mid-message and replay a truncated,
+        // garbled status. Rewind the read state (not errCode_/errMsg_, so the
+        // pending status survives) and let talkByte() rebuild it from the top.
+        // Mirrors the same stale-cursor guard applied on snapshot restore.
+        errBuilt_  = false;
+        errCursor_ = 0;
+    }
 }
 
 void Drive1541::unlistenAfterOpen(uint8_t secondary) {

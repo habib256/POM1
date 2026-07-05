@@ -1,0 +1,6 @@
+Syntax:
+BAS
+
+Prints LOMEM and HIMEM pointers from
+the BASIC program currently loaded in
+memory.

@@ -1,0 +1,118 @@
+BASIC_LOMEM = $004a   ; lomem pointer used by integer BASIC
+BASIC_HIMEM = $004c   ; himem pointer used by integer BASIC
+
+INTBASLOAD
+        ;************************************
+        ;* LOAD INT BASIC FORMAT "F1" TYPE  *
+        ;************************************
+        
+        LDX SA          ;SAVE SA IN .X
+        JSR LUKING      ;TELL USER LOOKING
+        LD  SA,#$60     ;SPECIAL LOAD COMMAND        
+        JSR OPENI       ;OPEN THE FILE
+        
+        LDA FA
+        JSR TALK        ;ESTABLISH THE CHANNEL
+        LDA SA
+        JSR TKSA        ;TELL IT TO LOAD
+        
+        JSR ACPTR       ;DISCARD FIRST BYTE        
+        JSR ACPTR       ;DISCARD SECOND BYTE
+
+        ;
+        ; CHECK FOR FILE NOT FOUND ERROR
+        ;        
+        LDA STATUS      
+        LSR 
+        LSR 
+        IF CARRY THEN JMP ERROR4  ; FILE NOT FOUND
+                
+        JSR LODING      ;TELL USER LOADING    
+
+        ; check "A1" signature
+        ;    
+        JSR ACPTR : IF A<>#$41 THEN GOTO IBBADFORMAT
+        JSR ACPTR : IF A<>#$31 THEN GOTO IBBADFORMAT
+
+        ;
+        ; EAL/EAH in BASIC files is always $0000, plus 2 bytes signature
+        ;
+        LD16 EAL, #$0002
+                
+        DO      
+           JSR IBGETBYTE          ;READS A BYTE AVOIDING TIMEOUT ERRORS
+           JSR IBWRITEBYTE        ;WRITE THE BYTE ACCORDING TO THE INT BAS FORMAT
+           INC16 EAL              ;INCREMENT STORE ADDR
+           BIT STATUS             ;EOI?            
+        LOOP WHILE V=0            ;NO...CONTINUE LOAD
+        
+        JMP LD70                  ;EXIT FROM THE LOAD ROUTINE        
+
+;
+; print error message and exit closing the file
+;
+IBBADFORMAT:
+   LDA #$02                  ;SIGNAL IT AS TIMEOUT ERROR TO AVOID FURTHER PROCESSING
+   JSR UDST                  ;UPDATE STATUS
+   JSR PRINT_ERR_NBF         ;PRINT ERROR MESSAGE
+   JMP LD70                  ;EXIT FROM THE LOAD ROUTINE 
+
+PRINT_ERR_NBF:               ;MADE SUBROUTINE BECAUSE ALSO CALLED FROM SD CARD
+   PRINTMSG #MSG_BAD_FORMAT
+   RTS
+
+;
+; reads a byte from the device and retries if timeout
+;
+IBGETBYTE:
+   DO
+      LDA #$FD        ;MASK OFF TIMEOUT
+      AND STATUS
+      STA STATUS
+
+      JSR ACPTR       ;GET BYTE OFF IEEE
+      TAX             ;SAVE INTO X
+      LDA STATUS      ;WAS THERE A TIMEOUT?
+      LSR 
+      LSR       
+   LOOP WHILE CARRY   ;YES...TRY AGAIN      
+   TXA                ;GET BACK BYTE FROM X
+   RTS
+
+;
+; write or verify the byte, skipping the unwanted memory ranges
+; as per INT BASIC file format
+;
+
+IBWRITEBYTE:
+   TAX
+
+   ; do not write in the range $0000-$0049 and $0100-$01FF
+   ; and ajdust the pointer when at $01FF
+   IF EAH = #$0 THEN
+      IF EAL < #$4A THEN RTS
+   END IF
+   IF EAH = #$01 THEN 
+      IF EAL = #$FF THEN         
+         LD16 EAL, BASIC_LOMEM
+         DEC16 EAL                   
+      END IF
+      RTS
+   END IF
+
+   TXA
+
+   LDY VERCK             ;PERFORMING VERIFY?
+   IF NOT ZERO THEN
+      LDY #0
+      CMP (EAL),Y        ;VERIFY IT
+      IF NOT ZERO THEN
+         LDA #SPERR      ;NO GOOD...VERIFY ERROR
+         JSR UDST        ;UPDATE STATUS
+      END IF 
+   ELSE       
+      STA (EAL),Y        ; Y=0 BECAUSE OF THE NOT ZERO TEST
+   END IF
+   RTS
+
+MSG_BAD_FORMAT:  BYTE "?not a basic file",0  

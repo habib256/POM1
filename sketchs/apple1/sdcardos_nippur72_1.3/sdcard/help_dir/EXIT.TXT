@@ -1,0 +1,4 @@
+Syntax:
+EXIT
+
+Exits to the WOZ monitor.

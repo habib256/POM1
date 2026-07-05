@@ -1,0 +1,6 @@
+Syntax:
+TIME value
+
+Set the internal timeout value used in
+the I/O operations with the SD cards.
+-- TESTING ONLY ---

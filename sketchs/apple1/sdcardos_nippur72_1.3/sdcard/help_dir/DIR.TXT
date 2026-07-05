@@ -1,0 +1,9 @@
+Syntax:
+DIR [path]
+
+Lists the files from the specified
+directory, or from the current
+directory if no path is given.
+Press any key to stop the file listing 
+and return to continue it. Press ESC
+to return to the command prompt.

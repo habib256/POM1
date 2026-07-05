@@ -1,0 +1,76 @@
+;
+; This function converts a 16 bit binary value into a 24 bit BCD. It
+; works by transferring one bit a time from the source and adding it
+; into a BCD value that is being doubled on each iteration. As all the
+; arithmetic is being done in BCD the result is a binary to decimal
+; conversion. All conversions take 915 clock cycles.
+;
+; See BINBCD8 for more details of its operation.
+;
+; Andrew Jacobs, 28-Feb-2004
+; Adapetd by Antonino Porcino, 23-Oct-2023
+
+BIN     = FNADR     ; use the same memory location for start address
+BCD     = EAL       ; use the same memory location for EAL + LEN (3 bytes)
+PRNZERO = FNADR     ; flag for printing "0" digit. use the same memory location for start address 
+
+PRNINT:
+   JSR BINBCD16
+   JMP PRNBCD16
+
+BINBCD16: 
+   SED          ; Switch to decimal mode
+   LDA #0       ; Ensure the result is clear
+   STA BCD+0
+   STA BCD+1
+   STA BCD+2
+   LDX #16      ; The number of source bits
+
+   DO 
+      ASL BIN+0     ; Shift out one bit
+      ROL BIN+1
+      LDA BCD+0     ; And add into result
+      ADC BCD+0
+      STA BCD+0
+      LDA BCD+1     ; propagating any carry
+      ADC BCD+1
+      STA BCD+1
+      LDA BCD+2     ; ... thru whole result
+      ADC BCD+2
+      STA BCD+2
+      DEX           ; And repeat for next bit      
+   LOOP WHILE NOT ZERO
+   CLD              ; Back to binary
+   RTS
+
+PRNBCD16:
+   LD PRNZERO, #0       ; reset "print zero" flag 
+   
+   LDX #2               ; loop over three bytes
+   DO
+      LDA EAL,X         ; read two BCD digits
+      LSR               ; move high digit to low
+      LSR               ; 
+      LSR               ; 
+      LSR               ;       
+      JSR PRNHEXDIGIT   ; print it
+      IF X=0 THEN
+         LD PRNZERO, #1 ; force printing at least one "0" when number is zero
+      END IF
+      LDA EAL,X         ; read again
+      AND #$0F          ; mask least signigicat digit
+      JSR PRNHEXDIGIT   ; print it
+      DEX               ; advance to next byte
+   LOOP WHILE NOT NEGATIVE   
+   RTS
+   
+PRNHEXDIGIT:
+   TAY                  ; save digit into Y
+   ORA PRNZERO              
+   IF ZERO THEN RTS     ; if A=0 AND PRNZERO=0 then do not print zeros
+   TYA                  ; gets back digit from Y
+   JSR PRHEX            ; print it
+   IF Y<>#0 THEN 
+      LD PRNZERO, #1    ; if digit is not zero set flag to print any remaining zeros
+   END IF
+   RTS

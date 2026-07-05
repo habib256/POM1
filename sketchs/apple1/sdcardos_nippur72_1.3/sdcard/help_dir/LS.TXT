@@ -1,0 +1,11 @@
+Syntax:
+LS [path]
+
+Lists the files from the specified
+directory, or from the current
+directory if no path is given.
+Output is in unix style, faster than
+DIR command.
+Press any key to stop the file listing 
+and return to continue it. Press ESC
+to return to the command prompt.

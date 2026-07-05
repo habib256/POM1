@@ -1,0 +1,4 @@
+Syntax:
+DEL filename
+
+Deletes a file from the SD card.

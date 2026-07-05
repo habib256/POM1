@@ -104,6 +104,9 @@ private:
     int bufferIndex  = 0;
     bool readActive  = false;  // DRQ set, reading from buffer
     bool writeActive = false;  // DRQ set, writing to buffer
+    // Sectors left in a multi-sector READ/WRITE SECTORS command (ATA count reg
+    // 0 == 256). Only the last sector clears DRQ; each boundary advances the LBA.
+    int sectorsRemaining_ = 0;
 
     // ROM ($9000-$AFDF)
     std::vector<uint8_t> rom;
@@ -116,6 +119,8 @@ private:
 
     // Internal
     uint32_t getLBA() const;
+    void setLBA(uint32_t lba);                 // write the LBA back across the 4 regs
+    bool readCurrentSectorIntoBuffer();        // seek+read getLBA() into sectorBuffer
     void executeCommand(uint8_t cmd);
     void doReadSector();
     void doWriteSector();

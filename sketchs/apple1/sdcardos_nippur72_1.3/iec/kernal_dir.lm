@@ -1,0 +1,99 @@
+DIR
+        ;********************************************
+        ;* A DIR ROUTINE                            *
+        ;* FILENAME MUST ALREADY BE SET TO "$:..."  * 
+        ;********************************************
+
+        LD SA, #$60     ;CHANNEL 0 FOR READING DIR
+        JSR OPENI       ;OPEN THE FILE
+        
+        LDA FA
+        JSR TALK        ;ESTABLISH THE CHANNEL
+        LDA SA
+        JSR TKSA        ;TELL IT TO LOAD
+        
+        JSR ACPTR                         ;GET BYTE OFF IEEE
+        JSR ACPTR                         ;GET BYTE OFF IEEE
+
+        ;A TIMEOUT MEANS FILE NOT FOUND           
+        LDA STATUS                        
+        LSR 
+        LSR 
+        IF CARRY THEN JMP ERROR4          
+      
+        DO
+           JSR ACPTR : STA SAL       ; skip link to next line low byte
+           JSR ACPTR :               ; skip link to next line low byte
+
+           ;check not necessary, exit when EOI
+           ;ORA SAL                   ; HIBYTE OR LOWBYTE
+           ;IF ZERO THEN EXIT DO      ; IF ALL ZERO THEN EXIT
+
+           LDA STATUS 
+           IF NOT ZERO THEN EXIT DO       ; EXIT IF ERROR OR EOI 
+        
+           JSR ACPTR        ; get block count low byte
+           STA FNADR        ; save in FNADR
+           JSR ACPTR        ; get block count low byte
+           STA FNADR+1      ; save in FNADR
+           JSR PRNINT       ; convert FNADR to decimal and print it
+
+           LDA #32          ; space character 
+           JSR ECHO         ; prints a space
+
+           ; prints characters until 0     
+           DO
+              JSR ACPTR
+              CMP #0
+              IF ZERO THEN EXIT DO   
+              BIT STATUS 
+              IF NOT ZERO THEN EXIT DO       ; EXIT IF ERROR OR EOI               
+              JSR ECHO
+              SEC            
+           LOOP WHILE CARRY      ; loops forever
+
+           LDA #13
+           JSR ECHO
+           LDA #13               ; keep this LDA to avoid DASM fail!!!??!
+           JSR DIRKEYBD           
+           SEC
+        LOOP WHILE CARRY         ; loops forever
+
+        JSR UNTLK       ;CLOSE CHANNEL
+        JSR CLSEI       ;CLOSE THE FILE
+        JMP LD180       ;GOOD EXIT
+
+;               
+; keyboard handling during @DIR:
+; ESC flushes all the remaining directory file without printing
+; ANY KEY pause the scrolling untile RETURN (13) is pressed
+;
+
+DIRKEYBD:
+   LDA KEY_CTRL
+   IF NEGATIVE THEN
+      LDA KEY_DATA      
+      CMP #$9B          ; $80 + 27 ESC KEY
+      IF ZERO THEN
+         ; if ESC key, flush $ file to the end
+         DO
+            JSR ACPTR
+            BIT STATUS
+         LOOP WHILE ZERO
+      ELSE
+         CMP #$80
+         IF NOT ZERO THEN
+            ; a key was pressed: pause until key 13
+            DO 
+               LDA KEY_CTRL                       
+               IF NEGATIVE THEN
+                  LDA KEY_DATA
+                  CMP #(13 + 128)
+               ELSE
+                  LDA #1   ; make a not zero condition
+               END IF
+            LOOP WHILE NOT ZERO
+         END IF
+      END IF
+   END IF   
+   RTS

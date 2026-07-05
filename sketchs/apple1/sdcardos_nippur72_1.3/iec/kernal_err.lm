@@ -1,0 +1,28 @@
+IECERR
+        ;********************************
+        ;* QUERY ERRO CHANNEL COMMAND   *
+        ;********************************
+                        
+        LDA FA
+        JSR LISTN       ;DEVICE LA TO LISTEN
+
+        BIT STATUS      ;ANYBODY HOME?
+        IF NEGATIVE THEN
+           JMP DEVICE_NP
+        END IF
+
+        LDA FA
+        JSR TALK        ;ESTABLISH THE CHANNEL
+        LDA #$6F        ;OPEN CHANNEL 15        
+        JSR TKSA        ;TELL IT TO LOAD   
+
+        DO
+            JSR ACPTR                         ;GET BYTE OFF IEEE
+            JSR ECHO                          ;PRINT IT
+            LDA STATUS
+        LOOP WHILE ZERO
+
+        JSR UNTLK       ;CLOSE CHANNEL
+        JSR CLSEI       ;CLOSE THE FILE
+        JMP LD180       ;GOOD EXIT
+                        

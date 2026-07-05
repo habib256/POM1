@@ -196,6 +196,9 @@ Every cell links to that lib's own README (the per-lib API + ZP detail).
 | [`games`](games/README.md) | asm | display-agnostic game engines — see per-game READMEs below |
 | └ [`games/chess`](games/chess/README.md) · [`games/rogue`](games/rogue/README.md) · [`games/sokoban`](games/sokoban/README.md) | asm | chess engine, roguelike FOV/dungeon-gen, Sokoban core |
 | [`telemetry`](telemetry/README.md) | asm + C | dev telemetry side channel (`$C440-$C443`) |
+| [`basicrt`](basicrt/README.md) | asm | native BASIC→6502 compiler runtime (`rt_*` int/graphics, `fp_*` binary32 float) + linker configs |
+| [`test`](test/README.md) | asm + C | execution-level 6502 micro-tests (RAM-mailbox oracle, CMake `lib_micro_tests`) |
+| [`beep`](beep/README.md) | asm | 1-bit "beeper" SFX via the ACI speaker (`$C030` toggle) — data-driven player + starter bank |
 
 ## Consuming a library (build integration)
 
@@ -329,6 +332,7 @@ both park names in the same low region — check before combining:
 | [`basicrt/basicrt_float.s`](basicrt/basicrt_float.s) | `FA[4]`, `FB[4]`, `asgn`, `aexp[2]`, `amnt[4]`, `bsgn`, `bexp[2]`, `bmnt[4]`, `rsgn`, `rexp[2]`, `rmnt[4]`, `fcnt`, `prod[7]`, `dtmp[4]`, `sA[4]`, `sY[4]`, `sR[4]`, `sR2[4]` (`FA`, `FB` `.exportzp`'d) | — | standalone binary32 software-float runtime state (FP accumulators + scratch) |
 | [`basicrt/basicrt_gen2.s`](basicrt/basicrt_gen2.s) | `rt_px[2]`, `rt_py[2]`, `rt_x0[2]`, `rt_y0[2]`, `rt_x1[2]`, `rt_y1[2]`, `rt_a[2]`, `rt_b[2]`, `rt_onerr_lo`, `rt_onerr_hi`, `ptr_lo`, `ptr_hi`, `tptr[2]`, `lrcolor`, `lrtmp`, `lrvy`, `lrvy2`, `m_prod[2]`, `m_rem[2]`, `m_sign`, `ln_dx[2]`, `ln_dy[2]`, `ln_sx[2]`, `ln_sy[2]`, `ln_err[2]`, `ln_e2[2]`, `ln_tmp[2]`, `pen` (`rt_px`, `rt_py`, `rt_x0`, `rt_y0`, `rt_x1`, `rt_y1`, `rt_a`, `rt_b`, `rt_onerr_lo`, `rt_onerr_hi`, `pen` `.exportzp`'d) | — | BASIC-compiler runtime, GEN2 backend — whole `rt_*` seam, link-exclusive with `basicrt_tms.s` |
 | [`basicrt/basicrt_tms.s`](basicrt/basicrt_tms.s) | `rt_px[2]`, `rt_py[2]`, `rt_x0[2]`, `rt_y0[2]`, `rt_x1[2]`, `rt_y1[2]`, `rt_a[2]`, `rt_b[2]`, `rt_onerr_lo`, `rt_onerr_hi`, `m_prod[2]`, `m_rem[2]`, `m_sign`, `tmp`, `tmp2`, `lr_src[2]` (`rt_px`, `rt_py`, `rt_x0`, `rt_y0`, `rt_x1`, `rt_y1`, `rt_a`, `rt_b`, `rt_onerr_lo`, `rt_onerr_hi`, `tmp`, `tmp2` `.exportzp`'d) | `pix_x`, `pix_y`, `pen_color`, `ln_x0`, `ln_y0`, `ln_x1`, `ln_y1` | BASIC-compiler runtime, TMS backend — whole `rt_*` seam, link-exclusive with `basicrt_gen2.s`; drives `tms9918m2.asm`'s `pix_*`/`ln_*` |
+| [`beep/beep_sfx.asm`](beep/beep_sfx.asm) | `sfx_ptr[2]`, `sfx_per`, `sfx_len` (all `.exportzp`'d) | — |  |
 | [`games/chess/chess_engine.asm`](games/chess/chess_engine.asm) | `ce_sq`, `ce_dir`, `ce_target`, `ce_piece`, `ce_color`, `ce_dirs_left`, `ce_dir_ptr`, `ce_match`, `attacker_color`, `attacked_sq`, `atk_piece` (`ce_piece` `.exportzp`'d) | `tmp`, `tmp2` | 11 B engine-private |
 | [`games/chess/chess_text_io.asm`](games/chess/chess_text_io.asm) | — | `tmp`, `tmp2` | owns no ZP itself |
 | [`games/rogue/shadowcast.asm`](games/rogue/shadowcast.asm) | `cur_x`, `cur_y`, `oct_xx`, `oct_xy`, `oct_yx`, `oct_yy`, `oct_idx`, `cast_depth`, `cast_col`, `cast_blocked`, `cast_start_n`, `cast_start_d`, `cast_end_n`, `cast_end_d`, `cast_save_n`, `cast_save_d`, `cast_lslope_n`, `cast_lslope_d`, `cast_rslope_n`, `cast_rslope_d`, `cast_xprod` | — | recursive-shadowcast FOV state; `cur_x`/`cur_y` may be pre-declared by the caller (`.ifndef`-guarded) |

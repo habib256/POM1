@@ -20,14 +20,11 @@
 # Requires cc65 (ca65/cl65) on PATH and python3.
 
 REPO   := $(abspath ../..)
-CL65   ?= cl65
-CA65   ?= ca65
 PYTHON ?= python3
 
-# Matches every other cc65 build in the repo (see dev/lib/gfx/Makefile):
-# -t none (no target runtime), -c (compile/assemble only), -Oirs. cl65 -c
-# dispatches .c -> compile+assemble and .s -> assemble, so one rule covers both.
-CFLAGS := -t none -c -Oirs
+# Toolchain (CL65/CA65) + the -t none -c -Oirs convention: single source of truth.
+include common.mk
+
 TMP    := .check_obj.o          # throwaway — we only care about exit status
 
 # --- authoritative C source sets (pull the lists from the libs' own .mk) -----
@@ -46,8 +43,15 @@ TMS9918C_INC := -I tms9918c -I gfx
 
 # --- standalone asm objects (projects link these as .o; the .include-style
 # fragments are NOT standalone TUs and are covered via their consumers). -------
-ASM_SRCS := tms9918/tms9918m1.asm tms9918/tms9918m2.asm m6502/math.asm
-ASM_INC  := -I tms9918 -I apple1 -I m6502
+ASM_SRCS := tms9918/tms9918m1.asm tms9918/tms9918m2.asm m6502/math.asm beep/beep_sfx.asm
+ASM_INC  := -I tms9918 -I apple1 -I m6502 -I beep
+
+# --- stray build spill --------------------------------------------------------
+# Consumer builds (dev/projects/) and manual `cl65 -c` sessions drop .o/.lib next
+# to these C-runtime sources. All gitignored (never tracked), but they clutter
+# the tree; `clean` sweeps them. Sources (.s/.c) are NEVER touched — only the
+# .o/.lib artefacts. gfx/ has its own `clean` (delegated below).
+SPILL_DIRS := apple1c gen2c tms9918c
 
 .PHONY: check equates zp-test compile compile-c compile-gfx compile-asm clean
 
@@ -57,8 +61,12 @@ check: equates zp-test compile
 equates:
 	@echo "[lib] hardware-equate cross-check (asm .inc <-> C) ..."
 	@$(PYTHON) $(REPO)/tools/check_lib_equates.py
-	@echo "[lib] shared-font drift check ..."
+	@echo "[lib] shared-font drift check (Beautiful-Boot master) ..."
 	@$(PYTHON) $(REPO)/tools/build_shared_font.py --check
+	@echo "[lib] C64-font drift check (tms9918c/c64font.c master) ..."
+	@$(PYTHON) $(REPO)/tools/build_c64font_tms.py --check
+	@echo "[lib] sprite-catalogue drift check (TMS masters -> HGR) ..."
+	@$(PYTHON) $(REPO)/tools/build_hgr_sprites.py --check
 
 zp-test:
 	@echo "[lib] zp.inc slot-pool layout pin ..."
@@ -95,3 +103,5 @@ clean:
 	@rm -f $(TMP)
 	@$(MAKE) --no-print-directory -C apple1/test clean
 	@$(MAKE) --no-print-directory -C gfx clean
+	@for d in $(SPILL_DIRS); do rm -f $$d/*.o $$d/*.lib; done
+	@echo "[lib] clean -- swept .o/.lib from $(SPILL_DIRS) + gfx + apple1/test"

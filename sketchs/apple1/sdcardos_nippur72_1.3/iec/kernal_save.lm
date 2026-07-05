@@ -1,0 +1,41 @@
+SAVE 
+        LDA #$61       ; "OPEN" COMMAND CHANNEL 1
+        STA SA        
+        JSR OPENI
+        JSR SAVING
+        LDA FA
+        JSR LISTN
+        LDA SA
+        JSR SECND
+        LDY #0
+        LDA SAL
+        JSR CIOUT
+        LDA SAH
+        JSR CIOUT
+SV30    LDA STATUS      ;CHECK STATUS VARIABLE
+        BNE SVERR       ;EXIT IF ANY ERROR
+        LDA (SAL),Y     ;GET BYTE FROM MEMORY 
+        JSR CIOUT       ;OUTPUT TO IEC BUS
+        JSR CMPSTE      ;COMPARE START TO END   
+        BCS SV50        ;HAVE REACHED END       
+        INC16 SAL       ;INCREMENT CURRENT ADDR.
+        BCC SV30        ;CARRY IS CLEAR, JUMP ALWAYS
+
+SV50    JSR UNLSN
+        JSR CLSEI        
+        JMP CUNLSN
+        
+SVERR   CLC             ;MAKE SURE NO KERNAL ERR
+        JMP DLABYE      ;TURN ATN OFF, RELEASE ALL LINES
+        
+
+;COMPARE START AND END LOAD/SAVE
+;ADDRESSES.  SUBROUTINE CALLED BY
+;TAPE READ, SAVE, TAPE WRITE
+;
+CMPSTE  SEC
+        LDA SAL
+        SBC EAL
+        LDA SAH
+        SBC EAH
+        RTS

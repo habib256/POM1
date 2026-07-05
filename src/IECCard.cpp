@@ -459,7 +459,11 @@ void IECCard::advanceCycles(int cpuCycles) {
     // without pulling it low, that's an EOI signal. The listener acks by
     // pulling DATA briefly (>60 µs) then releasing — see firmware ISR02/
     // ISR03 in kernal_serial.lm.
-    if ((role_ == Role::Listener || prevAtnLow_) && rxPhase_ == RxPhase::ReadyAckPulled) {
+    // EOI is a DATA-phase concept only. Gate on role_==Listener (true only after
+    // ATN is released), NOT prevAtnLow_: arming during ATN command reception could
+    // spuriously fire an EOI ack pulse mid-command if the controller stalled with
+    // CLK released across a slice boundary.
+    if (role_ == Role::Listener && rxPhase_ == RxPhase::ReadyAckPulled) {
         rxEoiTimerCycles_ += cpuCycles;
         if (rxEoiTimerCycles_ > 205) {
             rxEoi_ = true;
@@ -467,7 +471,7 @@ void IECCard::advanceCycles(int cpuCycles) {
             rxPhase_ = RxPhase::EoiAckPulse;
             rxEoiTimerCycles_ = 0;
         }
-    } else if ((role_ == Role::Listener || prevAtnLow_) && rxPhase_ == RxPhase::EoiAckPulse) {
+    } else if (role_ == Role::Listener && rxPhase_ == RxPhase::EoiAckPulse) {
         rxEoiTimerCycles_ += cpuCycles;
         if (rxEoiTimerCycles_ > 80) {
             bus_.setDrivePulled(IECBus::Line::DATA, false); // release after pulse

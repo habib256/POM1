@@ -52,13 +52,22 @@ sends) and $00 (CPU receives) per byte.
 4. Spin on `LDA $A000 / AND #$80 / BEQ` until MCU_STROBE = 1.
 5. `LDA #$00 / STA $A000` — drop CPU_STROBE; handshake complete.
 
-**Receive** (MCU → CPU):
-1. `LDA #$00 / STA $A003` — DDRA = input.
-2. `LDA #$01 / STA $A000` — raise CPU_STROBE (request byte).
-3. Spin on `LDA $A000 / AND #$80 / BEQ` until MCU_STROBE = 1.
-4. `LDA $A001` — read the byte.
-5. `LDA #$00 / STA $A000` — drop CPU_STROBE.
+**Receive** (MCU → CPU) — order matters, see ⚠ below:
+1. `LDA #$00 / STA $A003` — DDRA = input. This *itself* is the request:
+   `MicroSD.cpp` sees `DDRA==$00` → presents the next response byte on PORTA
+   and raises MCU_STROBE.
+2. Spin on `LDA $A000 / AND #$80 / BEQ` until MCU_STROBE = 1.
+3. `LDA $A001` — read the byte **before** acknowledging.
+4. `LDA #$01 / STA $A000` — raise CPU_STROBE = ack (advances the MCU's
+   response index; MCU drops its strobe).
+5. `LDA #$00 / STA $A000` — drop CPU_STROBE; MCU prepares the next byte.
 6. `LDA #$FF / STA $A003` — restore DDRA = output (default).
+
+> ⚠ **Read before you ack.** Do NOT pulse CPU_STROBE before reading: in input
+> mode the rising edge advances the MCU response index and drops MCU_STROBE, so
+> the wait loop would spin forever. This ordering was a real bug fixed in
+> `sd.asm` (`sd_recv_byte`) — unlike **Send**, receive requests the byte with the
+> DDRA-to-input transition, not with an up-front strobe.
 
 Above this, command framing follows: send `SD_CMD_*` byte, then
 arguments per the MCU spec, then receive response. See `sd.inc`'s

@@ -1,0 +1,7 @@
+Syntax:
+CD path
+
+Changes the current working directory
+to the specified path. The current
+directory is also shown in the command
+prompt.

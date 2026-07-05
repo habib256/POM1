@@ -20,6 +20,7 @@
 # (ASCII $20-$7F), 8 bytes/glyph, MSB = leftmost pixel. `.include` it at the
 # pattern-table spot in the ROM image and index (ch-$20)*8.
 # ============================================================================
+import argparse
 import re
 import sys
 from pathlib import Path
@@ -52,8 +53,8 @@ def label(code):
     return f"'{chr(code)}'"
 
 
-def main():
-    raw = load_master()
+def render(raw):
+    """Build the full c64font_tms.inc text from the master glyph bytes."""
     lines = []
     lines.append("; ============================================================================")
     lines.append("; c64font_tms.inc -- C64-style 8x8 font, TMS9918 Text-Mode pattern encoding.")
@@ -82,10 +83,11 @@ def main():
         shifted = [(b << 1) & 0xFF for b in glyph]
         data = ",".join(f"${b:02X}" for b in shifted)
         lines.append(f"        .byte {data} ; ${code:02X} {label(code)}")
-    OUT.write_text("\n".join(lines) + "\n")
-    print(f"wrote {OUT} ({GLYPH_COUNT} glyphs)")
+    return "\n".join(lines) + "\n"
 
-    # Visual sanity dump for a few glyphs.
+
+def sanity_dump(raw):
+    """Print a few glyphs as ASCII art so a human can eyeball the shift."""
     for code in (0x41, 0x4F, 0x30, 0x21):  # A O 0 !
         g = code - FIRST_CHAR
         print(f"\n  ${code:02X} {chr(code)}")
@@ -95,5 +97,31 @@ def main():
             print(f"    {row}")
 
 
+def main(argv):
+    p = argparse.ArgumentParser(description=__doc__.strip() if __doc__ else None)
+    p.add_argument("--check", action="store_true",
+                   help="diff regenerated output against the on-disk .inc "
+                        "(exit 1 on drift); writes nothing")
+    args = p.parse_args(argv)
+
+    raw = load_master()
+    new = render(raw)
+
+    if args.check:
+        old = OUT.read_text() if OUT.exists() else ""
+        rel = OUT.relative_to(ROOT)
+        if old != new:
+            print(f"[diff] {rel} differs from dev/lib/tms9918c/c64font.c "
+                  f"master — rerun tools/build_c64font_tms.py", file=sys.stderr)
+            return 1
+        print(f"[ok]   {rel}", file=sys.stderr)
+        return 0
+
+    OUT.write_text(new)
+    print(f"wrote {OUT} ({GLYPH_COUNT} glyphs)")
+    sanity_dump(raw)
+    return 0
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main(sys.argv[1:]))

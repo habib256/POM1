@@ -1,0 +1,50 @@
+INTBASSAVE 
+        LDA #$61       ; "OPEN" COMMAND CHANNEL 1
+        STA SA        
+        JSR OPENI
+        JSR SAVING
+        LDA FA
+        JSR LISTN
+        LDA SA
+        JSR SECND
+        LDY #0
+
+        ; SEND ADDRESS $0000
+        LDA #0
+        JSR CIOUT
+        JSR CIOUT
+
+        ; SEND "A1" signature
+        LDA #$41 : JSR CIOUT
+        LDA #$31 : JSR CIOUT
+
+        ; save from $0002 to $01FF (lowmem and stack)
+        LD16 SAL, #$0002
+        LD16 EAL, #$01FF
+        JSR SAVEBLOCK
+        LDA STATUS
+        IF NOT ZERO THEN GOTO IBSVERR
+
+        ; save from BASIC_LOMEM to BASIC_HIMEM-1
+        LD16 SAL, BASIC_LOMEM
+        LD16 EAL, BASIC_HIMEM
+        DEC16 EAL
+        JSR SAVEBLOCK
+        LDA STATUS
+        IF NOT ZERO THEN GOTO IBSVERR
+
+        JMP SV50        ;EXIT FROM SAVE ROUTINE
+
+IBSVERR JMP SVERR       ;ERROR FROM SAVE ROUTINE
+
+SAVEBLOCK:
+        DO
+           LDA STATUS                ;CHECK STATUS VARIABLE
+           IF NOT ZERO THEN EXIT DO  ;EXIT IF ANY ERROR
+           LDA (SAL),Y               ;GET BYTE FROM MEMORY 
+           JSR CIOUT                 ;OUTPUT TO IEC BUS
+           JSR CMPSTE                ;COMPARE START TO END   
+           IF CARRY THEN EXIT DO     ;HAVE REACHED END       
+           INC16 SAL                 ;INCREMENT CURRENT ADDR.
+        LOOP WHILE NOT CARRY         ;CARRY IS CLEAR, LOOP ALWAYS
+        RTS

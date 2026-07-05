@@ -1,0 +1,12 @@
+IECCMD
+        ;********************************
+        ;* CMD COMMAND                  *
+        ;********************************
+
+        LD SA, #$0F                        
+        JSR OPENI  
+
+        JSR UNLSN
+        JSR CLSEI
+        ;
+        JMP CUNLSN

@@ -372,8 +372,15 @@ void A1IO_RTC::advanceCycles(int cycles)
         if (remaining <= 0) {
             ifr |= 0x40; // set T1 interrupt flag
             if (acr & 0x40) {
-                // Free-running mode: reload from latch
-                t1Counter = (static_cast<uint16_t>(t1LatchHi) << 8) | t1LatchLo;
+                // Free-running mode: reload from latch, carrying the overshoot
+                // (cycles past underflow) into the next period so the timer
+                // doesn't drift slow by up to one slice per period. Modulo the
+                // period keeps the phase correct across a multi-period slice.
+                const uint16_t latch = (static_cast<uint16_t>(t1LatchHi) << 8) | t1LatchLo;
+                const int period = static_cast<int>(latch) + 1;
+                int over = -remaining;                 // >= 0
+                if (period > 0) over %= period;
+                t1Counter = static_cast<uint16_t>(latch - static_cast<uint16_t>(over));
             } else {
                 // One-shot: stop
                 t1Running = false;

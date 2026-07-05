@@ -1,0 +1,13 @@
+{
+    "extension": "prg",
+    "link": "apple1.ld",
+    "start_address": "0x280",
+    "cpu": "MOS6502",
+    "interrupt": "hardware_all",
+    "emulator": "echo",
+    "defines": {
+        "__APPLE1__": 1,
+        "APPLE1": 1,
+        "__KICKC__": 1
+    }
+}

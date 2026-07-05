@@ -30,12 +30,10 @@
 # Consumers add  -I <this dir>  and put  gfx-<card>.lib  on their cl65/ld65 line
 # AFTER their own sources (see README "Build integration").
 
-CL65   ?= cl65
-AR65   ?= ar65
-# -c compile-only; -Oirs matches every other cc65 build in the repo. NOTE: cl65
-# only honours -o when it precedes the input file (a cl65 quirk), so every rule
+# Toolchain (CL65/AR65) + the -t none -c -Oirs convention + the cl65 "-o before
+# input" quirk: single source of truth, shared with dev/lib/Makefile. Every rule
 # below writes "-o $@ $<", never "$< -o $@".
-CFLAGS ?= -t none -c -Oirs
+include ../common.mk
 
 GFXINC  := -I .
 GEN2INC := -I ../gen2c                       # gen2.h  (GEN2 backend)

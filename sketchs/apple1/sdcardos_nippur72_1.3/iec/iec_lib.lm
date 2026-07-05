@@ -1,0 +1,14 @@
+   processor 6502
+      
+   include "apple1.lm"
+   include "macros.lm"
+   include "macros_16.lm"
+
+dim ptr as word at $26      ; useful zero page pointer   
+
+   org $99E9
+
+main:
+
+include "kernal.lm"
+include "apple1_code.lm"

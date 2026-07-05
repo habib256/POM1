@@ -1,0 +1,6 @@
+Syntax:
+WRITE filename startaddress endaddress
+
+Writes the memory range from 
+startaddress to endaddress (inclusive) 
+in a file on the SD card.

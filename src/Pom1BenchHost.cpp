@@ -21,6 +21,12 @@
 #include <sstream>
 #include <vector>
 
+#if defined(_WIN32)
+#include <process.h>              // _getpid — per-process bench scratch dir
+#else
+#include <unistd.h>              // getpid  — per-process bench scratch dir
+#endif
+
 #include "POM1Build.h"             // POM1_IS_WASM
 #if POM1_IS_WASM
 #include <emscripten.h>            // EM_ASM / EM_ASM_INT for the in-browser cc65 path
@@ -464,6 +470,27 @@ struct TempFileSweeper {
         for (const auto& p : paths) std::filesystem::remove(p, ec);
     }
 };
+
+// Bench scratch files use fixed names (pom1_bench_native.s, …). Two POM1
+// instances sharing the system temp dir would clobber each other's staging
+// files mid-build, so route them through a PER-PROCESS subdirectory keyed on the
+// PID. `ec` is set (and the plain temp dir returned) only if even that fails.
+static std::filesystem::path benchScratchDir(std::error_code& ec)
+{
+    namespace fs = std::filesystem;
+    const fs::path base = fs::temp_directory_path(ec);
+    if (ec || base.empty()) return base;
+#if defined(_WIN32)
+    const unsigned long pid = static_cast<unsigned long>(::_getpid());
+#else
+    const unsigned long pid = static_cast<unsigned long>(::getpid());
+#endif
+    const fs::path dir = base / ("pom1_bench_" + std::to_string(pid));
+    std::error_code mkec;
+    fs::create_directories(dir, mkec);
+    if (mkec) return base;   // fall back to the shared dir rather than fail the build
+    return dir;
+}
 
 // Presets with ACI but no Integer-BASIC program tape (GEN2 dev bench, GEN2 HGR
 // Color, …): live speaker output uses $C0xx TAPE OUT toggles. A loaded
@@ -1926,7 +1953,7 @@ bench::BuildResult Pom1BenchHost::directLoad(int target, const std::string& src,
     namespace fs = std::filesystem;
     bench::BuildResult r; r.showConsole = false;
     std::error_code ec;
-    const fs::path dir = fs::temp_directory_path(ec);
+    const fs::path dir = benchScratchDir(ec);
     if (ec || dir.empty()) { r.status = "no temp directory available"; r.ok = false; return r; }
     TempFileSweeper sweep;
     auto* emu = mw_->emulation.get();
@@ -2259,7 +2286,7 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
         emu->runFromSync(coldEntry, kColdStartCycles);
 
         std::string err; uint16_t loadedEntry = 0; int loaded = 0;
-        const fs::path tmp = fs::temp_directory_path(ec) / "pom1_basic_tokenized.txt";
+        const fs::path tmp = benchScratchDir(ec) / "pom1_basic_tokenized.txt";
         { std::ofstream o(tmp, std::ios::binary);
           o.write(prog.hex.data(), static_cast<std::streamsize>(prog.hex.size())); }
         const bool ok = emu->loadHexDump(tmp.string(), loadedEntry, err, &loaded);
@@ -2533,7 +2560,7 @@ bench::BuildResult Pom1BenchHost::compileBasicNative(int target, const std::stri
               + "[ok] " + std::to_string(nr.lineCount) + " lines -> ca65 asm"
               + (nr.usesFloat ? " (binary32 float)" : " (16-bit integer)") + "\n";
 
-    const fs::path dir = fs::temp_directory_path(ec);
+    const fs::path dir = benchScratchDir(ec);
     if (ec || dir.empty()) { r.console += "no temp directory available\n"; r.status = "no temp directory"; return r; }
     TempFileSweeper sweep;
     const fs::path progS = dir / "pom1_bench_native.s";

@@ -1,0 +1,4 @@
+Syntax:
+RM filename
+
+Deletes a file from the SD card.

@@ -118,9 +118,25 @@ uint8_t CFFA1::readRegister(uint8_t offset)
         }
         uint8_t val = sectorBuffer[bufferIndex++];
         if (bufferIndex >= 512) {
-            readActive = false;
-            bufferIndex = 0;
-            ataStatus = kStatusDRDY | kStatusDSC; // clear DRQ
+            // Sector fully transferred. For a multi-sector READ, advance the LBA,
+            // decrement the ATA count register, and load the next sector while
+            // keeping DRQ set; only the last sector clears DRQ. (Was: always
+            // stopped after one sector, truncating count>1 transfers.)
+            if (--sectorsRemaining_ > 0) {
+                setLBA(getLBA() + 1);
+                ataSectorCnt = static_cast<uint8_t>(sectorsRemaining_ & 0xFF);
+                bufferIndex = 0;
+                if (!readCurrentSectorIntoBuffer()) {
+                    readActive = false;   // error status already latched
+                    return val;
+                }
+                // readActive stays true, DRQ stays set for the next sector.
+            } else {
+                readActive = false;
+                bufferIndex = 0;
+                ataSectorCnt = 0;
+                ataStatus = kStatusDRDY | kStatusDSC; // clear DRQ
+            }
         }
         return val;
     }
@@ -179,10 +195,23 @@ void CFFA1::writeRegister(uint8_t offset, uint8_t value)
         }
         sectorBuffer[bufferIndex++] = value;
         if (bufferIndex >= 512) {
-            flushSectorBuffer();
-            writeActive = false;
-            bufferIndex = 0;
-            ataStatus = kStatusDRDY | kStatusDSC; // clear DRQ
+            flushSectorBuffer();   // writes the current LBA; latches ERR on failure
+            // Advance a multi-sector WRITE, keeping DRQ set until the last sector
+            // (or an I/O error). (Was: always stopped after one sector.)
+            if (!(ataStatus & kStatusERR) && --sectorsRemaining_ > 0) {
+                setLBA(getLBA() + 1);
+                ataSectorCnt = static_cast<uint8_t>(sectorsRemaining_ & 0xFF);
+                sectorBuffer.fill(0);
+                bufferIndex = 0;
+                // writeActive stays true, DRQ stays set for the next sector.
+            } else {
+                writeActive = false;
+                bufferIndex = 0;
+                if (!(ataStatus & kStatusERR)) {
+                    ataSectorCnt = 0;
+                    ataStatus = kStatusDRDY | kStatusDSC; // clear DRQ
+                }
+            }
         }
         break;
 
@@ -251,26 +280,44 @@ void CFFA1::executeCommand(uint8_t cmd)
     }
 }
 
-void CFFA1::doReadSector()
+void CFFA1::setLBA(uint32_t lba)
+{
+    ataLBA0 = static_cast<uint8_t>(lba & 0xFF);
+    ataLBA1 = static_cast<uint8_t>((lba >> 8) & 0xFF);
+    ataLBA2 = static_cast<uint8_t>((lba >> 16) & 0xFF);
+    ataLBA3 = static_cast<uint8_t>((ataLBA3 & 0xF0) | ((lba >> 24) & 0x0F));
+}
+
+bool CFFA1::readCurrentSectorIntoBuffer()
 {
     uint32_t lba = getLBA();
-
     if (!diskFile.is_open() || lba >= diskSizeBlocks) {
         ataStatus = kStatusDRDY | kStatusDSC | kStatusERR;
         ataError = 0x04; // abort
-        return;
+        return false;
     }
-
     diskFile.seekg(static_cast<std::streamoff>(lba) * 512);
     diskFile.read(reinterpret_cast<char*>(sectorBuffer.data()), 512);
-
     if (!diskFile) {
         // Read error — partial read or I/O failure
         diskFile.clear();
         ataStatus = kStatusDRDY | kStatusDSC | kStatusERR;
         ataError = 0x40; // uncorrectable
-        return;
+        return false;
     }
+    return true;
+}
+
+void CFFA1::doReadSector()
+{
+    // Honour the ATA sector-count register (was ignored → count>1 truncated to
+    // one sector). Only the final sector clears DRQ; each 512-byte boundary in
+    // readRegister() advances the LBA and loads the next. Count 0 is treated as a
+    // SINGLE sector, not the strict-ATA 256: the CFFA1 ProDOS firmware issues
+    // explicit single-sector reads, and a 0→256 mapping would risk a runaway if
+    // the register were ever left 0. Multi-sector activates only for count >= 2.
+    sectorsRemaining_ = (ataSectorCnt == 0) ? 1 : ataSectorCnt;
+    if (!readCurrentSectorIntoBuffer()) return;   // error status already latched
 
     bufferIndex = 0;
     readActive = true;
@@ -287,6 +334,7 @@ void CFFA1::doWriteSector()
         return;
     }
 
+    sectorsRemaining_ = (ataSectorCnt == 0) ? 1 : ataSectorCnt;   // count 0 = single (see doReadSector)
     sectorBuffer.fill(0);
     bufferIndex = 0;
     writeActive = true;

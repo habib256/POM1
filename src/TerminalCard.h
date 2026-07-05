@@ -122,7 +122,9 @@ private:
     int pollCycleAccum = 0;
 
     // TELNET IAC state machine
-    enum class TelnetState { NORMAL, IAC, VERB };
+    // SB/SB_IAC consume a subnegotiation body (IAC SB … IAC SE) so its payload
+    // never leaks into the keyboard injector (mirrors WiFiModem's handling).
+    enum class TelnetState { NORMAL, IAC, VERB, SB, SB_IAC };
     TelnetState telnetState = TelnetState::NORMAL;
     uint8_t telnetVerb = 0;
 

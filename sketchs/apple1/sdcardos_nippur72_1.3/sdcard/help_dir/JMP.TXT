@@ -1,0 +1,5 @@
+Syntax:
+JMP address
+
+Makes the CPU jump at the specified
+address.
