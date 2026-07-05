@@ -1636,6 +1636,8 @@ MainWindow_ImGui::windowRegistry()
         { "HGRSpriteEditor",      "HGR Sprite Editor",                         &MW::showHGRSpriteEditor,    K::Tool,        true  },
         { "TMSPaintEditor",       "TMS9918 Paint Editor",                      &MW::showTMSPaintEditor,     K::Tool,        true  },
         { "TMSSpriteEditor",      "TMS9918 Sprite Editor",                     &MW::showTMSSpriteEditor,    K::Tool,        true  },
+        { "SfxEditor",            "Beeper SFX Editor",                         &MW::showSfxEditor,          K::Tool,        true  },
+        { "SidTracker",           "SID Tracker",                               &MW::showSidTracker,         K::Tool,        true  },
         { "TMS9918",              "P-LAB Graphic Card (TMS9918)",              &MW::showTMS9918,            K::Peripheral,  true  },
         { "GT6144",               "SWTPC GT-6144 Graphic Terminal",            &MW::showGT6144,             K::Peripheral,  true  },
         { "IECCard",              "IEC Disk",                                  &MW::showIECCard,            K::Peripheral,  true  },

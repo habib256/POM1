@@ -6,6 +6,7 @@
 // format that beep_sfx.asm plays. No emulator needed (pure text logic).
 
 #include "sfxbeep/SfxAsmExport.h"
+#include "sfxbeep/SfxBank.h"
 #include "sfxbeep/SfxModel.h"
 #include "sfxbeep/SfxPulse.h"
 
@@ -102,6 +103,20 @@ int main() {
         assert(parsed[1].name == "hit"   && parsed[1].steps.size() == 3);
         // the rest step survived (length 4, not mistaken for a terminator):
         assert(parsed[1].steps[1].period == 0x00 && parsed[1].steps[1].length == 0x04);
+    }
+
+    // --- built-in 50-cue bank parses cleanly + every step is valid ----------
+    {
+        auto bank = parseSfxAsm(kSfxBank50);
+        assert(bank.size() == 50);
+        for (const auto& cue : bank) {
+            assert(!cue.name.empty());
+            assert(!cue.steps.empty());
+            for (const Step& s : cue.steps) assert(s.length >= 1);   // no stray terminator
+        }
+        // spot-check a couple of well-known cues survived intact
+        assert(bank.front().name == "coin");
+        assert(bank.back().name == "gameover");
     }
 
     std::printf("sfx_asm_export_smoke: OK\n");

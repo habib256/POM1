@@ -494,6 +494,13 @@ void EmulationController::previewBeepSfx(const std::vector<std::pair<uint32_t, b
 {
     if (pulses.empty()) return;
     std::lock_guard<PriorityMutex> lock(stateMutex);
+    // The cassette AudioSource is only on the mixer when a tape is active, so a
+    // freshly-opened editor's preview would queue segments nobody drains ->
+    // silence. Ensure it's mixed (idempotent; harmless — it outputs 0 when the
+    // pulse queue is empty). memory->… directly: activateCassetteAudioSource() on
+    // the controller re-locks stateMutex (which we already hold) and would
+    // deadlock the non-recursive PriorityMutex.
+    memory->activateCassetteAudioSource();
     memory->getCassetteDevice().previewBeep(pulses);
 }
 
@@ -501,6 +508,15 @@ void EmulationController::stopBeepPreview()
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     memory->getCassetteDevice().stopPreviewBeep();
+}
+
+bool EmulationController::ejectAudioStreamTape()
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    CassetteDevice& cd = memory->getCassetteDevice();
+    if (cd.getDeckMode() != CassetteDevice::DeckMode::AudioStream) return false;
+    cd.ejectTape();
+    return true;
 }
 
 void EmulationController::readTms9918Vram(uint8_t* out16k)

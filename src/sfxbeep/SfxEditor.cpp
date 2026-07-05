@@ -9,50 +9,41 @@
 
 #include "imgui.h"
 #include "sfxbeep/SfxAsmExport.h"
+#include "sfxbeep/SfxBank.h"
 
 namespace sfxbeep {
 
 SfxEditor::SfxEditor(ISfxHost* host) : host_(host) {
     std::strncpy(nameBuf_, "sfx", sizeof(nameBuf_) - 1);
     nameBuf_[sizeof(nameBuf_) - 1] = '\0';
-    loadBankPreset(0);            // start on the "coin" blip so there's something to hear
+    bank_ = parseSfxAsm(kSfxBank50);   // the built-in 50-cue catalogue
+    if (!bank_.empty()) loadFromBank(0);
 }
 
-// The three starter cues from dev/lib/beep/beep_sfx_bank.inc.
-void SfxEditor::loadBankPreset(int which) {
+// Copy one built-in bank cue into the working model.
+void SfxEditor::loadFromBank(int index) {
+    if (index < 0 || index >= static_cast<int>(bank_.size())) return;
+    const ParsedSfx& b = bank_[index];
     model_.clear();
-    const char* name = "sfx";
-    switch (which) {
-        case 0:  // coin — two-note up blip
-            name = "coin";
-            model_.addStep({0x60, 0x18});
-            model_.addStep({0x40, 0x28});
-            break;
-        case 1:  // laser — downward pitch sweep
-            name = "laser";
-            for (uint8_t p = 0x18; p <= 0x4A; p = static_cast<uint8_t>(p + 0x0A))
-                model_.addStep({p, 0x06});
-            break;
-        case 2:  // hit — buzz + rest + thud
-            name = "hit";
-            model_.addStep({0x70, 0x20});
-            model_.addStep({0x00, 0x04});   // rest
-            model_.addStep({0x90, 0x30});
-            break;
-        default: break;
-    }
-    model_.setName(name);
-    std::strncpy(nameBuf_, name, sizeof(nameBuf_) - 1);
-    nameBuf_[sizeof(nameBuf_) - 1] = '\0';
+    model_.setName(b.name);
+    for (const Step& s : b.steps) model_.addStep(s);
+    bankSel_ = index;
     selected_ = model_.empty() ? -1 : 0;
+    std::strncpy(nameBuf_, b.name.c_str(), sizeof(nameBuf_) - 1);
+    nameBuf_[sizeof(nameBuf_) - 1] = '\0';
 }
 
 void SfxEditor::render() {
     renderToolbar();
     ImGui::Separator();
-    renderCurve();
+    ImGui::Columns(2, "sfxcols", false);
+    ImGui::SetColumnWidth(0, 150.0f);
+    renderBank();                 // left: the 50-cue browser
+    ImGui::NextColumn();
+    renderCurve();                // right: editable curve + step editor
     ImGui::Separator();
     renderStepEditor();
+    ImGui::Columns(1);
     if (!status_.empty()) {
         ImGui::Separator();
         ImGui::TextUnformatted(status_.c_str());
@@ -66,14 +57,6 @@ void SfxEditor::renderToolbar() {
     ImGui::SameLine();
     ImGui::TextDisabled("|");
     ImGui::SameLine();
-    if (ImGui::Button("Coin"))  loadBankPreset(0);
-    ImGui::SameLine();
-    if (ImGui::Button("Laser")) loadBankPreset(1);
-    ImGui::SameLine();
-    if (ImGui::Button("Hit"))   loadBankPreset(2);
-    ImGui::SameLine();
-    ImGui::TextDisabled("|");
-    ImGui::SameLine();
     if (ImGui::Button("Export ASM...")) doExport();
 
     ImGui::SetNextItemWidth(160.0f);
@@ -82,6 +65,22 @@ void SfxEditor::renderToolbar() {
     ImGui::SameLine();
     ImGui::TextDisabled("%zu steps, %u half-cycles", model_.size(),
                         model_.totalHalfCycles());
+}
+
+// Left panel: the built-in 50-cue bank. Click a name to load it; it also
+// auditions immediately so browsing the bank is audible.
+void SfxEditor::renderBank() {
+    ImGui::TextDisabled("Bank (%zu)", bank_.size());
+    if (ImGui::BeginListBox("##bank", ImVec2(-1.0f, 240.0f))) {
+        for (int i = 0; i < static_cast<int>(bank_.size()); ++i) {
+            const bool sel = (i == bankSel_);
+            if (ImGui::Selectable(bank_[i].name.c_str(), sel)) {
+                loadFromBank(i);
+                if (host_) host_->previewSfx(model_.steps());   // audition on click
+            }
+        }
+        ImGui::EndListBox();
+    }
 }
 
 // Bars: one per step. Height encodes PITCH (a rest = flat baseline), width

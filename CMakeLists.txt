@@ -342,6 +342,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint
     ${CMAKE_CURRENT_SOURCE_DIR}/src/tmssprite
     ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrsprite
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/sfxbeep
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/sidtrack
 )
 
 # libresidfp (vendored, third_party/libresidfp). PUBLIC include dir on the

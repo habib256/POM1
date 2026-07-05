@@ -13,8 +13,10 @@
 #define SFXBEEP_SFX_EDITOR_H
 
 #include <string>
+#include <vector>
 
 #include "sfxbeep/ISfxHost.h"
+#include "sfxbeep/SfxAsmExport.h"   // ParsedSfx (built-in bank)
 #include "sfxbeep/SfxModel.h"
 
 namespace sfxbeep {
@@ -28,9 +30,10 @@ public:
 
 private:
     void renderToolbar();
+    void renderBank();        // built-in 50-cue bank browser
     void renderCurve();       // the editable pitch/duration bar view
     void renderStepEditor();  // precise sliders for the selected step
-    void loadBankPreset(int which);
+    void loadFromBank(int index);
     void doExport();
 
     ISfxHost* host_;
@@ -38,6 +41,10 @@ private:
     int       selected_ = -1;
     char      nameBuf_[48];
     std::string status_;
+
+    // Built-in bank (parsed once from SfxBank.h).
+    std::vector<ParsedSfx> bank_;
+    int       bankSel_ = 0;
 };
 
 }  // namespace sfxbeep

@@ -229,6 +229,7 @@ private:
     bool showTMSPaintEditor = false;
     bool showTMSSpriteEditor = false;
     bool showSfxEditor = false;         // Beeper SFX editor (ACI 1-bit)
+    bool sfxEditorWasOpen_ = false;     // rising-edge guard: eject stream tape once on open
     bool showSidTracker = false;        // SID tracker
     bool showDebugger = false;
     bool showRewindTimeline = false;   // State-rewind timeline / scrub panel

@@ -195,6 +195,11 @@ public:
     void previewBeepSfx(const std::vector<std::pair<uint32_t, bool>>& pulses);
     /// Beeper preview Stop — silence any queued preview pulses. Takes stateMutex.
     void stopBeepPreview();
+    /// Eject a loaded audio-STREAM tape (mp3/ogg/wav) — no-op for a program tape
+    /// or empty deck. A stream tape owns the audio callback (the 1-bit pulse
+    /// preview is silent while it plays), so the beeper editor ejects it on open.
+    /// Returns true if a stream tape was actually ejected. Takes stateMutex.
+    bool ejectAudioStreamTape();
     /// Copy the live chip's 16 KB VRAM out (for the editor / file save).
     void readTms9918Vram(uint8_t* out16k);
     /// Copy the live chip's active 256×192 framebuffer (what the card actually

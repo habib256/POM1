@@ -776,11 +776,21 @@ void MainWindow_ImGui::render()
     if (showSfxEditor) {
         // The beeper previews through the ACI speaker — make sure it's plugged.
         if (!aciEnabled) { aciEnabled = true; emulation->setACIEnabled(true); }
+        // On open, eject any mp3/ogg audio-stream tape: a stream tape owns the
+        // audio callback, so the 1-bit pulse preview would be silent while it
+        // plays. One-shot on the rising edge (no per-frame lock).
+        if (!sfxEditorWasOpen_) {
+            if (emulation->ejectAudioStreamTape())
+                setStatusMessage("Ejected audio-stream tape for Beeper SFX preview", 2.5f);
+            sfxEditorWasOpen_ = true;
+        }
         ImGui::SetNextWindowSize(ImVec2(560, 440), ImGuiCond_FirstUseEver);
         applyPendingLayout("Beeper SFX Editor");
         if (ImGui::Begin("Beeper SFX Editor", &showSfxEditor))
             sfxEditor->render();
         ImGui::End();
+    } else {
+        sfxEditorWasOpen_ = false;
     }
     if (showSidTracker) {
         // The tracker previews by poking the live SID chip — plug the A1-SID card.

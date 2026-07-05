@@ -412,6 +412,27 @@ void MainWindow_ImGui::renderMenuBar()
                 }
             }
             ImGui::Separator();
+            // --- Audio editors --------------------------------------------------
+            // Beeper SFX editor — draws + auditions a 1-bit sound effect through
+            // the ACI speaker ($C030). Opening it plugs the ACI (render loop guards).
+            if (ImGui::MenuItem("Beeper SFX Editor...", nullptr, &showSfxEditor)) {
+                if (showSfxEditor && !aciEnabled) {
+                    aciEnabled = true;
+                    emulation->setACIEnabled(true);
+                    setStatusMessage("ACI plugged for Beeper SFX Editor", 2.0f);
+                }
+            }
+            // SID tracker — pattern grid + ADSR/filter instrument, auditioned on
+            // the live A1-SID chip. Opening it plugs the A1-SID (render loop guards).
+            if (ImGui::MenuItem("SID Tracker...", nullptr, &showSidTracker)) {
+                if (showSidTracker && !sidEnabled) {
+                    sidEnabled = true;
+                    sidSpecialEditionEnabled = false;
+                    emulation->setSIDEnabled(true);
+                    setStatusMessage("A1-SID plugged for SID Tracker", 2.0f);
+                }
+            }
+            ImGui::Separator();
             // Strict-mode toggle, drop-diagnostics dump and counter reset all
             // moved into the Silicon Strict Inspector window — single home for
             // the whole silicon-fidelity surface.
