@@ -14,6 +14,7 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 class CassetteDevice : public AudioSource, public pom1::Peripheral
@@ -59,6 +60,21 @@ public:
 
     uint8_t readTapeInput();
     uint8_t toggleOutput();
+
+    /// Beeper SFX editor live preview: synthesise a 1-bit square wave straight
+    /// into the pulse-audio queue — no CPU, no $C030 toggles. `pulses` is a
+    /// (cpu-cycles, speaker-level) segment list (from sfxbeep::sfxToPulses);
+    /// each segment is queued at the same timebase toggleOutput() uses, so the
+    /// preview pitch matches the real beeper. Non-blocking: the audio callback
+    /// plays it out. No-op without an audio device or while an audio-stream tape
+    /// is loaded (same silence rule as the real beeper). Thread-safe (audioMutex
+    /// via queueAudioSegment); call under EmulationController's stateMutex.
+    void previewBeep(const std::vector<std::pair<uint32_t, bool>>& pulses);
+
+    /// Beeper preview "stop": drop any queued preview pulses so the speaker goes
+    /// silent immediately (the editor's Stop button). Safe when nothing is
+    /// queued; only affects the pulse-audio queue.
+    void stopPreviewBeep() { stopPulseAudio(); }
 
     bool loadTape(const std::string& path);
     bool loadProgramTape(const std::string& path);

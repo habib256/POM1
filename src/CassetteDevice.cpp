@@ -443,6 +443,17 @@ double CassetteDevice::getPlaybackTotalSeconds() const
     return static_cast<double>(audioStreamTotalFrames) / static_cast<double>(audioOutputSampleRate);
 }
 
+void CassetteDevice::previewBeep(const std::vector<std::pair<uint32_t, bool>>& pulses)
+{
+    // Silence rule mirrors the real beeper: an audio-stream tape owns the
+    // callback (fillAudioBuffer ignores the pulse queue in stream mode), and
+    // with no audio device there is nothing to hear. queueAudioSegment also
+    // early-outs on !audioAvailable, but bail here so a stream tape isn't
+    // disturbed and we don't build a queue nobody drains.
+    if (!audioAvailable || audioStreamMode) return;
+    for (const auto& p : pulses) queueAudioSegment(p.first, p.second);
+}
+
 void CassetteDevice::queueAudioSegment(uint32_t cycles, bool level)
 {
     if (!audioAvailable || cycles == 0) {

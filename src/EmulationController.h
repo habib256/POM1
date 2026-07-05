@@ -187,6 +187,14 @@ public:
     /// chip-relative (0..28). No snapshot publish — SID state is real-time audio,
     /// not part of the page-dirty snapshot.
     void pokeSidRegisters(const std::vector<std::pair<uint8_t, uint8_t>>& writes);
+
+    /// Beeper SFX editor live preview — synthesise a 1-bit square wave into the
+    /// cassette pulse-audio queue (no CPU, no $C030). `pulses` is a
+    /// (cpu-cycles, speaker-level) segment list from sfxbeep::sfxToPulses. Takes
+    /// stateMutex; forwards to CassetteDevice::previewBeep. No snapshot publish.
+    void previewBeepSfx(const std::vector<std::pair<uint32_t, bool>>& pulses);
+    /// Beeper preview Stop — silence any queued preview pulses. Takes stateMutex.
+    void stopBeepPreview();
     /// Copy the live chip's 16 KB VRAM out (for the editor / file save).
     void readTms9918Vram(uint8_t* out16k);
     /// Copy the live chip's active 256×192 framebuffer (what the card actually

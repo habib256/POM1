@@ -110,6 +110,12 @@ void MainWindow_ImGui::createPom1()
     tmsPaintEditor = std::make_unique<tmspaint::TmsPaintEditor>(tmsPaintHost.get());
     // Sprite editor shares the TMS paint host (same ITmsPaintHost seam).
     tmsSpriteEditor = std::make_unique<tmssprite::TmsSpriteEditor>(tmsPaintHost.get());
+    // Audio editors: beeper SFX (preview via the ACI cassette pulse path) + SID
+    // tracker (preview by poking the live SID chip). Same host + window-slot shape.
+    sfxHost = std::make_unique<Pom1SfxHost>(emulation.get(), &window);
+    sfxEditor = std::make_unique<sfxbeep::SfxEditor>(sfxHost.get());
+    sidHost = std::make_unique<Pom1SidHost>(emulation.get(), &window);
+    sidTrackerEditor = std::make_unique<sidtrack::SidTrackerEditor>(sidHost.get());
     // Republie cpuRunning=true (le constructeur publie une fois avant runRequested.store(true)).
     emulation->startCpu();
     emulation->copySnapshot(uiSnapshot);
@@ -765,6 +771,24 @@ void MainWindow_ImGui::render()
         applyPendingLayout("TMS9918 Sprite Editor");
         if (ImGui::Begin("TMS9918 Sprite Editor", &showTMSSpriteEditor))
             tmsSpriteEditor->render();
+        ImGui::End();
+    }
+    if (showSfxEditor) {
+        // The beeper previews through the ACI speaker — make sure it's plugged.
+        if (!aciEnabled) { aciEnabled = true; emulation->setACIEnabled(true); }
+        ImGui::SetNextWindowSize(ImVec2(560, 440), ImGuiCond_FirstUseEver);
+        applyPendingLayout("Beeper SFX Editor");
+        if (ImGui::Begin("Beeper SFX Editor", &showSfxEditor))
+            sfxEditor->render();
+        ImGui::End();
+    }
+    if (showSidTracker) {
+        // The tracker previews by poking the live SID chip — plug the A1-SID card.
+        if (!sidEnabled) { sidEnabled = true; emulation->setSIDEnabled(true); }
+        ImGui::SetNextWindowSize(ImVec2(640, 620), ImGuiCond_FirstUseEver);
+        applyPendingLayout("SID Tracker");
+        if (ImGui::Begin("SID Tracker", &showSidTracker))
+            sidTrackerEditor->render();
         ImGui::End();
     }
     if (tms9918Enabled && showTMS9918) renderTMS9918Window();

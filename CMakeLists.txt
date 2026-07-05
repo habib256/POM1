@@ -130,6 +130,8 @@ set(SOURCES
     ${POM1_SRC_DIR}/MemoryViewer_ImGui.cpp
     ${POM1_SRC_DIR}/Pom1HgrPaintHost.cpp
     ${POM1_SRC_DIR}/Pom1TmsPaintHost.cpp
+    ${POM1_SRC_DIR}/Pom1SfxHost.cpp
+    ${POM1_SRC_DIR}/Pom1SidHost.cpp
     ${POM1_SRC_DIR}/Screen_ImGui.cpp
     ${POM1_SRC_DIR}/SID.cpp
     ${POM1_SRC_DIR}/TMS9918.cpp
@@ -187,6 +189,14 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrsprite/HgrSpriteBlit.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrsprite/HgrSpriteEditor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrsprite/HgrSpriteAsmExport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/sfxbeep/SfxModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/sfxbeep/SfxPulse.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/sfxbeep/SfxAsmExport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/sfxbeep/SfxEditor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/sidtrack/SongModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/sidtrack/SidVoice.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/sidtrack/SidSongAsmExport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/sidtrack/SidTrackerEditor.cpp
 )
 
 set(HEADERS

@@ -490,6 +490,19 @@ void EmulationController::pokeSidRegisters(const std::vector<std::pair<uint8_t, 
     for (const auto& w : writes) sid.writeRegister(w.first, w.second);
 }
 
+void EmulationController::previewBeepSfx(const std::vector<std::pair<uint32_t, bool>>& pulses)
+{
+    if (pulses.empty()) return;
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->getCassetteDevice().previewBeep(pulses);
+}
+
+void EmulationController::stopBeepPreview()
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->getCassetteDevice().stopPreviewBeep();
+}
+
 void EmulationController::readTms9918Vram(uint8_t* out16k)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

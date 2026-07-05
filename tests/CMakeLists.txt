@@ -1120,6 +1120,7 @@ add_executable(test_sfx_asm_export
     sfx_asm_export_smoke_test.cpp
     ${CMAKE_SOURCE_DIR}/src/sfxbeep/SfxAsmExport.cpp
     ${CMAKE_SOURCE_DIR}/src/sfxbeep/SfxModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/sfxbeep/SfxPulse.cpp
 )
 target_include_directories(test_sfx_asm_export PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME sfx_asm_export_smoke COMMAND test_sfx_asm_export)

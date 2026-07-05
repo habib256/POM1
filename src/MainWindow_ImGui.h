@@ -20,6 +20,10 @@
 #include "TmsPaintEditor.h"        // tmspaint/ (portable editor) on the include path
 #include "TmsSpriteEditor.h"       // tmssprite/ (portable sprite editor) on the include path
 #include "Pom1TmsPaintHost.h"
+#include "SfxEditor.h"             // sfxbeep/ (portable beeper SFX editor) on the include path
+#include "Pom1SfxHost.h"
+#include "SidTrackerEditor.h"      // sidtrack/ (portable SID tracker) on the include path
+#include "Pom1SidHost.h"
 #include "Screen_ImGui.h"
 #include "GraphicsCard.h"
 #include "TMS9918.h"
@@ -203,6 +207,11 @@ private:
     // Sprite editor reuses the same POM1 host (Pom1TmsPaintHost implements
     // tmspaint::ITmsPaintHost), so no extra host is needed.
     std::unique_ptr<tmssprite::TmsSpriteEditor> tmsSpriteEditor;
+    // Audio editors: beeper SFX (ACI 1-bit) + SID tracker, each with its POM1 host.
+    std::unique_ptr<Pom1SfxHost> sfxHost;
+    std::unique_ptr<sfxbeep::SfxEditor> sfxEditor;
+    std::unique_ptr<Pom1SidHost> sidHost;
+    std::unique_ptr<sidtrack::SidTrackerEditor> sidTrackerEditor;
     EmulationSnapshot uiSnapshot;
     
     // Window reference for keyboard callbacks
@@ -219,6 +228,8 @@ private:
     bool showHGRSpriteEditor = false;
     bool showTMSPaintEditor = false;
     bool showTMSSpriteEditor = false;
+    bool showSfxEditor = false;         // Beeper SFX editor (ACI 1-bit)
+    bool showSidTracker = false;        // SID tracker
     bool showDebugger = false;
     bool showRewindTimeline = false;   // State-rewind timeline / scrub panel
     bool rewindAutoStarted = false;    // one-shot: the toolbar timeline band auto-enables recording
