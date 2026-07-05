@@ -43,8 +43,9 @@ TMS9918C_INC := -I tms9918c -I gfx
 
 # --- standalone asm objects (projects link these as .o; the .include-style
 # fragments are NOT standalone TUs and are covered via their consumers). -------
-ASM_SRCS := tms9918/tms9918m1.asm tms9918/tms9918m2.asm m6502/math.asm beep/beep_sfx.asm
-ASM_INC  := -I tms9918 -I apple1 -I m6502 -I beep
+ASM_SRCS := tms9918/tms9918m1.asm tms9918/tms9918m2.asm m6502/math.asm \
+            beep/beep_sfx.asm sid/sid_player.asm
+ASM_INC  := -I tms9918 -I apple1 -I m6502 -I beep -I sid
 
 # --- stray build spill --------------------------------------------------------
 # Consumer builds (dev/projects/) and manual `cl65 -c` sessions drop .o/.lib next

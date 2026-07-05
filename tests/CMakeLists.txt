@@ -1112,6 +1112,33 @@ target_include_directories(test_sprite_asm_export PRIVATE
 add_test(NAME sprite_asm_export_smoke COMMAND test_sprite_asm_export)
 set_tests_properties(sprite_asm_export_smoke PROPERTIES TIMEOUT 5)
 
+# -- Beeper SFX data-layer smoke test -----------------------------------------
+# Pins the 1-bit beeper SFX model + SfxModel<->ca65 round-trip (formatSfxAsm /
+# parseSfxAsm) in exactly the dev/lib/beep table format beep_sfx.asm plays.
+# No GL/ImGui/emulator dependency; the data layer the beeper editor sits on.
+add_executable(test_sfx_asm_export
+    sfx_asm_export_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/sfxbeep/SfxAsmExport.cpp
+    ${CMAKE_SOURCE_DIR}/src/sfxbeep/SfxModel.cpp
+)
+target_include_directories(test_sfx_asm_export PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME sfx_asm_export_smoke COMMAND test_sfx_asm_export)
+set_tests_properties(sfx_asm_export_smoke PROPERTIES TIMEOUT 5)
+
+# -- SID tracker data-layer smoke test ----------------------------------------
+# Pins the SID song model + SongModel<->ca65 round-trip (formatSongAsm /
+# parseSongAsm) in exactly the dev/lib/sid table format sid_player.asm plays,
+# plus noteName. No GL/ImGui/emulator dependency; the SID tracker's data layer.
+add_executable(test_sid_song_asm_export
+    sid_song_asm_export_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/sidtrack/SidSongAsmExport.cpp
+    ${CMAKE_SOURCE_DIR}/src/sidtrack/SongModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/sidtrack/SidVoice.cpp
+)
+target_include_directories(test_sid_song_asm_export PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME sid_song_asm_export_smoke COMMAND test_sid_song_asm_export)
+set_tests_properties(sid_song_asm_export_smoke PROPERTIES TIMEOUT 5)
+
 # -- TMS9918 image-import smoke test ------------------------------------------
 # Pins the Cam16 metric + the TmsConvert image→VRAM pipeline (tmspaint::
 # imageToTmsVram) cross-checked against the real TMS9918 renderer: solid-palette-

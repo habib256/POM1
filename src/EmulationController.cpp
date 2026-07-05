@@ -482,6 +482,14 @@ void EmulationController::applyTms9918Registers(const uint8_t regs[8])
     publisher.publish(*memory, *cpu, runRequested.load());
 }
 
+void EmulationController::pokeSidRegisters(const std::vector<std::pair<uint8_t, uint8_t>>& writes)
+{
+    if (writes.empty()) return;
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    pom1::SID& sid = memory->getSID();
+    for (const auto& w : writes) sid.writeRegister(w.first, w.second);
+}
+
 void EmulationController::readTms9918Vram(uint8_t* out16k)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

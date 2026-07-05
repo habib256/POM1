@@ -20,7 +20,14 @@ jingles + SFX in any future game.
   CPU clock changes (locked to 1.022727 MHz today).
 - **`sid_play.asm`** — `sid_v1_note` (A = note index → set V1 freq),
   `sid_v1_gate` (A = waveform mask → trigger ADSR), `sid_v1_off`
-  (release).
+  (release). The low-level "poke one note" primitives.
+- **`sid_player.asm`** — a **data-driven single-voice sequencer** (the SID
+  analogue of [`beep/beep_sfx.asm`](../beep/README.md), and the runtime the SID
+  tracker editor exports to). `sid_play_init` / `sid_play_start` (X:Y = song) /
+  `sid_play_tick` (advance one frame, non-blocking) / `sid_play_active` /
+  `sid_play_stop`. Song = 3-byte rows `[note, ctrl, frames]` (note `$FE`=gate
+  off, `$FF`=tie; `frames`=0 ends). Self-contained (bundles the note table).
+  Pinned by [`../test/micro/t12_sid_player.s`](../test/micro/t12_sid_player.s).
 
 ## Public symbols
 

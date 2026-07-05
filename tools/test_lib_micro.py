@@ -73,6 +73,7 @@ ASM_INCLUDE_DIRS = [
     LIB_DIR / "m6502",
     LIB_DIR / "basicrt",
     LIB_DIR / "beep",
+    LIB_DIR / "sid",
     LIB_DIR / "games" / "rogue",
 ]
 

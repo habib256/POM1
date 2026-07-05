@@ -180,6 +180,13 @@ public:
     void writeTms9918VramBatch(const std::vector<std::pair<uint16_t, uint8_t>>& writes);
     /// Program all 8 mode registers onto the live chip (canonical paint layout).
     void applyTms9918Registers(const uint8_t regs[8]);
+
+    /// SID tracker preview seam — apply out-of-band SID register writes to the
+    /// live chip (voice preview: note-on / note-off / silence). Takes stateMutex
+    /// so the writes stay coherent with the running CPU thread; `reg` is
+    /// chip-relative (0..28). No snapshot publish — SID state is real-time audio,
+    /// not part of the page-dirty snapshot.
+    void pokeSidRegisters(const std::vector<std::pair<uint8_t, uint8_t>>& writes);
     /// Copy the live chip's 16 KB VRAM out (for the editor / file save).
     void readTms9918Vram(uint8_t* out16k);
     /// Copy the live chip's active 256×192 framebuffer (what the card actually

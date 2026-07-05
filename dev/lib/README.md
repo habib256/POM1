@@ -349,6 +349,7 @@ both park names in the same low region — check before combining:
 | [`m6502/prng16.asm`](m6502/prng16.asm) | `prng_lo`, `prng_hi` | — | shared with `prng8.asm` **by design** (`.ifndef`-guarded): both stir ONE state pair — use one generator per program |
 | [`m6502/prng8.asm`](m6502/prng8.asm) | `prng_lo`, `prng_hi` | — | shared with `prng16.asm` **by design** (`.ifndef`-guarded) |
 | [`sd/sd.asm`](sd/sd.asm) | `sd_str_lo`, `sd_str_hi` | — | string pointer |
+| [`sid/sid_player.asm`](sid/sid_player.asm) | `sid_ptr[2]`, `sid_frames`, `sid_ctrl` (all `.exportzp`'d) | — |  |
 | [`text40/layout.asm`](text40/layout.asm) | `key_up_code`, `key_left_code` | — | arrow-key remap |
 | [`tms9918/bubble.asm`](tms9918/bubble.asm) | — | `ln_x0`, `ln_y0`, `ln_x1`, `ln_y1` | bubble raster (TMS side of the `draw_bubble` shadow pair) |
 | [`tms9918/buffer_editor.asm`](tms9918/buffer_editor.asm) | `ed_cur_line`, `ed_n_lines` | `line_idx`, `shape_pat_lo`, `shape_pat_hi`, `pix_x`, `pix_y`, `ln_x0`, `ln_y0`, `ln_x1`, `ln_y1`, `tmp`, `tmp2`, `arg_lo`, `arg_hi`, `BUFED_BODYLEN_OFF`, `BUFED_BODY_OFF`, `BUFED_BODY_MAX`, `BUFED_NAME_LEN`, `BUFED_LINE_MAX` | reuses `math.asm`'s `arg_*` argument window — not storage; reload per call |
