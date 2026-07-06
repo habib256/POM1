@@ -14,8 +14,11 @@
  * phase (x%14)/2 at byte column 2*(x/14). Vertical is 1px-smooth.
  *
  * PERFORMANCE (per-frame budget is dominated by the 16 sprite blits):
- *   - INCREMENTAL: captions drawn once/page; each frame only ERASES old sprite
- *     footprints (byte-exact GEN2_CLEAR over black) and redraws new ones.
+ *   - INCREMENTAL: captions drawn once/page; each frame only touches sprite
+ *     footprints. ERASE is a byte-column 0-FILL (gen2_hgr_fill_rect) of the
+ *     footprint rectangle, NOT a CLEAR-blit of the shape: on a black field the
+ *     fill's tight STA loop (no source read, no per-byte AND) is ~2x cheaper, and
+ *     needs no bank/phase data. DRAW is a GEN2_SET blit (OR keeps overlaps).
  *   - BOUNDING-BOX TRIM, per-phase: each phase is baked to its OWN content box
  *     (yoff/rows + per-phase xoff/width, ~4-5 bytes not 7) — blit7 pays for zero
  *     bytes too. ~40% fewer byte-ops AND small enough (7.1 KB) to fit 8 sprites'
@@ -1718,7 +1721,8 @@ static const signed char   ampY[NA]  = {  22,   28,   20,   26,   30,   28,   32
 static int cx[NA], cy[NA];
 static signed char  sX[NA][32], sY[NA][32];   /* sine pre-scaled by amplitude    */
 static unsigned char phX[NA], phY[NA];        /* phase accumulators              */
-static unsigned char baseT[NX2];              /* base pixel = (h/7)*14           */
+static unsigned char baseT[NX2];              /* base pixel   = (h/7)*14         */
+static unsigned char baseCol[NX2];            /* base byte col = (h/7)*2 (erase) */
 static unsigned char phTb[NX2];               /* phase = h%7 (0..6)              */
 static unsigned char xoff7[NA][7];            /* per-phase content xoff * 7 (px) */
 static unsigned      bankOff[NA][7];          /* per-phase bank byte offset (cum)*/
@@ -1749,8 +1753,10 @@ static void init_luts(void) {
         }
     }
     for (h = 0u; h < NX2; ++h) {
-        baseT[h] = (unsigned char)((h / 7u) * 14u);
-        phTb[h]  = (unsigned char)(h % 7u);
+        unsigned char q = (unsigned char)(h / 7u);
+        baseT[h]   = (unsigned char)(q * 14u);   /* pixel of the 14-aligned base */
+        baseCol[h] = (unsigned char)(q * 2u);    /* its byte column (= pixel/7)  */
+        phTb[h]    = (unsigned char)(h % 7u);
     }
 }
 
@@ -1764,12 +1770,25 @@ static void set_pos(void) {
     }
 }
 
-static void blit_animal(unsigned char id, int x, int y, unsigned char mode) {
+/* DRAW: OR the sprite's trimmed sub-image (SET keeps overlaps additive). */
+static void draw_animal(unsigned char id, int x, int y) {
     unsigned char h  = (unsigned char)((unsigned)x >> 1);
     unsigned char ph = phTb[h];
     gen2_hgr_blit7((unsigned)baseT[h] + xoff7[id][ph],
                    (unsigned char)(y + sprYoff[id]),
-                   sprWp[id][ph], sprRows[id], spr[id] + bankOff[id][ph], mode);
+                   sprWp[id][ph], sprRows[id], spr[id] + bankOff[id][ph], GEN2_SET);
+}
+
+/* ERASE: on a black field, clearing the footprint is a byte-column 0-FILL, not
+ * a CLEAR-blit of the shape. gen2_hgr_fill_rect's inner loop is a tight STA (no
+ * source read, no per-byte AND/EOR) -> ~2x cheaper than GEN2_CLEAR, and the erase
+ * needs no bank/phase data — just the same rectangle the draw covered. */
+static void erase_animal(unsigned char id, int x, int y) {
+    unsigned char h  = (unsigned char)((unsigned)x >> 1);
+    unsigned char ph = phTb[h];
+    gen2_hgr_fill_rect((unsigned char)(y + sprYoff[id]), sprRows[id],
+                       (unsigned char)(baseCol[h] + sprXoff[id][ph]),
+                       sprWp[id][ph], 0u);
 }
 
 void main(void) {
@@ -1793,10 +1812,10 @@ void main(void) {
         pidx = (unsigned char)(page - 1u);
         gen2_set_draw_page(page);
 
-        for (i = 0u; i < NA; ++i)
-            blit_animal(i, ox[i][pidx], oy[i][pidx], GEN2_CLEAR);
-        for (i = 0u; i < NA; ++i) {
-            blit_animal(i, cx[i], cy[i], GEN2_SET);
+        for (i = 0u; i < NA; ++i)                 /* erase old footprints (0-fill) */
+            erase_animal(i, ox[i][pidx], oy[i][pidx]);
+        for (i = 0u; i < NA; ++i) {               /* draw new positions            */
+            draw_animal(i, cx[i], cy[i]);
             ox[i][pidx] = cx[i];
             oy[i][pidx] = cy[i];
         }

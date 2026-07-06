@@ -98,9 +98,8 @@ Un `clear` plein écran (8 KB ≈ 40 000 cyc) + re-render du texte **à chaque f
 tue le framerate. Le bon squelette :
 
 1. **Décor statique dessiné UNE fois par page** (les 2 pages du double-buffer).
-2. Chaque frame, sur la page cachée : **effacer** les anciennes empreintes des
-   sprites (`GEN2_CLEAR`, byte-exact) puis **redessiner** aux nouvelles
-   (`GEN2_SET`). Pas de clear global, pas de texte re-rendu.
+2. Chaque frame, sur la page cachée : **effacer** les anciennes empreintes puis
+   **redessiner** aux nouvelles. Pas de clear global, pas de texte re-rendu.
 3. **Double-buffer** : flip en V-blank (`gen2_wait_vbl` + `gen2_show_page`) →
    pas de tearing. Chaque page garde son **historique 1-frame** des positions
    (`ox/oy[i][page]`, comme `GEN2Bounces`).
@@ -108,13 +107,21 @@ tue le framerate. Le bon squelette :
 ```c
 for (;;) {
     pidx = page - 1; gen2_set_draw_page(page);
-    for (i = 0; i < N; ++i) blit_animal(i, ox[i][pidx], oy[i][pidx], GEN2_CLEAR); /* erase old */
-    for (i = 0; i < N; ++i) { blit_animal(i, cx[i], cy[i], GEN2_SET);             /* draw new  */
+    for (i = 0; i < N; ++i) erase_animal(i, ox[i][pidx], oy[i][pidx]);   /* 0-fill rect */
+    for (i = 0; i < N; ++i) { draw_animal(i, cx[i], cy[i]);              /* SET blit    */
                               ox[i][pidx] = cx[i]; oy[i][pidx] = cy[i]; }
     gen2_wait_vbl(); gen2_show_page(); page ^= 3; /* 1<->2 */
     set_pos();  /* positions du frame suivant */
 }
 ```
+
+**Effacer avec un FILL de rectangle, pas un blit de forme.** Sur fond noir,
+effacer = écrire des 0 sur le rectangle de l'empreinte : `gen2_hgr_fill_rect(y,
+rows, col, ncols, 0)` a une boucle interne `STA` serrée (pas de lecture source,
+pas de `AND`/`EOR` par octet) → **~2× moins cher** qu'un `GEN2_CLEAR`-blit de la
+forme, et sans données de bank/phase. Le rectangle d'erase doit couvrir
+**exactement** le rectangle qu'a dessiné le blit (mêmes `col/ncols/y/rows`) —
+sinon traînée. (Réserver `GEN2_CLEAR`-blit aux fonds non-uniformes, rares.)
 
 **Effacer TOUT puis dessiner TOUT** (deux passes séparées) — pas un
 erase+draw par sprite dans une seule boucle. Sinon, quand deux sprites se
