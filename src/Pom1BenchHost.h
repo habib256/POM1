@@ -64,6 +64,10 @@ public:
 
     bool hasSerial() const override { return true; }
     void openSerial() override;
+    const char* serialTooltip() const override {
+        return "Telemetry side channel — open the serial/telemetry monitor "
+               "(decoded game state, keystroke injection, frame lock-step; TCP :6503)";
+    }
 
     // Interactive LOGO REPL: live while a LOGO target has been run/prepared (the
     // resident interpreter is at its prompt). replSend feeds one line over the

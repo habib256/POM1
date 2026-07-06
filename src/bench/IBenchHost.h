@@ -193,6 +193,10 @@ public:
     // ---- Serial monitor (a separate window the host owns) ----
     virtual bool hasSerial() const { return false; }
     virtual void openSerial()      {}
+    // Tooltip for the serial button — the host names what the window actually is
+    // (POM1 maps it to the Telemetry Side Channel; another host might map it to a
+    // real serial port). Kept host-provided so this portable module stays neutral.
+    virtual const char* serialTooltip() const { return "Serial Monitor"; }
 };
 
 } // namespace bench

@@ -626,7 +626,8 @@ void CodeBench::render(const char* title, bool* open)
     const float rightX = ImGui::GetWindowWidth() - 42;
     if (host_->hasSerial()) {
         ImGui::SameLine(rightX - 40);
-        if (circleBtn(ICON_FA_PLUG, "##benchserial", "Serial Monitor")) host_->openSerial();
+        if (circleBtn(ICON_FA_PLUG, "##benchserial", host_->serialTooltip()))
+            host_->openSerial();
     }
     ImGui::SameLine(rightX);
     if (circleBtn(ICON_FA_SCREWDRIVER_WRENCH, "##benchtoolchain",
