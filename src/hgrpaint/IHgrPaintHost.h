@@ -36,6 +36,10 @@ struct DevSprite {
     std::string name;
     int wBytes = 3, hRows = 16;
     std::vector<uint8_t> bytes;      // wBytes*hRows
+    // Regime tag for the browser badge. ×1 = mono/artifact master (the bundled
+    // catalogue); ×2 = doubled chosen-colour sprite (colour baked in the bytes).
+    bool x2 = false;
+    std::string colour;              // ×2 hue name (e.g. "Violet"); empty for ×1 / unknown
 };
 struct DevSpriteCategory {
     std::string name;

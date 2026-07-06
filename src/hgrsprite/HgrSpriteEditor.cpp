@@ -645,7 +645,8 @@ void HgrSpriteEditor::renderDevSprites()
     const auto& cat = devCats_[devCat_];
     if (cat.sprites.empty()) return;
 
-    // Uniform thumbnail size (all GEN2 HGR sprites are 3 bytes × 16 rows).
+    // Uniform thumbnail size per category (one file = one geometry: ×1 3×16, or a
+    // per-project ×2 6×32). Geometry comes from the loader's header parse.
     const int    W  = cat.sprites[0].wBytes * 7;
     const int    H  = cat.sprites[0].hRows;
     const float  th = 3.0f;                              // px per sprite pixel
@@ -672,8 +673,20 @@ void HgrSpriteEditor::renderDevSprites()
             }
         dl->AddRect(p0, ImVec2(p0.x + sz.x, p0.y + sz.y),
                     hov ? IM_COL32(255,255,0,255) : IM_COL32(90,90,90,255));
+        // Regime badge: a hue chip in the top-left corner marks a ×2 (doubled,
+        // chosen-colour) sprite; ×1 mono/artifact sprites carry none.
+        if (s.x2) {
+            ImU32 chip = IM_COL32(255, 255, 0, 255);        // unknown hue → yellow
+            for (int c = 0; c < 6; ++c) if (s.colour == kColorName[c]) chip = kSwatch[c];
+            dl->AddRectFilled(p0, ImVec2(p0.x + 7, p0.y + 7), chip);
+            dl->AddRect(p0, ImVec2(p0.x + 7, p0.y + 7), IM_COL32(0, 0, 0, 200));
+        }
         if (hov) {
-            ImGui::SetTooltip("%s", s.name.c_str());
+            const std::string tag = s.x2
+                ? (s.colour.empty() ? std::string("\xC3\x97""2")
+                                    : "\xC3\x97""2 " + s.colour)
+                : std::string("\xC3\x97""1 (artifact)");
+            ImGui::SetTooltip("%s\n%s", s.name.c_str(), tag.c_str());
             if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) loadDevSprite(s);
         }
         ImGui::PopID();

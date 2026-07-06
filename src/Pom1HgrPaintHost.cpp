@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <regex>
 #include <sstream>
 #include <system_error>
 
@@ -90,14 +91,39 @@ hgrpaint::DevSpriteCategory parseSpriteFile(const std::filesystem::path& file)
 
     std::ifstream in(file);
     if (!in) return cat;
-    std::ostringstream text;
-    text << in.rdbuf();
-    for (auto& s : hgrsprite::parseSpritesAsm(text.str(), 48)) {   // 16 rows × 3 bytes
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    const std::string text = ss.str();
+
+    // Geometry-agnostic: read "<H> rows x <W> bytes" from the file's own layout /
+    // export header — the bundled catalogue's "16 rows x 3 bytes" and the editor's
+    // ×2 export "32 rows x 6 bytes/row" both match. Default to the 3×16 catalogue
+    // shape when no header is present.
+    int hRows = 16, wBytes = 3;
+    static const std::regex geoRe(R"((\d+)\s+rows\s+x\s+(\d+)\s+bytes)");
+    std::smatch gm;
+    if (std::regex_search(text, gm, geoRe)) {
+        hRows  = std::max(1, std::atoi(gm[1].str().c_str()));
+        wBytes = std::max(1, std::atoi(gm[2].str().c_str()));
+    }
+    // ×2 regime + hue: the editor stamps a "x2 colour = <hue>" note on export; a
+    // `_x2` label suffix also marks the doubled form even without the note.
+    bool x2 = false;
+    std::string colour;
+    static const std::regex colRe(R"([xX]2\s+colou?r\s*=\s*([A-Za-z]+))");
+    std::smatch cm;
+    if (std::regex_search(text, cm, colRe)) { colour = cm[1].str(); x2 = true; }
+    if (!x2 && text.find("_x2_pat") != std::string::npos) x2 = true;
+
+    const size_t bytesPer = static_cast<size_t>(wBytes) * hRows;
+    for (auto& s : hgrsprite::parseSpritesAsm(text, bytesPer)) {
         hgrpaint::DevSprite d;
-        d.name = std::move(s.name);
-        d.wBytes = 3;
-        d.hRows = 16;
-        d.bytes = std::move(s.bytes);
+        d.name   = std::move(s.name);
+        d.wBytes = wBytes;
+        d.hRows  = hRows;
+        d.bytes  = std::move(s.bytes);
+        d.x2     = x2;
+        d.colour = colour;
         cat.sprites.push_back(std::move(d));
     }
     return cat;
