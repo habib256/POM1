@@ -3,6 +3,8 @@
   "language": "asm",
   "cfg": "sketchs/tms9918/game_chess/apple1_chess_codetank.cfg",
   "extraAsm": [
+    "dev/lib/tms9918/tms9918_pad.asm",
+    "dev/lib/tms9918/tms9918m2.asm",
     "dev/lib/games/chess/chess_engine.asm",
     "dev/lib/tms9918/text_bitmap.asm",
     "dev/lib/tms9918/sprites_chess.asm"

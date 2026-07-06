@@ -2,7 +2,7 @@
 """
 Build P-LAB CodeTank ROM images for the TMS9918 graphic card.
 
-Six game ROMs + the DevBench cartridge are produced (in roms/codetank/).
+Seven game ROMs + the DevBench cartridge are produced (in roms/codetank/).
 Each is a 32 kB 28c256 whose lower / upper 16 kB half is jumper-mapped to
 $4000-$7FFF, so every program runs in place at $4000 regardless of which
 half it sits in:
@@ -63,6 +63,16 @@ half it sits in:
     resurrected under dev/projects/codetank/game6_maze3d/ and relinked
     run-in-place at $4200 with state squeezed into $0E00-$0EFF.
 
+  Codetank_GAME7.rom (32 kB) — "CHESS" cartridge
+    Lower 16 kB: TMS_Chess (full bank, run-in-place from $4000) — a Mode-2
+                 graphical chess front-end for the shared engine
+                 (dev/lib/games/chess), links tms9918m2 + text_bitmap +
+                 the sprites_chess piece silhouettes, built with
+                 -D CODETANK_BUILD. Cursor-driven, vs AI or 2-player.
+    Upper 16 kB: blank $FF.
+    Jumper Lower → 4000R boots Chess. Also DevBench-runnable in-app
+                 (sketchs/tms9918/game_chess/.sketch.json).
+
 (Retired June 2026: the TEST cartridge — Clone deleted, Split kept only as the
  DevBench sketch demo_split — and the ORIGINAL GAME4/LightCorridor, whose
  source no longer exists; the GAME4 name was recycled July 2026 for the TMS
@@ -77,6 +87,7 @@ Usage:
     python3 tools/build_codetank_rom.py --rom=1    # only GAME1
     python3 tools/build_codetank_rom.py --rom=4    # only GAME4
     python3 tools/build_codetank_rom.py --rom=6    # only GAME6
+    python3 tools/build_codetank_rom.py --rom=7    # only GAME7 (Chess)
 """
 from __future__ import annotations
 import argparse
@@ -1057,7 +1068,7 @@ def main() -> int:
     ap.add_argument(
         "--rom", choices=[c[0] for c in CARTS] + ["all"],
         default="all",
-        help="Which CodeTank ROM to build (default: all — GAME1-6 + CODETANKDEV)",
+        help="Which CodeTank ROM to build (default: all — GAME1-7 + CODETANKDEV)",
     )
     args = ap.parse_args()
 
