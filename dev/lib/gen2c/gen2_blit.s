@@ -780,49 +780,57 @@ blit_apply:
 ; b_stride source bytes per row, b_h rows, b_y top scanline, b_src source,
 ; b_mode 0 SET / 1 CLEAR / 2 XOR. Y indexes src[j] AND dest[col+j] together
 ; (ptr1 already points at rowbase+col), so one counter drives the whole row.
-_gen2_blit7_run:
-@row:
-        ldy _gen2_b_y           ; ptr1 = rowbase(y) + col
-        lda _gen2_rowlo,y
+;
+; b_mode is LOOP-INVARIANT, so it is dispatched ONCE here to one of three
+; specialised row loops (macro-generated so they can't drift), instead of the
+; old inner loop's per-byte `ldx b_mode / beq / cpx #2 / beq` (~9 wasted cycles
+; on every byte). ~30% faster for every blit7 caller.
+.macro  BLIT7_LOOP m
+        .local  row, col, nyc
+row:    ldy     _gen2_b_y               ; ptr1 = rowbase(y) + col
+        lda     _gen2_rowlo,y
         clc
-        adc _gen2_b_col
-        sta ptr1
-        lda _gen2_rowhi,y
-        adc #0
-        sta ptr1+1
-        ldy #0                  ; Y = byte index within the row (src and dest)
-@col:
-        lda (_gen2_b_src),y
-        ldx _gen2_b_mode
-        beq @oset
-        cpx #2
-        beq @oxor
-        eor #$FF                ; CLEAR: dest &= ~src
-        and (ptr1),y
-        sta (ptr1),y
-        jmp @cnext
-@oset:
-        ora (ptr1),y            ; SET: dest |= src
-        sta (ptr1),y
-        jmp @cnext
-@oxor:
-        eor (ptr1),y            ; XOR: dest ^= src
-        sta (ptr1),y
-@cnext:
+        adc     _gen2_b_col
+        sta     ptr1
+        lda     _gen2_rowhi,y
+        adc     #0
+        sta     ptr1+1
+        ldy     #0                      ; Y = byte index (src[j] AND dest[col+j])
+col:    lda     (_gen2_b_src),y
+.if m = 1
+        eor     #$FF                    ; CLEAR: dest &= ~src
+        and     (ptr1),y
+.elseif m = 2
+        eor     (ptr1),y                ; XOR: dest ^= src
+.else
+        ora     (ptr1),y                ; SET: dest |= src
+.endif
+        sta     (ptr1),y
         iny
-        cpy _gen2_b_w
-        bne @col
-        clc                     ; src += stride ; y += 1 ; rows--
-        lda _gen2_b_src
-        adc _gen2_b_stride
-        sta _gen2_b_src
-        bcc @nyc
-        inc _gen2_b_src+1
-@nyc:
-        inc _gen2_b_y
-        dec _gen2_b_h
-        bne @row
+        cpy     _gen2_b_w
+        bne     col
+        clc                             ; src += stride ; y += 1 ; rows--
+        lda     _gen2_b_src
+        adc     _gen2_b_stride
+        sta     _gen2_b_src
+        bcc     nyc
+        inc     _gen2_b_src+1
+nyc:    inc     _gen2_b_y
+        dec     _gen2_b_h
+        bne     row
         rts
+.endmacro
+
+_gen2_blit7_run:
+        lda     _gen2_b_mode
+        beq     blit7_set               ; 0 = SET
+        cmp     #2
+        beq     blit7_xor               ; 2 = XOR
+        BLIT7_LOOP 1                     ; 1 = CLEAR (fall-through)
+blit7_set:
+        BLIT7_LOOP 0
+blit7_xor:
+        BLIT7_LOOP 2
 
 ; --- _gen2_xs_run : 100% asm entry for gen2_hgr_sprite_xor ----------------------
 ; The thin C wrapper only stores x/y/spr to zero page; everything the cc65

@@ -1,29 +1,26 @@
 /* ===========================================================================
  * t13_c_inflate_x2.c — micro-test: gen2c gen2_hgr_inflate_x2 ON-TARGET
  * ===========================================================================
- * GUARDS the cc65 `-Oirs` miscompile of gen2_hgr_inflate_x2 (dev/lib/gen2c/
- * gen2_hgr_x2.c). The optimiser used to drop the function's whole pixel-setting
- * body, so every x2 colour sprite inflated to ALL ZERO on the 6502 — while the
- * host build (and thus hgr_inflate_x2_smoke) stayed correct. gen2_hgr_x2.c now
- * guards the function with `#pragma optimize (off)`; this pin runs the REAL
- * compiled 6502 code and catches a regression the host pin can't see.
+ * GUARDS the cc65 `-Oirs` miscompile of gen2_hgr_inflate_x2. The C form
+ * (gen2_hgr_x2.c) miscompiles under -Oirs — the optimiser drops the whole pixel-
+ * setting body, so every x2 colour sprite inflated to ALL ZERO on the 6502 while
+ * the host build (and thus hgr_inflate_x2_smoke) stayed correct. The target now
+ * uses a hand-asm implementation (gen2_hgr_x2.s); this pin runs the REAL compiled
+ * 6502 code and catches a regression the host pin can't see.
  *
  * Inflates the 16x16 "dog" Fauna master to x2 WHITE (6 bytes x 32 rows) and
  * stamps a mailbox: a known lit row + the 16-bit sum of all 192 output bytes.
- * A miscompiled inflate zeroes the output -> sum 0x0000, lit row 00 -> mismatch.
+ * A broken inflate zeroes the output -> sum 0x0000, lit row 00 -> mismatch.
  * Expected values computed by sketchs/gen2/demo_sprite_animals/gen_x2.py.
- *
- * The pragma-off inflate is slow naive codegen (~2-4M instr for a 16x16), hence
- * the fat STEPS budget; headless still runs it in well under a second.
  *
  * POM1-LIB-MICRO-TEST
  * MODE: gen2
- * LIBS: gen2c/gen2_hgr_x2.c apple1c/apple1io.c apple1c/apple1io_asm.s
+ * LIBS: gen2c/gen2_hgr_x2.s apple1c/apple1io.c apple1c/apple1io_asm.s
  * CFG: ../cc65/apple1_gen2_c.cfg
  * PRESET: 11
  * LOAD: 6000
  * RUN: 6000
- * STEPS: 6000000
+ * STEPS: 500000
  * EXPECT: 1000 A5 40 07 70 01 5A 1A
  * ===========================================================================
  * Mailbox at $1000 (idle user RAM below the HIRES framebuffers; GEN2 C code +

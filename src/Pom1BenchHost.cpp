@@ -1032,7 +1032,8 @@ static std::string jsonQuoted(const std::string& s)
 //   - ld65 dead-strips unused .o files, so every runtime family is linked
 //     (any sketch may call anything; a Bench binary is throwaway).
 //   - gen2c is split into per-family modules (init/pixel/rect/text/sprites/
-//     hgr_x2/hgr_blit_x2/preshift/geom/lores) + the hot-path gen2_blit.s.
+//     hgr_blit_x2/preshift/geom/lores) + the hot-path asm gen2_blit.s and the
+//     hand-asm gen2_hgr_x2.s (x2 inflate; its .c miscompiles under -Oirs).
 //   - the shared apple1c text base rides along with GEN2 so C programs can
 //     also print to the WOZ terminal / read the keyboard.
 //   - the card-neutral gfx layer (dev/lib/gfx) is compiled FROM SOURCE so
@@ -1065,7 +1066,6 @@ static const char* kBenchCSpecGen2c = R"json({
     { "path": "/dev/lib/gen2c/gen2_rect.c", "name": "gen2_rect.c" },
     { "path": "/dev/lib/gen2c/gen2_text.c", "name": "gen2_text.c" },
     { "path": "/dev/lib/gen2c/gen2_sprites.c", "name": "gen2_sprites.c" },
-    { "path": "/dev/lib/gen2c/gen2_hgr_x2.c", "name": "gen2_hgr_x2.c" },
     { "path": "/dev/lib/gen2c/gen2_hgr_blit_x2.c", "name": "gen2_hgr_blit_x2.c" },
     { "path": "/dev/lib/gen2c/gen2_preshift.c", "name": "gen2_preshift.c" },
     { "path": "/dev/lib/gen2c/gen2_geom.c", "name": "gen2_geom.c" },
@@ -1084,6 +1084,7 @@ static const char* kBenchCSpecGen2c = R"json({
   ],
   "asmSources": [
     { "path": "/dev/lib/gen2c/gen2_blit.s", "name": "gen2_blit.s" },
+    { "path": "/dev/lib/gen2c/gen2_hgr_x2.s", "name": "gen2_hgr_x2.s" },
     { "path": "/dev/lib/apple1c/apple1io_asm.s", "name": "apple1io_asm.s" }
   ]
 }

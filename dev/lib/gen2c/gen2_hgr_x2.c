@@ -19,20 +19,16 @@
 
 #include "gen2.h"
 
-/* WHY THE #pragma (do not remove). cc65 2.18 `-Oirs` (the standard gen2c flag)
- * MISCOMPILES this function: whatever the loop shape, the optimizer decides the
- * inner pixel-setting body is dead and drops it — it computes the source-bit
- * test and then just does sx++, emitting ZERO stores into `out`, so every x2
- * sprite comes out blank ON-TARGET. The host build optimises differently and is
- * fine, so the host pin hgr_inflate_x2_smoke never caught it; the on-target pin
- * gen2_hgr_inflate_x2_target_smoke runs the real 6502 code and would. Confirmed
- * juillet 2026 by reading the -Oirs asm (both the original continue+inner-loop
- * form and a flat if/if rewrite lose the stores). Turning the optimiser OFF for
- * just this one function restores correct naive codegen; it is called once at
- * init (inflate-once), so the lost optimisation costs nothing. The loop below is
- * also written in the flattest style (no `continue`, no inner loop, pointer-
- * walked rows) so it stays correct even if the pragma is ever dropped. */
-#pragma optimize (push, off)
+/* HOST-ONLY reference implementation. The TARGET build uses the hand-written
+ * gen2_hgr_x2.s instead, because cc65 2.18 `-Oirs` (the standard gen2c flag)
+ * MISCOMPILES this C: whatever the loop shape, the optimizer decides the inner
+ * pixel-setting body is dead and drops it (computes the source-bit test, then
+ * just does sx++, emitting ZERO stores into `out`) — so every x2 sprite inflated
+ * to all-zero on the 6502. Confirmed juillet 2026 by reading the -Oirs asm. The
+ * asm is fast and immune; this C stays only to cross-check the algorithm on the
+ * host (hgr_inflate_x2_smoke vs HgrSpriteBlit::magnifyColor2x). `#if !__CC65__`
+ * keeps it out of every cc65 build so it can never clash with the .s symbol. */
+#if !defined(__CC65__)
 void gen2_hgr_inflate_x2(const unsigned char *mono, unsigned char wbytes,
                          unsigned char h, unsigned char color, unsigned char *out)
 {
@@ -80,4 +76,4 @@ void gen2_hgr_inflate_x2(const unsigned char *mono, unsigned char wbytes,
         top += (unsigned char)(dW << 1);                    /* skip both dbl rows  */
     }
 }
-#pragma optimize (pop)
+#endif  /* !__CC65__ */

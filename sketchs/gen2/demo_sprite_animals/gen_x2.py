@@ -77,7 +77,9 @@ def inflate_x2(mono, wbytes, h, color):
 # phase widens the 6-byte (42 px) sprite to 8 bytes (56 px). At runtime the demo
 # blits phase (x % 14) / 2 at byte column 2 * (x / 14).
 PS_PHASES = (0, 2, 4, 6, 8, 10, 12)   # even sub-pixel offsets, 2 px apart
-PS_DSTB   = 8                         # dest bytes/row after the widest shift
+# A 16px master inflates to x2 cols 0..31; the widest phase (+12) reaches col 43
+# -> byte 6, so 7 dest bytes/row suffice (byte 7 is always empty). Asserted below.
+PS_DSTB   = 7                         # dest bytes/row after the widest shift
 SRC_COLS  = WBYTES * 2 * 7            # 42 lit columns in the 6-byte x2 form
 
 
