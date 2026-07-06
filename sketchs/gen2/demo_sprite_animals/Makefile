@@ -25,8 +25,11 @@ CL65   := cl65
 CFLAGS := -t none -Oirs
 INCS   := $(GEN2C_INCS) $(APPLE1C_INCS) -I $(GFX)
 
-# CORE + TEXT (puts8) + SPRITES (blit7) + X2 (inflate_x2).
-SRCS := $(PROJECT).c $(GEN2C_ALL_SRCS) $(APPLE1C_SRCS)
+# Minimal link set: CORE (init/clear/page-flip/vbl + blit.s) + TEXT (puts8) +
+# SPRITES (blit7). The x2 sprites are baked into the .c (no runtime inflate), so
+# the x2/preshift/sprengine/geom/lores modules are NOT linked — that also keeps
+# the 7KB of pre-shift banks from squeezing BSS out of the $6000-$BEFF budget.
+SRCS := $(PROJECT).c $(GEN2C_CORE_SRCS) $(GEN2C_RECT_SRCS) $(GEN2C_TEXT_SRCS) $(GEN2C_SPRITES_SRCS) $(APPLE1C_SRCS)
 
 .PHONY: all clean
 .DEFAULT_GOAL := all
