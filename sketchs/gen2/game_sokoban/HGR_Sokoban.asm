@@ -70,6 +70,14 @@ title_scanline:  .res 1
 big_byte0:       .res 1
 big_byte1:       .res 1
 hud_base_sl:     .res 1
+; Dirty-tile queue: a move/undo records the (row,col) of every tile it
+; changes here (max 3 per move), then flush_dirty redraws them all inside
+; ONE V-blank — see draw_tile. Only live during gameplay, so it never
+; overlaps the title/HUD scratch above.
+dirty_n:         .res 1
+dirty_row:       .res 4
+dirty_col:       .res 4
+flush_ix:        .res 1
 
 .segment "STATEGRID"
 STATE_GRID: .res 240            ; abs,X addressing (20x12)
@@ -364,7 +372,7 @@ render_all:
         ADC draw_col
         TAX
         LDA STATE_GRID,X
-        JSR draw_tile_raw               ; bulk redraw: no per-tile V-blank wait
+        JSR draw_tile                   ; bulk redraw (level load = transition)
         INC draw_col
         LDA draw_col
         CMP #NCOLS
@@ -406,18 +414,64 @@ wait_vbl:
         RTS                             ; V-blank: safe to write the framebuffer
 
 ; =============================================
-; draw_tile: draw 14x16 tile at (draw_row, draw_col), synced to V-blank so
-; the write never tears. A single tile (16 scanlines, ~500 cycles) always
-; fits inside the ~4200-cycle V-blank window. Used by the interactive
-; move/undo paths; render_all uses draw_tile_raw to avoid one V-blank wait
-; per tile (240 tiles would stall a whole level-load).
+; queue_tile: append the current (draw_row, draw_col) to the dirty-tile
+; queue. A move/undo mutates the state grid AND queues each cell it touches
+; instead of drawing it on the spot; flush_dirty then redraws the whole
+; batch in one V-blank. Clobbers X.
+; =============================================
+queue_tile:
+        LDX dirty_n
+        LDA draw_row
+        STA dirty_row,X
+        LDA draw_col
+        STA dirty_col,X
+        INC dirty_n
+        RTS
+
+; =============================================
+; flush_dirty: redraw every queued tile from its FINAL state-grid value,
+; all inside a single V-blank so the move lands as one tear-free, fully
+; consistent frame. ~3 tiles x ~550 cycles fits the ~4200-cycle window.
+; Empties the queue. Clobbers A, X, Y (+ draw_tile scratch).
+; =============================================
+flush_dirty:
+        LDA dirty_n
+        BEQ @done                       ; nothing changed — no wait, no redraw
+        JSR wait_vbl                    ; ONE sync for the whole batch
+        LDA #$00
+        STA flush_ix
+@lp:
+        LDX flush_ix
+        LDA dirty_row,X
+        STA draw_row
+        LDA dirty_col,X
+        STA draw_col
+        ; A = STATE_GRID[draw_row*20 + draw_col]  (final state)
+        LDX draw_row
+        LDA row_x20,X
+        CLC
+        ADC draw_col
+        TAX
+        LDA STATE_GRID,X
+        JSR draw_tile                   ; raw draw — the batch is already in V-blank
+        INC flush_ix
+        LDA flush_ix
+        CMP dirty_n
+        BCC @lp
+@done:
+        LDA #$00
+        STA dirty_n
+        RTS
+
+; =============================================
+; draw_tile: draw one 14x16 tile at (draw_row, draw_col). NOT self-synced —
+; callers batch their writes inside a single V-blank instead (flush_dirty
+; for interactive moves, or one wait per full redraw), so a whole move's
+; worth of tiles updates in ONE frame: no tearing AND no half-updated
+; intermediate frame. render_all uses it raw for the level-load redraw.
 ; Input: A = tile type (0-6)
 ; =============================================
 draw_tile:
-        PHA                             ; wait_vbl clobbers A — save tile type
-        JSR wait_vbl
-        PLA
-draw_tile_raw:
         ; src = tile_bitmaps + A * 32 (A max = 6, A*32 max = 192, fits in byte)
         ASL A
         ASL A
@@ -490,6 +544,8 @@ draw_tile_raw:
 ; Updates state grid and redraws affected tiles (delta render)
 ; =============================================
 execute_move:
+        LDA #$00
+        STA dirty_n                     ; start the move's dirty-tile queue empty
         ; new = player + dir
         LDA player_row
         CLC
@@ -580,8 +636,7 @@ execute_move:
         STA draw_row
         LDA box_col
         STA draw_col
-        LDA STATE_GRID,X
-        JSR draw_tile
+        JSR queue_tile                  ; redrawn later in the batched flush
         ; Fall through to simple move to move player onto new_pos (where box was)
 
 @simple_move:
@@ -598,8 +653,7 @@ execute_move:
         STA draw_row
         LDA player_col
         STA draw_col
-        LDA STATE_GRID,X
-        JSR draw_tile
+        JSR queue_tile
 
         ; --- Enter new player cell ---
         LDX new_row
@@ -633,8 +687,7 @@ execute_move:
         STA draw_row
         LDA new_col
         STA draw_col
-        LDA STATE_GRID,X
-        JSR draw_tile
+        JSR queue_tile
 
         ; Save undo state BEFORE overwriting player_row/col
         LDA player_row
@@ -655,6 +708,7 @@ execute_move:
         LDA #$FF
         STA moves
 @no_sat:
+        JSR flush_dirty                 ; all changed tiles in ONE tear-free frame
         JSR draw_hud
 
         LDA #$01
@@ -675,6 +729,8 @@ execute_undo:
         BNE @do_undo
         RTS
 @do_undo:
+        LDA #$00
+        STA dirty_n                     ; start the undo's dirty-tile queue empty
         ; If last move was a push, the box sits at (player + dir) where
         ; dir = player - prev_player. So box = 2*player - prev_player.
         LDA had_push
@@ -703,8 +759,7 @@ execute_undo:
         STA draw_row
         LDA box_col
         STA draw_col
-        LDA STATE_GRID,X
-        JSR draw_tile
+        JSR queue_tile
 @skip_box:
 
         ; Remove player from its current cell
@@ -728,8 +783,7 @@ execute_undo:
         STA draw_row
         LDA player_col
         STA draw_col
-        LDA STATE_GRID,X
-        JSR draw_tile
+        JSR queue_tile
 
         ; Put player back at prev_player
         LDX prev_player_row
@@ -744,8 +798,7 @@ execute_undo:
         STA draw_row
         LDA prev_player_col
         STA draw_col
-        LDA STATE_GRID,X
-        JSR draw_tile
+        JSR queue_tile
 
         ; Restore player coords
         LDA prev_player_row
@@ -758,6 +811,7 @@ execute_undo:
         BEQ @no_dec
         DEC moves
 @no_dec:
+        JSR flush_dirty                 ; all changed tiles in ONE tear-free frame
         JSR draw_hud
 
         ; Single-step undo only: clear the undo latch.

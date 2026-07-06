@@ -1,0 +1,7 @@
+{
+  "profile": "gen2",
+  "language": "asm",
+  "cfg": "sketchs/gen2/game_chess/apple1_gen2_chess.cfg",
+  "extraAsm": ["dev/lib/games/chess/chess_engine.asm"],
+  "defines": ["CHESS_SMART_EVAL"]
+}
