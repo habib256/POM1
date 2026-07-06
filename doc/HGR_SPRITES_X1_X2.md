@@ -6,6 +6,11 @@ implémentation**. Réfs code : `src/hgrsprite/` (éditeur + `HgrSpriteBlit`),
 `tools/build_hgr_sprites.py` (générateur). Prérequis couleur HGR :
 [`sketchs/doc/Programming_GEN2.md`](../sketchs/doc/Programming_GEN2.md).
 
+> **Ce document = le FORMAT.** Pour la **pratique de l'animation** (mouvement 2 px
+> lisse via pré-shifts, rendu incrémental, trim RAM, modèle de coût & framerate,
+> pièges cc65/DevBench, taxonomie des renderers), voir le guide compagnon
+> [`sketchs/doc/HGR-SPRITE_BEST_PRACTICES.md`](../sketchs/doc/HGR-SPRITE_BEST_PRACTICES.md).
+
 ## 0. Invariant fondateur
 
 L'Apple 1 / GEN2 n'a **aucun sprite matériel** : un « sprite » est un rectangle
