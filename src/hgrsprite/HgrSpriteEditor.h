@@ -156,7 +156,9 @@ private:
     void renderFileBrowser();
 
     void renderTopBar();
-    void renderToolPanel(const std::vector<uint8_t>& memory);
+    void renderLeftBar();                                   // vertical tools + colour bar
+    void renderPlacementPanel(const std::vector<uint8_t>& memory);  // stamp position / grab
+    void renderFilesAndLibrary();                           // Load/Save + dev sprite library
     void renderCanvas();
     void renderColorCanvas();   // read-only NTSC colour view beside the B&W canvas
     void handleShortcuts();

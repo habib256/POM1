@@ -724,31 +724,37 @@ void HgrSpriteEditor::renderTopBar()
     ImGui::SliderInt("Zoom", &zoom_, 6, 32);
 }
 
-void HgrSpriteEditor::renderToolPanel(const std::vector<uint8_t>& memory)
+// Vertical tool bar down the left edge of the window: drawing tools stacked
+// over the sprite colour swatches (the whole-sprite colour, active at ×2).
+void HgrSpriteEditor::renderLeftBar()
 {
     const char* toolIcon[3] = { ICON_FA_PENCIL, ICON_FA_ERASER, ICON_FA_FILL_DRIP };
     const char* toolName[3] = { "Pencil (B)", "Eraser (E)", "Fill (G)" };
+    ImGui::TextUnformatted("Tools");
+    const float btnW = ImGui::GetContentRegionAvail().x;   // full-width toolbar buttons
     for (int i = 0; i < 3; ++i) {
         const bool sel = (static_cast<int>(tool) == i);
         if (sel) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-        if (ImGui::Button(toolIcon[i])) tool = static_cast<Tool>(i);
+        if (ImGui::Button(toolIcon[i], ImVec2(btnW, 0))) tool = static_cast<Tool>(i);
         if (sel) ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", toolName[i]);
-        ImGui::SameLine();
     }
-    ImGui::NewLine();
+
+    ImGui::Separator();
 
     // The sprite is MONOCHROME: a single chosen colour for the whole shape, and
     // it only reads as colour at ×2 (two adjacent ×1 dots make white — see the
     // colour view). So the palette picks the sprite's one colour and is active
     // only in ×2 mode; the shape itself is drawn in black & white.
-    ImGui::TextUnformatted("Sprite colour (\xC3\x97""2)");
+    ImGui::TextUnformatted("Colour");
+    ImGui::TextDisabled("(\xC3\x97""2)");
     ImGui::BeginDisabled(!mag2_);
+    const float swW = ImGui::GetContentRegionAvail().x;    // full-width swatches
     for (int i = 1; i < 6; ++i) {
         ImGui::PushID(2000 + i);
         const bool sel = (static_cast<int>(color_) == i);
         if (ImGui::ColorButton(kColorName[i], ImGui::ColorConvertU32ToFloat4(kSwatch[i]),
-                               ImGuiColorEditFlags_NoTooltip, ImVec2(22, 22)))
+                               ImGuiColorEditFlags_NoTooltip, ImVec2(swW, 22)))
             color_ = static_cast<HgrColor>(i);
         if (sel) {
             ImVec2 mn = ImGui::GetItemRectMin(), mx = ImGui::GetItemRectMax();
@@ -756,15 +762,16 @@ void HgrSpriteEditor::renderToolPanel(const std::vector<uint8_t>& memory)
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", kColorName[i]);
         ImGui::PopID();
-        ImGui::SameLine();
     }
-    ImGui::NewLine();
     ImGui::EndDisabled();
     if (!mag2_)
-        ImGui::TextDisabled("(enable \xC3\x97""2 to colour the sprite)");
-    ImGui::Separator();
+        ImGui::TextDisabled("enable \xC3\x97""2");
+}
 
-    // Placement on the live page.
+// Placement on the live page (stamp position / magnify / stamp / grab). Sits to
+// the right of the canvases; tools + colours now live in the left bar.
+void HgrSpriteEditor::renderPlacementPanel(const std::vector<uint8_t>& memory)
+{
     ImGui::TextUnformatted("Stamp position");
     int pageIdx = page2_ ? 1 : 0;
     ImGui::SetNextItemWidth(150);
@@ -784,12 +791,17 @@ void HgrSpriteEditor::renderToolPanel(const std::vector<uint8_t>& memory)
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Copy the W\xC3\x97H rectangle at Byte X / Row Y from the live page\n"
                           "into the canvas (inverse of Stamp \xE2\x80\x94 grab from screen, edit as sprite)");
+}
 
-    ImGui::Separator();
+// Bottom strip: file actions (Load/Save/PNG/ca65) over the built-in dev sprite
+// library browser.
+void HgrSpriteEditor::renderFilesAndLibrary()
+{
     if (ImGui::Button("Load")) openFileBrowser(FileAction::LoadSprite);
     ImGui::SameLine(); if (ImGui::Button("Save")) openFileBrowser(FileAction::SaveSprite);
     ImGui::SameLine(); if (ImGui::Button("PNG"))  openFileBrowser(FileAction::SavePng);
     // ca65 export: label + Export ASM (round-trips through the dev-library parser).
+    ImGui::SameLine();
     ImGui::SetNextItemWidth(110);
     ImGui::InputText("##asmname", asmName_, sizeof(asmName_));
     if (ImGui::IsItemHovered())
@@ -799,6 +811,8 @@ void HgrSpriteEditor::renderToolPanel(const std::vector<uint8_t>& memory)
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Write the sprite as a ca65 .byte block\n"
                           "(the dev sprite library format \xE2\x80\x94 loadable back by POM1)");
+
+    ImGui::Separator();
 
     // Built-in GEN2 HGR sprite library (dev/lib/gen2/sprites).
     if (ImGui::CollapsingHeader("Dev sprite library", ImGuiTreeNodeFlags_DefaultOpen))
@@ -946,12 +960,29 @@ void HgrSpriteEditor::render(const std::vector<uint8_t>& memory)
     renderTopBar();
     ImGui::Separator();
 
-    // Dual display: the editable black-&-white shape canvas on the left, a
-    // read-only NTSC colour view of the same sprite on the right, so the colour
-    // bascules are legible while editing.
+    // Vertical tool bar (drawing tools + colour swatches) down the left edge.
+    const float leftBarW = 66.0f;
+    ImGui::BeginChild("##hgrleftbar", ImVec2(leftBarW, 0), true);
+    renderLeftBar();
+    ImGui::EndChild();
+
+    ImGui::SameLine();
+
+    // Everything to the right of the tool bar. Left column: the canvases with
+    // the files + dev-library strip directly beneath them. Right: placement panel.
+    ImGui::BeginChild("##hgrmain", ImVec2(0, 0));
+
     const float oneCanvas = wpx() * static_cast<float>(zoom_);
-    const float canvasW = oneCanvas * 2.0f + 40.0f;
-    ImGui::BeginChild("##hgrcanvaspane", ImVec2(canvasW, 0), false,
+    const float leftColW = std::max(oneCanvas * 2.0f + 40.0f, 420.0f);
+
+    ImGui::BeginChild("##hgrleftcol", ImVec2(leftColW, 0));
+
+    // Canvas band sized to its content so the files strip sits just below the
+    // sprites; wide sprites scroll horizontally inside it.
+    const float canvasBandH = ImGui::GetTextLineHeightWithSpacing()
+                            + hRows_ * static_cast<float>(zoom_)
+                            + ImGui::GetStyle().ScrollbarSize + 8.0f;
+    ImGui::BeginChild("##hgrcanvaspane", ImVec2(0, canvasBandH), false,
                       ImGuiWindowFlags_HorizontalScrollbar);
     ImGui::BeginGroup();
     ImGui::TextUnformatted("Black & white (shape)");
@@ -961,10 +992,21 @@ void HgrSpriteEditor::render(const std::vector<uint8_t>& memory)
     renderColorCanvas();
     ImGui::EndChild();
 
-    ImGui::SameLine();
-    ImGui::BeginChild("##hgrsidepane", ImVec2(0, 0));
-    renderToolPanel(memory);
+    ImGui::Separator();
+
+    // Files + built-in dev sprite library, right under the sprites (scrolls itself).
+    ImGui::BeginChild("##hgrbottompane", ImVec2(0, 0));
+    renderFilesAndLibrary();
     ImGui::EndChild();
+
+    ImGui::EndChild();   // left column
+
+    ImGui::SameLine();
+    ImGui::BeginChild("##hgrplacepane", ImVec2(0, 0));
+    renderPlacementPanel(memory);
+    ImGui::EndChild();
+
+    ImGui::EndChild();   // main
 
     renderFileBrowser();
 
