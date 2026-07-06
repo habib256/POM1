@@ -9,5 +9,5 @@
     "dev/lib/tms9918/text_bitmap.asm",
     "dev/lib/tms9918/sprites_chess.asm"
   ],
-  "defines": ["CODETANK_BUILD"]
+  "defines": ["CODETANK_BUILD", "CHESS_SMART_EVAL"]
 }

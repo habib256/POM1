@@ -46,17 +46,20 @@ WHITE_INK = $0F         ; white pieces
 .ifndef BLACK_INK
 BLACK_INK = $01         ; black pieces
 .endif
+; Both squares are mid-dark saturated colours so BOTH the white ($0F) and
+; black ($01) line-art pieces stay high-contrast on either square (a light
+; green square washed the white pieces out).
 .ifndef LIGHT_SQ
-LIGHT_SQ  = $03         ; light square (light green)
-.endif
+LIGHT_SQ  = $06         ; light square (dark red -- the brighter colour, so the
+.endif                  ;   white queen lands on it: "queen on her colour")
 .ifndef DARK_SQ
-DARK_SQ   = $0C         ; dark square  (dark green)
+DARK_SQ   = $04         ; dark square  (dark blue -- the darker colour)
 .endif
 .ifndef CUR_COL
 CUR_COL   = $0B         ; cursor highlight (light yellow)
 .endif
 .ifndef SEL_COL
-SEL_COL   = $0D         ; selected-source highlight (magenta)
+SEL_COL   = $07         ; selected-source highlight (cyan)
 .endif
 
 ; --- board geometry: 24x24-px squares (3x3 TMS cells), 192x192 board -------
@@ -68,6 +71,7 @@ PIECE_OFF = 4           ; (24-16)/2 -- centre the 16x16 piece in its square
 RMARGIN_X = 208         ; right panel column (1-cell gap off the board): moves
 MLIST_TOP = 2           ; first right-panel row used by the move list
 MLIST_BOT = 24          ; one past the last usable row
+BLINK_HI  = $44         ; cursor blink half-period (poll-loop iters, hi byte) ~0.3s
 
 ; ---------------------------------------------------------------------------
 ; Zero page. tmp/tmp2 MUST be $00/$01 (engine + tms9918m2 + text_bitmap all
@@ -95,7 +99,7 @@ base_hi:   .res 1       ; $07
 .segment "CODE"
 .import init_board, apply_user_move, ai_play_move, game_status, in_check
 .import piece_at, undo_last_move
-.import side_to_move, mv_from, mv_to, mv_promo, ai_strategy
+.import side_to_move, mv_from, mv_to, mv_promo, ai_strategy, ai_rng
 .import init_vdp_g2, calc_pix_addr, vdp_set_write
 .import chess_pawn_pat, chess_knight_pat, chess_bishop_pat
 .import chess_rook_pat, chess_queen_pat, chess_king_pat
@@ -138,8 +142,27 @@ save_x2:    .res 1
 save_y2:    .res 1
 move_row:   .res 1      ; next right-panel row for the move list
 cursor_on:  .res 1      ; 1 = show the selection cursor (human turn only)
+ccn:        .res 1      ; normal cell colour for the square being drawn
+cellcolor2: .res 1      ; corner-cell colour (cursor highlight when blinking)
+blink_vis:  .res 1      ; cursor blink phase: 1 = corners shown, 0 = hidden
+blink_lo:   .res 1      ; blink timer (poll-loop iterations)
+blink_hi:   .res 1
 turn_ai:    .res 1      ; 1 = side to move is the AI (this loop iteration)
 printed_side: .res 1    ; last side we printed an Apple-1 turn line for ($FF=none)
+; move-list entry being printed + a 2-deep history so a wrapped column can
+; re-print the last two moves at the top before continuing.
+ml_side:    .res 1
+ml_from:    .res 1
+ml_to:      .res 1
+cur_side:   .res 1      ; side char for the move currently being logged
+p1_side:    .res 1      ; most recent logged move
+p1_from:    .res 1
+p1_to:      .res 1
+p2_side:    .res 1      ; the move before that
+p2_from:    .res 1
+p2_to:      .res 1
+hist_n:     .res 1      ; how many history entries exist (0..2)
+seed_acc:   .res 1      ; free-running counter -> AI RNG entropy (key timing)
 cbuf:       .res 72     ; 3x3 cells x 8 bytes = one composed square's patterns
 
 ; ===========================================================================
@@ -154,6 +177,8 @@ main:
         STA movecount
         LDA #2
         STA move_row            ; move list starts at right-panel row 2
+        LDA #0
+        STA hist_n
         LDA #$FF
         STA sel_sq
         LDA #$14                ; cursor starts on e2 (file 4, rank 1)
@@ -164,6 +189,8 @@ main:
         STA printed_side
         LDA #0
         STA cursor_on           ; no cursor during the startup menu
+        LDA #1
+        STA blink_vis
         JSR init_vdp_g2
         JSR draw_board
         JSR draw_coords         ; rank numbers (left of the board)
@@ -178,19 +205,47 @@ game_loop:
         LDA turn_ai             ; cursor visible only on a human turn
         EOR #1
         STA cursor_on
-        LDA cur_sq
-        STA dsq
-        JSR draw_square         ; reflect cursor visibility on the cursor square
         LDA turn_ai
         BEQ human_turn
+        ; AI's turn: erase the cursor corners so nothing blinks while it thinks
+        LDA #0
+        STA blink_vis
+        LDA cur_sq
+        STA dsq
+        JSR draw_square
         JMP ai_turn
 
 ; ---------------------------------------------------------------------------
-; Human turn: block on a key, dispatch.
+; Human turn: show the blinking cursor, poll the keyboard (non-blocking so the
+;   cursor keeps blinking), then dispatch the key.
 ; ---------------------------------------------------------------------------
 human_turn:
-        JSR wait_key
-        CMP #'I'                ; I = up
+        LDA #1
+        STA blink_vis           ; cursor visible on entry
+        LDA cur_sq
+        STA dsq
+        JSR draw_square
+        LDA #0
+        STA blink_lo
+        STA blink_hi
+@wait:  JSR poll_key
+        BNE @got                ; a key is ready
+        INC blink_lo            ; else tick the blink timer
+        BNE @wait
+        INC blink_hi
+        LDA blink_hi
+        CMP #BLINK_HI
+        BCC @wait
+        LDA #0                  ; half-period elapsed -> toggle cursor
+        STA blink_hi
+        LDA blink_vis
+        EOR #1
+        STA blink_vis
+        LDA cur_sq
+        STA dsq
+        JSR draw_square
+        JMP @wait
+@got:   CMP #'I'                ; I = up
         BNE @n1
         JSR cur_up
         JMP game_loop
@@ -265,9 +320,11 @@ do_confirm:
         STA mv_promo            ; auto-queen on promotion
         JSR apply_user_move
         BCS do_deselect         ; illegal -> just cancel selection
-        ; legal: clear selection, full board redraw (capture/castle/e.p.)
+        ; legal: clear selection + cursor (the human's turn is over), full
+        ; board redraw (capture/castle/e.p.)
         LDA #0
         STA sel_active
+        STA cursor_on           ; hide the cursor immediately after the move
         LDA #$FF
         STA sel_sq
         JSR draw_board
@@ -324,6 +381,7 @@ new_game:
         STA printed_side
         LDA #0
         STA cursor_on
+        STA hist_n
         JSR draw_board
         JSR clear_movelist      ; blank the right panel + reset move_row
         JSR a1_choose_mode      ; re-present + re-select mode for the new game
@@ -442,12 +500,14 @@ cur_right:
         ADC #1
         STA cur_sq
 cur_moved:
+        LDA #1
+        STA blink_vis           ; keep the cursor visible right after a move
         LDA old_cur
         STA dsq
-        JSR draw_square
+        JSR draw_square         ; erase corners on the vacated square
         LDA cur_sq
         STA dsq
-        JSR draw_square
+        JSR draw_square         ; draw corners on the new square
 cur_ret:
         RTS
 
@@ -522,20 +582,13 @@ draw_square:
 @dark:  LDA #DARK_SQ
 @havebg:
         STA cellbg
-        ; highlight overrides (selected beats cursor)
+        ; The selected-source square gets a full SEL_COL background (persistent).
+        ; The cursor is a SMALLER, BLINKING corner highlight applied per-cell in
+        ; set_corner_color / cellcol_for below (not a full-square recolour).
         LDA dsq
         CMP sel_sq
-        BNE @notsel
-        LDA #SEL_COL
-        STA cellbg
-        JMP @bgdone
-@notsel:
-        LDA cursor_on
-        BEQ @bgdone             ; cursor hidden (AI turn / menu) -> no highlight
-        LDA dsq
-        CMP cur_sq
         BNE @bgdone
-        LDA #CUR_COL
+        LDA #SEL_COL
         STA cellbg
 @bgdone:
         ; piece?
@@ -551,7 +604,8 @@ draw_square:
         ASL
         ASL
         ORA cellbg
-        STA cellcolor
+        STA ccn                 ; normal cell colour
+        JSR set_corner_color
         JMP draw_empty9
 @occupied:
         TAY                     ; A = type 1..6
@@ -571,9 +625,49 @@ draw_square:
         ASL
         ASL
         ORA cellbg
-        STA cellcolor
+        STA ccn                 ; normal cell colour
         JSR compose_piece
+        JSR set_corner_color
         JMP draw_cells9
+
+; set_corner_color: from ccn, compute cellcolor2 = the colour for the 4 CORNER
+;   cells. Normally = ccn; but when this square holds the (visible, blinking)
+;   cursor, the corners use CUR_COL as background -> small blinking corner marks.
+set_corner_color:
+        LDA ccn
+        STA cellcolor2
+        LDA cursor_on
+        BEQ @scc_done
+        LDA blink_vis
+        BEQ @scc_done
+        LDA dsq
+        CMP cur_sq
+        BNE @scc_done
+        LDA ccn                 ; corner bg -> CUR_COL, keep fg
+        AND #$F0
+        ORA #CUR_COL
+        STA cellcolor2
+@scc_done:
+        RTS
+
+; cellcol_for: X = cell index (0..8). Sets cellcolor: the 4 corner cells
+;   (0,2,6,8) get cellcolor2, the rest get ccn. Clobbers A.
+cellcol_for:
+        CPX #0
+        BEQ @cf_corner
+        CPX #2
+        BEQ @cf_corner
+        CPX #6
+        BEQ @cf_corner
+        CPX #8
+        BEQ @cf_corner
+        LDA ccn
+        STA cellcolor
+        RTS
+@cf_corner:
+        LDA cellcolor2
+        STA cellcolor
+        RTS
 
 ; ---------------------------------------------------------------------------
 ; compose_piece: rasterise the 16x16 piece at base_lo/hi into cbuf (3x3 cells),
@@ -677,6 +771,7 @@ draw_cells9:
         ADC #0
         STA mptr_hi
         STX save_x
+        JSR cellcol_for         ; per-cell colour (corner cursor highlight)
         JSR blit_cell
         LDX save_x
         INX
@@ -700,6 +795,7 @@ draw_empty9:
         LDA #>zeros8
         STA mptr_hi
         STX save_x
+        JSR cellcol_for         ; per-cell colour (corner cursor highlight)
         JSR blit_cell
         LDX save_x
         INX
@@ -761,42 +857,54 @@ poll_key:                       ; A = key, or 0 if none pending
 ; Apple-1 character-screen output: startup presentation + keyboard menu +
 ; game-over announcement (the moves/board live on the TMS card).
 ; ---------------------------------------------------------------------------
-; cout: print A (7-bit) to the Apple-1 display via the Woz DSP handshake
-;   (bit 7 = busy). Bounded wait so it can never hang. Clobbers A,X; keeps Y.
+; cout: print A (7-bit) to the Apple-1 display via the Woz DSP handshake.
+;   Waits for the display-ready flag (bit 7 = 0) exactly like the Woz Monitor's
+;   ECHO -- a bounded wait dropped characters when the display was still busy.
+;   Uses only A, so X and Y are preserved (puts_a1 relies on Y).
 cout:
         ORA #$80                ; the display wants bit 7 set
-        LDX #$60
 @w:     BIT DSP
-        BPL @rdy                ; bit 7 = 0 -> ready
-        DEX
-        BNE @w
-@rdy:   STA DSP
+        BMI @w                  ; bit 7 = 1 -> display busy, keep waiting
+        STA DSP
         RTS
 
 ; puts_a1: print the NUL-terminated string at (sptr) to the Apple-1 display.
+;   Increments the 16-bit pointer per char (a Y index caps at 256 bytes -- the
+;   splash is longer, which silently truncated it mid-string).
 puts_a1:
         LDY #0
 @l:     LDA (sptr_lo),Y
         BEQ @done
-        JSR cout                ; preserves Y
-        INY
+        JSR cout                ; clobbers A only; leaves sptr intact
+        INC sptr_lo
         BNE @l
+        INC sptr_hi
+        JMP @l
 @done:  RTS
 
 ; a1_choose_mode: present the game + read the play mode (1..4) from the
 ;   keyboard. Blocks until a valid key; sets play_mode + echoes the label.
+;   While waiting it free-runs a counter (seed_acc) and folds it into the AI's
+;   LFSR seed (ai_rng) -- human key timing makes each AvA game diverge instead
+;   of always replaying the fixed $AC-seeded game.
 a1_choose_mode:
         LDA #<a1_splash
         STA sptr_lo
         LDA #>a1_splash
         STA sptr_hi
         JSR puts_a1
+        LDA #0
+        STA seed_acc
 @ask:   LDA #<a1_modeprompt
         STA sptr_lo
         LDA #>a1_modeprompt
         STA sptr_hi
         JSR puts_a1
-        JSR wait_key
+@spin:  INC seed_acc            ; free-running while we wait for a key
+        LDA KBDCR
+        BPL @spin
+        LDA KBD
+        AND #$7F
         CMP #'1'
         BCC @ask
         CMP #'5'
@@ -804,6 +912,12 @@ a1_choose_mode:
         SEC
         SBC #'1'                ; '1'..'4' -> 0..3
         STA play_mode
+        LDA ai_rng              ; fold the timing entropy into the AI RNG
+        EOR seed_acc
+        BNE @seeded
+        LDA #$AC                ; never leave it 0 (the LFSR would jam)
+@seeded:
+        STA ai_rng
         LDX play_mode           ; echo the chosen mode label
         LDA a1_modelbl_lo,X
         STA sptr_lo
@@ -852,7 +966,16 @@ a1_turn_status:
         LDX #>a1_bl_think
 @pr:    STA sptr_lo
         STX sptr_hi
-        JMP puts_a1
+        JSR puts_a1
+        ; announce a check on the side-to-move's king (mate/stalemate are
+        ; announced separately at game over by a1_result).
+        JSR in_check            ; A nonzero if side_to_move's king is attacked
+        BEQ @done
+        LDA #<a1_check
+        STA sptr_lo
+        LDA #>a1_check
+        STA sptr_hi
+        JSR puts_a1
 @done:  RTS
 
 ; ---------------------------------------------------------------------------
@@ -915,9 +1038,9 @@ print_sq_tms:
 .endif
         RTS
 
-; print_move_tms: log the last move (mv_from,mv_to) in the right panel as
-;   "s FROMTO" (s = the side that just moved). Advances/wraps move_row.
-print_move_tms:
+; print_ml_entry: print "s FROMTO" for (ml_side,ml_from,ml_to) at the current
+;   move_row of the right panel, then advance move_row.
+print_ml_entry:
 .ifdef CODETANK_BUILD
         LDA #WHITE_INK
         STA pen_color
@@ -928,23 +1051,73 @@ print_move_tms:
         ASL
         ASL                     ; row*8
         STA pix_y
-        LDA side_to_move        ; already toggled -> the OTHER side just moved
-        BNE @wm
-        LDA #'B'
-        JMP @ps
-@wm:    LDA #'W'
-@ps:    JSR putc_tms
+        LDA ml_side
+        JSR putc_tms
         LDA #' '
         JSR putc_tms
-        LDA mv_from
+        LDA ml_from
         JSR print_sq_tms
-        LDA mv_to
+        LDA ml_to
         JSR print_sq_tms
         INC move_row
-        LDA move_row
+.endif
+        RTS
+
+; print_move_tms: log the move just made (mv_from,mv_to) in the right panel.
+;   When the column is full, blank it and re-print the previous TWO moves at
+;   the top (continuity) before logging the new one. Keeps a 2-deep history.
+print_move_tms:
+.ifdef CODETANK_BUILD
+        LDA side_to_move        ; side that just moved (side_to_move is toggled)
+        BNE @wm
+        LDA #'B'
+        JMP @sv
+@wm:    LDA #'W'
+@sv:    STA cur_side
+        LDA move_row            ; full? -> wrap with the last two moves on top
         CMP #MLIST_BOT
-        BCC @done
-        JSR clear_movelist      ; column full -> blank + restart at top
+        BCC @room
+        JSR clear_movelist      ; blank + move_row = MLIST_TOP
+        LDA hist_n
+        CMP #2
+        BCC @room               ; fewer than 2 history entries -> nothing to echo
+        LDA p2_side
+        STA ml_side
+        LDA p2_from
+        STA ml_from
+        LDA p2_to
+        STA ml_to
+        JSR print_ml_entry
+        LDA p1_side
+        STA ml_side
+        LDA p1_from
+        STA ml_from
+        LDA p1_to
+        STA ml_to
+        JSR print_ml_entry
+@room:  LDA cur_side            ; log the current move
+        STA ml_side
+        LDA mv_from
+        STA ml_from
+        LDA mv_to
+        STA ml_to
+        JSR print_ml_entry
+        LDA p1_side             ; shift history: p2 <- p1 ; p1 <- current
+        STA p2_side
+        LDA p1_from
+        STA p2_from
+        LDA p1_to
+        STA p2_to
+        LDA cur_side
+        STA p1_side
+        LDA mv_from
+        STA p1_from
+        LDA mv_to
+        STA p1_to
+        LDA hist_n              ; hist_n = min(hist_n + 1, 2)
+        CMP #2
+        BCS @done
+        INC hist_n
 @done:
 .endif
         RTS
@@ -1047,16 +1220,23 @@ piece_ptrs_hi:
 ; --- Apple-1 screen strings (DSP output; no font needed, always present) ----
 ; $0D = CR (cout sets bit 7 -> $8D). Lines <= 40 chars (Apple-1 screen width).
 a1_splash:
-        .byte "APPLE-1 CHESS  V0.6", $0D
+        .byte $0D                ; break off the monitor's "4000R" echo line
+        .byte "APPLE-1 CHESS  V0.7", $0D
         .byte "BY VERHILLE ARNAUD, 2026", $0D
         .byte $0D
-        .byte "PLAY ON THE TMS9918 SCREEN:", $0D
+        .byte "BOARD + PLAY ON THE TMS SCREEN", $0D
         .byte " IJKL = MOVE THE CURSOR", $0D
-        .byte " SPACE = SELECT SQUARE", $0D
-        .byte " M MODE  N NEW  U UNDO  P AI", $0D
+        .byte " SPACE = SELECT / CONFIRM", $0D
+        .byte " M=MODE N=NEW U=UNDO P=AI LVL", $0D
+        .byte $0D
+        .byte "CHOOSE A GAME MODE:", $0D
+        .byte " 1 = TWO HUMAN PLAYERS", $0D
+        .byte " 2 = YOU (WHITE) VS COMPUTER", $0D
+        .byte " 3 = YOU (BLACK) VS COMPUTER", $0D
+        .byte " 4 = COMPUTER VS COMPUTER", $0D
         .byte $0D, 0
 a1_modeprompt:
-        .byte "MODE? 1=HVH 2=WAI 3=BAI 4=AVA: ", 0
+        .byte "YOUR CHOICE (1-4)? ", 0
 a1_pressn:
         .byte $0D, "PRESS N FOR A NEW GAME", $0D, 0
 
@@ -1064,11 +1244,12 @@ a1_wt_play:  .byte "WHITE TO PLAY - YOUR MOVE", $0D, 0
 a1_bl_play:  .byte "BLACK TO PLAY - YOUR MOVE", $0D, 0
 a1_wt_think: .byte "WHITE IS THINKING...", $0D, 0
 a1_bl_think: .byte "BLACK IS THINKING...", $0D, 0
+a1_check:    .byte " *** CHECK! ***", $0D, 0
 
-a1_mode_hvh: .byte $0D, " MODE: HUMAN VS HUMAN", $0D, 0
-a1_mode_wai: .byte $0D, " MODE: HUMAN(W) VS AI(B)", $0D, 0
-a1_mode_bai: .byte $0D, " MODE: AI(W) VS HUMAN(B)", $0D, 0
-a1_mode_ava: .byte $0D, " MODE: AI(W) VS AI(B)", $0D, 0
+a1_mode_hvh: .byte $0D, "MODE: TWO HUMAN PLAYERS", $0D, 0
+a1_mode_wai: .byte $0D, "MODE: YOU (WHITE) VS COMPUTER", $0D, 0
+a1_mode_bai: .byte $0D, "MODE: YOU (BLACK) VS COMPUTER", $0D, 0
+a1_mode_ava: .byte $0D, "MODE: COMPUTER VS COMPUTER", $0D, 0
 a1_modelbl_lo: .byte <a1_mode_hvh, <a1_mode_wai, <a1_mode_bai, <a1_mode_ava
 a1_modelbl_hi: .byte >a1_mode_hvh, >a1_mode_wai, >a1_mode_bai, >a1_mode_ava
 

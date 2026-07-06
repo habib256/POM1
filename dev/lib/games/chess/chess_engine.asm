@@ -132,6 +132,15 @@ reply_found:            .res 1      ; 1 once a legal opponent reply has been see
 rscan_x:                .res 1      ; inner reply from-square iterator
 rscan_y:                .res 1      ; inner reply to-square iterator
 
+.ifdef CHESS_SMART_EVAL
+; Enriched-evaluation scratch (evaluate_positional pre-pass): pawn counts per
+; file per colour + bishop counts, for doubled/isolated/open-file/bishop-pair.
+wpf:                    .res 8      ; white pawns per file 0..7
+bpf:                    .res 8      ; black pawns per file 0..7
+wbishop:                .res 1
+bbishop:                .res 1
+.endif
+
 ; --- Compact undo (16 bytes; relies on unmake_move) ---
 ; After a successful user move, we copy the saved_* slots (which the engine
 ; uses for single-level undo) into user_saved_* so they survive subsequent
@@ -1674,50 +1683,145 @@ cdist:
 ; can never outweigh material or a tactic — it just gives the search a sense of
 ; progress (develop, centralise, push passed pawns), which is what stops a won
 ; endgame stalling at the move cap.
+; v0.7 piece-square logic (still a tie-break only). Per piece type:
+;   PAWN   : 2*advance + cdist[file]        (push + hold central files)
+;   KNIGHT : 2*centr                        (loves the centre, hates the rim)
+;   BISHOP : centr
+;   ROOK   : +4 on the 7th rank, else 0
+;   QUEEN  : centr>>1                        (mild; don't roam out early)
+;   KING   : -centr                          (SAFETY: central king is exposed)
+; Scratch: tmp=piece byte, tmp2=working value, ce_target=rank, ce_dir=advance,
+;   ce_dir_ptr=cdist[file], ce_dirs_left=cdist[rank]. These ce_* are re-set by
+;   the reply search (best_reply_eval) before any later use, so clobbering is safe.
+; Enriched-eval bonuses (pawn-equivalent-ish; small so material still dominates
+; -- evaluate_positional stays a TIE-BREAK). Tuned modest to avoid 8-bit overflow.
+EP_BISHOP_PAIR = 4
+EP_DOUBLED_PEN = 2
+EP_ISO_PEN     = 2
+EP_ROOK_OPEN   = 3
+EP_SHIELD_BON  = 2
+
 evaluate_positional:
+.ifdef CHESS_SMART_EVAL
+        ; --- pre-pass: pawn counts per file (per colour) + bishop counts ---
+        LDX #7
+        LDA #$00
+@ep_clr:
+        STA wpf,X
+        STA bpf,X
+        DEX
+        BPL @ep_clr
+        STA wbishop
+        STA bbishop
+        LDX #$00
+@ep_pp:
+        TXA
+        AND #OFFBOARD_MASK
+        BNE @ep_ppn
+        LDA board,X
+        BEQ @ep_ppn
+        STA tmp
+        AND #PIECE_MASK
+        CMP #PIECE_PAWN
+        BEQ @ep_ppawn
+        CMP #PIECE_BISHOP
+        BNE @ep_ppn
+        BIT tmp                 ; bishop: bump colour count
+        BMI @ep_pbb
+        INC wbishop
+        JMP @ep_ppn
+@ep_pbb:
+        INC bbishop
+        JMP @ep_ppn
+@ep_ppawn:
+        TXA
+        AND #$07
+        TAY                     ; file
+        BIT tmp
+        BMI @ep_pbp
+        LDA wpf,Y               ; (INC abs,Y is not a 6502 mode) -> load/inc/store
+        CLC
+        ADC #1
+        STA wpf,Y
+        JMP @ep_ppn
+@ep_pbp:
+        LDA bpf,Y
+        CLC
+        ADC #1
+        STA bpf,Y
+@ep_ppn:
+        INX
+        BNE @ep_pp
+        ; --- main pass ---
         LDA #$00
         STA score_lo            ; signed accumulator (our - their)
         LDX #$00
 @ep_loop:
         TXA
         AND #OFFBOARD_MASK
-        BNE @ep_next
+        BNE @ep_skip
         LDA board,X
-        BEQ @ep_next
+        BNE @ep_piece
+@ep_skip:
+        JMP @ep_next            ; trampoline (per-type code below is > 127 B)
+@ep_piece:
         STA tmp                 ; tmp = piece byte
-        ; centralisation = cdist[rank] + cdist[file]; keep rank for pawn reuse
+        ; --- geometry: rank, cdist[rank], cdist[file], centr, advance ---
         TXA
         LSR A
         LSR A
         LSR A
         LSR A
         AND #$07
-        STA ce_target           ; ce_target = rank
+        STA ce_target           ; rank
         TAY
         LDA cdist,Y
-        STA tmp2                ; cdist[rank]
+        STA ce_dirs_left        ; cdist[rank]
         TXA
         AND #$07
         TAY
         LDA cdist,Y
+        STA ce_dir_ptr          ; cdist[file]
         CLC
-        ADC tmp2
-        STA tmp2                ; centralisation (0..6)
-        ; pawns: + 2 * advance toward promotion (white=rank, black=7-rank)
+        ADC ce_dirs_left
+        STA tmp2                ; centr = cdist[rank]+cdist[file] (0..6)
+        LDA ce_target           ; advance toward promotion
+        BIT tmp                 ; N = colour bit (black -> set)
+        BPL @ep_advw
+        EOR #$07                ; black: 7 - rank
+@ep_advw:
+        STA ce_dir              ; adv (0..7)
+        ; --- per-piece-type value -> A ---
         LDA tmp
         AND #PIECE_MASK
+        CMP #PIECE_KNIGHT
+        BEQ @ep_knight
         CMP #PIECE_PAWN
-        BNE @ep_have
-        LDA ce_target           ; rank
-        BIT tmp                 ; N = colour bit (black -> set)
-        BPL @ep_padd            ; white: advance = rank
-        EOR #$07                ; black: advance = 7 - rank
-@ep_padd:
-        ASL A                   ; weight advancement x2
-        CLC
-        ADC tmp2
-        STA tmp2
-@ep_have:
+        BEQ @ep_jpawn
+        CMP #PIECE_KING
+        BEQ @ep_jking
+        CMP #PIECE_ROOK
+        BEQ @ep_jrook
+        CMP #PIECE_QUEEN
+        BEQ @ep_queen
+        LDA tmp2                ; bishop: centr
+        JMP @ep_val
+@ep_knight:
+        LDA tmp2                ; 2*centr
+        ASL A
+        JMP @ep_val
+@ep_queen:
+        LDA tmp2                ; centr>>1
+        LSR A
+        JMP @ep_val
+@ep_jpawn:
+        JMP @ep_pawn
+@ep_jking:
+        JMP @ep_king
+@ep_jrook:
+        JMP @ep_rook
+@ep_val:
+        STA tmp2                ; per-piece value (signed; king is negative)
         ; Accumulate signed: + for our pieces, - for theirs.
         LDA tmp
         AND #COLOR_MASK
@@ -1735,9 +1839,261 @@ evaluate_positional:
         STA score_lo
 @ep_next:
         INX
-        BNE @ep_loop
+        BEQ @ep_done
+        JMP @ep_loop            ; trampoline (loop body > 127 B)
+@ep_done:
+        ; --- bishop pair (our - their) ---
+        LDA wbishop
+        CMP #2
+        BCC @ep_nowp
+        LDA side_to_move        ; white pair: + if white is us, else -
+        BNE @ep_wp_them
+        CLC
+        LDA score_lo
+        ADC #EP_BISHOP_PAIR
+        STA score_lo
+        JMP @ep_nowp
+@ep_wp_them:
+        SEC
+        LDA score_lo
+        SBC #EP_BISHOP_PAIR
+        STA score_lo
+@ep_nowp:
+        LDA bbishop
+        CMP #2
+        BCC @ep_nobp
+        LDA side_to_move        ; black pair: + if black is us, else -
+        BEQ @ep_bp_them
+        CLC
+        LDA score_lo
+        ADC #EP_BISHOP_PAIR
+        STA score_lo
+        JMP @ep_nobp
+@ep_bp_them:
+        SEC
+        LDA score_lo
+        SBC #EP_BISHOP_PAIR
+        STA score_lo
+@ep_nobp:
         LDA score_lo
         RTS
+
+; --- per-piece cases with structural terms (out-of-line; reached via JMP) ---
+@ep_pawn:
+        LDA ce_dir              ; base = 2*advance + cdist[file]
+        ASL A
+        CLC
+        ADC ce_dir_ptr
+        STA tmp2
+        TXA
+        AND #$07
+        STA ce_target           ; file (rank no longer needed)
+        TAY
+        BIT tmp                 ; colour -> pick wpf/bpf; ce_dirs_left = 0 white/1 black
+        BMI @ep_pblk
+        LDA wpf,Y
+        LDY #$00
+        JMP @ep_pgot
+@ep_pblk:
+        LDA bpf,Y
+        LDY #$01
+@ep_pgot:
+        STY ce_dirs_left        ; colour flag
+        CMP #2                  ; doubled?
+        BCC @ep_pnodbl
+        SEC
+        LDA tmp2
+        SBC #EP_DOUBLED_PEN
+        STA tmp2
+@ep_pnodbl:
+        LDY ce_target           ; isolated? no same-colour pawn on file-1/file+1
+        DEY
+        BMI @ep_pleft0
+        LDA ce_dirs_left
+        BNE @ep_pilb1
+        LDA wpf,Y
+        JMP @ep_pilc1
+@ep_pilb1:
+        LDA bpf,Y
+@ep_pilc1:
+        BNE @ep_pnoiso
+@ep_pleft0:
+        LDY ce_target
+        INY
+        CPY #8
+        BCS @ep_piso
+        LDA ce_dirs_left
+        BNE @ep_pilb2
+        LDA wpf,Y
+        JMP @ep_pilc2
+@ep_pilb2:
+        LDA bpf,Y
+@ep_pilc2:
+        BNE @ep_pnoiso
+@ep_piso:
+        SEC
+        LDA tmp2
+        SBC #EP_ISO_PEN
+        STA tmp2
+@ep_pnoiso:
+        LDA tmp2
+        JMP @ep_val
+@ep_rook:
+        LDA ce_dir              ; 7th-rank rook (advance == 6) -> +4
+        CMP #6
+        BNE @ep_rook0
+        LDA #4
+        JMP @ep_rookf
+@ep_rook0:
+        LDA #$00
+@ep_rookf:
+        STA tmp2
+        TXA                     ; open file? no same-colour pawn on this file
+        AND #$07
+        TAY
+        BIT tmp
+        BMI @ep_rkb
+        LDA wpf,Y
+        JMP @ep_rkc
+@ep_rkb:
+        LDA bpf,Y
+@ep_rkc:
+        BNE @ep_rknoopen
+        CLC
+        LDA tmp2
+        ADC #EP_ROOK_OPEN
+        STA tmp2
+@ep_rknoopen:
+        LDA tmp2
+        JMP @ep_val
+@ep_king:
+        LDA tmp2                ; base = -centr (central king is unsafe)
+        EOR #$FF
+        CLC
+        ADC #1
+        STA tmp2
+        LDA #$00                ; pawn shield: count same-colour pawns in front
+        STA ce_dirs_left
+        LDA tmp                 ; ce_match = our pawn code (colour | PIECE_PAWN)
+        AND #COLOR_MASK
+        ORA #PIECE_PAWN
+        STA ce_match
+        BIT tmp                 ; colour -> forward offsets
+        BMI @ep_kshb
+        TXA
+        CLC
+        ADC #$0F
+        JSR @ep_ksht
+        TXA
+        CLC
+        ADC #$10
+        JSR @ep_ksht
+        TXA
+        CLC
+        ADC #$11
+        JSR @ep_ksht
+        JMP @ep_kshd
+@ep_kshb:
+        TXA
+        CLC
+        ADC #$EF
+        JSR @ep_ksht
+        TXA
+        CLC
+        ADC #$F0
+        JSR @ep_ksht
+        TXA
+        CLC
+        ADC #$F1
+        JSR @ep_ksht
+@ep_kshd:
+        LDA ce_dirs_left        ; += SHIELD_BON(=2) * shieldcount
+        ASL A
+        CLC
+        ADC tmp2
+        STA tmp2
+        JMP @ep_val
+; @ep_ksht: A = candidate shield square. If on-board and holds our pawn, count++.
+;   Preserves X (the king square); uses A, Y.
+@ep_ksht:
+        PHA
+        AND #$88
+        BNE @ep_kstno
+        PLA
+        TAY
+        LDA board,Y
+        CMP ce_match
+        BNE @ep_kstd
+        INC ce_dirs_left
+        RTS
+@ep_kstno:
+        PLA
+@ep_kstd:
+        RTS
+.else
+        ; --- legacy positional (default): centralisation + pawn advance, used
+        ;     as a tie-break only. Compact, so tight variants (text) still fit. ---
+        LDA #$00
+        STA score_lo
+        LDX #$00
+@epo_loop:
+        TXA
+        AND #OFFBOARD_MASK
+        BNE @epo_next
+        LDA board,X
+        BEQ @epo_next
+        STA tmp
+        TXA
+        LSR A
+        LSR A
+        LSR A
+        LSR A
+        AND #$07
+        STA ce_target
+        TAY
+        LDA cdist,Y
+        STA tmp2
+        TXA
+        AND #$07
+        TAY
+        LDA cdist,Y
+        CLC
+        ADC tmp2
+        STA tmp2
+        LDA tmp
+        AND #PIECE_MASK
+        CMP #PIECE_PAWN
+        BNE @epo_have
+        LDA ce_target
+        BIT tmp
+        BPL @epo_padd
+        EOR #$07
+@epo_padd:
+        ASL A
+        CLC
+        ADC tmp2
+        STA tmp2
+@epo_have:
+        LDA tmp
+        AND #COLOR_MASK
+        CMP side_to_move
+        BNE @epo_their
+        CLC
+        LDA score_lo
+        ADC tmp2
+        STA score_lo
+        JMP @epo_next
+@epo_their:
+        SEC
+        LDA score_lo
+        SBC tmp2
+        STA score_lo
+@epo_next:
+        INX
+        BNE @epo_loop
+        LDA score_lo
+        RTS
+.endif
 
 ; ============================================================================
 ; ai_rng_step -- advance the 8-bit LFSR. Period 255 (Galois, taps $1D).
@@ -1809,6 +2165,7 @@ pop_saved:
         STA saved_castle_rook_to
         RTS
 
+
 ; best_reply_eval — side_to_move is the OPPONENT and the board reflects our
 ; move. Scan the opponent's legal replies; return A = the opponent's best
 ; evaluate_material (their perspective = their material - ours): the most they
@@ -1824,12 +2181,15 @@ best_reply_eval:
         LDX rscan_x
         TXA
         AND #OFFBOARD_MASK
-        BNE @rnextf
+        BNE @rskipf
         LDA board,X
-        BEQ @rnextf
+        BEQ @rskipf
         AND #COLOR_MASK
         CMP side_to_move
-        BNE @rnextf             ; only the side-to-move's (opponent's) pieces
+        BEQ @rprocf             ; only the side-to-move's (opponent's) pieces
+@rskipf:
+        JMP @rnextf             ; trampoline (inner loop below is > 127 B)
+@rprocf:
         STX mv_from
         LDA board,X
         STA ce_piece
@@ -1854,12 +2214,22 @@ best_reply_eval:
         STA mv_flags
         JSR is_pseudo_legal
         BCS @rnextt
+.ifdef CHESS_SMART_EVAL
+        LDY mv_to               ; is this reply a capture? (piece on the target)
+        LDA board,Y
+        STA see_victim          ; 0 = quiet reply
+.endif
         JSR make_move
         JSR in_check            ; opponent's own king left in check?
         BNE @rillegal
         LDA #$01
         STA reply_found
         JSR evaluate_material   ; A = opp - us (opponent perspective)
+.ifdef CHESS_SMART_EVAL
+        STA see_value           ; quiescence (SEE-1): credit our recapture of a
+        JSR qsee_adjust         ;   defended capture, so exchanges aren't miscounted
+        LDA see_value
+.endif
         TAX                     ; preserve candidate
         CLC
         ADC #$80
@@ -1877,10 +2247,13 @@ best_reply_eval:
         JSR unmake_move
 @rnextt:
         INC rscan_y
-        BNE @rtloop
+        BEQ @rnextf
+        JMP @rtloop              ; trampoline (loop body > 127 B)
 @rnextf:
         INC rscan_x
-        BNE @rfloop
+        BEQ @rdonescan
+        JMP @rfloop              ; trampoline
+@rdonescan:
         LDA reply_found
         BNE @rhave
         ; No normal reply — a castle could be the opponent's only legal move.
@@ -1906,6 +2279,35 @@ best_reply_eval:
         RTS
 @rhave:
         LDA best_reply
+        RTS
+
+; qsee_adjust — quiescence (SEE-1). The opponent's reply is MADE on the board;
+;   see_victim = the piece it captured (0 if quiet), see_value = the static eval.
+;   If the capture landed on a square WE defend we recapture, so the opponent
+;   loses the piece it moved there: subtract that piece's value from see_value.
+;   Resolves the horizon effect on exchanges with no nested search. Uses
+;   is_attacked_runner (which leaves rscan_*/mv_*/best_reply untouched).
+qsee_adjust:
+.ifdef CHESS_SMART_EVAL
+        LDA see_victim
+        BEQ @qdone              ; quiet reply -> nothing to recapture
+        LDA side_to_move        ; attacker_color = OUR colour (opponent ^ black)
+        EOR #COLOR_BLACK
+        STA attacker_color
+        LDA mv_to
+        STA attacked_sq
+        JSR is_attacked_runner  ; A = 1 if we defend mv_to (can recapture)
+        BEQ @qdone
+        LDY mv_to
+        LDA board,Y
+        AND #PIECE_MASK
+        TAY
+        SEC
+        LDA see_value
+        SBC mat_simple,Y        ; opponent loses its recaptured piece
+        STA see_value
+@qdone:
+.endif
         RTS
 
 ; score_move — the move in mv_* is currently MADE on the board (our king already
@@ -1995,6 +2397,20 @@ consider_move:
         PLA
         RTS
 
+; jitter_pos — add a small random 0..3 to cand_pos (the positional tie-break)
+;   for game-to-game / move-to-move variety. Material and the search score still
+;   dominate, so this only shuffles near-equal quiet moves -- never a blunder.
+;   No-op unless CHESS_SMART_EVAL (keeps the default/text engine deterministic).
+jitter_pos:
+.ifdef CHESS_SMART_EVAL
+        JSR ai_rng_step         ; advance the LFSR (seeded from key timing)
+        AND #$07                ; 0..7 -- enough to reshuffle near-equal quiet
+        CLC                     ;   moves, still << a pawn so tactics dominate
+        ADC cand_pos
+        STA cand_pos
+.endif
+        RTS
+
 ; ============================================================================
 ; ai_play_move — pick + apply the best move for side_to_move (depth per
 ; ai_strategy). CC if a move was made, CS if none (caller treats as mate/stale).
@@ -2056,6 +2472,7 @@ ai_play_move:
         BNE @bad                ; illegal — discard
         JSR evaluate_positional ; board = after our move; tie-break score
         STA cand_pos
+        JSR jitter_pos          ; small random jitter for game variety
         JSR score_move          ; A = material score (1- or 2-ply)
         JSR consider_move       ; maybe adopt as best
         JSR unmake_move
@@ -2101,6 +2518,7 @@ ai_play_move:
 @castle_consider:
         JSR evaluate_positional ; board = after the castle
         STA cand_pos
+        JSR jitter_pos
         JSR score_move
         CLC
         ADC #CASTLE_BONUS

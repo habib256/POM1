@@ -29,6 +29,10 @@
 ; --- Apple 1 I/O ---
 .include "apple1.inc"
 
+; --- GEN2 soft-switch equates (GEN2_PAGE1 for the V-blank poll below).
+;     Include-guarded, so the trailing gen2_init.asm re-include is a no-op. ---
+.include "gen2.inc"
+
 ; --- Game constants ---
 NCOLS   = 20
 NROWS   = 12
@@ -360,7 +364,7 @@ render_all:
         ADC draw_col
         TAX
         LDA STATE_GRID,X
-        JSR draw_tile
+        JSR draw_tile_raw               ; bulk redraw: no per-tile V-blank wait
         INC draw_col
         LDA draw_col
         CMP #NCOLS
@@ -372,10 +376,48 @@ render_all:
         RTS
 
 ; =============================================
-; draw_tile: draw 14x16 tile at (draw_row, draw_col)
+; wait_vbl: block until shortly after V-blank begins, so the framebuffer
+; writes that follow land while the beam is off-screen — this is what
+; kills the shearing when a tile/HUD is redrawn mid-frame.
+;
+; Polls HST0 (bit 7) at GEN2_PAGE1. The read toggles the addressed switch,
+; but the game already runs on page 1, so polling PAGE1 is a no-op on the
+; latch. OR of two back-to-back samples (bus accesses land ~4 cycles apart)
+; masks the 3-cycle colour-burst notch that would otherwise read 0 inside
+; V-blank. A blank that outlives an H-blank's 25 cycles is the V-blank.
+; Clobbers A only. Coarse copy of gen2_waitvbl — full derivation in
+; dev/lib/gen2/gen2_sync.asm + doc/GEN2_RELEASE.md.
+; =============================================
+wait_vbl:
+@live:  LDA GEN2_PAGE1                  ; wait for live scan (HST0 = 0)
+        ORA GEN2_PAGE1
+        BMI @live
+@blank: LDA GEN2_PAGE1                  ; wait for the next blanking edge
+        ORA GEN2_PAGE1
+        BPL @blank
+        ; 26 idle cycles: an H-blank (25 cycles) is over by now, so a
+        ; sample that still reads 1 can only be the V-blank.
+        .repeat 13
+        NOP
+        .endrep
+        LDA GEN2_PAGE1
+        ORA GEN2_PAGE1
+        BPL @live                       ; was just an H-blank — scan next line
+        RTS                             ; V-blank: safe to write the framebuffer
+
+; =============================================
+; draw_tile: draw 14x16 tile at (draw_row, draw_col), synced to V-blank so
+; the write never tears. A single tile (16 scanlines, ~500 cycles) always
+; fits inside the ~4200-cycle V-blank window. Used by the interactive
+; move/undo paths; render_all uses draw_tile_raw to avoid one V-blank wait
+; per tile (240 tiles would stall a whole level-load).
 ; Input: A = tile type (0-6)
 ; =============================================
 draw_tile:
+        PHA                             ; wait_vbl clobbers A — save tile type
+        JSR wait_vbl
+        PLA
+draw_tile_raw:
         ; src = tile_bitmaps + A * 32 (A max = 6, A*32 max = 192, fits in byte)
         ASL A
         ASL A
@@ -741,6 +783,11 @@ HUD_G_CL = 12
 HUD_G_L  = 22
 
 draw_hud:
+        ; Sync once: the top HUD (scanline 0) is written first, inside the
+        ; V-blank, before the beam relights line 0; the bottom HUD (scanline
+        ; 176) is written far ahead of the beam. One wait covers both — no
+        ; per-cell wait (10 cells would cost 10 frames).
+        JSR wait_vbl
         ; --- Top-left: MV:NNN at scanline 0 ---
         LDA #$00
         STA hud_base_sl

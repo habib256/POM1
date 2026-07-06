@@ -938,7 +938,7 @@ def build_game7_lower_bank() -> bytes:
         [CHESS_TMS_ASM, CHESS_ENGINE_ASM, CHESS_M2_ASM,
          CHESS_TEXT_ASM, CHESS_SPRITES_ASM],
         CHESS_CODETANK_CFG, "G7_Chess", HALF_SIZE,
-        extra_ca65_args=["-D", "CODETANK_BUILD"])
+        extra_ca65_args=["-D", "CODETANK_BUILD", "-D", "CHESS_SMART_EVAL"])
     bank = bytearray(b"\xFF" * HALF_SIZE)
     slot(bank, 0x0000, chess, HALF_SIZE, "Chess     ($4000-$7FFF)")
     return bytes(bank)
