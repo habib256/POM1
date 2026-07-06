@@ -19,45 +19,65 @@
 
 #include "gen2.h"
 
+/* WHY THE #pragma (do not remove). cc65 2.18 `-Oirs` (the standard gen2c flag)
+ * MISCOMPILES this function: whatever the loop shape, the optimizer decides the
+ * inner pixel-setting body is dead and drops it — it computes the source-bit
+ * test and then just does sx++, emitting ZERO stores into `out`, so every x2
+ * sprite comes out blank ON-TARGET. The host build optimises differently and is
+ * fine, so the host pin hgr_inflate_x2_smoke never caught it; the on-target pin
+ * gen2_hgr_inflate_x2_target_smoke runs the real 6502 code and would. Confirmed
+ * juillet 2026 by reading the -Oirs asm (both the original continue+inner-loop
+ * form and a flat if/if rewrite lose the stores). Turning the optimiser OFF for
+ * just this one function restores correct naive codegen; it is called once at
+ * init (inflate-once), so the lost optimisation costs nothing. The loop below is
+ * also written in the flattest style (no `continue`, no inner loop, pointer-
+ * walked rows) so it stays correct even if the pragma is ever dropped. */
+#pragma optimize (push, off)
 void gen2_hgr_inflate_x2(const unsigned char *mono, unsigned char wbytes,
                          unsigned char h, unsigned char color, unsigned char *out)
 {
-    const unsigned char *monoRow;
     unsigned char dW  = (unsigned char)(wbytes << 1);       /* doubled byte width  */
-    unsigned char dH  = (unsigned char)(h << 1);            /* doubled row count   */
     unsigned char wpx = (unsigned char)(wbytes * 7u);       /* wbytes<=36 -> 8-bit */
-    unsigned char litLeft, litRight, p1;
-    unsigned char sy, sx, k, dc, byte, bit;
-    unsigned      rowbase, n, i;
+    unsigned char litLeft, litRight, palbit;
+    unsigned char sy, sx, dc, byte, bits;
+    unsigned char *top, *bot;                               /* the two dbl rows    */
+    const unsigned char *m;
+    unsigned n, i;
 
     /* Decode the single hue into (which dot of the pair, palette bit) — the exact
      * table magnifyColor2x uses. Black lights neither -> all-zero output (for a
      * black silhouette inflate GEN2_X2_WHITE and blit GEN2_CLEAR). */
     litLeft  = (unsigned char)(color == GEN2_X2_VIOLET || color == GEN2_X2_BLUE   || color == GEN2_X2_WHITE);
     litRight = (unsigned char)(color == GEN2_X2_GREEN  || color == GEN2_X2_ORANGE || color == GEN2_X2_WHITE);
-    p1       = (unsigned char)(color == GEN2_X2_BLUE   || color == GEN2_X2_ORANGE);
+    palbit   = (color == GEN2_X2_BLUE || color == GEN2_X2_ORANGE) ? 0x80u : 0x00u;
 
-    n = (unsigned)dW * dH;
+    n = (unsigned)dW * (unsigned)(h << 1);
     for (i = 0; i < n; ++i) out[i] = 0u;
 
+    m   = mono;
+    top = out;                                              /* top doubled row     */
     for (sy = 0; sy < h; ++sy) {
-        monoRow = mono + (unsigned)sy * wbytes;             /* 16-bit ptr, once/row */
-        rowbase = (unsigned)(sy + sy) * dW;                 /* top doubled-row base */
+        bot = top + dW;                                     /* bottom doubled row  */
         for (sx = 0; sx < wpx; ++sx) {
-            if ((monoRow[sx / 7u] & (unsigned char)(1u << (sx % 7u))) == 0u) continue;
-            for (k = 0; k < 2u; ++k) {
-                if ((k == 0u && !litLeft) || (k == 1u && !litRight)) continue;
-                dc   = (unsigned char)((sx << 1) + k);      /* doubled column       */
-                byte = (unsigned char)(dc / 7u);
-                bit  = (unsigned char)(dc % 7u);
-                /* Both doubled rows: top = rowbase, bottom = rowbase + dW. */
-                out[rowbase + byte]      |= (unsigned char)(1u << bit);
-                out[rowbase + dW + byte] |= (unsigned char)(1u << bit);
-                if (p1) {
-                    out[rowbase + byte]      |= 0x80u;
-                    out[rowbase + dW + byte] |= 0x80u;
+            if (m[sx / 7u] & (unsigned char)(1u << (sx % 7u))) {
+                if (litLeft) {                              /* left dot: dc = sx*2 */
+                    dc   = (unsigned char)(sx << 1);
+                    byte = (unsigned char)(dc / 7u);
+                    bits = (unsigned char)((1u << (dc % 7u)) | palbit);
+                    top[byte] |= bits;
+                    bot[byte] |= bits;
+                }
+                if (litRight) {                             /* right dot: dc = sx*2+1 */
+                    dc   = (unsigned char)((sx << 1) + 1u);
+                    byte = (unsigned char)(dc / 7u);
+                    bits = (unsigned char)((1u << (dc % 7u)) | palbit);
+                    top[byte] |= bits;
+                    bot[byte] |= bits;
                 }
             }
         }
+        m   += wbytes;
+        top += (unsigned char)(dW << 1);                    /* skip both dbl rows  */
     }
 }
+#pragma optimize (pop)
