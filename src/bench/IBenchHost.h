@@ -75,6 +75,23 @@ public:
     virtual const std::vector<std::string>& languageHints() const { static const std::vector<std::string> e; return e; }
     virtual const std::vector<std::string>& machineHints()  const { static const std::vector<std::string> e; return e; }
     virtual int targetFor(int /*language*/, int /*machine*/) const { return -1; }
+    // For a BASIC "inject" target that also has a native-compile variant, return
+    // that variant's target index; -1 when the target has no native sibling (or
+    // the platform can't compile natively — e.g. WASM). Lets the New dialog / Mode
+    // switcher offer an "Inject | Compile" toggle without the portable module
+    // knowing anything about card-specific compilers. Default: none.
+    virtual int nativeSiblingOf(int /*target*/) const { return -1; }
+
+    // ---- Cold/warm start toggle (interpreter targets, e.g. BASIC) ----
+    // Some targets run a resident interpreter that can be re-entered two ways: a
+    // COLD start that reinitialises everything (wiping any program typed at the
+    // REPL) or a WARM start that keeps the resident program. warmStartApplies()
+    // tells CodeBench whether to show the "Warm" toggle for a target; warmStart()/
+    // setWarmStart() carry the toggle state the host consults on the next Verify/
+    // Run. Default: no such toggle (compiled targets have nothing to preserve).
+    virtual bool warmStartApplies(int /*target*/) const { return false; }
+    virtual bool warmStart() const { return false; }
+    virtual void setWarmStart(bool /*on*/) {}
 
     // ---- Machine + build (the emulator-specific work) ----
     // Apply the machine (preset/cards) a target runs on + adopt its source mode.

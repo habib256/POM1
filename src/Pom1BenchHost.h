@@ -27,6 +27,10 @@ public:
     const std::vector<std::string>&    languageHints() const override;
     const std::vector<std::string>&    machineHints()  const override;
     int         targetFor(int language, int machine) const override;
+    int         nativeSiblingOf(int target)  const override;
+    bool        warmStartApplies(int target) const override;   // true for BASIC (mode 4)
+    bool        warmStart() const override { return benchWarmStart_; }
+    void        setWarmStart(bool on) override { benchWarmStart_ = on; }
     int         defaultTargetIndex()         const override;
     std::string starterSketch(int target)    const override;
 
@@ -155,6 +159,19 @@ private:
     // paths, cleared when any non-LOGO target disturbs the machine). Gates the
     // Bench's interactive REPL input (replActive/replSend).
     bool logoReplActive_ = false;
+
+    // Cold/warm BASIC start toggle (CodeBench "Warm" checkbox; default cold). When
+    // set, injectBasic re-enters the resident interpreter via its WARM entry
+    // (E2B3R / 6003R) and skips the hard-reset + ROM reload, so a program already
+    // typed at the REPL survives a Verify/Run. Off = the classic cold start
+    // (E000R / 6000R). See warmStartApplies()/injectBasic().
+    bool benchWarmStart_ = false;
+    // kP1Targets[] index of the BASIC interpreter currently cold-started + resident
+    // (-1 = none). Warm start is only honoured when it matches the target being
+    // injected — a warm re-entry into a never-cold-started (or wrong) interpreter
+    // would jump into unmapped RAM, so injectBasic falls back to cold otherwise.
+    // Cleared whenever a non-BASIC build reprograms the machine.
+    int  benchBasicResidentIdx_ = -1;
 };
 
 #endif // POM1_BENCH_HOST_H

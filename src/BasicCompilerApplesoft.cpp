@@ -40,7 +40,7 @@ bool isKeyword(const std::string& s)
     static const std::set<std::string> kw = {
         "REM","HGR","HGR2","HCOLOR","HPLOT","TO","FOR","NEXT","STEP","IF","THEN",
         "GOTO","GOSUB","RETURN","END","STOP","LET","PRINT","AND","OR","NOT","ABS",
-        "INT","SQR","SIN","COS",
+        "INT","SQR","SIN","COS","ATN","RND",
         // lo-res graphics + error trapping (native, GEN2)
         "GR","GR2","COLOR","PLOT","HLIN","VLIN","TEXT","HOME","AT","ONERR",
         "POKE",
@@ -350,13 +350,25 @@ bool Codegen::primary(int d)
     // SQR(x) / SIN(x) / COS(x): transcendental, float only (the auto-precision pass
     // forces the float phase whenever any appears, so fp is always true here). COS
     // links fp_cos (cos(x) = sin(x + pi/2), built on the same Taylor core as fp_sin).
-    if (isKw("SQR") || isKw("SIN") || isKw("COS")) {
-        const char* rt = isKw("SQR") ? "fp_sqrt" : isKw("SIN") ? "fp_sin" : "fp_cos";
-        const char* nm = isKw("SQR") ? "SQR" : isKw("SIN") ? "SIN" : "COS";
+    if (isKw("SQR") || isKw("SIN") || isKw("COS") || isKw("ATN")) {
+        const char* rt = isKw("SQR") ? "fp_sqrt" : isKw("SIN") ? "fp_sin"
+                       : isKw("COS") ? "fp_cos"  : "fp_atn";
+        const char* nm = isKw("SQR") ? "SQR" : isKw("SIN") ? "SIN"
+                       : isKw("COS") ? "COS" : "ATN";
         adv(); if (cur().t != T::LParen) return fail(std::string(nm) + " expects '('"); adv();
         if (!expr(d)) return false; if (cur().t != T::RParen) return fail("expected ')'"); adv();
         if (!fp) return fail(std::string(nm) + " requires the floating-point phase");
         copyV("FA", Td); emit(std::string("\tjsr ") + rt); copyV(Td, "FA");
+        return true; }
+    // RND(x): a fresh pseudo-random float in [0,1). Applesoft's RND(0)=repeat-last
+    // and RND(<0)=reseed are not modelled -- the argument is evaluated (so any side
+    // effect / paren syntax is honoured) then discarded, and fp_rand returns a new
+    // value on every call. Float phase only (auto-precision forces it via RND).
+    if (isKw("RND")) {
+        adv(); if (cur().t != T::LParen) return fail("RND expects '('"); adv();
+        if (!expr(d)) return false; if (cur().t != T::RParen) return fail("expected ')'"); adv();
+        if (!fp) return fail("RND requires the floating-point phase");
+        emit("\tjsr fp_rand"); copyV(Td, "FA");
         return true; }
     return fail("expected a value");
 }
@@ -1048,7 +1060,8 @@ Result compile(const std::string& source, Card card, FpMode mode)
         for (const Line& L : lines)
             for (const Tok& t : L.toks)
                 if ((t.t == T::Num && t.isFloat) || (t.t == T::Op && t.s == "/") ||
-                    (t.t == T::Kw && (t.s == "SQR" || t.s == "SIN" || t.s == "COS"))) floatMode = true;
+                    (t.t == T::Kw && (t.s == "SQR" || t.s == "SIN" || t.s == "COS" ||
+                                      t.s == "ATN" || t.s == "RND"))) floatMode = true;
     }
 
     Codegen g; g.card = card; g.fp = floatMode;
@@ -1078,7 +1091,7 @@ Result compile(const std::string& source, Card card, FpMode mode)
                               // them whole (rt_loresplot, not rt_lores_plot).
                               "rt_gr","rt_color","rt_loresplot","rt_hlin","rt_vlin","rt_text","rt_home",
                               "fp_fromint16","fp_toint16","fp_add","fp_sub","fp_mul","fp_div","fp_cmp",
-                              "fp_int","fp_sqrt","fp_sin","fp_cos"};
+                              "fp_int","fp_sqrt","fp_sin","fp_cos","fp_atn","fp_rand"};
     const char* zpSyms[]   = {"rt_px","rt_py","rt_x0","rt_y0","rt_x1","rt_y1","rt_a","rt_b","FA","FB",
                               "rt_onerr_lo","rt_onerr_hi"};
     std::vector<std::string> codeImp, zpImp;

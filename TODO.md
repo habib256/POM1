@@ -1,21 +1,42 @@
 # TODO
 
-Open work on the **emulator** only. Shipped work → `[CHANGELOG.md](CHANGELOG.md)` / `git log` · user tour → `README.md` · 6502 software → `[dev/TODO6502.md](dev/TODO6502.md)`.
+Open work on the **emulator** only. Shipped work → `[CHANGELOG.md](CHANGELOG.md)` / `git log` · user tour → `[README.md](README.md)` · 6502 software → `[dev/TODO6502.md](dev/TODO6502.md)`.
 
-**Tags** `[effort · impact]` — effort: **S** (<1d) / **M** (1–5d) / **L** (>5d or architectural). Impact: **nice** / **solid** / **critical**.
+## Conventions
 
-Grouped by subsystem; deferred / externally-blocked last. Only open items live here — completed work is lifted to `[CHANGELOG.md](CHANGELOG.md)` as it ships.
+- **One item = one checkbox** — `- [ ] **Title** [effort · impact] — detail`.
+- **Tags** `[effort · impact]` — effort: **S** (<1 d) · **M** (1–5 d) · **L** (>5 d / architectural). Impact: **nice** · **solid** · **critical**.
+- `> blockquote` at the head of a (sub)section = context / what already shipped.
+- Grouped by subsystem; **deferred / externally-blocked last**. Only open items live here — shipped work is lifted to `[CHANGELOG.md](CHANGELOG.md)`.
+- 🚫 prefix = blocked on an external resource.
+
+
+
+## Contents
+
+- [🎨 Graphics](#-graphics) — GEN2 beam engine · TMS9918 beam/CPU sync
+- [🛠️ Dev tooling](#-dev-tooling) — POM1 Bench · BASIC · LOGO · DevBench editor
+- [🔌 Peripherals & loaders](#-peripherals--loaders) — serial loaders · optional cards
+- [🖼️ Visuals & UX](#-visuals--ux) — CRT fidelity
+- [🔧 Infra & technical debt](#-infra--technical-debt) — architecture refactors · snapshot / scripting · state rewind
+- [⏸️ Deferred · 🚫 Blocked](#-deferred--blocked)
 
 ---
 
+
+
 ## 🎨 Graphics
+
+
 
 ### GEN2 beam engine — Phase 4: composite OpenEmulator (rendu optionnel, non bloquant)
 
-> Phases 0-3 + 5 + **chemin composite CPU (`RenderMode::CompositeOECpu`) livrés** → `[CHANGELOG.md](CHANGELOG.md)`. **Le composite OpenEmulator est désormais le rendu par défaut de l'app** (`gen2RenderMode=1`) ; le LUT MAME reste dispo via le menu GEN2 (et reste le défaut de la `GraphicsCard` standalone, pour la golden image). Reste seulement le chemin GPU-shader, optionnel :
+> Phases 0-3 + 5 + **chemin composite CPU (**`RenderMode::CompositeOECpu`**) livrés** → `[CHANGELOG.md](CHANGELOG.md)`. **Le composite OpenEmulator est désormais le rendu par défaut de l'app** (`gen2RenderMode=1`) ; le LUT MAME reste dispo via le menu GEN2 (et reste le défaut de la `GraphicsCard` standalone, pour la golden image). Reste seulement le chemin GPU-shader, optionnel :
 
 - [ ] **Chemin GPU shader (desktop)** `[L · nice]` — optionnel : porter `NtscPostProcessor` POM2 (même noyaux FIR + matrice que le chemin CPU déjà livré) si le *Shared video texture layer* (livré) est exploité ; le CPU couvre déjà WASM + desktop, donc **reportable** tant qu'aucun besoin de perf n'apparaît.
   - **Conclusion : défer jusqu'à un besoin perf concret — zéro gain visuel, purement « où tournent les calculs ».** Le décodage NTSC (`GraphicsCard.cpp` : FIR 17 taps luma+chroma + démod sin/cos + matrice YUV→RGB) tourne sur CPU dans un buffer 280×192 minuscule (~3-4 M MAC/frame) → invisible dans un profil desktop. Le porter déplace **les mêmes maths** vers un fragment shader : même image byte-identique (épinglée `hgr_convert_smoke`), donc **aucune capacité visuelle ajoutée**. Ne le faire QUE si (1) on ajoute du post-traitement lourd plein écran (courbure CRT, bloom, scanlines shader, phosphore par pixel, NTSC à résolution interne >280) qui rend le CPU goulot, OU (2) un profil montre la démod comme coût réel (GPU/CPU faible, très haut refresh). Coût du porting : 2 chemins à garder byte-identiques + shader à décliner GLSL/MSL/WebGL (dont le patch sampler Metal délicat). Prérequis unique déjà livré (*shared video texture layer*), donc reportable **sans dette** — le jour venu, le port est direct.
+
+
 
 ### TMS9918 — synchro beam/CPU sub-scanline (mid-line splits + statut au tick)
 
@@ -26,46 +47,41 @@ Grouped by subsystem; deferred / externally-blocked last. Only open items live h
 
 ---
 
+
+
 ## 🛠️ Dev tooling
 
-### POM1 Bench
 
-> **Phases A-E + bundle cc65 (asm/C) + BASIC + compilateur natif livrés** → `[CHANGELOG.md](CHANGELOG.md)`. Reste ouvert :
-
-- [ ] **WASM cc65 — vérif navigateur** `[S · nice]` — la chaîne cc65-en-WASM est bundlée + câblée au bouton du Bench (asm + C + TMS + GEN2, glue Node-vérifiée byte-identique au natif des deux côtés) → `[CHANGELOG.md](CHANGELOG.md)`. Reste à **ouvrir** `POM1.html` **et tester à la main** New + un sketch asm + un sketch C (non testable headless) ; le chemin TMS-C n'a pas été vérifié individuellement en Node (même mécanisme `buildC` que GEN2-C).
 
 ### BASIC dans le Bench
 
-> **Injection (Integer + Applesoft, 4 cibles), coloration, tokeniseurs, compilateur natif → 6502 (**`3DHat.apf`**/**`RodColor.apf` **autonomes sur GEN2 + TMS) livrés** → `[CHANGELOG.md](CHANGELOG.md)`. Reste ouvert :
+> **Injection (Integer + Applesoft, 4 cibles), coloration, tokeniseurs, compilateur natif → 6502 (**`3DHat.apf`**/**`RodColor.apf` **autonomes sur GEN2 + TMS), sélecteur *Inject | Compile*, Verify-charge-prêt-à-**`LIST` **+ toggle cold/warm livrés** → `[CHANGELOG.md](CHANGELOG.md)`. Reste ouvert :
 
-- [ ] **Mode UI explicite « Inject » vs « Compile »** `[M · solid]` — le tokeniseur (`BasicTokeniserApplesoft`) est câblé aux 4 cibles Applesoft (route par extension) mais aucun sélecteur ne le distingue de l'injection dans le dialogue *New* ; exposer le choix, et offrir le **compilateur natif** (`BasicCompilerApplesoft`) comme 2ᵉ mode compilé.
-- [ ] **Extensions optionnelles du compilateur natif** `[M · nice]` — niveaux float plus petits (binary16 / virgule fixe) pour coords bornées ; `ATN`, `RND` ; variables chaîne + `POKE` pour les listings restants. Investiguer aussi le **bug** `IF (X AND 7)=0` **qui fige l'interpréteur** via le tokeniseur (le compilateur natif est correct).
-- [ ] **LIST / RUN explicites + warm-start** `[S · nice]` — Verify entre le programme sans `RUN` (prêt à `LIST`) ; un toggle « cold/warm » (`E000R`/`6000R` vs `E2B3R`/`6003R`) préserverait un programme déjà tapé.
-- [ ] **Applesoft Apple II + HGR sur la carte GEN2 de Bernie** `[L · solid]` — faire tourner du BASIC graphique Apple II (`HGR`/`HGR2`/`HCOLOR`/`HPLOT`/`DRAW`) sur la carte GEN2. **Le framebuffer est déjà bon** : GEN2 est en `$2000/$4000` au layout HGR Apple II, donc le calcul d'adresse de `HPLOT` marche tel quel. **Le seul correctif bus = aliaser les soft-switches Apple II** `$C050-$C057` (TXTCLR..HIRES) vers la logique GEN2 : aujourd'hui GEN2 ne décode que `$C250-$C257` (`(a&0x0200)&&(a&0x0010)`, donc A9=1) et `$C05x` a A9=0 → invisible. **Phase 1** `[S]` : étendre le handler bus GEN2 (`Memory.cpp` `gen2SoftSwitchBusHandle`) pour décoder aussi `$C050-$C057` (mapper les 3 bits bas, surveiller le conflit avec l'ACI `$C0xx` / la règle « une carte à la fois »). **Phase 2** `[M-L]` : un interpréteur Applesoft *conscient de GEN2*. Deux voies — (a) **étendre l'Applesoft Lite Apple-1** avec les mots-clés HGR pointant sur les soft-switches GEN2 + `$2000` (natif Apple-1, garde l'I/O `$D012`/`$D010`, pas de couche Apple II) ; (b) **vrai ROM Applesoft Apple II** + veneer I/O (COUT→`$D012`, clavier `$C000/$C010`→`$D010/$D011`, écran texte `$0400-$07FF`) — plus lourd. Recommandation : **Phase 1 d'abord** (utile aussi à l'asm/C, débloque tout chemin HGR Apple II), puis voie (a) pour un Applesoft graphique Apple-1-natif. Démo cible : ROSACES (`HPLOT TO`).
+- [ ] **Variables chaîne (**`A$`**) dans le compilateur natif** `[L · nice]` — aujourd'hui le lexer rejette tout identifiant suivi de `$` (`BasicCompilerApplesoft.cpp`, « string variables need a later phase ») ; seuls les littéraux chaîne de `PRINT` existent. Chantier transverse : descripteurs (ptr+len) comme classe de variable parallèle à `V_`/`_I`, une région heap découpée dans `basicc_native.cfg`, un `basicrt_string.s` (alloc/copie/concat + `LEN`/`MID$`/`CHR$`/`STR$`), et un chemin d'expression *typé chaîne* dans le lexer/`expr` (tout est numérique aujourd'hui). Touche lexer + parser + codegen + runtime + cfg linker.
+- [ ] **Tier float compact (binary16 / virgule fixe) pour coords bornées** `[L · nice]` — la largeur (2 vs 4) est abstraite par `vw()`/`W`, mais ~15 sites d'émission codent le binary32 en dur (`fpLoadConst`, `fpNeg`, `emitIfFalse`, signe FOR, tous les `jsr fp_`*). Demande : une nouvelle valeur `FpMode`/format sur `Codegen`, des helpers d'émission parallèles, un runtime `basicrt_fixed.s` (`fx_add/fx_mul/fx_div/fx_cmp/…`), un jeu de symboles + gating `-D` dédié, un dimensionnement linker, et une 3ᵉ branche dans la sélection de phase (`compile()`). Utile seulement quand la précision binary32 est superflue (jeux/anim à coords bornées).
+
+
 
 ### LOGO dans le Bench
 
-> **Interpréteur V2.6 + injection (`injectLogo` / `LogoProgramLoader`) + 10 sketches `sketchs/logo/` + REPL interactif (send / écho / historique ↑↓ / Break Ctrl-G) livrés** → `[CHANGELOG.md](CHANGELOG.md)`. LOGO est le **4ᵉ langage** du *New*, deux cibles (TMS9918 `4000R`, GEN2 HGR `6000R`), WASM-safe, pin `bench_logo_inject_smoke`. Reste ouvert (nice-to-have) :
-> - [ ] **Livre d'exemples LOGO dans le popup *Examples*** `[S · solid]` — les 10 `.logo` de `sketchs/logo/` existent (et sont préchargés MEMFS côté web) mais ne sont atteignables que par *File → Load* ; les câbler dans `kP1Examples[]`/`examples_` (groupe « LOGO », ouverture 1-clic) comme les exemples asm/C, pour la découvrabilité.
-> - [ ] **Read-back / LIST round-trip** `[M · nice]` — l'inverse de `LogoProgramLoader` : reparser le `proc_table` résident → source, pour « récupérer depuis la machine » ce qui a été défini au REPL et pour un Verify reflétant l'état réel. Prérequis d'un **inject à chaud** (append de procs + bump `n_procs` sans cold-reset, flux incrémental proche du vrai REPL).
+> **Interpréteur V2.6 + injection (**`injectLogo` **/** `LogoProgramLoader`**) + 10 sketches** `sketchs/logo/` **+ REPL interactif (send / écho / historique ↑↓ / Break Ctrl-G) livrés** → `[CHANGELOG.md](CHANGELOG.md)`. LOGO est le **4ᵉ langage** du *New*, deux cibles (TMS9918 `4000R`, GEN2 HGR `6000R`), WASM-safe, pin `bench_logo_inject_smoke`. Reste ouvert (nice-to-have) :
 
-### Éditeur DevBench — onglets multi-fichiers + Markdown
-
-> **Éditeur multi-documents, rendu Markdown (Preview/Edit), coloration Markdown en mode Edit, et garde de fermeture (popup Discard/Cancel sur onglet non sauvegardé) livrés** → `[CHANGELOG.md](CHANGELOG.md)`. Reste ouvert (nice-to-have) :
-
-- [ ] **Vue Markdown split (édition + aperçu live)** `[M · nice]` — au lieu de la bascule Preview/Edit, une vue côte-à-côte qui rafraîchit l'aperçu à la frappe.
+- [ ] **Livre d'exemples LOGO dans le popup *Examples*** `[S · solid]` — les 10 `.logo` de `sketchs/logo/` existent (et sont préchargés MEMFS côté web) mais ne sont atteignables que par *File → Load* ; les câbler dans `kP1Examples[]`/`examples_` (groupe « LOGO », ouverture 1-clic) comme les exemples asm/C, pour la découvrabilité.
 
 ---
+
+
 
 ## 🔌 Peripherals & loaders
 
 - [ ] **flowenol apple1-serial bootloader** `[S · solid]` — [https://github.com/flowenol/apple1-serial](https://github.com/flowenol/apple1-serial) — serial-port bootloader / terminal (complements TurboType / 8BitFlux). Pipes through Terminal Card or its own ACIA variant; likely a text-format loader on top of `Memory::loadHexDump` + paste pipeline.
 - [ ] 🚫 **TurboType 57 600-baud loader** `[M · solid]` — **En attente de Bernie (échange courriel 2026-06-24) : spec détaillée + une ROM/binaire du dropper nécessaires avant implémentation.** Uncle Bernie's format, shipped by 8BitFlux *Keyboard Serial Terminal* (ATtiny + 11 MHz xtal + MAX232 + 74LS244). Protocol: Wozmon-speed bootstrap (200 ms/newline, 20 ms/char) installs an in-RAM dropper that **skips** `$D012` **echoes** and streams bytes at 57.6 kbps with running CRC, sentinel + CRC verify, jump to entry. Loads 4 KB in <30 s vs ~2 400 baud Wozmon. POM1 side: parse `.TUR`/`.APL`, switch Terminal Card to raw-8-bit + echo-suppressed inject (`Ctrl-T` already gives 8-bit; no-echo is new), verify CRC, surrender to Wozmon. *Note émulateur :* `loadHexDump` *gère déjà le multi-blocs + les marqueurs* `T`*/*`X`*, et charge instantanément — TurboType n'a de valeur que pour l'authenticité/démo du protocole, pas pour la vitesse de chargement.*
-- [ ] **ACI header + checksum on the jaquette** `[S · nice]` — `tapeinfo.txt` already drives the *"Type 0280.0FFFR"* label. Parse the raw `.aci` pulse-capture header (from / to / checksum) in `CassetteDevice::loadAciTape()` and surface for tapes without a sidecar entry.
 - [ ] **Briel Multi I/O — SpeakJet** `[M · nice]` — 6522 / 6551 blocks duplicate microSD / MODEM; the unique value is piping the UART byte stream through a TTS bridge (eSpeak, macOS `say`) to give the Apple-1 a voice. Ship as a separate optional peripheral so it coexists with microSD.
 - [ ] **Terminal Card —** `Ctrl-K` **hand-over** `[S · nice]` — match the 8BitFlux toggle: a `Ctrl-K` byte suspends `$D010`/`$D011` injection until `Ctrl-T` re-attaches. Useful once a script bootstrapped a program and the user wants to play without dropping the session. Hook: `injectionSuspended` next to `escapePending` / `eightBitMode` in `TerminalCard.cpp`.
 
 ---
+
+
 
 ## 🖼️ Visuals & UX
 
@@ -77,22 +93,32 @@ Grouped by subsystem; deferred / externally-blocked last. Only open items live h
 
 ---
 
+
+
 ## 🔧 Infra & technical debt
 
-> **Durcissement désérialisation (audit 2026-05-31) livré** → `[CHANGELOG.md](CHANGELOG.md)`.
+
 
 ### Refactors architecturaux (audit juillet 2026)
 
-> Issus d'une revue architecturale transversale. Le cœur (CPU/Memory/bus) est propre ; la dette se concentre dans le fan-out « ajouter une carte » et les god objects UI. Ordonnés par levier — le registry (1) débloque (3) et une partie de (4).
+> Issus d'une revue architecturale transversale. Le cœur (CPU/Memory/bus) est propre ; la dette se concentre dans le fan-out « ajouter une carte » et les god objects UI. **Ordonnés par levier** — le registry (1) débloque (3) et une partie de (4).
 
-- [ ] **Registry de cartes unique** `[L · critical]` — aujourd'hui ajouter une carte touche ~11 TU (Memory, EmulationController, 6× MainWindow_*, MemoryViewer, Pom1BenchHost, main_imgui) et, dans `Memory.cpp` seul, **trois listes parallèles hand-synced** qui doivent rester en lockstep : le FLAGS bitmap (`writeSnapshotSections`, ~`Memory.cpp:2206-2222`), l'ordre d'écriture (`writeCard(...)`, ~`:2237-2249`) et le vecteur de dispatch de lecture (`readSnapshotSections`, ~`:2328-2333`), + un bit `kFlag*`. La troncature de nom de section à 8 octets est un piège de collision latent (a déjà mordu « A1-IO/RTC »), gardé par un seul test. **Remède** : un `std::vector<CardEntry>` unique `{name, kFlag, Peripheral*, enable-setter}` itéré par le pack/unpack FLAGS **et** les boucles serialize/deserialize → effondre 3 listes en 1 et transforme la contrainte d'unicité-8-octets en `static_assert`/assert à la construction. **Le refactor à plus fort levier du codebase.**
-- [ ] **Casser la fuite include `EmulationController → Screen_ImGui → imgui`** `[M · solid]` — le contrôleur « cœur » `#include` `Screen_ImGui.h` (donc `imgui.h`) et tient un `Screen_ImGui` par valeur (+ `TMS9918.h` pour `DropDiagnostics`), cassant l'invariant « le core est UI-free » que le reste de l'archi respecte (`EmulationController.h:~27`). **Remède** : dépendre de l'abstraction `DisplayDevice` déjà injectée via `Memory::setDisplayDevice` au lieu du `Screen_ImGui` concret ; sortir le rendu du graphe d'include du contrôleur ; déplacer `DropDiagnostics` dans un header POD neutre. À terme, scinder le façade (202 méthodes) selon ses axes : `CpuRunner` (run/step/slice) + `StateManager` (snapshot/rewind) + passthroughs diagnostics.
-- [ ] **Table-driver les fenêtres photo + hardware (~2000 lignes boilerplate)** `[M · nice]` — `MainWindow_Dialogs.cpp` (~3427 l.) est dominé par **22 paires `ensure<X>Texture()` + `render<X>PhotoWindow()`** quasi-identiques (13 constantes de fichier photo) ; `MainWindow_HardwareWindows.cpp` (~2454 l.) répète **52 blocs `ImGui::Begin`/render par carte**. **Remède** : une table `struct PhotoWindow { const char* file; bool* show; … }` + un `renderPhotoWindow(entry)` générique (~1500 l. supprimées), et data-driver les fenêtres hardware contre le registry de cartes (1). Les 66 flags `show*` du god object `MainWindow_ImGui` (439 membres) veulent devenir un `std::bitset` + enum.
-- [ ] **Extraire snapshot I/O de `Memory.cpp` + pinner les cartes réseau** `[M · solid]` — `Memory.cpp` (~2509 l.) cumule bus-owner + core Apple-1 + heuristiques ROM + cascades cartes + ~250 l. de sérialisation snapshot. **Remède** : extraire `writeSnapshotSections`/`readSnapshotSections` dans une unité libre `MemorySnapshot(Memory&)` (concern déjà auto-contenu) ; mettre les magic numbers de reload ROM (`mem[$FF00..01]==D8 58`, `mem[$8000..01]==A9 00`) derrière un `RomLoadPolicy` nommé. **+ Trous de tests** : `TerminalCard`, `WiFiModem`, `A1IO_RTC` (RTC), `Disassembler6502`, `CliDispatcher` n'ont **aucun test dédié** — ajouter des smoke tests loopback (patron `peripheral_bus_smoke` + `<cassert>`) : TerminalCard round-trip 7/8-bit, WiFiModem commande AT→réponse + filtre IAC, RTC à horloge injectée fixe. Déterministe et headless malgré le statut desktop-only.
+- [ ] **Registry de cartes unique** `[L · critical]` — aujourd'hui ajouter une carte touche ~11 TU (Memory, EmulationController, 6× MainWindow_*, MemoryViewer, Pom1BenchHost, main_imgui) et, dans `Memory.cpp` seul, **trois listes parallèles hand-synced** qui doivent rester en lockstep : le FLAGS bitmap (`writeSnapshotSections`, ~`Memory.cpp:2206-2222`), l'ordre d'écriture (`writeCard(...)`, ~`:2237-2249`) et le vecteur de dispatch de lecture (`readSnapshotSections`, ~`:2328-2333`), + un bit` kFlag`*. La troncature de nom de section à 8 octets est un piège de collision latent (a déjà mordu « A1-IO/RTC »), gardé par un seul test. **Remède** : un` std::vector`unique`{name, kFlag, Peripheral*, enable-setter}`itéré par le pack/unpack FLAGS **et** les boucles serialize/deserialize → effondre 3 listes en 1 et transforme la contrainte d'unicité-8-octets en`static_assert`/assert à la construction. **Le refactor à plus fort levier du codebase.**
+- [ ] **Casser la fuite include** `EmulationController → Screen_ImGui → imgui` `[M · solid]` — le contrôleur « cœur » `#include` `Screen_ImGui.h` (donc `imgui.h`) et tient un `Screen_ImGui` par valeur (+ `TMS9918.h` pour `DropDiagnostics`), cassant l'invariant « le core est UI-free » que le reste de l'archi respecte (`EmulationController.h:~27`). **Remède** : dépendre de l'abstraction `DisplayDevice` déjà injectée via `Memory::setDisplayDevice` au lieu du `Screen_ImGui` concret ; sortir le rendu du graphe d'include du contrôleur ; déplacer `DropDiagnostics` dans un header POD neutre. À terme, scinder le façade (202 méthodes) selon ses axes : `CpuRunner` (run/step/slice) + `StateManager` (snapshot/rewind) + passthroughs diagnostics.
+- [ ] **Table-driver les fenêtres photo + hardware (~2000 lignes boilerplate)** `[M · nice]` — `MainWindow_Dialogs.cpp` (~~3427 l.) est dominé par **22 paires~~** `ensure<X>Texture()` ~~**+**~~ `render<X>PhotoWindow()` ~~quasi-identiques (13 constantes de fichier photo) ;~~ `MainWindow_HardwareWindows.cpp` ~~(~~2454 l.) répète **52 blocs** `ImGui::Begin`**/render par carte**. **Remède** : une table `struct PhotoWindow { const char* file; bool* show; … }` + un `renderPhotoWindow(entry)` générique (~1500 l. supprimées), et data-driver les fenêtres hardware contre le registry de cartes (1). Les 66 flags `show`* du god object `MainWindow_ImGui` (439 membres) veulent devenir un `std::bitset` + enum.
+- [ ] **Extraire snapshot I/O de** `Memory.cpp` **+ pinner les cartes réseau** `[M · solid]` — `Memory.cpp` (~2509 l.) cumule bus-owner + core Apple-1 + heuristiques ROM + cascades cartes + ~250 l. de sérialisation snapshot. **Remède** : extraire `writeSnapshotSections`/`readSnapshotSections` dans une unité libre `MemorySnapshot(Memory&)` (concern déjà auto-contenu) ; mettre les magic numbers de reload ROM (`mem[$FF00..01]==D8 58`, `mem[$8000..01]==A9 00`) derrière un `RomLoadPolicy` nommé. **+ Trous de tests** : `TerminalCard`, `WiFiModem`, `A1IO_RTC` (RTC), `Disassembler6502`, `CliDispatcher` n'ont **aucun test dédié** — ajouter des smoke tests loopback (patron `peripheral_bus_smoke` + `<cassert>`) : TerminalCard round-trip 7/8-bit, WiFiModem commande AT→réponse + filtre IAC, RTC à horloge injectée fixe. Déterministe et headless malgré le statut desktop-only.
+
+
+
+### Snapshot, scripting & presets
+
+> **Durcissement désérialisation (audit 2026-05-31) livré** → `[CHANGELOG.md](CHANGELOG.md)`.
 
 - [ ] **Snapshot residual gaps** `[M · nice]` — base format + 12-card per-card payloads + CPU section landed (May 2026). Remaining: cassette mid-stream playback position (re-load tape file by path on snapshot-load + seek to saved `playbackIndex`); WiFiModem / TerminalCard graceful "drop and reconnect" on load (currently kept disconnected); libresidfp internal filter integrators / oscillator phase (engine doesn't expose them — would need an upstream patch); SHA-256 footer (mentioned in `SnapshotIO.h` as v2 sweetener).
 - [ ] **Scriptable runtime IPC** `[M · nice]` — `--cmd-fd <N>` (or Unix socket) reading line-delimited commands while the emulator runs — same verbs as CLI flags, but for stateful sequences. Telnet on `:6502` carries keystrokes + display; this channel carries control without polluting the keyboard stream. Depends on CLI-verb + snapshot work above.
 - [ ] **External** `presets.json` `[S · nice]` — `MainWindow_Presets.cpp` already flags itself as the migration target. Move `kMachinePresets[]` to JSON under `doc/` (or next to the executable) so users add presets without recompiling. Loader in `MainWindow_Presets.cpp`, keep the C++ table as fallback.
+
+
 
 ### State rewind — raffinements (MVP livré)
 
@@ -103,7 +129,9 @@ Grouped by subsystem; deferred / externally-blocked last. Only open items live h
 
 ---
 
-## ⏸️ Deferred / conditional · 🚫 Blocked on external
+
+
+## ⏸️ Deferred · 🚫 Blocked
 
 > Spec connu, code tractable, mais conditionné à un déclencheur réel (logiciel exerçant la feature, demande utilisateur, hardware disponible). À promouvoir quand le déclencheur apparaît. **🚫 Blocked** = en attente d'une ressource externe hors de notre contrôle.
 

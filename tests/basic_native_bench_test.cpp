@@ -68,6 +68,8 @@ Built buildNative(const std::string& src, bool fp, const std::string& dir) {
         if (f == "fp_sqrt") { fpdefs += " -D FP_SQRT"; continue; }
         if (f == "fp_sin")  { fpdefs += " -D FP_SIN";  continue; }
         if (f == "fp_cos")  { fpdefs += " -D FP_COS";  continue; }
+        if (f == "fp_atn")  { fpdefs += " -D FP_ATN";  continue; }
+        if (f == "fp_rand") { fpdefs += " -D FP_RAND"; continue; }
         if (f.rfind("rt_", 0) != 0) continue;
         for (char& c : f) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
         defs += " -D " + f;

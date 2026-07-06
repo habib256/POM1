@@ -90,6 +90,19 @@ int main()
         {0x00, 0x0E,0x08, 0x28,0x00,
          0x81,0x49,0xC4,0x31,0xB6,0x39,0xBB,0x32, 0x00, 0x00,0x00});
 
+    // Regression: `AND` inside parens + a relational `=` right after `)`. This
+    // was suspected of freezing the interpreter; it does NOT — the tokeniser emits
+    // bytes byte-identical to the ROM's own CRUNCH (AND=$C1, ')'=$29, '='=$C4,
+    // THEN=$B9, GOTO=$8E, "100" kept ASCII). The apparent "hang" is genuine
+    // Applesoft semantics: AND/OR are LOGICAL (nonzero->1), so `(X AND 7)=0` is
+    // true only when X=0 — a program written for BITWISE AND loops forever under
+    // the interpreter (the native compiler is bitwise; see doc/BASIC_COMPILER.md).
+    // 13 tokens -> line = 4+13+1 = 18 ($12) bytes, link = $0801+$12 = $0813.
+    expectBytes("IF (X AND 7)=0 THEN GOTO 100  (logical-AND, not a tokeniser bug)",
+        prog("10 IF (X AND 7)=0 THEN GOTO 100"),
+        {0x00, 0x13,0x08, 0x0A,0x00,
+         0x90,0x28,0x58,0xC1,0x37,0x29,0xC4,0x30,0xB9,0x8E,0x31,0x30,0x30, 0x00, 0x00,0x00});
+
     // Lines are emitted ascending regardless of source order; links chain across
     // two lines. line10 HGR(9F): 6 bytes @ $0801, link=$0807. line20 END(80): 6
     // bytes @ $0807, link=$080D. End marker at $080D.

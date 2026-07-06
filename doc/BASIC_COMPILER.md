@@ -315,10 +315,41 @@ assumes, and without the relax anything past `$0FFF` reads `$FF` under strict OO
 the program crashes.
 
 Float literals are rejected in the integer phase. The float phase adds `SIN`, `COS`,
-`SQR`, `INT` and decimal literals on top of the same control flow. (`COS(x)` links
-`fp_cos`, which adds `pi/2` and reuses the `fp_sin` Taylor core — `cos(x) = sin(x +
-pi/2)`.) `INT` in the integer phase
-is the identity (links nothing).
+`SQR`, `INT`, `ATN`, `RND` and decimal literals on top of the same control flow.
+(`COS(x)` links `fp_cos`, which adds `pi/2` and reuses the `fp_sin` Taylor core —
+`cos(x) = sin(x + pi/2)`.) `ATN(x)` links `fp_atn` (two-stage range reduction to
+`|t| ≤ tan(pi/12)` then a 4-term odd Taylor). `RND(x)` links `fp_rand`: a fresh
+pseudo-random float in `[0,1)` from an xorshift32 state — the argument is evaluated
+then discarded (Applesoft's `RND(0)`=repeat-last / `RND(<0)`=reseed are not
+modelled). Any of `SIN`/`COS`/`SQR`/`ATN`/`RND` (or a decimal / `/`) auto-selects the
+float phase. `INT` in the integer phase is the identity (links nothing).
+
+#### ⚠️ `AND` / `OR` are **bitwise** here, **logical** in the interpreter
+
+This is the one place where **Inject** (tokeniser → interpreter ROM) and **Compile**
+(native) deliberately **disagree**, so it is worth stating plainly:
+
+- **Interpreter (Inject mode) — Applesoft is LOGICAL.** `A AND B` is *true* (`1`)
+  iff both operands are non-zero, else `0`; `OR` is the same for "either non-zero".
+  So `(X AND 7)` is `1` for **every** non-zero `X` (both `X` and `7` are non-zero),
+  and `0` only when `X = 0`. This is authentic Apple II Applesoft behaviour — a real
+  Apple ][ does the same. A listing written for *bitwise* `AND` (e.g. `IF (X AND 7)=0`
+  meaning "every 8th value") therefore **never takes the branch for `X≥1`** and can
+  spin forever — which looks like a "hang" but is the interpreter faithfully running
+  logical-AND code. **Not a POM1 or tokeniser bug** (the tokeniser emits bytes
+  byte-identical to the ROM's own CRUNCH; pinned by the `IF (X AND 7)=0` case in
+  `basic_compiler_tokenize`).
+- **Native (Compile mode) — bitwise on int16.** `A AND B` / `A OR B` coerce both
+  operands to signed 16-bit (`fp_toint16` in the float phase) and combine them
+  **bit-for-bit** (`and`/`ora`), returning the mask — *not* a `1`/`0` truth value.
+  So `(X AND 7)` extracts the low 3 bits, and `IF (X AND 7)=0` behaves as a C
+  programmer expects. Pinned by the bitwise-AND case in `basic_native_codegen`.
+
+**Consequence for the Inject/Compile toggle:** a program that uses `AND`/`OR` as a
+bit-mask will behave differently in the two modes. Use `NOT`/comparisons for boolean
+logic (identical in both), and prefer **Compile** when you need bit masking. There is
+no plan to "reconcile" them — logical is correct-for-Applesoft, bitwise is
+correct-for-intent; the divergence is documented, not a defect.
 
 ### Phase 2 — standalone floating point (done; 3DHat compiles + runs)
 
@@ -328,12 +359,14 @@ stores values as 4-byte IEEE-754 single and implements `fp_fromint16`,
 `fp_toint16`, `fp_add`, `fp_sub`, `fp_mul`, `fp_div`, `fp_cmp` plus the
 transcendentals `fp_int` (truncate toward zero), `fp_sqrt` (Newton–Raphson, 5
 iterations), `fp_sin` (2π range reduction → symmetry fold to [-π/2,π/2] → 4-term
-Taylor) and `fp_cos` (adds π/2 and falls into the `fp_sin` core) — operands in the
-zero-page slots `FA`/`FB`. Internally a value unpacks to
+Taylor), `fp_cos` (adds π/2 and falls into the `fp_sin` core), `fp_atn` (fold
+`atan(-x)`/`atan(1/x)` + a `pi/6` offset fold to `|t| ≤ tan(π/12)`, then a 4-term odd
+Taylor) and `fp_rand` (xorshift32 → mantissa of a `[1,2)` single → subtract 1) —
+operands/result in the zero-page slots `FA`/`FB`. Internally a value unpacks to
 `{sign, E, SG}` with the 24-bit significand `SG ∈ [2^23, 2^24)` and `value = SG·2^E`,
 computes, and repacks. Each transcendental is **feature-gated** (`-D FP_INT` /
-`-D FP_SQRT` / `-D FP_SIN` / `-D FP_COS`) so it is assembled only when the program calls
-it. Pinned
+`-D FP_SQRT` / `-D FP_SIN` / `-D FP_COS` / `-D FP_ATN` / `-D FP_RAND`) so it is assembled
+only when the program calls it. Pinned
 by `basic_float_runtime` (cc65-gated): every op — arithmetic and transcendental — is
 checked against the host's IEEE `float`/`sinf`/`sqrtf` over a value grid + randomised
 pairs (5736 cases).
@@ -363,8 +396,9 @@ an order of magnitude more.
 
 **Phase 2c (done): `SIN`/`SQR`/`INT` + `3DHat.apf` runs native.** `primary()`
 compiles `SIN`/`SQR`/`INT` to a `jsr fp_sin`/`fp_sqrt`/`fp_int` (auto-precision
-forces the float phase the moment `SIN`/`SQR` appear), and logical `AND`/`OR` on
-float truth values were fixed (they previously fell through to the comparison path).
+forces the float phase the moment `SIN`/`SQR` appear), and `AND`/`OR` were reworked
+to **bitwise int16** semantics (see the AND/OR note above — they no longer fall
+through to the comparison path).
 With these, **`sketchs/basic_applesoft/3DHat.apf` — the MTU/Micro May-1981 hidden-line
 3-D HAT (HGR2, nested `FOR`, `IF/GOTO`, `GOSUB/RETURN`, `INT`/`SQR`/`SIN`, decimal
 literals, `HCOLOR=0` column erase) — compiles and runs standalone on both GEN2 and

@@ -44,6 +44,7 @@ constexpr uint16_t kHimemDefault = 0x1000;  // cold-start HIMEM (program ceiling
 constexpr uint16_t kLomemDefault = 0x0800;  // cold-start LOMEM (variables floor)
 constexpr uint16_t kRunWarm      = 0xE836;  // run entry (reads pp, runs the program)
 constexpr uint16_t kColdStart    = 0xE000;  // JMP cold ($E2B0)
+constexpr uint16_t kWarmStart    = 0xE2B3;  // warm re-entry: `>` prompt, program kept
 constexpr uint16_t kPpZp         = 0x00CA;  // pp: low end (text start) of program
 constexpr uint16_t kEol          = 0x01;    // end-of-line token
 

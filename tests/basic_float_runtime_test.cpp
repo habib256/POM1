@@ -60,7 +60,7 @@ struct Fp {
         const std::string s   = root + "/dev/lib/basicrt/basicrt_float.s";
         const std::string cfg = root + "/dev/lib/basicrt/basicrt_float.cfg";
         const std::string o = dir + "/f.o", bin = dir + "/f.bin", lbl = dir + "/f.lbl";
-        if (std::system(("ca65 -DFP_INT -DFP_SQRT -DFP_SIN -DFP_COS -o " + o + " " + s + " 2>/dev/null").c_str()) != 0) return false;
+        if (std::system(("ca65 -DFP_INT -DFP_SQRT -DFP_SIN -DFP_COS -DFP_ATN -DFP_RAND -o " + o + " " + s + " 2>/dev/null").c_str()) != 0) return false;
         if (std::system(("ld65 -C " + cfg + " -Ln " + lbl + " -o " + bin + " " + o + " 2>/dev/null").c_str()) != 0) return false;
         std::ifstream bf(bin, std::ios::binary);
         std::vector<unsigned char> b((std::istreambuf_iterator<char>(bf)), std::istreambuf_iterator<char>());
@@ -157,6 +157,29 @@ int main()
     }
     for (float f : {-4000.f,-1000.f,-12.5f,-6.28318f,-3.14159f,-1.f,0.f,1.f,3.14159f,6.28318f,12.5f,100.f,1000.f,4000.f}) {
         fp.wf(fp.FA, f); fp.run("fp_cos"); ck("cos", fp.rf(fp.FA), std::cos(f));
+    }
+
+    // ATN (two-stage range reduction + odd Taylor) over a wide grid incl. |x|>1.
+    for (int k = -5000; k <= 5000; k += 3) {
+        float f = k * 0.02f; fp.wf(fp.FA, f); fp.run("fp_atn"); ck("atn", fp.rf(fp.FA), std::atan(f));
+    }
+    for (float f : {-1000.f,-100.f,-2.f,-1.f,-0.5f,-0.26794919f,-0.001f,0.f,
+                    0.001f,0.26794919f,0.5f,1.f,2.f,100.f,1000.f}) {
+        fp.wf(fp.FA, f); fp.run("fp_atn"); ck("atn", fp.rf(fp.FA), std::atan(f));
+    }
+
+    // RND: deterministic pseudo-random sequence, every value in [0,1), and not a
+    // constant (the seed advances). Correctness = range + non-degeneracy, not a
+    // fixed expected value.
+    {
+        float prev = -1.f; int distinct = 0; bool inRange = true;
+        for (int i = 0; i < 200; ++i) {
+            fp.run("fp_rand"); float r = fp.rf(fp.FA);
+            if (!(r >= 0.f && r < 1.f)) inRange = false;
+            if (r != prev) ++distinct; prev = r;
+        }
+        ++total; if (!inRange)      { ++fails; std::printf("FAIL rand: value out of [0,1)\n"); }
+        ++total; if (distinct < 190){ ++fails; std::printf("FAIL rand: only %d distinct of 200\n", distinct); }
     }
 
     if (fails) { std::printf("basic_float_runtime: %d/%d FAILED\n", fails, total); return 1; }

@@ -43,6 +43,8 @@ if [ -n "$FLOAT" ] || grep -qE '^\.import .*fp_' "$TMP/prog.s"; then
   grep -q 'fp_sqrt\b' "$TMP/prog.s" && FPDEFS="$FPDEFS -D FP_SQRT"
   grep -q 'fp_sin\b'  "$TMP/prog.s" && FPDEFS="$FPDEFS -D FP_SIN"
   grep -q 'fp_cos\b'  "$TMP/prog.s" && FPDEFS="$FPDEFS -D FP_COS"
+  grep -q 'fp_atn\b'  "$TMP/prog.s" && FPDEFS="$FPDEFS -D FP_ATN"
+  grep -q 'fp_rand\b' "$TMP/prog.s" && FPDEFS="$FPDEFS -D FP_RAND"
   ca65 $FPDEFS -o "$TMP/fp.o" "$RT/basicrt_float.s"
   FP_OBJ=("$TMP/fp.o")
 fi

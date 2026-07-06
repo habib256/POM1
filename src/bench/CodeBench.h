@@ -102,6 +102,7 @@ private:
     char saveName_[128] = "sketch.s";
     int newLang_ = 0;                // New-dialog selection: language x machine
     int newMachine_ = 0;
+    bool newBasicNative_ = false;    // New-dialog BASIC mode: false=Inject, true=Compile (native)
     // Markdown link navigation: stack of source paths to return to via the Back
     // arrow in the preview/edit toolbar (each link jump pushes the doc it left).
     std::vector<std::string> mdNavBack_;

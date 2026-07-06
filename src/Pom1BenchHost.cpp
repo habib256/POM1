@@ -600,22 +600,23 @@ const char* const kP1LanguageHints[] = {
     "TMS9918 (CodeTank) card or Uncle Bernie's GEN2 HGR card.",
 };
 // The "Target" combo is per-language: asm/C show the three graphics machines,
-// BASIC shows its four interpreters (CodeBench filters by targetFor()). Each is
-// its own entry so New > BASIC reads as the interpreter choice, not a graphics
-// machine. Bare-Apple-1 BASIC is Integer (the dual-ROM $E000 bank) — Applesoft
-// needs a card (microSD / GEN2 / TMS), so there is no "Applesoft on bare Apple-1".
+// BASIC shows its four machines (CodeBench filters by targetFor()). Each is its
+// own entry so New > BASIC reads as the machine choice, not a graphics card.
+// Bare-Apple-1 BASIC is Integer (the dual-ROM $E000 bank) — Applesoft needs a
+// card (microSD / GEN2 / TMS), so there is no "Applesoft on bare Apple-1".
+// Inject-vs-native-compile is NOT a machine here: it's an "Inject | Compile"
+// toggle the New dialog / Mode switcher surface via nativeSiblingOf() for the
+// two Applesoft machines (GEN2, TMS) that have a native compiler.
 const char* const kP1Machines[]  = {
     "Apple-1 dual 4K/8K  (text) - start here",   // 0  asm/C
     "P-LAB Graphic Card  (TMS9918)",             // 1  asm/C
     "Uncle Bernie GEN2 HGR  (colour)",           // 2  asm/C
-    "Applesoft Lite + microSD  (interpreter)",   // 3  BASIC -> target 8
-    "Applesoft GEN2 HGR  (interpreter)",         // 4  BASIC -> target 9
-    "Applesoft TMS9918  (interpreter)",          // 5  BASIC -> target 11
-    "Integer BASIC (Apple-1 dual-rom)  (interpreter)", // 6  BASIC -> target 7
-    "Applesoft GEN2 HGR  (native compile)",      // 7  BASIC -> target 12 (desktop only)
-    "Applesoft TMS9918  (native compile)",       // 8  BASIC -> target 13 (desktop only)
-    "LOGO TMS9918  (interpreter)",               // 9  LOGO  -> target 14
-    "LOGO GEN2 HGR  (interpreter)",              // 10 LOGO  -> target 15
+    "Applesoft Lite + microSD",                  // 3  BASIC -> target 8  (inject only)
+    "Applesoft GEN2 HGR",                        // 4  BASIC -> target 9  (+ native 12)
+    "Applesoft TMS9918",                         // 5  BASIC -> target 11 (+ native 13)
+    "Integer BASIC (Apple-1 dual-rom)",          // 6  BASIC -> target 7  (inject only)
+    "LOGO TMS9918  (interpreter)",               // 7  LOGO  -> target 14
+    "LOGO GEN2 HGR  (interpreter)",              // 8  LOGO  -> target 15
 };
 const char* const kP1MachineHints[] = {
     "Stock Apple-1: 40x24 text printed through the WozMon ECHO routine ($FFEF).\n"
@@ -637,12 +638,6 @@ const char* const kP1MachineHints[] = {
     "Integer BASIC — Wozniak's 6502 Integer BASIC in the Apple-1 dual-ROM second\n"
     "bank ($E000-$EFFF), cold start E000R. No graphics, no floating point — the\n"
     "classic Apple-1 BASIC. Listing tokenised + loaded directly (no keyboard typing).",
-    "Applesoft GEN2 (native compile) — COMPILES the listing to standalone 6502\n"
-    "(no interpreter, ~20x faster) via the native compiler, links the minimal GEN2\n"
-    "runtime, loads + runs at $0300 on the GEN2 card (preset 2). Desktop only.",
-    "Applesoft TMS9918 (native compile) — COMPILES the listing to standalone 6502\n"
-    "(no interpreter, ~20x faster), links the minimal TMS9918 runtime + VDP lib,\n"
-    "loads + runs at $0300 on the TMS9918 card (preset 1). Desktop only.",
     "APPLE-1 LOGO V2.6 on the P-LAB TMS9918 card — the turtle interpreter in the\n"
     "LOWER bank of Codetank_GAME3.rom ($4000, jumper Lower), cold start 4000R, 16 KB.\n"
     "Procedures poked into the proc table; entry line fed to the REPL. 256x192 bitmap.",
@@ -1648,8 +1643,9 @@ int Pom1BenchHost::targetFor(int language, int machine) const
     // languages: 0=asm, 1=C, 2=BASIC, 3=LOGO. machines: 0=Apple-1 text, 1=TMS9918,
     // 2=GEN2 HGR (asm/C use these three); 3=Applesoft Lite + microSD, 4=Applesoft
     // GEN2 HGR, 5=Applesoft TMS9918, 6=Integer BASIC (Apple-1 dual-rom) (BASIC uses
-    // these four); 9=LOGO TMS9918, 10=LOGO GEN2 HGR (LOGO uses these two). CodeBench's
-    // New dialog shows only the machines valid for the language.
+    // these four); 7=LOGO TMS9918, 8=LOGO GEN2 HGR (LOGO uses these two). CodeBench's
+    // New dialog shows only the machines valid for the language. Inject-vs-native
+    // compile is a per-target toggle (nativeSiblingOf), NOT a machine row.
     if (language == 0) return (machine >= 0 && machine <= 2) ? machine     : -1;  // asm 0..2
     if (language == 1) return (machine >= 0 && machine <= 2) ? 3 + machine : -1;  // C   3..5
     if (language == 2) {                                                          // BASIC
@@ -1658,21 +1654,45 @@ int Pom1BenchHost::targetFor(int language, int machine) const
             case 4: return 9;    // Applesoft GEN2 HGR ($9800)
             case 5: return 11;   // Applesoft TMS9918 (CodeTank $4000)
             case 6: return 7;    // Integer BASIC (Apple-1 dual-rom, $E000)
-#if !POM1_IS_WASM
-            case 7: return 12;   // Applesoft GEN2 (native compile, $0300) — desktop only
-            case 8: return 13;   // Applesoft TMS9918 (native compile, $0300) — desktop only
-#endif
         }
         return -1;
     }
     if (language == 3) {                                                          // LOGO
         switch (machine) {
-            case 9:  return 14;  // LOGO TMS9918 (CodeTank $4000)
-            case 10: return 15;  // LOGO GEN2 HGR ($6000)
+            case 7: return 14;   // LOGO TMS9918 (CodeTank $4000)
+            case 8: return 15;   // LOGO GEN2 HGR ($6000)
         }
         return -1;
     }
     return -1;
+}
+
+// The native-compile sibling of a BASIC "inject" target. Only the two Applesoft
+// machines with a native compiler have one (GEN2 inject 9 -> native 12, TMS
+// inject 11 -> native 13). Native compile needs the desktop cc65 toolchain +
+// dev/ tree, so on WASM there is no sibling (the toggle collapses to Inject).
+int Pom1BenchHost::nativeSiblingOf(int target) const
+{
+#if POM1_IS_WASM
+    (void)target;
+    return -1;
+#else
+    switch (target) {
+        case 9:  return 12;  // Applesoft GEN2 HGR  : interpreter -> native ($0300)
+        case 11: return 13;  // Applesoft TMS9918   : interpreter -> native ($0300)
+        default: return -1;
+    }
+#endif
+}
+
+// The Warm/Cold toggle only makes sense for the resident-interpreter BASIC
+// targets (mode 4) — those are the ones injectBasic can re-enter warm to keep a
+// typed-in program. Compiled targets (asm/C/native BASIC/hex) have nothing to
+// preserve, so CodeBench hides the toggle for them.
+bool Pom1BenchHost::warmStartApplies(int target) const
+{
+    const int i = p1(target);
+    return i >= 0 && i < kP1TargetCount && kP1Targets[i].mode == 4;
 }
 
 static bool sourcePathLooksGT6144(const std::string& path)
@@ -1832,6 +1852,9 @@ bench::BuildResult Pom1BenchHost::selectTargetExplicit(int target)
     if (target < 0 || target >= kP1TargetCount) { r.status = "bad target"; return r; }
     const P1T& t = kP1Targets[p1(target)];
     if (t.mode != 6) logoReplActive_ = false;      // leaving LOGO → REPL gone
+    // An explicit Mode switch re-establishes the machine (applyTargetPreset force),
+    // so any resident BASIC interpreter is void → the prep below cold-starts fresh.
+    benchBasicResidentIdx_ = -1;
 
     if (t.mode == 4) {
         // BASIC: cold-start the matching interpreter (empty listing, no RUN) so its
@@ -1886,6 +1909,7 @@ void Pom1BenchHost::applyTargetPreset(int target, bool force)
     // target (which sets the bench's own sketch). Do not let the DevBench preset
     // auto-load overwrite that with the asm starter.
     mw_->suppressDevBenchAutoload = true;
+    benchBasicResidentIdx_ = -1;   // a preset switch hard-resets → no resident BASIC
     mw_->applyMachineConfig(t.preset);
     mw_->suppressDevBenchAutoload = false;
 }
@@ -2022,6 +2046,22 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
         idx == 10 ? "Applesoft Lite (Apple-1)" :
         idx == 11 ? "Applesoft TMS9918" : "Integer BASIC";
 
+    // Cold vs warm bring-up. COLD (default) reinitialises the interpreter from
+    // scratch (E000R/6000R/…) — a hard reset + ROM reload, wiping any program
+    // typed at the REPL. WARM (the CodeBench "Warm" toggle) re-enters the resident
+    // interpreter without the reset (Integer $E2B3, Applesoft cold+3 = 6003/9803/…),
+    // so a program already in memory survives. Warm assumes the interpreter was
+    // already cold-started once (its zero page + ROM image are resident); the actual
+    // warm-vs-cold decision is taken below, AFTER onTargetSelected settles the preset
+    // (a preset switch hard-resets the machine and clears benchBasicResidentIdx_, so
+    // we never warm-enter a just-wiped interpreter). The bring-up entry walks the ROM
+    // to its prompt before we poke/launch a compiled image.
+    const uint16_t coldEntry =
+        idx == 8  ? 0x6000 : idx == 9  ? 0x9800 :
+        idx == 10 ? 0xE000 : idx == 11 ? 0x4000 : ibasic::kColdStart;   // idx 7
+    const uint16_t warmEntry =
+        idx == 7 ? ibasic::kWarmStart : static_cast<uint16_t>(coldEntry + 3);
+
     namespace fs = std::filesystem;
     std::error_code ec;
     auto findRom = [&](std::initializer_list<const char*> cands) -> std::string {
@@ -2069,6 +2109,12 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
     }
     mw_->finalizePendingCardPlugs();
 
+    // Warm vs cold, decided now that the preset is settled: honour the toggle only
+    // when this interpreter is still resident (onTargetSelected clears the residency
+    // flag if it had to switch presets, i.e. hard-reset the machine). Otherwise cold.
+    const bool warm = benchWarmStart_ && (benchBasicResidentIdx_ == idx);
+    const uint16_t bringUp = warm ? warmEntry : coldEntry;
+
     // 2b) Give BASIC enough backed RAM for its interpreter + workspace. Two cases:
     //
     //   * TMS9918 + CodeTank (idx 11): a REAL, buildable machine — 16 KB low RAM
@@ -2107,28 +2153,33 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
     //    cold-start. RAM-resident ROMs (Integer/microSD/CFFA1/GEN2) load AFTER the
     //    reset (which zero-fills RAM); the TMS9918 cartridge is already flashed (step
     //    1/2) — just jumper + enable, THEN reset so 4000R sees it.
+    //    WARM start skips the whole reset+reload: the interpreter (and any program
+    //    typed at the REPL) is already resident, and warm re-entry (bringUp) walks
+    //    it back to its prompt without wiping RAM.
     std::string romErr;
     bool romOk = true;
-    if (tms) {
-        mw_->codeTankJumper = CodeTank::Jumper::Upper16;   // Applesoft lives in the upper bank
-        emu->setCodeTankJumper(mw_->codeTankJumper);
-        if (!mw_->tms9918Enabled)  { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
-        if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCodeTankEnabled(true); }
-        emu->hardReset(/*animateBoot=*/false);
-    } else {
-        emu->hardReset(/*animateBoot=*/false);
-        if (idx == 9) {
-            const std::string rom = findRom({"roms/applesoft-gen2.rom",
-                                             "../roms/applesoft-gen2.rom",
-                                             "../../roms/applesoft-gen2.rom"});
-            if (rom.empty()) { romErr = "roms/applesoft-gen2.rom not found"; romOk = false; }
-            else romOk = emu->loadInterpreterRom(rom, 0x9800, romErr);
-        } else if (idx == 8) {
-            romOk = emu->reloadApplesoftLiteSDCard(romErr);
-        } else if (idx == 10) {
-            romOk = emu->reloadApplesoftLiteCFFA1(romErr);
+    if (!warm) {
+        if (tms) {
+            mw_->codeTankJumper = CodeTank::Jumper::Upper16;   // Applesoft lives in the upper bank
+            emu->setCodeTankJumper(mw_->codeTankJumper);
+            if (!mw_->tms9918Enabled)  { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
+            if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCodeTankEnabled(true); }
+            emu->hardReset(/*animateBoot=*/false);
         } else {
-            romOk = emu->reloadBasic(romErr);   // Integer BASIC
+            emu->hardReset(/*animateBoot=*/false);
+            if (idx == 9) {
+                const std::string rom = findRom({"roms/applesoft-gen2.rom",
+                                                 "../roms/applesoft-gen2.rom",
+                                                 "../../roms/applesoft-gen2.rom"});
+                if (rom.empty()) { romErr = "roms/applesoft-gen2.rom not found"; romOk = false; }
+                else romOk = emu->loadInterpreterRom(rom, 0x9800, romErr);
+            } else if (idx == 8) {
+                romOk = emu->reloadApplesoftLiteSDCard(romErr);
+            } else if (idx == 10) {
+                romOk = emu->reloadApplesoftLiteCFFA1(romErr);
+            } else {
+                romOk = emu->reloadBasic(romErr);   // Integer BASIC
+            }
         }
     }
     if (!romOk) {
@@ -2142,19 +2193,20 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
         r.ok = false;
         return r;
     }
+    // The interpreter for this idx is now established (freshly cold-reloaded, or warm
+    // and already resident) → a subsequent Warm re-entry into it is safe.
+    benchBasicResidentIdx_ = idx;
 
     // Prep-only call: selectTargetExplicit passes an empty listing (run=false) just to
     // ready the interpreter prompt when the user picks a BASIC target. Compiling an
     // empty listing would fail with "no BASIC lines to compile" and surface as a scary
-    // selection error, so cold-start the ROM to its prompt and report success instead.
+    // selection error, so bring the ROM up to its prompt and report success instead.
+    // Warm re-entry keeps whatever program is already resident.
     if (src.empty() && !run) {
         constexpr uint64_t kColdStartCycles = 12'000'000;
-        const uint16_t coldEntry =
-            idx == 8  ? 0x6000 : idx == 9  ? 0x9800 :
-            idx == 10 ? 0xE000 : idx == 11 ? 0x4000 : ibasic::kColdStart;  // else idx 7
-        emu->runFromSync(coldEntry, kColdStartCycles);
+        emu->runFromSync(bringUp, kColdStartCycles);
         emu->copySnapshot(mw_->uiSnapshot);
-        r.status = std::string(interp) + " — ready";
+        r.status = std::string(interp) + (warm ? " — ready (warm, program kept)" : " — ready");
         r.ok = true;
         return r;
     }
@@ -2188,21 +2240,12 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
             return r;
         }
         char buf[192];
-        if (!run) {  // Verify = tokenise-check only
-            emu->copySnapshot(mw_->uiSnapshot);
-            std::snprintf(buf, sizeof(buf),
-                "[bench] Integer BASIC: tokenised OK — %d lines, image $%04X-$%04X (%zu B) "
-                "(Run to load + run)\n", prog.lineCount, prog.pp, prog.himem - 1, prog.image.size());
-            r.console = buf;
-            std::snprintf(buf, sizeof(buf), "Integer BASIC: tokenised (%d lines)", prog.lineCount);
-            r.status  = buf; r.ok = true;
-            return r;
-        }
-        // Cold-start Integer BASIC to its `>` prompt (inits lomem=$0800, himem=$1000,
-        // zero page), then poke the program image at pp, set pp ($CA/$CB), and enter
-        // the ROM's RUN handler ($EFEC = clr + run_warm) live.
+        // Both Verify and Run LOAD the tokenised image into the live interpreter;
+        // they differ only in the final entry. Bring Integer BASIC to its `>` prompt
+        // (cold inits lomem=$0800, himem=$1000, zero page; warm re-enters keeping the
+        // resident state), then poke the program image at pp and set pp ($CA/$CB).
         constexpr uint64_t kColdCycles = 12'000'000;
-        emu->runFromSync(ibasic::kColdStart, kColdCycles);
+        emu->runFromSync(bringUp, kColdCycles);
         // Lower LOMEM ($4A/$4B) below the cold default so variables + program fit
         // (HIMEM stays at the cold $1000). $EFEC's CLR re-reads LOMEM for the var base.
         emu->writeMemory(0x004A, static_cast<uint8_t>(kIntLomem & 0xFF));
@@ -2211,13 +2254,17 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
             emu->writeMemory(static_cast<uint16_t>(prog.pp + i), prog.image[i]);
         emu->writeMemory(ibasic::kPpZp,     static_cast<uint8_t>(prog.pp & 0xFF));
         emu->writeMemory(ibasic::kPpZp + 1, static_cast<uint8_t>((prog.pp >> 8) & 0xFF));
-        emu->runFromAsync(0xEFEC);   // RUN command handler: clr + run_warm
+        // Run → the ROM's RUN handler ($EFEC = clr + run_warm). Verify → warm start
+        // ($E2B3), which drops to the `>` prompt with the program intact + LISTable.
+        emu->runFromAsync(run ? 0xEFEC : ibasic::kWarmStart);
         emu->copySnapshot(mw_->uiSnapshot);
         std::snprintf(buf, sizeof(buf),
-            "[bench] Integer BASIC: tokenised %d lines → loaded %zu B @ $%04X, running "
-            "(tokeniser — no keyboard injection)\n", prog.lineCount, prog.image.size(), prog.pp);
+            "[bench] Integer BASIC: tokenised %d lines → loaded %zu B @ $%04X, %s "
+            "(tokeniser — no keyboard injection)\n", prog.lineCount, prog.image.size(),
+            prog.pp, run ? "running" : "ready to LIST/RUN");
         r.console = buf;
-        r.status  = "Integer BASIC: running (tokenised)";
+        r.status  = run ? "Integer BASIC: running (tokenised)"
+                        : "Integer BASIC: loaded — ready to LIST";
         r.ok = true;
         return r;
     }
@@ -2233,12 +2280,12 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
     //     ($4000). Integer BASIC (idx 7) has a different token set and is handled by
     //     the ibasic::compile path above (also compiled + loaded, never keyboard-typed).
     if (idx == 8 || idx == 9 || idx == 10 || idx == 11) {
-        basic::Target tgt; uint16_t coldEntry;
+        basic::Target tgt;
         switch (idx) {
-            case 8:  tgt = basic::targetMicrosd(); coldEntry = 0x6000; break;
-            case 9:  tgt = basic::targetGen2();    coldEntry = 0x9800; break;
-            case 10: tgt = basic::targetCffa1();   coldEntry = 0xE000; break;
-            default: tgt = basic::targetTms();     coldEntry = 0x4000; break;  // idx 11
+            case 8:  tgt = basic::targetMicrosd(); break;   // $6000 (bringUp from top)
+            case 9:  tgt = basic::targetGen2();    break;   // $9800
+            case 10: tgt = basic::targetCffa1();   break;   // $E000
+            default: tgt = basic::targetTms();     break;   // idx 11, $4000
         }
         // Cold-start to the `]` prompt is well under 1M cycles; this cap is a safe
         // ceiling — extra cycles just spin harmlessly in the interpreter's GETLN.
@@ -2265,26 +2312,42 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
         }
 
         char buf[192];
-        if (!run) {  // Verify = compile-check only; don't disturb the machine further.
-            restoreRelaxedMachine();
+
+        // Bring the interpreter ROM to its `]` prompt (cold inits CHRGET, HIMEM/
+        // FRETOP, output vector, FP scratch; warm re-enters keeping resident state)
+        // before we load the compiled image.
+        emu->runFromSync(bringUp, kColdStartCycles);
+
+        // Verify = LOAD ready to LIST (no run). Same program image, but the launcher's
+        // trailing `JMP NEWSTT` (run) is rewritten to `JMP <warm>` so it drops to the
+        // `]` prompt after JSR SETPTRS installs the pointers — the program is present
+        // and LISTable, nothing executes. Poke the zones directly (no temp file) and
+        // enter the launcher live.
+        if (!run) {
+            for (const basic::Zone& z : prog.zones) {
+                std::vector<uint8_t> bytes = z.bytes;
+                if (z.addr == basic::kLauncherAddr && bytes.size() >= 3) {
+                    bytes[bytes.size() - 3] = 0x4C;                                  // JMP
+                    bytes[bytes.size() - 2] = static_cast<uint8_t>(warmEntry & 0xFF);
+                    bytes[bytes.size() - 1] = static_cast<uint8_t>((warmEntry >> 8) & 0xFF);
+                }
+                for (size_t i = 0; i < bytes.size(); ++i)
+                    emu->writeMemory(static_cast<uint16_t>(z.addr + i), bytes[i]);
+            }
+            emu->runFromAsync(basic::kLauncherAddr);
             emu->copySnapshot(mw_->uiSnapshot);
             std::snprintf(buf, sizeof(buf),
-                "[bench] %s: tokenised OK — %d lines, program $0801-$%04X, launcher $%04X "
-                "(Run to load + launch)\n", interp, prog.lineCount,
-                prog.progEnd ? prog.progEnd - 1 : 0x0800, prog.entry);
+                "[bench] %s: tokenised %d lines → loaded $0801-$%04X, ready to LIST/RUN\n",
+                interp, prog.lineCount, prog.progEnd ? prog.progEnd - 1 : 0x0800);
             r.console = buf;
-            std::snprintf(buf, sizeof(buf), "%s: tokenised (%d lines)", interp, prog.lineCount);
+            std::snprintf(buf, sizeof(buf), "%s: loaded — ready to LIST", interp);
             r.status  = buf; r.ok = true;
             return r;
         }
 
-        // Cold-start the interpreter ROM (initialises CHRGET, HIMEM/FRETOP, output
-        // vector, FP scratch), then load the compiled image + launcher and jump to
-        // the launcher. loadHexDump preserves the cold-started zero page
-        // (cpu->hardReset clears only the stack, never RAM) and starts the async
-        // CPU at the launcher's run address.
-        emu->runFromSync(coldEntry, kColdStartCycles);
-
+        // Run: load the compiled image + run-launcher and jump to it. loadHexDump
+        // preserves the just-set-up zero page (hardReset clears only the stack, never
+        // RAM) and starts the async CPU at the launcher's run address (JMP NEWSTT).
         std::string err; uint16_t loadedEntry = 0; int loaded = 0;
         const fs::path tmp = benchScratchDir(ec) / "pom1_basic_tokenized.txt";
         { std::ofstream o(tmp, std::ios::binary);
@@ -2651,6 +2714,8 @@ bench::BuildResult Pom1BenchHost::compileBasicNative(int target, const std::stri
         if (nr.asmText.find("fp_sqrt") != std::string::npos) fpDefs += " -D FP_SQRT";
         if (nr.asmText.find("fp_sin")  != std::string::npos) fpDefs += " -D FP_SIN";
         if (nr.asmText.find("fp_cos")  != std::string::npos) fpDefs += " -D FP_COS";
+        if (nr.asmText.find("fp_atn")  != std::string::npos) fpDefs += " -D FP_ATN";
+        if (nr.asmText.find("fp_rand") != std::string::npos) fpDefs += " -D FP_RAND";
         const fs::path fpSrc = rtDir / "basicrt_float.s";
         if (!step(bench::shellQuote(ca65_) + fpDefs + " -o " + bench::shellQuote(fpO.string()) +
                   " " + bench::shellQuote(fpSrc.string()), "ca65 [float runtime]"))
@@ -2743,6 +2808,9 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     // Any non-LOGO build reprograms/hard-resets the machine → a resident LOGO REPL
     // is gone. (LOGO's own mode 6 manages the flag inside injectLogo.)
     if (t.mode != 6) logoReplActive_ = false;
+    // Likewise a non-BASIC build voids any resident BASIC interpreter, so the next
+    // Warm start can't re-enter it. (mode 4 manages benchBasicResidentIdx_ itself.)
+    if (t.mode != 4) benchBasicResidentIdx_ = -1;
 
     BuildLogMeta logMeta;
     logMeta.action = run ? "run" : "verify";

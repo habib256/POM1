@@ -100,6 +100,8 @@ std::string buildNativeTms(const std::string& src, const std::string& dir) {
         if (nr.asmText.find("fp_int")  != std::string::npos) fp += " -D FP_INT";
         if (nr.asmText.find("fp_sqrt") != std::string::npos) fp += " -D FP_SQRT";
         if (nr.asmText.find("fp_sin")  != std::string::npos) fp += " -D FP_SIN";
+        if (nr.asmText.find("fp_atn")  != std::string::npos) fp += " -D FP_ATN";
+        if (nr.asmText.find("fp_rand") != std::string::npos) fp += " -D FP_RAND";
         ok = sh("ca65" + fp + " -o " + dir + "/fp.o " + g_rt + "/basicrt_float.s");
         objs += " " + dir + "/fp.o";
     }

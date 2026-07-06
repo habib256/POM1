@@ -214,7 +214,31 @@ void CodeBench::drawNewDialog()
     if (const char* h = hintFor(machHints, newMachine_))
         ImGui::TextDisabled("%s", h);
     ImGui::Separator();
-    const int t = host_->targetFor(newLang_, newMachine_);
+    const int base = host_->targetFor(newLang_, newMachine_);
+    // BASIC "Inject | Compile" segmented toggle — shown only for the machines that
+    // have a native-compile sibling (Applesoft GEN2 / TMS on desktop). Inject runs
+    // on the resident interpreter; Compile builds standalone 6502 at $0300. Other
+    // machines (microSD / Integer / no sibling on WASM) are inject-only.
+    int t = base;
+    if (base >= 0) {
+        const int sib = host_->nativeSiblingOf(base);
+        if (sib >= 0) {
+            ImGui::AlignTextToFramePadding(); ImGui::TextUnformatted("Mode:"); ImGui::SameLine(96);
+            auto seg = [&](const char* lbl, bool active) {
+                ImGui::PushStyleColor(ImGuiCol_Button,
+                    ImGui::GetStyleColorVec4(active ? ImGuiCol_ButtonActive : ImGuiCol_FrameBg));
+                const bool clicked = ImGui::Button(lbl);
+                ImGui::PopStyleColor();
+                return clicked;
+            };
+            if (seg("Inject (interpreter)", !newBasicNative_)) newBasicNative_ = false;
+            ImGui::SameLine(0, 1);
+            if (seg("Compile (native)", newBasicNative_))       newBasicNative_ = true;
+            if (newBasicNative_) t = sib;
+        } else {
+            newBasicNative_ = false;   // machine without a native variant: inject only
+        }
+    }
     if (t >= 0) {
         const std::string hint = host_->toolchainHint(t);
         const bool ok = host_->toolchainReady(t);
@@ -306,6 +330,17 @@ void CodeBench::drawModeMenu()
             if (t < 0) continue;
             const std::string lbl = machs[m] + "##mode" + std::to_string(t);
             if (ImGui::Selectable(lbl.c_str(), t == curTarget)) pick(t);
+            // BASIC machines with a native compiler get a second, indented row so
+            // "Compile (native)" stays reachable now that it is no longer its own
+            // machine entry (mirrors the New dialog's Inject/Compile toggle).
+            const int nat = host_->nativeSiblingOf(t);
+            if (nat >= 0) {
+                ImGui::Indent();
+                const std::string nl = std::string(ICON_FA_MICROCHIP " Compile (native)##mode")
+                                     + std::to_string(nat);
+                if (ImGui::Selectable(nl.c_str(), nat == curTarget)) pick(nat);
+                ImGui::Unindent();
+            }
         }
         ImGui::Unindent();
     }
@@ -586,9 +621,23 @@ void CodeBench::render(const char* title, bool* open)
     ImGui::PushStyleColor(ImGuiCol_ChildBg, kTeal);
     ImGui::BeginChild("##benchtoolbar", ImVec2(0, 44), false, ImGuiWindowFlags_NoScrollbar);
     ImGui::SetCursorPos(ImVec2(8, 5));
-    if (pillBtn(ICON_FA_CHECK,       "", "##benchverify", "Verify - compile only")) doVerify();
+    if (pillBtn(ICON_FA_CHECK,       "", "##benchverify",
+                "Verify - compile-check (BASIC: also loads the program, ready to LIST)")) doVerify();
     ImGui::SameLine(0, 6);
     if (pillBtn(ICON_FA_ARROW_RIGHT, "", "##benchupload", "Run - build and run on the emulator")) doUpload();
+    // Warm/cold start toggle — only for interpreter targets that expose it (BASIC).
+    // Warm re-enters the resident interpreter without a cold reset, so a program
+    // already typed at the REPL survives Verify/Run. Default off = classic cold start.
+    if (host_->warmStartApplies(doc.targetIndex)) {
+        ImGui::SameLine(0, 10);
+        ImGui::SetCursorPosY(5.0f + (34.0f - ImGui::GetFrameHeight()) * 0.5f);
+        bool warm = host_->warmStart();
+        if (ImGui::Checkbox("Warm", &warm)) host_->setWarmStart(warm);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Warm start (E2B3R / 6003R): re-enter BASIC without a cold reset,\n"
+                              "keeping a program already typed at the REPL.\n"
+                              "Off = cold start (E000R / 6000R), a clean interpreter.");
+    }
     sep();
     ImGui::SameLine(0, 6);
     if (circleBtn(ICON_FA_FILE,          "##benchnew",      "New sketch (pick language + target) — opens a tab")) doNewChoose();

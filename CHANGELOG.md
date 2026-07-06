@@ -10,6 +10,72 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — Bench BASIC: Verify loads (ready to LIST) + cold/warm start toggle
+
+- **Verify now LOADS the tokenised program into the live interpreter, ready to
+  `LIST`** (instead of a host-side compile-check that touched no machine state).
+  `Pom1BenchHost::injectBasic(run=false)` cold-starts the interpreter, pokes the
+  image + pointers, and enters at the *prompt* rather than running: Integer BASIC
+  via its warm start `$E2B3`, Applesoft by rewriting the launcher's trailing
+  `JMP NEWSTT` → `JMP <warm>` (`$6003`/`$9803`/`$E003`/`$4003`) after `JSR SETPTRS`
+  installs the pointers. So the program is present + `LIST`able and nothing runs;
+  Run (`run=true`) is unchanged (loads + launches). All five BASIC targets.
+- **Cold/warm start toggle** — a "Warm" checkbox in the Bench toolbar (shown only
+  for BASIC targets, default **cold**). Warm re-enters the resident interpreter
+  through its warm entry (`E2B3R`/`6003R`) and skips the hard-reset + ROM reload,
+  so a program already typed at the REPL survives a Verify/Run; cold (`E000R`/
+  `6000R`) is the classic clean boot. Warm is honoured only when that interpreter
+  is actually resident (a preset switch or any non-BASIC build clears the residency
+  flag), so it never warm-enters unmapped RAM. New portable seam
+  `IBenchHost::warmStartApplies/warmStart/setWarmStart`.
+
+### Added — native BASIC compiler: `ATN` + `RND`
+
+- **`ATN(x)` and `RND(x)` now compile natively** (`BasicCompilerApplesoft` +
+  `dev/lib/basicrt/basicrt_float.s`). `fp_atn` is a two-stage range reduction
+  (`atan(1/x)` reciprocal fold + a `pi/6` offset fold to `|t| ≤ tan(π/12)`) then a
+  4-term odd Taylor, built entirely on the existing `fp_*` core; `fp_rand` advances
+  an xorshift32 state and forms the mantissa of a `[1,2)` single, minus 1 → `[0,1)`
+  (its argument is evaluated then discarded — Applesoft's `RND(0)`/`RND(<0)` are not
+  modelled). Both are feature-gated (`-D FP_ATN` / `-D FP_RAND`) so a program links
+  them only when used, and either one auto-selects the float phase. The shared
+  `LDF`/`CPF` float-constant macros moved to file scope so a routine can use them
+  without `FP_SIN`. Pinned: `basic_float_runtime` (5000-point ATN grid vs `atanf`,
+  RND range + non-degeneracy), `basic_native_codegen` (emits `jsr fp_atn`/`fp_rand`),
+  `basic_native_run` (end-to-end arctan-curve + RND-scatter native programs). Doc:
+  [`BASIC_COMPILER.md`](../doc/BASIC_COMPILER.md).
+
+### Fixed — documented `AND`/`OR` semantics divergence (not a tokeniser bug)
+
+- **Investigated a reported "`IF (X AND 7)=0` freezes the interpreter" bug: it is a
+  misdiagnosis.** The tokeniser emits bytes byte-identical to the interpreter ROM's
+  own CRUNCH (verified end-to-end on the real ROM; new byte-exact regression in
+  `basic_compiler_tokenize`). The real cause is inherent Applesoft semantics: `AND`/
+  `OR` are **logical** (nonzero→1) in the interpreter but **bitwise** in the native
+  compiler, so a bit-mask idiom loops forever under Inject yet works under Compile —
+  a genuine per-mode divergence surfaced by the new Inject/Compile toggle. Documented
+  in [`BASIC_COMPILER.md`](../doc/BASIC_COMPILER.md) (no code change — both modes are
+  correct, just different).
+
+### Added — DevBench BASIC: explicit "Inject | Compile" mode toggle
+
+- **The *New* dialog now exposes inject-vs-native-compile as a segmented Mode
+  toggle** on the Applesoft BASIC row (`bench/CodeBench.cpp` `drawNewDialog`),
+  instead of two look-alike "(native compile)" pseudo-machines in the Target combo.
+  **Inject (interpreter)** = the ahead-of-time tokeniser (`BasicTokeniserApplesoft`,
+  runs on the resident ROM); **Compile (native)** = the standalone 6502 codegen
+  (`BasicCompilerApplesoft`, no interpreter, ~20× faster, `$0300`). The toggle
+  shows only for the two machines with a native compiler (Applesoft GEN2 / TMS9918)
+  and is **desktop-only** — WASM (no cc65) collapses to Inject; microSD / CFFA1 /
+  Integer BASIC stay inject-only. The status-bar *Mode* switcher gained a matching
+  indented "Compile (native)" row so native stays reachable in place.
+- **New host seam `IBenchHost::nativeSiblingOf(target)`** (default −1, overridden in
+  `Pom1BenchHost`: inject 9 → native 12, inject 11 → native 13, −1 on WASM) — the
+  portable `bench/` module surfaces the toggle without knowing about card-specific
+  compilers. The two `kP1Machines` "native compile" rows are gone; the native
+  targets (12/13) and their `mode 5` dispatch are unchanged, so all
+  `basic_native_*` pins keep passing. Doc: [`DEVBENCH.md`](../doc/DEVBENCH.md).
+
 ### Added — HiDPI UI font scaling (Linux / Windows)
 
 - **The UI font auto-scales to the monitor's DPI on startup** (`main_imgui.cpp`,

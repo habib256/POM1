@@ -17,6 +17,30 @@
 .export fp_fromint16, fp_toint16, fp_add, fp_sub, fp_mul, fp_div, fp_cmp
 .exportzp FA, FB
 
+; Load a 4-byte binary32 immediate into a slot / copy one slot to another. Used by
+; the transcendentals (fp_sin/fp_cos/fp_atn); defined unconditionally (a macro emits
+; nothing unless invoked) so each gated routine can use them independently.
+.macro LDF reg, b0,b1,b2,b3
+        lda #b0
+        sta reg+0
+        lda #b1
+        sta reg+1
+        lda #b2
+        sta reg+2
+        lda #b3
+        sta reg+3
+.endmacro
+.macro CPF dst, src
+        lda src+0
+        sta dst+0
+        lda src+1
+        sta dst+1
+        lda src+2
+        sta dst+2
+        lda src+3
+        sta dst+3
+.endmacro
+
 .segment "ZEROPAGE"
 FA:  .res 4          ; operand/result A (binary32)
 FB:  .res 4          ; operand B
@@ -965,26 +989,6 @@ fp_sqrt:
 ; (k = round(x/2pi) must fit 16 bits). Built entirely on fp_add/sub/mul/cmp.
 ; cos(x) = sin(x + pi/2): fp_cos adds pi/2 and falls straight into fp_sin.
 .if .defined(FP_SIN) .or .defined(FP_COS)
-.macro LDF reg, b0,b1,b2,b3
-        lda #b0
-        sta reg+0
-        lda #b1
-        sta reg+1
-        lda #b2
-        sta reg+2
-        lda #b3
-        sta reg+3
-.endmacro
-.macro CPF dst, src
-        lda src+0
-        sta dst+0
-        lda src+1
-        sta dst+1
-        lda src+2
-        sta dst+2
-        lda src+3
-        sta dst+3
-.endmacro
 .ifdef FP_COS
 .export fp_cos
 ; fp_cos: FA = cos(FA). cos(x) = sin(x + pi/2); add pi/2, fall into fp_sin.
@@ -1054,5 +1058,208 @@ fp_sin:
         jsr fp_add
         CPF FB, sR
         jsr fp_mul                      ; FA = sin(x)
+        rts
+.endif
+
+; ---- fp_atn: FA = atan(FA) radians ------------------------------------------
+; Two-stage range reduction to |t| <= tan(pi/12) then a 4-term odd Taylor:
+;   atan(-x) = -atan(x)                         (sign fold)
+;   atan(x)  = pi/2 - atan(1/x)      for x > 1  (reciprocal fold)
+;   atan(x)  = pi/6 + atan((sqrt3*x - 1)/(x + sqrt3))  for x > 2-sqrt3
+;   atan(t)  ~ t*(1 - t2*(1/3 - t2*(1/5 - t2/7))),  t2 = t*t
+; Built entirely on the fp_* core; scratch aX/aT2/aP/aOff never overlap FA/FB or
+; the fp_sin scratch, so intermediate fp_* calls are safe. Max rel error ~1e-6.
+.ifdef FP_ATN
+.export fp_atn
+.segment "ZEROPAGE"
+aX:   .res 4                            ; working |x| / reduced t
+aT2:  .res 4                            ; t^2
+aP:   .res 4                            ; Horner temp
+aOff: .res 4                            ; offset (0 or pi/6)
+aFlg: .res 1                            ; bit0 = negative, bit1 = reciprocal-folded
+.segment "CODE"
+fp_atn:
+        lda #0
+        sta aFlg
+        lda FA+3                        ; capture sign, x = |x|
+        bpl @pos
+        lda #1
+        sta aFlg
+        lda FA+3
+        and #$7F
+        sta FA+3
+@pos:   CPF aX, FA
+        LDF FB, $00,$00,$80,$3F         ; 1.0
+        jsr fp_cmp                      ; |x| vs 1
+        cmp #2
+        bne @noinv                      ; |x| <= 1 -> no reciprocal fold
+        lda aFlg
+        ora #2
+        sta aFlg
+        LDF FA, $00,$00,$80,$3F         ; 1.0
+        CPF FB, aX
+        jsr fp_div                      ; x = 1/x
+        CPF aX, FA
+@noinv: lda #0                          ; aOff = 0
+        sta aOff+0
+        sta aOff+1
+        sta aOff+2
+        sta aOff+3
+        CPF FA, aX
+        LDF FB, $A3,$30,$89,$3E         ; 2 - sqrt3 = tan(pi/12)
+        jsr fp_cmp
+        cmp #2
+        beq @dofold                     ; x > tan(pi/12) -> offset fold
+        jmp @poly                       ; (long branch: block below exceeds 127 B)
+@dofold:
+        LDF aOff, $92,$0A,$06,$3F       ; pi/6
+        CPF FA, aX                      ; num = sqrt3*x - 1
+        LDF FB, $D7,$B3,$DD,$3F         ; sqrt3
+        jsr fp_mul
+        LDF FB, $00,$00,$80,$3F         ; 1.0
+        jsr fp_sub
+        CPF aP, FA                      ; aP = numerator
+        CPF FA, aX                      ; den = x + sqrt3
+        LDF FB, $D7,$B3,$DD,$3F
+        jsr fp_add
+        CPF FB, FA                      ; FB = denominator
+        CPF FA, aP                      ; FA = numerator
+        jsr fp_div                      ; t = num/den
+        CPF aX, FA
+@poly:  CPF FA, aX                      ; t2 = t*t
+        CPF FB, aX
+        jsr fp_mul
+        CPF aT2, FA
+        LDF FA, $25,$49,$12,$3E         ; 1/7
+        CPF FB, aT2                     ; p = 1/5 - t2*p
+        jsr fp_mul
+        CPF aP, FA
+        LDF FA, $CD,$CC,$4C,$3E         ; 1/5
+        CPF FB, aP
+        jsr fp_sub
+        CPF FB, aT2                     ; p = 1/3 - t2*p
+        jsr fp_mul
+        CPF aP, FA
+        LDF FA, $AB,$AA,$AA,$3E         ; 1/3
+        CPF FB, aP
+        jsr fp_sub
+        CPF FB, aT2                     ; p = 1 - t2*p
+        jsr fp_mul
+        CPF aP, FA
+        LDF FA, $00,$00,$80,$3F         ; 1.0
+        CPF FB, aP
+        jsr fp_sub
+        CPF FB, aX                      ; atan(t) = t*p
+        jsr fp_mul
+        CPF FB, aOff                    ; + offset
+        jsr fp_add
+        lda aFlg                        ; reciprocal fold: pi/2 - result
+        and #2
+        beq @nofold
+        CPF FB, FA
+        LDF FA, $DB,$0F,$C9,$3F         ; pi/2
+        jsr fp_sub
+@nofold:lda aFlg                        ; sign fold
+        and #1
+        beq @adone
+        lda FA+3
+        eor #$80
+        sta FA+3
+@adone: rts
+.endif
+
+; ---- fp_rand: FA = pseudo-random float in [0,1) -----------------------------
+; xorshift32 state advanced each call, then the low 23 bits form the mantissa of
+; a binary32 in [1,2) (exponent forced to 127); subtract 1.0 -> [0,1). The arg of
+; RND is evaluated then ignored by the caller: RND always returns a fresh value
+; (Applesoft's RND(0)=repeat / RND(<0)=reseed are not modelled). Seed is lazily
+; set nonzero on first use (zero is an xorshift fixed point).
+.ifdef FP_RAND
+.export fp_rand
+.segment "ZEROPAGE"
+rndSeed: .res 4
+rndTmp:  .res 4
+.segment "CODE"
+fp_rand:
+        lda rndSeed                     ; ensure seed != 0
+        ora rndSeed+1
+        ora rndSeed+2
+        ora rndSeed+3
+        bne @go
+        lda #$C3
+        sta rndSeed
+        lda #$D2
+        sta rndSeed+1
+        lda #$E5
+        sta rndSeed+2
+        lda #$71
+        sta rndSeed+3
+@go:    ; x ^= x << 13
+        jsr rnd_copy
+        ldy #13
+        jsr rnd_shl
+        jsr rnd_xor
+        ; x ^= x >> 17
+        jsr rnd_copy
+        ldy #17
+        jsr rnd_shr
+        jsr rnd_xor
+        ; x ^= x << 5
+        jsr rnd_copy
+        ldy #5
+        jsr rnd_shl
+        jsr rnd_xor
+        ; build 1.frac in [1,2) from the low 23 bits, then subtract 1
+        lda rndSeed
+        sta FA
+        lda rndSeed+1
+        sta FA+1
+        lda rndSeed+2
+        ora #$80                        ; exponent LSB = 1
+        sta FA+2
+        lda #$3F
+        sta FA+3                        ; sign 0, exp[6:0] = 0x3F  -> [1,2)
+        LDF FB, $00,$00,$80,$3F         ; 1.0
+        jsr fp_sub                      ; -> [0,1)
+        rts
+rnd_copy:                               ; rndTmp = rndSeed
+        lda rndSeed
+        sta rndTmp
+        lda rndSeed+1
+        sta rndTmp+1
+        lda rndSeed+2
+        sta rndTmp+2
+        lda rndSeed+3
+        sta rndTmp+3
+        rts
+rnd_shl:                                ; rndTmp <<= Y
+        asl rndTmp
+        rol rndTmp+1
+        rol rndTmp+2
+        rol rndTmp+3
+        dey
+        bne rnd_shl
+        rts
+rnd_shr:                                ; rndTmp >>= Y
+        lsr rndTmp+3
+        ror rndTmp+2
+        ror rndTmp+1
+        ror rndTmp
+        dey
+        bne rnd_shr
+        rts
+rnd_xor:                                ; rndSeed ^= rndTmp
+        lda rndSeed
+        eor rndTmp
+        sta rndSeed
+        lda rndSeed+1
+        eor rndTmp+1
+        sta rndSeed+1
+        lda rndSeed+2
+        eor rndTmp+2
+        sta rndSeed+2
+        lda rndSeed+3
+        eor rndTmp+3
+        sta rndSeed+3
         rts
 .endif

@@ -77,6 +77,8 @@ std::string buildNative(const std::string& src, bool fp, const std::string& dir)
         if (f == "fp_sqrt") { fpdefs += " -D FP_SQRT"; continue; }
         if (f == "fp_sin")  { fpdefs += " -D FP_SIN";  continue; }
         if (f == "fp_cos")  { fpdefs += " -D FP_COS";  continue; }
+        if (f == "fp_atn")  { fpdefs += " -D FP_ATN";  continue; }
+        if (f == "fp_rand") { fpdefs += " -D FP_RAND"; continue; }
         if (f.rfind("rt_", 0) != 0) continue;
         for (char& c : f) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
         defs += " -D " + f;
@@ -182,6 +184,24 @@ int main()
     int r2 = runCase("float", fpSrc, true, dir);
     if (r2 == kSkip) return kSkip;
 
+    // ATN: an arctan curve across the screen. Native-only (ATN's binary32 poly and
+    // the ROM's float differ slightly, so we assert it draws rather than matching the
+    // interpreter pixel-for-pixel). Exercises the fp_atn link/gating end-to-end.
+    const std::string atnSrc =
+        "10 HGR2 : HCOLOR=3\n20 FOR X=0 TO 279\n30 Y = 96 + ATN((X-140)/30)*55\n"
+        "40 HPLOT X,Y\n50 NEXT X\n60 END\n";
+    int rAtn = runNativeOnly("atn-curve", atnSrc, 100, 20000000LL, dir);
+    if (rAtn == kSkip) return kSkip;
+
+    // RND: scatter random points. Non-deterministic (no interpreter compare), but a
+    // few hundred plots must light a substantial number of pixels -- proves fp_rand
+    // links + runs and returns in-range coordinates (out-of-range would be clipped).
+    const std::string rndSrc =
+        "10 HGR2 : HCOLOR=3\n20 FOR I=0 TO 400\n30 HPLOT RND(1)*279, RND(1)*191\n"
+        "40 NEXT I\n50 END\n";
+    int rRnd = runNativeOnly("rnd-scatter", rndSrc, 100, 20000000LL, dir);
+    if (rRnd == kSkip) return kSkip;
+
     // The goal program: MTU's 3-D HAT (Micro, May 1981) -- HGR2 + FOR/IF/GOSUB +
     // INT/SQR/SIN + decimal arithmetic + HCOLOR=0 hidden-line erase. Proves the full
     // float pipeline (transcendentals, nested loops, subroutines, erase) compiles AND
@@ -207,7 +227,7 @@ int main()
         if (bytes > 256) { std::fprintf(stderr, "FAIL size: %zu bytes (>256) -- runtime not stripped\n", bytes); sizeFail = 1; }
     }
 
-    if (r1 || r2 || r3 || sizeFail) return 1;
+    if (r1 || r2 || r3 || rAtn || rRnd || sizeFail) return 1;
     std::printf("basic_native_run: OK\n");
     return 0;
 }

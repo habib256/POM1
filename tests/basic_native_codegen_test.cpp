@@ -189,6 +189,20 @@ int main()
         std::string a = genf("10 A%=Y/2\n20 END\n");
         check("A% store truncates via fp_int", has(a, "jsr fp_int") && has(a, "V_A_I"));
     }
+    // ATN(x): compiles to a fp_atn call, and (like SIN/SQR) forces the float phase
+    // under auto-precision -- gen() uses FpMode::Auto, so seeing fp_* proves it.
+    {
+        std::string a = gen("10 Y=ATN(X)\n20 END\n");
+        check("ATN -> jsr fp_atn",        has(a, "jsr fp_atn"));
+        check("ATN forces the float phase", has(a, "fp_"));
+    }
+    // RND(x): a fp_rand call; the argument is evaluated then dropped (a fresh random
+    // each call). Auto-precision forces float here too.
+    {
+        std::string a = gen("10 Y=RND(1)\n20 END\n");
+        check("RND -> jsr fp_rand",        has(a, "jsr fp_rand"));
+        check("RND forces the float phase", has(a, "fp_"));
+    }
     // "IF cond THEN <line> : stmts": the trailing statements are part of the
     // (conditional) consequent and must NOT leak out to run on the FALSE branch.
     // So no store to the tail var appears AFTER the IF's skip label.

@@ -127,29 +127,39 @@ GEN2, otherwise Apple-1 text. An `.apf` in a TMS9918 path tokenises into
 **Applesoft TMS9918**, in a GEN2/HGR path into **Applesoft GEN2**, elsewhere into
 the stock microSD Applesoft. A `.bas`/`.ibas` always tokenises into **Integer BASIC**.
 
-### BASIC — four Applesoft machines
+### BASIC — four Applesoft machines (× Inject / Compile)
 
 *New* → language **BASIC** offers four machines, each cold-starting the matching
-in-ROM interpreter. **All four now COMPILE** the listing with the host-side
-tokeniser (`BasicTokeniserApplesoft`): the program is tokenised ahead of time into a `$0801`
-image + a `$0280` launcher and loaded directly, then the launcher is entered — no
+in-ROM interpreter. The default deploy is **Inject**: the host-side tokeniser
+(`BasicTokeniserApplesoft`) tokenises the listing ahead of time into a `$0801`
+image + a `$0280` launcher and loads it directly, then the launcher is entered — no
 per-character keyboard typing, no 127-char line cap, instant, and identical on
 WASM (the tokeniser is pure C++). The resident interpreter ROM still supplies the
 runtime (FP, `SIN`/`SQR`, `HPLOT`…). Two reserved-word tables are used: the GEN2/
 TMS9918 graphics dialect (HGR/HPLOT/COLOR=…) and the reduced Applesoft Lite dialect
 for the microSD/CFFA1 ROMs (no graphics/trig; MENU/SAVE/LOAD/CLS — token bytes
-diverge past `$98`). (For *native* 6502 codegen — no interpreter at runtime — see
-[`BASIC_COMPILER.md`](BASIC_COMPILER.md).) **Integer BASIC** (`.bas`/`.ibas`) also
-tokenises now — its own context-sensitive tokeniser (`BasicTokeniserInteger`,
-`namespace ibasic`): program stored down from HIMEM, cold-start then image @ `pp` +
-RUN ($EFEC). Source: `sketchs/apple1/integer_basic/integer-basic.s` (== `roms/basic.rom`).
+diverge past `$98`).
 
-| Machine | Interpreter | Boot | Deploy |
-|---|---|---|---|
-| Applesoft Lite (Apple-1) | `roms/applesoft-lite-cffa1.rom` (`$E000`) | `E000R` | **compile (tokeniser, Lite)** |
-| Applesoft Lite + microSD | `roms/applesoft-lite-microsd.rom` (`$6000`) | `6000R` | **compile (tokeniser, Lite)** |
-| Applesoft GEN2 HGR | `roms/applesoft-gen2.rom` (`$9800`, GEN2 card) | `9800R` | **compile (tokeniser, graphics)** |
-| Applesoft TMS9918 | `roms/codetank/CODETANKDEV.rom` upper bank (CodeTank `$4000`, jumper Upper) | `4000R` | **compile (tokeniser, graphics)** |
+**Inject | Compile toggle.** The two graphics machines (Applesoft GEN2, Applesoft
+TMS9918) show a segmented **Mode** toggle in the *New* dialog (and a second
+row in the status-bar *Mode* switcher): **Inject** (above) vs **Compile (native)** —
+the standalone 6502 codegen (`BasicCompilerApplesoft`, no interpreter at runtime,
+~20× faster, runs at `$0300`). Native compile needs the desktop cc65 toolchain +
+`dev/` tree, so it is **desktop-only** — on WASM the toggle collapses to Inject.
+microSD, CFFA1 and Integer BASIC have no native compiler and are inject-only. Full
+codegen details: [`BASIC_COMPILER.md`](BASIC_COMPILER.md).
+
+**Integer BASIC** (`.bas`/`.ibas`) also tokenises (inject only) — its own
+context-sensitive tokeniser (`BasicTokeniserInteger`, `namespace ibasic`): program
+stored down from HIMEM, cold-start then image @ `pp` + RUN ($EFEC). Source:
+`sketchs/apple1/integer_basic/integer-basic.s` (== `roms/basic.rom`).
+
+| Machine | Interpreter | Boot | Inject (default) | Compile (native) |
+|---|---|---|---|---|
+| Applesoft Lite (Apple-1) | `roms/applesoft-lite-cffa1.rom` (`$E000`) | `E000R` | tokeniser, Lite | — |
+| Applesoft Lite + microSD | `roms/applesoft-lite-microsd.rom` (`$6000`) | `6000R` | tokeniser, Lite | — |
+| Applesoft GEN2 HGR | `roms/applesoft-gen2.rom` (`$9800`, GEN2 card) | `9800R` | tokeniser, graphics | **`$0300` standalone** (desktop) |
+| Applesoft TMS9918 | `roms/codetank/CODETANKDEV.rom` upper bank (CodeTank `$4000`, jumper Upper) | `4000R` | tokeniser, graphics | **`$0300` standalone** (desktop) |
 
 The graphics variants (GEN2/TMS9918) add the Apple II graphics command set
 (`TEXT/GR/HGR/COLOR=/HCOLOR=/PLOT/HLIN/VLIN/HPLOT`, `PRINT` → the card's screen,
