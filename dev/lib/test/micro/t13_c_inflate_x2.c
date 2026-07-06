@@ -6,12 +6,15 @@
  * body, so every x2 colour sprite inflated to ALL ZERO on the 6502 — while the
  * host build (and thus hgr_inflate_x2_smoke) stayed correct. gen2_hgr_x2.c now
  * guards the function with `#pragma optimize (off)`; this pin runs the REAL
- * compiled 6502 code and would catch a regression the host pin can't see.
+ * compiled 6502 code and catches a regression the host pin can't see.
  *
  * Inflates the 16x16 "dog" Fauna master to x2 WHITE (6 bytes x 32 rows) and
  * stamps a mailbox: a known lit row + the 16-bit sum of all 192 output bytes.
  * A miscompiled inflate zeroes the output -> sum 0x0000, lit row 00 -> mismatch.
  * Expected values computed by sketchs/gen2/demo_sprite_animals/gen_x2.py.
+ *
+ * The pragma-off inflate is slow naive codegen (~2-4M instr for a 16x16), hence
+ * the fat STEPS budget; headless still runs it in well under a second.
  *
  * POM1-LIB-MICRO-TEST
  * MODE: gen2
@@ -20,18 +23,18 @@
  * PRESET: 11
  * LOAD: 6000
  * RUN: 6000
- * STEPS: 200000
- * EXPECT: 0300 A5 40 07 70 01 5A 1A
+ * STEPS: 6000000
+ * EXPECT: 1000 A5 40 07 70 01 5A 1A
  * ===========================================================================
- * Mailbox at $0300 (free user RAM below the HIRES framebuffers; GEN2 C code +
- * stack live $6000-$BEFF, so $0300 is untouched by crt0/BSS/stack):
+ * Mailbox at $1000 (idle user RAM below the HIRES framebuffers; GEN2 C code +
+ * stack live $6000-$BEFF, framebuffers $2000-$5FFF, so $1000 is untouched):
  *   +0 magic $A5   +1..4 out[48..51] = 40 07 70 01 (the first lit doubled row)
  *   +5 sum_lo $5A  +6 sum_hi $1A     (sum of all 192 bytes = 0x1A5A)
  */
 
 #include "gen2.h"
 
-#define MB ((volatile unsigned char *)0x0300)
+#define MB ((volatile unsigned char *)0x1000)
 
 /* 16x16 "dog" mono master, 7px/byte — dev/lib/gen2/sprites/sprites_fauna_hgr.asm */
 static const unsigned char dog[48] = {

@@ -41,9 +41,12 @@ Driver header contract (comment lines, ';' for .s / '*' or '//' for .c):
     CFG:   micro.cfg             linker cfg (relative to dev/lib/test/micro
                                  for .s, to dev/lib for .c)
     PRESET: 1                    --preset index (default 1)
-    MODE:  codetank              .c only: build a 32 KB CodeTank ROM image
-                                 (lower 16 KB = program) and boot 4000R
-    LOAD/RUN: 0300               .s load/entry address (default 0300)
+    MODE:  codetank              .c build mode:
+                                   codetank — 32 KB CodeTank ROM (lower 16 KB =
+                                              program), boot 4000R (TMS9918c)
+                                   gen2     — raw binary via apple1_gen2_c.cfg,
+                                              loaded/run at LOAD/RUN (GEN2 HGR C)
+    LOAD/RUN: 0300               load/entry address (default 0300; gen2 .c: 6000)
     STEPS: 120000                --step budget (instructions; driver spins
                                  at the end, so bigger is merely slower)
     EXPECT: ADDR B0 B1 ...       hex bytes expected at ADDR (repeatable)
@@ -193,6 +196,29 @@ def build_c_codetank(spec: TestSpec, workdir: Path) -> Path:
     return rom
 
 
+def build_c_gen2(spec: TestSpec, workdir: Path) -> Path:
+    """GEN2 HGR C driver: cl65 with apple1_gen2_c.cfg -> raw binary loaded at the
+    cfg's STARTADDRESS ($6000), run with --load/--run (no CodeTank ROM wrap)."""
+    srcs = [spec.path] + [LIB_DIR / lib for lib in spec.libs]
+    for s in srcs:
+        if not s.exists():
+            raise RuntimeError(f"LIBS entry not found: {s}")
+    cfg = LIB_DIR / spec.cfg              # e.g. ../cc65/apple1_gen2_c.cfg
+    staged = []                           # cl65 drops .o beside sources -> stage
+    for s in srcs:
+        dst = workdir / s.name
+        dst.write_bytes(s.read_bytes())
+        staged.append(dst.name)
+    binf = workdir / "test.bin"
+    r = run_cmd(["cl65", "-t", "none", "-Oirs", "-C", cfg,
+                 "-I", LIB_DIR / "gen2c", "-I", LIB_DIR / "apple1c",
+                 "-I", LIB_DIR / "gfx", *staged, "-o", binf],
+                cwd=workdir)
+    if r.returncode != 0:
+        raise RuntimeError(f"cl65 {spec.path.name} failed:\n{r.stderr}{r.stdout}")
+    return binf
+
+
 def run_pom1(spec: TestSpec, artefact: Path, workdir: Path):
     snap = workdir / "out.snap"
     png = workdir / "scratch.png"        # exit ticket only, never inspected
@@ -203,8 +229,12 @@ def run_pom1(spec: TestSpec, artefact: Path, workdir: Path):
     else:
         cmd += ["--load", f"{spec.load:04X}:{artefact}",
                 "--run", f"{spec.run:04X}"]
+    # The frame dump is only an "exit ticket" that makes headless stop after
+    # --step and save the snapshot; pick the one for this card (a --dump-tms-frame
+    # on a GEN2 preset would have no TMS to render).
+    dump_flag = "--dump-gen2-frame" if spec.mode == "gen2" else "--dump-tms-frame"
     cmd += ["--step", spec.steps, "--snapshot-save", snap,
-            "--dump-tms-frame", png, "--dump-after-cycles", "1000"]
+            dump_flag, png, "--dump-after-cycles", "1000"]
     r = run_cmd(cmd, cwd=REPO)           # cwd: POM1 resolves roms/ relative
     return r, snap
 
@@ -243,9 +273,13 @@ def run_one(spec: TestSpec, keep: bool, verbose: bool) -> tuple[bool, str, float
     workdir = Path(tempfile.mkdtemp(prefix=f"pom1_micro_{spec.path.stem}_"))
     try:
         if spec.path.suffix == ".c":
-            if spec.mode != "codetank":
-                return False, "only MODE: codetank is supported for .c tests", 0.0
-            artefact = build_c_codetank(spec, workdir)
+            if spec.mode == "codetank":
+                artefact = build_c_codetank(spec, workdir)
+            elif spec.mode == "gen2":
+                artefact = build_c_gen2(spec, workdir)
+            else:
+                return False, ("MODE for .c tests must be 'codetank' or 'gen2', "
+                               f"got '{spec.mode}'"), 0.0
         else:
             artefact = build_asm(spec, workdir)
         r, snap = run_pom1(spec, artefact, workdir)
