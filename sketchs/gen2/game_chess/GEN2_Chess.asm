@@ -2,25 +2,23 @@
 ; GEN2_Chess.asm -- graphical Chess for the Apple-1 + Uncle Bernie GEN2 HGR card
 ; VERHILLE Arnaud - 2026
 ; =============================================================================
-; HGR (280x192 artifact-colour) front-end for the shared chess engine
-; (dev/lib/games/chess/chess_engine.asm), the sibling of TMS_Chess.asm. The
-; engine is platform-agnostic; this file is the HGR renderer + keyboard-cursor
-; game loop + Apple-1 text UI. Same game, same controls -- only the board
-; drawing changes (HGR bytes instead of TMS Mode-2 cells).
+; HGR front-end for the shared chess engine (dev/lib/games/chess/
+; chess_engine.asm), sibling of TMS_Chess.asm. The engine + game loop + Apple-1
+; text UI are platform-agnostic; only the board drawing is HGR-specific.
 ;
-; Board look (per the reference image): blue / white checkerboard, one side
-; ORANGE, the other BLACK. The whole board is emitted in the bit-7=1 NTSC group
-; (blue/orange family); white squares use $FF (white in EITHER group) so orange
-; piece pixels coexist with a white background in the same byte. Per piece:
-;   WHITE side -> ORANGE (clear the piece pixels, then stamp the orange pattern)
-;   BLACK side -> BLACK  (just clear the piece pixels)
-; The cursor / selection are BITMAP overlays (no hardware sprites -- the Apple 1
-; has none): a persistent black frame marks the selected square, blinking black
-; corner ticks mark the cursor (human turn only).
+; Board + pieces: adopted from Stefan Wessels' cc65-Chess (StewBC/cc65-Chess),
+; Apple II port by Oliver Schmidt, piece art by Frank Gebhart. Each square is a
+; 3-byte (21 px) x 22-row cell (origin byte col 2 / scanline 14). The board is
+; a BLACK/WHITE checkerboard; a piece is a monochrome bitmap
+; (dev/lib/gen2/sprites/chess_cc65_pieces) drawn with a COPY rop (EOR #$80, on
+; black squares) or an INVERT rop (EOR #$FF, on white squares), the outline vs
+; solid variant chosen (variant = blackWhite ^ isBlackPiece) so both sides read
+; correctly on both square colours -- exactly cc65's platA2.c logic. The text
+; panel (move list, coords, status) uses OUR bbfont subset (bbfont_ascii5f.inc).
 ;
-; Geometry: 8x8 board, square = 3 bytes (21 px) x 21 scanlines, top-left at
-; byte col 0 / scanline 8. Board = byte cols 0..23 (168 px); cols 24..39
-; (112 px) are reserved for the future coord/move panel (milestone 2b).
+; Cursor / selection are BITMAP overlays (no hardware sprites): a persistent
+; XOR frame marks the selected square, blinking XOR corner ticks mark the
+; cursor (human turn only) -- visible on black AND white squares.
 ;
 ; Controls (Apple-1 keyboard, forced uppercase):
 ;   I/J/K/L  move cursor        SPACE or RETURN  pick source / target
@@ -28,53 +26,43 @@
 ;   U        undo last move     P  toggle AI strategy (FAST 1-ply / STRONG 2-ply)
 ; Modes (M cycles): HVH, WAI (white=you/black=AI), BAI, AVA (auto self-play).
 ;
-; Build: dual-bank GEN2 (apple1_gen2_chess.cfg) -- code in the $E000 high bank
-; + data in the $0280 low bank, the $2000-$3FFF framebuffer untouched. Links
-; chess_engine.o. Entry: E000R.
+; Build: single-region image at $6000 (above HGR page 2) on the 48 KB GEN2 HGR
+; Color machine; links chess_engine.o. Entry: 6000R.
 ; =============================================================================
 
 .include "apple1.inc"
 .include "chess_common.inc"
 
-; --- geometry -------------------------------------------------------------
-BOARD_Y0   = 8
-SQH        = 21         ; square height in scanlines
-PIECE_YOFF = 3          ; centre the 16-row piece in the 21-row square
+; --- geometry (cc65-Chess layout) -----------------------------------------
+PC_W       = 3          ; piece/square width in bytes (21 px)
+PC_H       = 22         ; piece/square height in scanlines
+BOARD_X0   = 2          ; left byte column of the board (col 0..1 = rank digit)
+BOARD_Y0   = 14         ; top scanline of the board
 BLINK_HI   = $40        ; cursor blink half-period (poll-loop iters, hi byte)
-; Board shifted 1 byte right (byte cols 1..24) so col 0 holds the rank digit.
-; --- right text panel (byte cols 25..39 = 15 chars) ------------------------
-RCOL0      = 25         ; panel left byte column (x = 175)
-PANEL_W    = 15         ; panel width in 7-px chars
+FILL_WHITE = $FF        ; white square / INVERT rop mask
+FILL_BLACK = $80        ; black square / COPY rop mask (bit 7 = HGR palette)
+; --- right text panel (bbfont) --------------------------------------------
+RCOL0      = 27         ; panel left byte column (x = 189), past the board -- status
+MLCOL      = 31         ; move-list left byte column (RCOL0 + 4 chars)
+MLWIDTH    = 9          ; move-list width in chars (cols 31..39)
 MLIST_TOP  = 2          ; first panel text row used by the move list
-MLIST_BOT  = 24         ; one past the last usable row (row*8 = scanline)
-FILEY      = 179        ; scanline of the file-letter row (below the board)
-
-; --- HGR artifact bytes (bit 7 = 1 group throughout the board) ------------
-WHITE_BYTE = $FF        ; all pixels on -> white regardless of group
-BLUE_EV    = $D5        ; blue, even byte column ($55 | $80)
-BLUE_OD    = $AA        ; blue, odd  byte column ($2A | $80)
-ORNG_EV    = $AA        ; orange, even byte column ($2A | $80)
-ORNG_OD    = $D5        ; orange, odd  byte column ($55 | $80)
+MLIST_BOT  = 23         ; one past the last usable row (row*8 = scanline)
+COORDY     = 3          ; scanline of the file-letter row (above the board)
 
 ; ---------------------------------------------------------------------------
-; Zero page. tmp/tmp2 MUST be $00/$01 (the engine .importzp them). Declared
-; first so the layout starts at $00; the engine's own ZEROPAGE .res block
-; concatenates after these.
+; Zero page. tmp/tmp2 MUST be $00/$01 (the engine .importzp them).
 ; ---------------------------------------------------------------------------
 .segment "ZEROPAGE"
 tmp:       .res 1       ; $00
 tmp2:      .res 1       ; $01
-sptr_lo:   .res 1       ; string ptr for puts_a1
+sptr_lo:   .res 1       ; string ptr (Apple-1 puts + panel puts)
 sptr_hi:   .res 1
-ptr_lo:    .res 1       ; scanline base pointer (hgr_clear + blit)
+ptr_lo:    .res 1       ; scanline base pointer (hgr_clear + blits)
 ptr_hi:    .res 1
-mptr_lo:   .res 1       ; current mask row pointer
+mptr_lo:   .res 1       ; piece bitmap / glyph source ptr
 mptr_hi:   .res 1
 .exportzp tmp, tmp2
 
-; ---------------------------------------------------------------------------
-; Engine imports. Switch out of ZEROPAGE first so these default to absolute.
-; ---------------------------------------------------------------------------
 .segment "CODE"
 .import init_board, apply_user_move, ai_play_move, game_status, in_check
 .import piece_at, undo_last_move
@@ -86,43 +74,37 @@ mptr_hi:   .res 1
 .segment "BSS"
 dsq:        .res 1      ; square being drawn (0x88)
 cur_sq:     .res 1      ; cursor square (0x88)
-old_cur:    .res 1      ; previous cursor square (redraw on move)
+old_cur:    .res 1      ; previous cursor square
 sel_sq:     .res 1      ; selected source ($FF = none)
-sel_active: .res 1      ; 0/1
-piece_code: .res 1      ; raw board byte for dsq
+sel_active: .res 1
+piece_code: .res 1
 play_mode:  .res 1      ; 0 HvH / 1 WAI / 2 BAI / 3 AvA
-movecount:  .res 1      ; AI half-move counter (AvA cap)
-game_result:.res 1      ; 1 wmate / 2 bmate / 3 stale / 4 draw
-cursor_on:  .res 1      ; 1 = show the selection cursor (human turn only)
-blink_vis:  .res 1      ; cursor blink phase: 1 = ticks shown, 0 = hidden
-blink_lo:   .res 1      ; blink timer (poll-loop iterations)
+movecount:  .res 1
+game_result:.res 1
+cursor_on:  .res 1
+blink_vis:  .res 1
+blink_lo:   .res 1
 blink_hi:   .res 1
-turn_ai:    .res 1      ; 1 = side to move is the AI (this loop iteration)
-printed_side: .res 1    ; last side we printed an Apple-1 turn line for ($FF=none)
-seed_acc:   .res 1      ; free-running counter -> AI RNG entropy (key timing)
-move_row:   .res 1      ; next right-panel row for the move list (2b)
-hist_n:     .res 1      ; move-list history depth (2b)
-; --- HGR draw_square scratch ---
+turn_ai:    .res 1
+printed_side: .res 1
+seed_acc:   .res 1
+move_row:   .res 1
+hist_n:     .res 1
+; --- HGR renderer scratch ---
 frank:      .res 1      ; rank 0..7 (0 = white home)
 ffile:      .res 1      ; file 0..7
+drow:       .res 1      ; display row 0..7 (0 = top = rank 8)
 topsl:      .res 1      ; top scanline of the square
 bcol:       .res 1      ; left byte column of the square
-c0:         .res 1      ; square fill bytes (3 columns)
-c1:         .res 1
-c2:         .res 1
-o0:         .res 1      ; orange piece bytes (3 columns)
-o1:         .res 1
-o2:         .res 1
-is_org:     .res 1      ; 1 = orange piece, 0 = black piece
-prow:       .res 1      ; piece blit row 0..15
-yy:         .res 1      ; fill row 0..20
-maskbits:   .res 1
+bw:         .res 1      ; 1 = white square, 0 = black square
+sqval:      .res 1      ; white/black fill byte = COPY/INVERT rop mask
+pvariant:   .res 1      ; piece bitmap variant (0 outline / 1 solid)
 scratch:    .res 1
-save_x:     .res 1      ; X saved across putc_hgr (clobbers X)
-; --- HGR text panel ---
+prow:       .res 1      ; blit row counter
+save_x:     .res 1
+; --- text panel ---
 tx_col:     .res 1      ; glyph blit byte column
 tx_sl:      .res 1      ; glyph blit top scanline
-; move-list entry being printed + a 2-deep history (wrapped-column continuity)
 ml_side:    .res 1
 ml_from:    .res 1
 ml_to:      .res 1
@@ -144,6 +126,7 @@ main:
         STA sel_active
         STA movecount
         STA hist_n
+        STA cursor_on
         LDA #2
         STA move_row
         LDA #$FF
@@ -152,43 +135,35 @@ main:
         STA cur_sq
         LDA #1
         STA ai_strategy         ; STRONG (2-ply) default
+        STA blink_vis
         LDA #$FF
         STA printed_side
-        LDA #0
-        STA cursor_on           ; no cursor during the startup menu
-        LDA #1
-        STA blink_vis
         JSR gen2_hgr_init_clear  ; HGR + PAGE1 + blank the framebuffer
         JSR draw_board
-        JSR draw_coords          ; rank digits (left) + file letters (bottom)
-        JSR a1_choose_mode       ; Apple-1 presentation + keyboard mode select
+        JSR draw_coords
+        JSR a1_choose_mode
 
 game_loop:
-        JSR check_terminal      ; shows result + waits N (-> new_game) if over
-        JSR update_status       ; side + mode at the top of the right panel
-        JSR side_is_ai          ; A = 1 (AI) / 0 (human)
+        JSR check_terminal
+        JSR update_status
+        JSR side_is_ai
         STA turn_ai
-        JSR a1_turn_status      ; "X IS THINKING" / "X TO PLAY" on the Apple-1
-        LDA turn_ai             ; cursor visible only on a human turn
+        JSR a1_turn_status
+        LDA turn_ai
         EOR #1
         STA cursor_on
         LDA turn_ai
         BEQ human_turn
-        ; AI's turn: erase the cursor ticks so nothing blinks while it thinks
-        LDA #0
+        LDA #0                  ; AI turn: erase the cursor ticks
         STA blink_vis
         LDA cur_sq
         STA dsq
         JSR draw_square
         JMP ai_turn
 
-; ---------------------------------------------------------------------------
-; Human turn: show the blinking cursor, poll the keyboard (non-blocking so the
-;   cursor keeps blinking), then dispatch the key.
-; ---------------------------------------------------------------------------
 human_turn:
         LDA #1
-        STA blink_vis           ; cursor visible on entry
+        STA blink_vis
         LDA cur_sq
         STA dsq
         JSR draw_square
@@ -196,14 +171,14 @@ human_turn:
         STA blink_lo
         STA blink_hi
 @wait:  JSR poll_key
-        BNE @got                ; a key is ready
-        INC blink_lo            ; else tick the blink timer
+        BNE @got
+        INC blink_lo
         BNE @wait
         INC blink_hi
         LDA blink_hi
         CMP #BLINK_HI
         BCC @wait
-        LDA #0                  ; half-period elapsed -> toggle cursor
+        LDA #0
         STA blink_hi
         LDA blink_vis
         EOR #1
@@ -212,19 +187,19 @@ human_turn:
         STA dsq
         JSR draw_square
         JMP @wait
-@got:   CMP #'I'                ; I = up
+@got:   CMP #'I'
         BNE @n1
         JSR cur_up
         JMP game_loop
-@n1:    CMP #'K'                ; K = down
+@n1:    CMP #'K'
         BNE @n2
         JSR cur_down
         JMP game_loop
-@n2:    CMP #'J'                ; J = left
+@n2:    CMP #'J'
         BNE @n3
         JSR cur_left
         JMP game_loop
-@n3:    CMP #'L'                ; L = right
+@n3:    CMP #'L'
         BNE @n4
         JSR cur_right
         JMP game_loop
@@ -234,7 +209,7 @@ human_turn:
 @n5:    CMP #$0D
         BNE @n6
         JMP do_confirm
-@n6:    CMP #$1B                ; ESC
+@n6:    CMP #$1B
         BNE @n7
         JMP do_deselect
 @n7:    CMP #'M'
@@ -249,56 +224,48 @@ human_turn:
 @k3:    CMP #'P'
         BNE @k4
         JMP toggle_strategy
-@k4:    JMP game_loop           ; unknown key
+@k4:    JMP game_loop
 
-; ---------------------------------------------------------------------------
-; Confirm (SPACE/RETURN): select a source, or attempt sel -> cur.
-; ---------------------------------------------------------------------------
 do_confirm:
         LDA sel_active
         BNE @have
-        ; no selection yet: select cur if it holds a piece of the side to move
         LDX cur_sq
         JSR piece_at
         STA piece_code
         AND #PIECE_MASK
-        BEQ @ret                ; empty square
+        BEQ @ret
         LDA piece_code
         AND #COLOR_BLACK
         CMP side_to_move
-        BNE @ret                ; not our piece
+        BNE @ret
         LDA cur_sq
         STA sel_sq
         LDA #1
         STA sel_active
         LDA cur_sq
         STA dsq
-        JSR draw_square         ; show selection frame
+        JSR draw_square
 @ret:   JMP game_loop
-@have:  ; a source is selected
-        LDA cur_sq
+@have:  LDA cur_sq
         CMP sel_sq
-        BEQ do_deselect         ; clicking source again cancels
+        BEQ do_deselect
         LDA sel_sq
         STA mv_from
         LDA cur_sq
         STA mv_to
         LDA #0
-        STA mv_promo            ; auto-queen on promotion
+        STA mv_promo
         JSR apply_user_move
-        BCS do_deselect         ; illegal -> just cancel selection
-        ; legal: clear selection + cursor (the human's turn is over), full
-        ; board redraw (capture/castle/e.p.)
+        BCS do_deselect
         LDA #0
         STA sel_active
-        STA cursor_on           ; hide the cursor immediately after the move
+        STA cursor_on
         LDA #$FF
         STA sel_sq
         JSR draw_board
-        JSR print_move_hgr      ; log the move (2b)
+        JSR print_move_hgr
         JMP game_loop
 
-; Cancel the current selection (and redraw the freed square).
 do_deselect:
         LDA #0
         STA sel_active
@@ -320,7 +287,7 @@ cycle_mode:
         AND #3
         STA play_mode
         LDA #$FF
-        STA printed_side        ; force a fresh turn line for the new mode
+        STA printed_side
         JMP game_loop
 
 toggle_strategy:
@@ -351,20 +318,16 @@ new_game:
         LDA #2
         STA move_row
         JSR draw_board
-        JSR clear_movelist      ; 2b
-        JSR a1_choose_mode      ; re-present + re-select mode for the new game
+        JSR clear_movelist
+        JSR a1_choose_mode
         JMP game_loop
 
-; ---------------------------------------------------------------------------
-; AI turn. AvA auto-plays (capped); single-AI modes move once then return to
-; the loop. Non-blocking poll lets N/M interrupt an AvA game.
-; ---------------------------------------------------------------------------
 ai_turn:
         LDA play_mode
         CMP #3
         BNE @go
         LDA movecount
-        CMP #200                ; AvA safety cap -> declared draw
+        CMP #200
         BCC @poll
         LDA #4
         STA game_result
@@ -382,37 +345,29 @@ ai_turn:
         BNE @go
         JMP cycle_mode
 @go:    JSR ai_play_move
-        BCS @loop               ; no move (terminal caught next iteration)
+        BCS @loop
         INC movecount
         JSR draw_board
-        JSR print_move_hgr      ; 2b
+        JSR print_move_hgr
 @loop:  JMP game_loop
 
-; ---------------------------------------------------------------------------
-; side_is_ai: A = 1 if the side to move is the AI, else 0.
-; ---------------------------------------------------------------------------
 side_is_ai:
         LDA play_mode
-        BEQ @human              ; 0 HvH
+        BEQ @human
         CMP #3
-        BEQ @ai                 ; 3 AvA
+        BEQ @ai
         CMP #1
         BEQ @m1
-        ; mode 2: white=AI, black=human
         LDA side_to_move
-        BEQ @ai                 ; white -> AI
+        BEQ @ai
         BNE @human
-@m1:    ; mode 1: white=human, black=AI
-        LDA side_to_move
-        BNE @ai                 ; black -> AI
+@m1:    LDA side_to_move
+        BNE @ai
 @human: LDA #0
         RTS
 @ai:    LDA #1
         RTS
 
-; ---------------------------------------------------------------------------
-; check_terminal: if game_status != 0, show the result, wait for N, restart.
-; ---------------------------------------------------------------------------
 check_terminal:
         JSR game_status
         BEQ @ok
@@ -424,13 +379,10 @@ check_terminal:
         JMP new_game
 @ok:    RTS
 
-; ---------------------------------------------------------------------------
-; Cursor movement. Each redraws the vacated + new square.
-; ---------------------------------------------------------------------------
 cur_up:
         LDA cur_sq
         CMP #$70
-        BCS cur_ret             ; already rank 8
+        BCS cur_ret
         STA old_cur
         CLC
         ADC #$10
@@ -439,7 +391,7 @@ cur_up:
 cur_down:
         LDA cur_sq
         CMP #$10
-        BCC cur_ret             ; already rank 1
+        BCC cur_ret
         STA old_cur
         SEC
         SBC #$10
@@ -448,7 +400,7 @@ cur_down:
 cur_left:
         LDA cur_sq
         AND #$07
-        BEQ cur_ret             ; file a
+        BEQ cur_ret
         LDA cur_sq
         STA old_cur
         SEC
@@ -459,7 +411,7 @@ cur_right:
         LDA cur_sq
         AND #$07
         CMP #$07
-        BEQ cur_ret             ; file h
+        BEQ cur_ret
         LDA cur_sq
         STA old_cur
         CLC
@@ -467,20 +419,19 @@ cur_right:
         STA cur_sq
 cur_moved:
         LDA #1
-        STA blink_vis           ; keep the cursor visible right after a move
+        STA blink_vis
         LDA old_cur
         STA dsq
-        JSR draw_square         ; erase ticks on the vacated square
+        JSR draw_square
         LDA cur_sq
         STA dsq
-        JSR draw_square         ; draw ticks on the new square
+        JSR draw_square
 cur_ret:
         RTS
 
 ; ===========================================================================
-; HGR renderer
+; HGR renderer (cc65-Chess board + pieces)
 ; ===========================================================================
-; draw_board: paint all 64 squares.
 draw_board:
         LDX #0                  ; rank 0..7
 @r:     LDY #0                  ; file 0..7
@@ -509,11 +460,10 @@ draw_board:
         RTS
 
 ; ---------------------------------------------------------------------------
-; draw_square: fill square `dsq` (blue/white) + piece (orange/black) + the
-;   selection frame / blinking cursor ticks. Clobbers A,X,Y.
+; draw_square: paint square `dsq` -- black/white fill or piece bitmap (copy/
+;   invert), then the selection frame / cursor ticks. Clobbers A,X,Y.
 ; ---------------------------------------------------------------------------
 draw_square:
-        ; frank = sq/8-ish from 0x88: file = dsq & 7, rank = dsq >> 4
         LDA dsq
         AND #$07
         STA ffile
@@ -523,166 +473,71 @@ draw_square:
         LSR
         LSR
         STA frank
+        LDA #7
+        SEC
+        SBC frank
+        STA drow                ; display row (0 = top)
+        ; topsl = BOARD_Y0 + (7-rank)*22   (topsl_tab indexed by frank)
         LDX frank
         LDA topsl_tab,X
         STA topsl
+        ; bcol = BOARD_X0 + ffile*3
         LDX ffile
         LDA bcol_tab,X
         STA bcol
-
-        ; square colour: (frank + ffile) & 1 -> 0 = dark(blue), 1 = light(white)
-        LDA frank
-        CLC
-        ADC ffile
-        AND #1
-        BEQ @dark
-        LDA #WHITE_BYTE
-        STA c0
-        STA c1
-        STA c2
-        JMP @orange_bytes
-@dark:
+        ; blackWhite = !((ffile & 1) ^ (drow & 1))  -> bw (1 = white)
         LDA ffile
         AND #1
-        BEQ @dfe
-        LDA #BLUE_OD
-        STA c0
-        LDA #BLUE_EV
-        STA c1
-        LDA #BLUE_OD
-        STA c2
-        JMP @orange_bytes
-@dfe:
-        LDA #BLUE_EV
-        STA c0
-        LDA #BLUE_OD
-        STA c1
-        LDA #BLUE_EV
-        STA c2
-
-@orange_bytes:
-        LDA ffile
+        STA tmp
+        LDA drow
         AND #1
-        BEQ @ofe
-        LDA #ORNG_OD
-        STA o0
-        LDA #ORNG_EV
-        STA o1
-        LDA #ORNG_OD
-        STA o2
-        JMP @fill
-@ofe:
-        LDA #ORNG_EV
-        STA o0
-        LDA #ORNG_OD
-        STA o1
-        LDA #ORNG_EV
-        STA o2
-
-@fill:
-        LDA #0
-        STA yy
-@frow:
-        LDA topsl
-        CLC
-        ADC yy
-        TAX
-        LDA hgr_lo,X
-        STA ptr_lo
-        LDA hgr_hi,X
-        STA ptr_hi
-        LDY bcol
-        LDA c0
-        STA (ptr_lo),Y
-        INY
-        LDA c1
-        STA (ptr_lo),Y
-        INY
-        LDA c2
-        STA (ptr_lo),Y
-        INC yy
-        LDA yy
-        CMP #SQH
-        BNE @frow
-
-        ; piece?
+        EOR tmp
+        EOR #1
+        STA bw
+        ; sqval = bw ? $FF : $80   (fill colour AND copy/invert rop mask)
+        LDA #FILL_WHITE
+        LDX bw
+        BNE @haveval
+        LDA #FILL_BLACK
+@haveval:
+        STA sqval
+        ; occupied?
         LDX dsq
         JSR piece_at
-        BNE @haspiece           ; occupied
-        JMP @overlays           ; empty (out of branch range)
-@haspiece:
         STA piece_code
-        AND #COLOR_MASK
-        BNE @black
-        LDA #1                  ; white -> orange
-        STA is_org
-        JMP @sel
-@black:
-        LDA #0
-        STA is_org
-@sel:
+        AND #PIECE_MASK
+        BNE @occupied
+        JSR fill_square         ; empty: solid black/white
+        JMP @overlays
+@occupied:
+        ; The copy/invert rop is square-colour-dependent, so drawing the SAME
+        ; bitmap on both square colours would flip a piece square-to-square.
+        ; cc65's fix: variant = blackWhite ^ colourTerm -- the outline/solid
+        ; variant compensates the rop flip. colourTerm = isWhite (our bit 7 =
+        ; BLACK, inverted vs cc65) keeps the white side light (bottom).
+        LDA piece_code
+        AND #COLOR_BLACK        ; $80 if black piece
+        BEQ @wpc
+        LDA #0                  ; black piece
+        JMP @haveblk
+@wpc:   LDA #1                  ; white piece
+@haveblk:
+        EOR bw
+        STA pvariant
+        ; cc65 bitmap index = type2cc65[type]*2 + variant
         LDA piece_code
         AND #PIECE_MASK
-        SEC
-        SBC #1
         TAX
-        LDA mask_lo,X
+        LDA type2cc65,X
+        ASL                     ; *2
+        ORA pvariant
+        TAX
+        LDA cc65_piece_lo,X
         STA mptr_lo
-        LDA mask_hi,X
+        LDA cc65_piece_hi,X
         STA mptr_hi
-
-        LDA #0
-        STA prow
-@prow:
-        LDA topsl
-        CLC
-        ADC #PIECE_YOFF
-        ADC prow
-        TAX
-        LDA hgr_lo,X
-        STA ptr_lo
-        LDA hgr_hi,X
-        STA ptr_hi
-        LDX #0                  ; column 0..2
-@pcol:
-        TXA
-        TAY
-        LDA (mptr_lo),Y
-        STA maskbits
-        TXA
-        CLC
-        ADC bcol
-        TAY
-        LDA maskbits
-        EOR #$FF
-        AND (ptr_lo),Y
-        STA scratch
-        LDA is_org
-        BEQ @pst
-        LDA o0,X
-        AND maskbits
-        ORA scratch
-        STA scratch
-@pst:
-        LDA scratch
-        STA (ptr_lo),Y
-        INX
-        CPX #3
-        BNE @pcol
-        LDA mptr_lo
-        CLC
-        ADC #3
-        STA mptr_lo
-        BCC @nomc
-        INC mptr_hi
-@nomc:
-        INC prow
-        LDA prow
-        CMP #16
-        BNE @prow
-
+        JSR blit_piece          ; eormask = sqval
 @overlays:
-        ; selection frame (persistent, on the selected source square)
         LDA sel_active
         BEQ @nosel
         LDA dsq
@@ -690,7 +545,6 @@ draw_square:
         BNE @nosel
         JSR draw_sel_frame
 @nosel:
-        ; blinking cursor ticks (human turn only)
         LDA cursor_on
         BEQ @done
         LDA blink_vis
@@ -703,8 +557,76 @@ draw_square:
         RTS
 
 ; ---------------------------------------------------------------------------
-; draw_cursor_ticks: black 3x3 corner ticks (clear pixels; bit 7 preserved so
-;   the surrounding square keeps its NTSC group). Rows 0..2 and 18..20.
+; fill_square: fill the 3x22 square at bcol/topsl with sqval.
+; ---------------------------------------------------------------------------
+fill_square:
+        LDA #0
+        STA prow
+@row:   LDA prow
+        CLC
+        ADC topsl
+        TAX
+        LDA hgr_lo,X
+        STA ptr_lo
+        LDA hgr_hi,X
+        STA ptr_hi
+        LDY bcol
+        LDA sqval
+        STA (ptr_lo),Y
+        INY
+        STA (ptr_lo),Y
+        INY
+        STA (ptr_lo),Y
+        INC prow
+        LDA prow
+        CMP #PC_H
+        BNE @row
+        RTS
+
+; ---------------------------------------------------------------------------
+; blit_piece: draw the 3x22 bitmap at (mptr) into bcol/topsl, each source byte
+;   EOR sqval (sqval = $80 copy / $FF invert), exactly cc65's ROP_CPY/ROP_INV.
+; ---------------------------------------------------------------------------
+blit_piece:
+        LDA #0
+        STA prow
+@row:   LDA prow
+        CLC
+        ADC topsl
+        TAX
+        LDA hgr_lo,X
+        STA ptr_lo
+        LDA hgr_hi,X
+        STA ptr_hi
+        LDY #0                  ; source column 0..2
+@col:   LDA (mptr_lo),Y
+        EOR sqval
+        STA scratch
+        STY save_x
+        TYA
+        CLC
+        ADC bcol
+        TAY
+        LDA scratch
+        STA (ptr_lo),Y
+        LDY save_x
+        INY
+        CPY #PC_W
+        BNE @col
+        LDA mptr_lo
+        CLC
+        ADC #PC_W
+        STA mptr_lo
+        BCC @nc
+        INC mptr_hi
+@nc:    INC prow
+        LDA prow
+        CMP #PC_H
+        BNE @row
+        RTS
+
+; ---------------------------------------------------------------------------
+; draw_cursor_ticks: XOR 3-px corner ticks (visible on black AND white).
 ; ---------------------------------------------------------------------------
 draw_cursor_ticks:
         LDX #0
@@ -718,13 +640,13 @@ draw_cursor_ticks:
         STA ptr_hi
         LDY bcol
         LDA (ptr_lo),Y
-        AND #$F8                ; clear px 0..2 (left tick)
+        EOR #$07                ; toggle px 0..2 (left tick)
         STA (ptr_lo),Y
         LDY bcol
         INY
         INY
         LDA (ptr_lo),Y
-        AND #$8F                ; clear px 18..20 (right tick, byte2 bits 4..6)
+        EOR #$70                ; toggle px 18..20 (right tick)
         STA (ptr_lo),Y
         INX
         CPX #6
@@ -732,10 +654,9 @@ draw_cursor_ticks:
         RTS
 
 ; ---------------------------------------------------------------------------
-; draw_sel_frame: black 1px rectangle border around the square.
+; draw_sel_frame: XOR a 1-px frame around the square.
 ; ---------------------------------------------------------------------------
 draw_sel_frame:
-        ; top (row 0) + bottom (row 20): full black line across the 3 bytes
         LDX #0
 @tb:    LDA framerows,X
         CLC
@@ -746,16 +667,20 @@ draw_sel_frame:
         LDA hgr_hi,Y
         STA ptr_hi
         LDY bcol
-        LDA #0
+        LDA (ptr_lo),Y
+        EOR #$7F
         STA (ptr_lo),Y
         INY
+        LDA (ptr_lo),Y
+        EOR #$7F
         STA (ptr_lo),Y
         INY
+        LDA (ptr_lo),Y
+        EOR #$7F
         STA (ptr_lo),Y
         INX
         CPX #2
         BNE @tb
-        ; left edge (px0) + right edge (px20) rows 1..19
         LDX #1
 @sd:    TXA
         CLC
@@ -767,24 +692,251 @@ draw_sel_frame:
         STA ptr_hi
         LDY bcol
         LDA (ptr_lo),Y
-        AND #$FE                ; clear px 0 (left edge, keep bit 7)
+        EOR #$01                ; left edge px 0
         STA (ptr_lo),Y
         LDY bcol
         INY
         INY
         LDA (ptr_lo),Y
-        AND #$BF                ; clear px 20 (byte2 bit 6, keep bit 7)
+        EOR #$40                ; right edge px 20
         STA (ptr_lo),Y
         INX
-        CPX #20
+        CPX #21
         BNE @sd
         RTS
 
-; ---------------------------------------------------------------------------
-; Text panel stubs (implemented in milestone 2b -- HGR move list + coords).
-; ---------------------------------------------------------------------------
+; ===========================================================================
+; HGR text panel (OUR bbfont subset) -- move list, coords, status
+; ===========================================================================
+; putc_hgr: blit glyph A at tx_col/tx_sl, advance tx_col. Clobbers A,X,Y.
+putc_hgr:
+        SEC
+        SBC #$20
+        BCC @space
+        CMP #64
+        BCC @have
+@space: LDA #0
+@have:  STA tmp
+        LDA #0
+        STA tmp2
+        ASL tmp
+        ROL tmp2
+        ASL tmp
+        ROL tmp2
+        ASL tmp
+        ROL tmp2                ; index*8
+        LDA tmp
+        CLC
+        ADC #<HGR_Font5F
+        STA mptr_lo
+        LDA tmp2
+        ADC #>HGR_Font5F
+        STA mptr_hi
+        LDX #0                  ; glyph row 0..7
+@r:     TXA
+        CLC
+        ADC tx_sl
+        TAY
+        LDA hgr_lo,Y
+        STA ptr_lo
+        LDA hgr_hi,Y
+        STA ptr_hi
+        TXA
+        TAY
+        LDA (mptr_lo),Y
+        LDY tx_col
+        STA (ptr_lo),Y
+        INX
+        CPX #8
+        BNE @r
+        INC tx_col
+        RTS
+
+; puts_hgr: print NUL-terminated (sptr) via putc_hgr at tx_col/tx_sl.
+puts_hgr:
+@l:     LDY #0
+        LDA (sptr_lo),Y
+        BEQ @d
+        JSR putc_hgr
+        INC sptr_lo
+        BNE @l
+        INC sptr_hi
+        JMP @l
+@d:     RTS
+
+; print_sq_hgr: A = 0x88 square -> "FR" (file letter + rank digit).
+print_sq_hgr:
+        PHA
+        AND #$07
+        CLC
+        ADC #'A'
+        JSR putc_hgr
+        PLA
+        LSR
+        LSR
+        LSR
+        LSR
+        CLC
+        ADC #'1'
+        JSR putc_hgr
+        RTS
+
+; print_ml_entry: "s FROMTO" for (ml_side,ml_from,ml_to) at move_row.
+print_ml_entry:
+        LDA #MLCOL
+        STA tx_col
+        LDA move_row
+        ASL
+        ASL
+        ASL
+        STA tx_sl
+        LDA ml_side
+        JSR putc_hgr
+        LDA #' '
+        JSR putc_hgr
+        LDA ml_from
+        JSR print_sq_hgr
+        LDA ml_to
+        JSR print_sq_hgr
+        INC move_row
+        RTS
+
+; print_move_hgr: log the move just made (mv_from,mv_to). Wraps the column when
+;   full, re-printing the last two moves for continuity (2-deep history).
 print_move_hgr:
+        LDA side_to_move        ; side that just moved (already toggled)
+        BNE @wm
+        LDA #'B'
+        JMP @sv
+@wm:    LDA #'W'
+@sv:    STA cur_side
+        LDA move_row
+        CMP #MLIST_BOT
+        BCC @room
+        JSR clear_movelist
+        LDA hist_n
+        CMP #2
+        BCC @room
+        LDA p2_side
+        STA ml_side
+        LDA p2_from
+        STA ml_from
+        LDA p2_to
+        STA ml_to
+        JSR print_ml_entry
+        LDA p1_side
+        STA ml_side
+        LDA p1_from
+        STA ml_from
+        LDA p1_to
+        STA ml_to
+        JSR print_ml_entry
+@room:  LDA cur_side
+        STA ml_side
+        LDA mv_from
+        STA ml_from
+        LDA mv_to
+        STA ml_to
+        JSR print_ml_entry
+        LDA p1_side             ; shift history
+        STA p2_side
+        LDA p1_from
+        STA p2_from
+        LDA p1_to
+        STA p2_to
+        LDA cur_side
+        STA p1_side
+        LDA mv_from
+        STA p1_from
+        LDA mv_to
+        STA p1_to
+        LDA hist_n
+        CMP #2
+        BCS @done
+        INC hist_n
+@done:  RTS
+
+; clear_movelist: blank panel rows [MLIST_TOP,MLIST_BOT), reset move_row.
 clear_movelist:
+        LDX #MLIST_TOP
+@row:   LDA #MLCOL
+        STA tx_col
+        TXA
+        ASL
+        ASL
+        ASL
+        STA tx_sl
+        STX save_x
+        LDY #MLWIDTH            ; move-list width in chars (cols 31..39)
+@col:   STY scratch
+        LDA #' '
+        JSR putc_hgr
+        LDY scratch
+        DEY
+        BNE @col
+        LDX save_x
+        INX
+        CPX #MLIST_BOT
+        BNE @row
+        LDA #MLIST_TOP
+        STA move_row
+        RTS
+
+; update_status: side to move + mode at the top of the right panel (row 0).
+update_status:
+        LDA #MLCOL
+        STA tx_col
+        LDA #0
+        STA tx_sl
+        LDA side_to_move
+        BNE @b
+        LDA #'W'
+        JMP @ps
+@b:     LDA #'B'
+@ps:    JSR putc_hgr
+        LDA #' '
+        JSR putc_hgr
+        LDX play_mode
+        LDA modestr_lo,X
+        STA sptr_lo
+        LDA modestr_hi,X
+        STA sptr_hi
+        JMP puts_hgr            ; tail
+
+; draw_coords: rank digits (left column) + file letters (above the board).
+draw_coords:
+        LDX #0                  ; rank 0..7
+@r:     LDA #0
+        STA tx_col
+        LDA topsl_tab,X
+        CLC
+        ADC #7
+        STA tx_sl
+        TXA
+        CLC
+        ADC #'1'
+        STX save_x
+        JSR putc_hgr
+        LDX save_x
+        INX
+        CPX #8
+        BNE @r
+        LDX #0                  ; file 0..7
+@f:     LDA bcol_tab,X
+        CLC
+        ADC #1                  ; centre the glyph in the 3-byte square
+        STA tx_col
+        LDA #COORDY
+        STA tx_sl
+        TXA
+        CLC
+        ADC #'A'
+        STX save_x
+        JSR putc_hgr
+        LDX save_x
+        INX
+        CPX #8
+        BNE @f
         RTS
 
 ; ---------------------------------------------------------------------------
@@ -797,7 +949,7 @@ wait_key:
         AND #$7F
         RTS
 
-poll_key:                       ; A = key, or 0 if none pending
+poll_key:
         LDA KBDCR
         BPL @none
         LDA KBD
@@ -807,10 +959,8 @@ poll_key:                       ; A = key, or 0 if none pending
         RTS
 
 ; ---------------------------------------------------------------------------
-; Apple-1 character-screen output: startup presentation + keyboard menu +
-; game-over announcement (the board lives on the HGR screen).
+; Apple-1 character-screen output.
 ; ---------------------------------------------------------------------------
-; cout: print A (7-bit) to the Apple-1 display via the Woz DSP handshake.
 cout:
         ORA #$80
 @w:     BIT DSP
@@ -818,7 +968,6 @@ cout:
         STA DSP
         RTS
 
-; puts_a1: print the NUL-terminated string at (sptr) (16-bit ptr increment).
 puts_a1:
         LDY #0
 @l:     LDA (sptr_lo),Y
@@ -830,7 +979,6 @@ puts_a1:
         JMP @l
 @done:  RTS
 
-; a1_choose_mode: present the game + read the play mode (1..4) from the keyboard.
 a1_choose_mode:
         LDA #<a1_splash
         STA sptr_lo
@@ -844,7 +992,7 @@ a1_choose_mode:
         LDA #>a1_modeprompt
         STA sptr_hi
         JSR puts_a1
-@spin:  INC seed_acc            ; free-running while we wait for a key
+@spin:  INC seed_acc
         LDA KBDCR
         BPL @spin
         LDA KBD
@@ -854,22 +1002,21 @@ a1_choose_mode:
         CMP #'5'
         BCS @ask
         SEC
-        SBC #'1'                ; '1'..'4' -> 0..3
+        SBC #'1'
         STA play_mode
-        LDA ai_rng              ; fold the timing entropy into the AI RNG
+        LDA ai_rng
         EOR seed_acc
         BNE @seeded
-        LDA #$AC                ; never leave it 0 (the LFSR would jam)
+        LDA #$AC
 @seeded:
         STA ai_rng
-        LDX play_mode           ; echo the chosen mode label
+        LDX play_mode
         LDA a1_modelbl_lo,X
         STA sptr_lo
         LDA a1_modelbl_hi,X
         STA sptr_hi
-        JMP puts_a1             ; tail
+        JMP puts_a1
 
-; a1_result: announce the game result + "PRESS N" on the Apple-1.
 a1_result:
         LDX game_result
         LDA overstr_lo,X
@@ -881,10 +1028,8 @@ a1_result:
         STA sptr_lo
         LDA #>a1_pressn
         STA sptr_hi
-        JMP puts_a1             ; tail
+        JMP puts_a1
 
-; a1_turn_status: announce whose turn it is + a CHECK flag. Prints only when
-;   the side to move changed.
 a1_turn_status:
         LDA side_to_move
         CMP printed_side
@@ -892,7 +1037,7 @@ a1_turn_status:
         STA printed_side
         LDA turn_ai
         BNE @ai
-        LDA side_to_move        ; human to move
+        LDA side_to_move
         BNE @hb
         LDA #<a1_wt_play
         LDX #>a1_wt_play
@@ -900,7 +1045,7 @@ a1_turn_status:
 @hb:    LDA #<a1_bl_play
         LDX #>a1_bl_play
         JMP @pr
-@ai:    LDA side_to_move        ; AI to move
+@ai:    LDA side_to_move
         BNE @ab
         LDA #<a1_wt_think
         LDX #>a1_wt_think
@@ -910,7 +1055,7 @@ a1_turn_status:
 @pr:    STA sptr_lo
         STX sptr_hi
         JSR puts_a1
-        JSR in_check            ; A nonzero if side_to_move's king is attacked
+        JSR in_check
         BEQ @done
         LDA #<a1_check
         STA sptr_lo
@@ -923,30 +1068,27 @@ a1_turn_status:
 ; Read-only data / tables.
 ; ---------------------------------------------------------------------------
 ; top scanline per rank (rank 0 = white home, drawn at the BOTTOM):
-;   topsl = BOARD_Y0 + (7 - rank) * 21
+;   topsl = BOARD_Y0 + (7-rank)*22
 topsl_tab:
-        .byte 155, 134, 113, 92, 71, 50, 29, 8
-; left byte column per file = 1 + file*3 (board shifted 1 byte right so col 0
-; holds the rank digit)
+        .byte 168, 146, 124, 102, 80, 58, 36, 14
+; left byte column per file = BOARD_X0 + file*3
 bcol_tab:
-        .byte 1, 4, 7, 10, 13, 16, 19, 22
-; corner-tick rows / frame edge rows (offsets from topsl)
-tickrows:  .byte 0, 1, 2, 18, 19, 20
-framerows: .byte 0, 20
+        .byte 2, 5, 8, 11, 14, 17, 20, 23
+; corner-tick rows / frame edge rows (offsets from topsl, 22-tall square)
+tickrows:  .byte 0, 1, 2, 19, 20, 21
+framerows: .byte 0, 21
+; my piece type (1..6 = P,N,B,R,Q,K) -> cc65 bitmap index (ROOK=0,KNIGHT=1,
+; BISHOP=2,QUEEN=3,KING=4,PAWN=5). Index 0 unused.
+type2cc65:
+        .byte 0, 5, 1, 2, 0, 3, 4
 
-; mask pointers indexed by (type-1): pawn,knight,bishop,rook,queen,king
-mask_lo:
-        .byte <chess_pawn_mask, <chess_knight_mask, <chess_bishop_mask
-        .byte <chess_rook_mask, <chess_queen_mask, <chess_king_mask
-mask_hi:
-        .byte >chess_pawn_mask, >chess_knight_mask, >chess_bishop_mask
-        .byte >chess_rook_mask, >chess_queen_mask, >chess_king_mask
-
-; --- Apple-1 screen strings (DSP output; no font needed) --------------------
+; --- Apple-1 screen strings -------------------------------------------------
 a1_splash:
         .byte $0D
         .byte "APPLE-1 CHESS  V0.7  (HGR)", $0D
         .byte "BY VERHILLE ARNAUD, 2026", $0D
+        .byte "PIECES: CC65-CHESS (WESSELS/", $0D
+        .byte " SCHMIDT/GEBHART)", $0D
         .byte $0D
         .byte "BOARD + PLAY ON THE HGR SCREEN", $0D
         .byte " IJKL = MOVE THE CURSOR", $0D
@@ -984,11 +1126,20 @@ o_draw: .byte $0D, " DRAW", $0D, 0
 overstr_lo: .byte 0, <o_bwin, <o_wwin, <o_stale, <o_draw
 overstr_hi: .byte 0, >o_bwin, >o_wwin, >o_stale, >o_draw
 
+; --- panel mode labels (bbfont) ---
+m_hvh:  .byte "HVH", 0
+m_wai:  .byte "WAI", 0
+m_bai:  .byte "BAI", 0
+m_ava:  .byte "AVA", 0
+modestr_lo: .byte <m_hvh, <m_wai, <m_bai, <m_ava
+modestr_hi: .byte >m_hvh, >m_wai, >m_bai, >m_ava
+
 ; ---------------------------------------------------------------------------
 ; Self-contained HGR library includes (data + init; the engine is a separate
-; .o linked in, but these have no external symbols we define).
+; .o linked in).
 ; ---------------------------------------------------------------------------
-.include "sprites/chess_hgr_masks.asm"   ; chess_<piece>_mask silhouettes
-.include "hgr_clear.asm"                  ; clear_hgr (uses ptr_lo/ptr_hi)
-.include "hgr_scanline.inc"               ; hgr_lo / hgr_hi base tables
-.include "gen2_init.asm"                  ; gen2_hgr_init_clear / gen2_text_restore
+.include "sprites/chess_cc65_pieces.asm"  ; cc65-Chess piece bitmaps
+.include "bbfont_ascii5f.inc"             ; HGR_Font5F text glyphs ($20-$5F)
+.include "hgr_clear.asm"                   ; clear_hgr (uses ptr_lo/ptr_hi)
+.include "hgr_scanline.inc"                ; hgr_lo / hgr_hi base tables
+.include "gen2_init.asm"                   ; gen2_hgr_init_clear
