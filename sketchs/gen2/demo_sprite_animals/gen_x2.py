@@ -36,10 +36,36 @@ MASTERS = {
         0x38,0x12,0x02, 0x78,0x0C,0x01, 0x78,0x01,0x01, 0x78,0x7F,0x01,
         0x70,0x07,0x00, 0x68,0x7B,0x00, 0x5C,0x2B,0x01, 0x12,0x28,0x01,
     ],
+    "rabbit": [
+        0x00,0x00,0x00, 0x00,0x00,0x00, 0x00,0x00,0x00, 0x08,0x20,0x00,
+        0x24,0x48,0x00, 0x66,0x4C,0x01, 0x66,0x4C,0x01, 0x6E,0x6C,0x01,
+        0x7E,0x7F,0x01, 0x3E,0x7B,0x01, 0x6E,0x6F,0x01, 0x4A,0x24,0x01,
+        0x02,0x00,0x01, 0x00,0x00,0x00, 0x00,0x00,0x00, 0x00,0x00,0x00,
+    ],
+    "spider": [
+        0x00,0x00,0x00, 0x78,0x04,0x00, 0x78,0x13,0x00, 0x70,0x0F,0x00,
+        0x48,0x5F,0x00, 0x20,0x3E,0x00, 0x00,0x7F,0x00, 0x74,0x3F,0x00,
+        0x78,0x5F,0x00, 0x78,0x03,0x00, 0x78,0x09,0x00, 0x74,0x27,0x00,
+        0x60,0x1F,0x00, 0x10,0x2B,0x00, 0x40,0x3E,0x00, 0x00,0x00,0x00,
+    ],
+    "cat": [
+        0x00,0x00,0x00, 0x70,0x00,0x00, 0x78,0x01,0x00, 0x68,0x01,0x00,
+        0x08,0x04,0x00, 0x10,0x03,0x00, 0x00,0x08,0x00, 0x40,0x07,0x00,
+        0x10,0x10,0x00, 0x60,0x0F,0x00, 0x60,0x0F,0x00, 0x3C,0x7B,0x00,
+        0x5E,0x77,0x01, 0x1A,0x30,0x01, 0x12,0x10,0x01, 0x14,0x50,0x00,
+    ],
+    "snake": [
+        0x00,0x00,0x00, 0x00,0x00,0x00, 0x00,0x00,0x00, 0x00,0x00,0x00,
+        0x40,0x3F,0x00, 0x60,0x7F,0x00, 0x60,0x7F,0x00, 0x70,0x44,0x01,
+        0x36,0x3B,0x01, 0x36,0x2B,0x01, 0x54,0x2C,0x01, 0x44,0x4E,0x01,
+        0x38,0x7C,0x01, 0x78,0x7D,0x00, 0x44,0x03,0x00, 0x2A,0x7E,0x00,
+    ],
 }
 
-COLOURS = {"dog": WHITE, "octopus": BLUE, "bat": GREEN, "lion": ORANGE}
-COLNAME = {WHITE: "WHITE", BLUE: "BLUE", GREEN: "GREEN", ORANGE: "ORANGE"}
+COLOURS = {"dog": WHITE, "octopus": BLUE, "bat": GREEN, "lion": ORANGE,
+           "rabbit": VIOLET, "spider": ORANGE, "cat": BLUE, "snake": GREEN}
+COLNAME = {WHITE: "WHITE", BLUE: "BLUE", GREEN: "GREEN", ORANGE: "ORANGE",
+           VIOLET: "VIOLET"}
 
 WBYTES, H = 3, 16
 
@@ -85,13 +111,14 @@ SRC_COLS  = WBYTES * 2 * 7            # 42 lit columns in the 6-byte x2 form
 
 def preshift_bank(name):
     """7 phases x 32 rows x 8 bytes = 1792 bytes, phases contiguous."""
+    """Return the 7 phases as [phase][row][byte] (7 rows-of-PS_DSTB), full size."""
     x2 = inflate_x2(MASTERS[name], WBYTES, H, COLOURS[name])
     dW = WBYTES * 2                                   # 6 source bytes/row
     groupbit = 0x80 if COLOURS[name] in (BLUE, ORANGE) else 0
-    out = []
+    phases = []
     for p in PS_PHASES:
+        rows = []
         for row in range(H * 2):                      # 32 doubled rows
-            # unpack the row's 42 lit columns (bits 0..6 of each source byte)
             lit = []
             for b in range(dW):
                 byte = x2[row * dW + b]
@@ -107,22 +134,64 @@ def preshift_bank(name):
                 for b in range(PS_DSTB):
                     if dst[b]:
                         dst[b] |= 0x80
-            out.extend(dst)
-    return out
+            rows.append(dst)
+        phases.append(rows)
+    return phases
+
+
+def bake(name):
+    """Trim each sprite to its bounding box: the used rows (phase-independent)
+    and, per phase, the used byte window. Returns metadata + trimmed data so the
+    runtime blits ~5x(24..30) instead of 7x32 (blit7 pays for zero bytes too)."""
+    phases = preshift_bank(name)
+    NR = H * 2                                        # 32 rows
+    lit7 = lambda v: v & 0x7F                         # ignore palette bit for bbox
+    # rows used: any phase-0 row with content (rows don't move with h-shift)
+    used_row = [any(lit7(phases[0][r][b]) for b in range(PS_DSTB)) for r in range(NR)]
+    yoff = next(r for r in range(NR) if used_row[r])
+    ylast = next(r for r in range(NR - 1, -1, -1) if used_row[r])
+    nrows = ylast - yoff + 1
+    # per-phase byte window (xoff, width) — each phase baked at its OWN width so a
+    # phase whose content fits 4 bytes doesn't pay for a 5th (saves ~a few hundred
+    # bytes across 8 sprites, which is what fits the DevBench full-link).
+    xoff, wp = [], []
+    for ph in phases:
+        cols = [b for b in range(PS_DSTB)
+                if any(lit7(ph[r][b]) for r in range(yoff, yoff + nrows))]
+        x0, x1 = min(cols), max(cols)
+        xoff.append(x0)
+        wp.append(x1 - x0 + 1)
+    # trimmed data: phase pi = nrows rows x wp[pi] bytes, from xoff[pi]
+    data = []
+    for pi, ph in enumerate(phases):
+        x0 = xoff[pi]
+        for r in range(yoff, yoff + nrows):
+            for b in range(wp[pi]):
+                data.append(ph[r][x0 + b])
+    return dict(yoff=yoff, nrows=nrows, xoff=xoff, wp=wp, data=data)
 
 
 def emit_bank(name):
-    data = preshift_bank(name)
-    per = PS_DSTB
-    lines = [f"/* {name} -> x2 {COLNAME[COLOURS[name]]}, 7 pre-shifted phases "
-             f"(2px apart), {per} bytes x 32 rows each */"]
-    lines.append(f"static const unsigned char x2ps_{name}[{len(data)}] = {{")
-    for i, p in enumerate(PS_PHASES):
-        lines.append(f"    /* phase {i}: shift {p}px */")
-        base = i * per * (H * 2)
-        for r in range(base, base + per * (H * 2), per):
-            row = ",".join(f"0x{b:02X}" for b in data[r:r + per])
-            lines.append(f"    {row},")
+    m = bake(name)
+    NM = name.upper()
+    NR = m['nrows']
+    lines = [f"/* {name} -> x2 {COLNAME[COLOURS[name]]}, 7 phases (2px), TRIMMED to "
+             f"{NR} rows x per-phase width {m['wp']}: {len(m['data'])} B */",
+             f"#define {NM}_YOFF {m['yoff']}u",
+             f"#define {NM}_ROWS {NR}u",
+             f"static const unsigned char {name}_xoff[7] = "
+             f"{{ {','.join(str(x) + 'u' for x in m['xoff'])} }};",
+             f"static const unsigned char {name}_wp[7]   = "
+             f"{{ {','.join(str(w) + 'u' for w in m['wp'])} }};",
+             f"static const unsigned char x2ps_{name}[{len(m['data'])}] = {{"]
+    off = 0
+    for i in range(7):
+        lines.append(f"    /* phase {i}: shift {PS_PHASES[i]}px, xoff {m['xoff'][i]}, "
+                     f"w {m['wp'][i]} */")
+        w = m['wp'][i]
+        for r in range(NR):
+            lines.append("    " + ",".join(f"0x{b:02X}" for b in m['data'][off:off + w]) + ",")
+            off += w
     lines.append("};")
     return "\n".join(lines)
 
@@ -130,6 +199,7 @@ def emit_bank(name):
 if __name__ == "__main__":
     print("/* AUTO-GENERATED by gen_x2.py — do not edit.  Regenerate:")
     print(" *   python3 gen_x2.py   (paste the output over the block in GEN2Animals.c) */")
-    for n in ("dog", "octopus", "bat", "lion"):
+    for n in ("dog", "octopus", "bat", "lion",
+              "rabbit", "spider", "cat", "snake"):
         print(emit_bank(n))
         print()
