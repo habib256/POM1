@@ -43,6 +43,22 @@ int main()
         assert(got[0].bytes == b);
     }
 
+    // ── HGR ×2: doubled single-colour block (6×32 = 192 B) with a colour note ─
+    //    round-trips — the note is documentation only and must not perturb the
+    //    name (from the slot comment) or the byte payload.
+    {
+        std::vector<uint8_t> b(192);
+        for (size_t i = 0; i < b.size(); ++i)
+            b[i] = static_cast<uint8_t>(((i * 53 + 7) & 0x7F) | ((i & 3) ? 0x80 : 0));
+        const std::string text = hgrsprite::formatSpriteAsm(
+            "wolf_x2", 6, 32, b.data(),
+            "x2 colour = Violet; doubled colour-clock, place at even x, blit SET");
+        const auto got = hgrsprite::parseSpritesAsm(text, 192);
+        assert(got.size() == 1);
+        assert(got[0].name == "wolf_x2");
+        assert(got[0].bytes == b);
+    }
+
     // ── TMS: 16×16 (32 B native quadrant stream) + 8×8 (8 B) round-trip ──────
     {
         std::vector<uint8_t> b(32);

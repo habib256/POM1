@@ -443,6 +443,8 @@ void MainWindow_ImGui::renderTerminalCardWindow()
         ImGui::BulletText("UC Outgoing (Ctrl-O): %s", snap.uppercaseOutgoing ? "ON" : "OFF");
         ImGui::BulletText("UC Incoming (Ctrl-I): %s", snap.uppercaseIncoming ? "ON" : "OFF");
         ImGui::BulletText("8-bit Mode  (Ctrl-T): %s", snap.eightBitMode ? "ON" : "OFF");
+        ImGui::BulletText("Injection   (Ctrl-K): %s",
+                          snap.injectionSuspended ? "SUSPENDED (local kbd)" : "active");
 
         ImGui::Separator();
 
@@ -459,6 +461,7 @@ void MainWindow_ImGui::renderTerminalCardWindow()
             ImGui::BulletText("Ctrl-O  /  ESC O   Toggle outgoing uppercase");
             ImGui::BulletText("Ctrl-I  /  ESC I   Toggle incoming uppercase");
             ImGui::BulletText("Ctrl-T  /  ESC T   Toggle 8-bit mode");
+            ImGui::BulletText("Ctrl-K  /  ESC K   Suspend/resume key injection");
             ImGui::Spacing();
             ImGui::TextWrapped(
                 "macOS/BSD: the tty line discipline eats Ctrl-T (status), "

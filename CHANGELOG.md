@@ -10,6 +10,19 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — Terminal Card: `Ctrl-K` injection hand-over
+
+- **`Ctrl-K` (or `ESC K`) suspends/resumes keyboard injection** on the Terminal
+  Card. While suspended, incoming TCP **data** bytes are dropped so the local POM1
+  keyboard drives the Apple 1 — useful once a script has bootstrapped a program and
+  you want to play — **without dropping the session**. It's a symmetric toggle: a
+  second `Ctrl-K` re-attaches. Control commands (incl. `Ctrl-K` itself) still bite
+  while suspended, and `Ctrl-K` is an escape hatch like `Ctrl-T` (works in 8-bit raw
+  mode too). New `injectionSuspended` state (next to `eightBitMode`), surfaced in the
+  Terminal Card hardware window + the client welcome banner. Pinned by
+  `terminal_card_injection_smoke`. *(The TODO sketched re-attach via `Ctrl-T`, but
+  that byte already toggles 8-bit mode — a symmetric `Ctrl-K` avoids overloading it.)*
+
 ### Added — Bench BASIC: Verify loads (ready to LIST) + cold/warm start toggle
 
 - **Verify now LOADS the tokenised program into the live interpreter, ready to

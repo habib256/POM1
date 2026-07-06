@@ -72,13 +72,14 @@ std::string sanitizeAsmName(const std::string& raw)
 }
 
 std::string formatSpriteAsm(const std::string& name, int wBytes, int hRows,
-                            const uint8_t* bytes)
+                            const uint8_t* bytes, const std::string& note)
 {
     char buf[32];
     std::string out;
     out += "; Exported by the POM1 HGR Sprite editor. GEN2 HGR format:\n";
     out += "; " + std::to_string(hRows) + " rows x " + std::to_string(wBytes) +
            " bytes/row, bit 0 = leftmost pixel within byte.\n";
+    if (!note.empty()) out += "; " + note + "\n";
     out += "; slot 01/01 -- " + name + "\n";
     out += name + "_pat:\n";
     for (int r = 0; r < hRows; ++r) {

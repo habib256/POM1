@@ -333,6 +333,12 @@ void HgrSpriteEditor::buildSpriteBytes(std::vector<uint8_t>& out, int& wB, int& 
         hR = hRows_;
         out.assign(static_cast<size_t>(wB) * hR, 0);
         extract(scratch.data(), 0, 0, wBytes_, hRows_, out.data());
+        // ×1 palette group selector (Woz's bit 7): group 1 shifts the whole
+        // sprite's artifact family Violet→Blue / Green→Orange. Palette is per-byte
+        // on HGR, so set bit 7 only on bytes that carry lit pixels (empty bytes
+        // stay $00 — their group is irrelevant).
+        if (palGroup1_)
+            for (auto& byte : out) if (byte) byte |= 0x80u;
     }
 }
 
@@ -432,14 +438,18 @@ bool HgrSpriteEditor::performFileAction(FileAction a, const std::string& fullPat
         return true;
     }
     case FileAction::SaveSprite: {
-        std::vector<uint8_t> spr(static_cast<size_t>(wBytes_) * hRows_, 0);
-        extract(scratch.data(), 0, 0, wBytes_, hRows_, spr.data());
+        // Raw bytes follow the active regime: mono ×1, or the doubled single-
+        // colour ×2 pattern (buildSpriteBytes). A raw ×2 file has no geometry
+        // header, so reload it with the matching W×H — or use Export ASM for a
+        // labelled, self-describing form.
+        std::vector<uint8_t> spr; int wB = 0, hR = 0;
+        buildSpriteBytes(spr, wB, hR);
         std::FILE* f = std::fopen(fullPath.c_str(), "wb");
         if (!f) { status = "Cannot write file"; return false; }
         const size_t n = std::fwrite(spr.data(), 1, spr.size(), f);
         std::fclose(f);
         const bool ok = (n == spr.size());
-        status = ok ? "Saved sprite" : "Short write";
+        status = ok ? (mag2_ ? "Saved sprite (\xC3\x97""2)" : "Saved sprite") : "Short write";
         return ok;
     }
     case FileAction::SavePng: {
@@ -469,16 +479,30 @@ bool HgrSpriteEditor::performFileAction(FileAction a, const std::string& fullPat
     case FileAction::ExportAsm: {
         // Write the dev-catalogue ca65 format — parseable back by the host's
         // dev-sprite library loader (round-trip pinned by sprite_asm_export_smoke).
-        std::vector<uint8_t> spr(static_cast<size_t>(wBytes_) * hRows_, 0);
-        extract(scratch.data(), 0, 0, wBytes_, hRows_, spr.data());
-        const std::string text =
-            formatSpriteAsm(sanitizeAsmName(asmName_), wBytes_, hRows_, spr.data());
+        // Regime-aware: mono ×1 (48 B for a 3×16), or the doubled single-colour ×2
+        // block (4× the bytes) whose colour is baked into the colour-clock +
+        // palette bit. The ×2 form gets a `_x2` label + a colour/parity/mode note.
+        std::vector<uint8_t> spr; int wB = 0, hR = 0;
+        buildSpriteBytes(spr, wB, hR);
+        std::string name = sanitizeAsmName(asmName_);
+        std::string note;
+        if (mag2_) {
+            name += "_x2";
+            const bool clear = (color_ == HgrColor::Black);
+            note = std::string("x2 colour = ") + kColorName[static_cast<int>(color_)] +
+                   "; doubled colour-clock, place at even x, blit " +
+                   (clear ? "CLEAR (black punch)" : "SET");
+        } else if (palGroup1_) {
+            note = "x1 palette group 1 (blue/orange), bit 7 set";
+        }
+        const std::string text = formatSpriteAsm(name, wB, hR, spr.data(), note);
         std::FILE* f = std::fopen(fullPath.c_str(), "wb");
         if (!f) { status = "Cannot write file"; return false; }
         const size_t n = std::fwrite(text.data(), 1, text.size(), f);
         std::fclose(f);
         const bool ok = (n == text.size());
-        status = ok ? "Exported ca65 sprite" : "Short write";
+        status = ok ? (mag2_ ? "Exported ca65 sprite (\xC3\x97""2)" : "Exported ca65 sprite")
+                    : "Short write";
         return ok;
     }
     }
@@ -764,8 +788,34 @@ void HgrSpriteEditor::renderLeftBar()
         ImGui::PopID();
     }
     ImGui::EndDisabled();
-    if (!mag2_)
-        ImGui::TextDisabled("enable \xC3\x97""2");
+
+    // ×1 palette group (Woz's bit 7): the ONLY colour lever at ×1 — it flips the
+    // whole sprite's artifact family Violet/Green ↔ Blue/Orange. Active in ×1.
+    ImGui::Separator();
+    ImGui::TextUnformatted("Palette");
+    ImGui::SameLine();
+    ImGui::TextDisabled("(\xC3\x97""1)");
+    ImGui::BeginDisabled(mag2_);
+    const float pgW = ImGui::GetContentRegionAvail().x;    // full-width group buttons
+    const struct { const char* label; int hue; bool grp1; } kPg[2] = {
+        { "Violet / Green", 2, false },   // bit 7 = 0
+        { "Blue / Orange",  4, true  },   // bit 7 = 1
+    };
+    for (int i = 0; i < 2; ++i) {
+        ImGui::PushID(3000 + i);
+        const bool sel = (palGroup1_ == kPg[i].grp1);
+        if (ImGui::ColorButton(kPg[i].label, ImGui::ColorConvertU32ToFloat4(kSwatch[kPg[i].hue]),
+                               ImGuiColorEditFlags_NoTooltip, ImVec2(pgW, 20)))
+            palGroup1_ = kPg[i].grp1;
+        if (sel) {
+            ImVec2 mn = ImGui::GetItemRectMin(), mx = ImGui::GetItemRectMax();
+            ImGui::GetWindowDrawList()->AddRect(mn, mx, IM_COL32(255,255,0,255), 0, 0, 2.0f);
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s  (bit 7 = %d)", kPg[i].label, kPg[i].grp1 ? 1 : 0);
+        ImGui::PopID();
+    }
+    ImGui::EndDisabled();
 }
 
 // Placement on the live page (stamp position / magnify / stamp / grab). Sits to
@@ -810,7 +860,15 @@ void HgrSpriteEditor::renderFilesAndLibrary()
     if (ImGui::Button(ICON_FA_FILE_EXPORT " Export ASM")) openFileBrowser(FileAction::ExportAsm);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Write the sprite as a ca65 .byte block\n"
-                          "(the dev sprite library format \xE2\x80\x94 loadable back by POM1)");
+                          "(the dev sprite library format \xE2\x80\x94 loadable back by POM1).\n"
+                          "Follows the \xC3\x97""1/\xC3\x97""2 toggle: \xC3\x97""2 bakes the chosen\n"
+                          "colour into the doubled colour-clock (4\xC3\x97 the bytes).");
+    // Regime indicator so Save/Export intent is unambiguous.
+    ImGui::SameLine();
+    if (mag2_)
+        ImGui::TextDisabled("\xE2\x86\x92 \xC3\x97""2 %s", kColorName[static_cast<int>(color_)]);
+    else
+        ImGui::TextDisabled("\xE2\x86\x92 \xC3\x97""1 %s", palGroup1_ ? "Blue/Orange" : "Violet/Green");
 
     ImGui::Separator();
 

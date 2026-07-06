@@ -73,6 +73,7 @@ private:
     bool page2_ = false;                  // false = $2000, true = $4000
     int  destByteCol_ = 8, destRow_ = 80;
     bool mag2_ = false;                   // ×2 magnify: each pixel → 2×2 on stamp/preview
+    bool palGroup1_ = false;              // ×1 palette group (bit 7): false=Violet/Green, true=Blue/Orange
 
     // In-progress stroke + undo/redo (per-scratch-byte edits, no live poke —
     // the editor is non-destructive until Stamp).
@@ -139,7 +140,8 @@ private:
     void loadDevSprite(const hgrpaint::DevSprite& s);
 
     // Build the sprite bytes to stamp / save / preview from the mono shape in
-    // `scratch`. ×1 → the raw wBytes×hRows mono bytes. ×2 → the doubled
+    // `scratch`. ×1 → the raw wBytes×hRows mono bytes (bit 7 set per lit byte when
+    // palette group 1 is picked → the whole sprite shifts to blue/orange). ×2 → the doubled
     // (2*wBytes × 2*hRows) MONOCOLOUR bytes: every lit pixel painted in the
     // single sprite colour `color_` via HgrSpriteBlit::magnifyColor2x (each
     // super-pixel a 2-aligned NTSC colour clock). `wB`/`hR` receive the byte

@@ -981,6 +981,30 @@ endif()
 add_test(NAME pr40_printer_smoke COMMAND test_pr40_printer)
 set_tests_properties(pr40_printer_smoke PROPERTIES TIMEOUT 5)
 
+# -- Terminal Card Ctrl-K injection hand-over smoke test ----------------------
+# Drives TerminalCard's private incoming-byte parser (via a friend seam) with no
+# live TCP socket: pins Ctrl-K / ESC K suspend+resume of $D010/$D011 injection,
+# that data is dropped while suspended but control commands still bite, and that
+# Ctrl-K works as an escape hatch in 8-bit raw mode.
+add_executable(test_terminal_card_injection
+    terminal_card_injection_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_terminal_card_injection PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_terminal_card_injection PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_terminal_card_injection PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_terminal_card_injection PRIVATE ws2_32)
+endif()
+
+add_test(NAME terminal_card_injection_smoke COMMAND test_terminal_card_injection)
+set_tests_properties(terminal_card_injection_smoke PROPERTIES TIMEOUT 5)
+
 # -- SWTPC GT-6144 graphic terminal smoke test --------------------------------
 # Self-contained: only GT6144 + PeripheralBus. Exercises the 4-phase FSM,
 # the control-opcode don't-care bits (224 aliases to 240, etc.), the

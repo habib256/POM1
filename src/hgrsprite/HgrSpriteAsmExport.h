@@ -36,8 +36,12 @@ std::string sanitizeAsmName(const std::string& raw);
 // Format a row-major wBytes×hRows HGR sprite (bit 0 = leftmost pixel) as a
 // ca65 snippet in the dev-catalogue format: a `; slot 01/01 -- <name>` header
 // comment, a `<name>_pat:` label, and hRows `.byte` lines of wBytes values.
+// `note`, when non-empty, is emitted as one extra `; ` comment line before the
+// slot header — the ×2 export uses it to record the chosen colour + the
+// parity/blit-mode contract. It is documentation only: the doubled bytes already
+// carry the colour, so parseSpritesAsm ignores the note and the round-trip holds.
 std::string formatSpriteAsm(const std::string& name, int wBytes, int hRows,
-                            const uint8_t* bytes);
+                            const uint8_t* bytes, const std::string& note = "");
 
 // Parse catalogue text: every bare ca65 label starting a run of `.byte` lines
 // totalling at least `minBytes` values becomes one sprite (truncated to exactly

@@ -79,6 +79,7 @@ void TerminalCard::reset()
     uppercaseIncoming = false;
     eightBitMode = false;
     eightBitPendingCr = false;
+    injectionSuspended = false;
     telnetState = TelnetState::NORMAL;
 
     // Clear statistics
@@ -213,6 +214,7 @@ void TerminalCard::copySnapshot(Snapshot& out) const
     out.uppercaseOutgoing = uppercaseOutgoing;
     out.uppercaseIncoming = uppercaseIncoming;
     out.eightBitMode = eightBitMode;
+    out.injectionSuspended = injectionSuspended;
     out.bytesSent = bytesSentCount;
     out.bytesReceived = bytesReceivedCount;
 }
@@ -295,6 +297,7 @@ void TerminalCard::processIncomingByte(uint8_t byte)
     auto mapEscToCtrl = [](uint8_t b) -> uint8_t {
         switch (b) {
         case 'T': case 't': return 20; // Ctrl-T
+        case 'K': case 'k': return 11; // Ctrl-K (suspend/resume injection)
         case 'O': case 'o': return 15; // Ctrl-O
         case 'L': case 'l': return 12; // Ctrl-L
         case 'R': case 'r': return 18; // Ctrl-R
@@ -318,7 +321,7 @@ void TerminalCard::processIncomingByte(uint8_t byte)
         }
         // Unrecognised ESC-sequence: inject the swallowed ESC to the Apple 1
         // and let `byte` fall through to be processed normally just after.
-        if (keyInjector) keyInjector(0x1B, eightBitMode);
+        if (keyInjector && !injectionSuspended) keyInjector(0x1B, eightBitMode);
     } else if (byte == 0x1B) {
         // Hold ESC until we see the next byte (command or passthrough).
         escapePending = true;
@@ -329,6 +332,14 @@ void TerminalCard::processIncomingByte(uint8_t byte)
     // user has no way back to 7-bit short of dropping the TCP connection.
     if (byte == 20) {
         handleControlCommand(20);
+        return;
+    }
+
+    // Ctrl-K (suspend/resume injection) is likewise an escape hatch: it must work
+    // in 8-bit mode too, and — critically — while injection is already suspended,
+    // so a second Ctrl-K can always re-attach. Handled before the injection gate.
+    if (byte == 11) {
+        handleControlCommand(11);
         return;
     }
 
@@ -346,6 +357,11 @@ void TerminalCard::processIncomingByte(uint8_t byte)
             return;
         }
     }
+
+    // Injection suspended (Ctrl-K hand-over): every remaining DATA byte is dropped
+    // so the local keyboard, not this TCP session, drives the Apple 1. Control
+    // commands above still ran; a second Ctrl-K re-attaches.
+    if (injectionSuspended) return;
 
     // Ignore bare LF — Apple 1 uses CR only
     if (byte == 10) return;
@@ -426,6 +442,16 @@ void TerminalCard::handleControlCommand(uint8_t byte)
         {
             const char* msg = eightBitMode ?
                 "\r\n[8-BIT MODE]\r\n" : "\r\n[7-BIT MODE]\r\n";
+            sendToClient(reinterpret_cast<const uint8_t*>(msg), strlen(msg));
+        }
+        break;
+
+    case 11: // CTRL-K: Suspend/resume keyboard injection (hand over to local kbd)
+        injectionSuspended = !injectionSuspended;
+        {
+            const char* msg = injectionSuspended ?
+                "\r\n[INJECTION SUSPENDED - local keyboard has the Apple 1; Ctrl-K to re-attach]\r\n" :
+                "\r\n[INJECTION RESUMED]\r\n";
             sendToClient(reinterpret_cast<const uint8_t*>(msg), strlen(msg));
         }
         break;
@@ -530,6 +556,7 @@ void TerminalCard::acceptClient()
     telnetState = TelnetState::NORMAL;
     escapePending = false;
     eightBitPendingCr = false;
+    injectionSuspended = false;   // fresh session starts attached
 
     // Set non-blocking
 #ifdef _WIN32
@@ -565,6 +592,7 @@ void TerminalCard::acceptClient()
         "  Ctrl-O / ESC O  Toggle uppercase output\r\n"
         "  Ctrl-I / ESC I  Toggle uppercase input\r\n"
         "  Ctrl-T / ESC T  Toggle 8-bit raw mode\r\n"
+        "  Ctrl-K / ESC K  Suspend/resume key injection (hand over to local kbd)\r\n"
         "\r\n";
     sendToClient(reinterpret_cast<const uint8_t*>(welcome), strlen(welcome));
 

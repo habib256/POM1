@@ -41,6 +41,10 @@
 /// Exposes a TCP server on localhost for external terminal connection.
 class TerminalCard : public pom1::Peripheral
 {
+    // Test seam: lets terminal_card_injection_smoke drive the (private) incoming-byte
+    // parser directly, with no live TCP socket. No production code uses this.
+    friend struct TerminalCardTestAccess;
+
 public:
     std::string_view name() const override { return "Terminal Card"; }
     std::string_view mutexLabel() const override { return "TerminalCard::cardMutex"; }
@@ -89,6 +93,7 @@ public:
         bool uppercaseOutgoing = true;
         bool uppercaseIncoming = false;
         bool eightBitMode = false;
+        bool injectionSuspended = false;
         uint32_t bytesSent = 0;
         uint32_t bytesReceived = 0;
     };
@@ -101,6 +106,11 @@ private:
     bool eightBitMode = false;        // CTRL-T: OFF by default
     /// 8-bit display: saw CR — emit CRLF when LF arrives or on next real char.
     bool eightBitPendingCr = false;
+    /// CTRL-K hand-over: when true, incoming DATA bytes are dropped instead of
+    /// injected into $D010/$D011, so the local keyboard drives the Apple 1 while
+    /// the TCP session stays up. Control commands (incl. Ctrl-K itself) still
+    /// bite, so a second Ctrl-K re-attaches. OFF by default (injection active).
+    bool injectionSuspended = false;
 
     // Network — server socket + single client
     SocketHandle listenFd;

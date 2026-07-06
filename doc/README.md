@@ -53,6 +53,7 @@ Guides live in [`sketchs/doc/`](../sketchs/doc/). Source, libraries and build co
 | [`CC65_WASM.md`](CC65_WASM.md) | Running the cc65 toolchain in the browser (WASM build) — architecture + status. |
 | [`GEN2_RELEASE.md`](GEN2_RELEASE.md) | Uncle Bernie GEN2 colour card developer guide ("Bernie SDK") — `$C25x` switches, HST0, porting. |
 | [`GEN2_RELEASE_questions.md`](GEN2_RELEASE_questions.md) | GEN2 hardware spec Q&A (Q1–Q10, from Bernie's PDF). Referenced from `Gen2VideoScanner` / `GraphicsCard`. |
+| [`HGR_SPRITES_X1_X2.md`](HGR_SPRITES_X1_X2.md) | **Design spec (FR) — sprites HGR ×1 (artefact, bit 7 palette sélectionnable) / ×2 (couleur choisie).** Formats `.asm`/`.inc`, contrat de parité, ABI runtime `inflate_x2`/`blit_x2`, export éditeur. Réf : `src/hgrsprite/`, `dev/lib/gen2c/`, `tools/build_hgr_sprites.py`. |
 | [`TELEMETRY_SIDE_CHANNEL.md`](TELEMETRY_SIDE_CHANNEL.md) | The `$C440-$C443` automated-testing bridge (protocol, lock-step, CLI). Referenced from `TelemetryPort`. |
 | [`TMS9918_TRANSFER_WINDOWS.md`](TMS9918_TRANSFER_WINDOWS.md) | **TMS9918 CPU→VRAM transmission zones** — the 5 access windows, how `TMS9918::transmissionZone()` detects them, per-zone minimum write spacing, and the zone-dependent drop model. Referenced from `TMS9918.cpp` + `tms9918m1/m2.asm`. |
 | [`sketchs/doc/TMS9918-SPRITE_INIT.md`](../sketchs/doc/TMS9918-SPRITE_INIT.md) | Canonical TMS9918 sprite-init semantics. Referenced from `TMS9918.cpp`. |
