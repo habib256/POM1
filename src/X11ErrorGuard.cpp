@@ -19,12 +19,27 @@
 
 namespace {
 
-// Non-fatal replacement for Xlib's default error handler (which exits). Logs the
-// decoded error and returns 0 so the protocol error is swallowed. The classic
-// offender is a clipboard SelectionRequest / X_ChangeProperty against a requestor
-// window that vanished — harmless to ignore.
+// Non-fatal replacement for Xlib's default error handler (which exits). Returns 0
+// so the protocol error is swallowed instead of aborting the process.
+//
+// The dominant offender is a clipboard SelectionRequest: when a transient window
+// (e.g. the forked zenity/kdialog native file dialog) asks GLFW's window for the
+// selection, GLFW answers with X_ChangeProperty (18) on the requestor followed by
+// an X_SendEvent (25) SelectionNotify to it. By the time those flush, the dialog
+// window is already gone, so both fail with BadWindow — entirely harmless. Every
+// file-dialog open produced that pair on stderr, so we silence exactly this
+// signature while still logging anything genuinely unexpected.
 int pom1X11ErrorHandler(Display* dpy, XErrorEvent* err)
 {
+    // X core protocol opcodes (Xproto.h): X_ChangeProperty = 18, X_SendEvent = 25.
+    constexpr unsigned kChangeProperty = 18;
+    constexpr unsigned kSendEvent      = 25;
+    const bool clipboardReplyToDeadWindow =
+        err->error_code == BadWindow &&
+        (err->request_code == kChangeProperty || err->request_code == kSendEvent);
+    if (clipboardReplyToDeadWindow)
+        return 0;   // known-harmless, swallow silently
+
     char text[256] = {0};
     if (dpy) XGetErrorText(dpy, err->error_code, text, sizeof(text) - 1);
     std::fprintf(stderr,
