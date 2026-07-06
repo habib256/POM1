@@ -188,6 +188,14 @@ public:
     /// not part of the page-dirty snapshot.
     void pokeSidRegisters(const std::vector<std::pair<uint8_t, uint8_t>>& writes);
 
+    /// SID tracker live-preview keep-alive. The SID chip is normally clocked only
+    /// by cpu->run(); with the CPU stopped/paused, a poked note never fills the
+    /// audio ring and preview is silent. While the tracker window is open it calls
+    /// setSidLivePreview(true) so the emulation slice keeps clocking the SID even
+    /// when the CPU is parked (mirrors real hardware — the SID oscillators run
+    /// independently of the 6502). Cleared when the window closes/collapses.
+    void setSidLivePreview(bool on) { sidLivePreview_.store(on, std::memory_order_relaxed); }
+
     /// Beeper SFX editor live preview — synthesise a 1-bit square wave into the
     /// cassette pulse-audio queue (no CPU, no $C030). `pulses` is a
     /// (cpu-cycles, speaker-level) segment list from sfxbeep::sfxToPulses. Takes
@@ -569,6 +577,7 @@ private:
     std::atomic<std::size_t> rewindFrameCount_{ 0 };
     std::atomic<std::size_t> rewindPos_       { 0 };
     std::atomic<std::size_t> rewindStoredBytes_{ 0 };
+    std::atomic<bool>        sidLivePreview_  { false };
 };
 
 #endif // EMULATIONCONTROLLER_H

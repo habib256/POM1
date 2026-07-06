@@ -795,14 +795,20 @@ void MainWindow_ImGui::render()
     if (showSidTracker) {
         // The tracker previews by poking the live SID chip — plug the A1-SID card.
         if (!sidEnabled) { sidEnabled = true; emulation->setSIDEnabled(true); }
+        // Keep the SID clocked even when the CPU is stopped, so preview notes are
+        // audible while paused (cleared on the closed/collapsed branches below).
+        emulation->setSidLivePreview(true);
         ImGui::SetNextWindowSize(ImVec2(640, 620), ImGuiCond_FirstUseEver);
         applyPendingLayout("SID Tracker");
         if (ImGui::Begin("SID Tracker", &showSidTracker))
             sidTrackerEditor->render();
-        else
+        else {
+            emulation->setSidLivePreview(false);  // collapsed: stop clocking the SID
             sidTrackerEditor->onWindowHidden();   // collapsed: release the keyboard grab
+        }
         ImGui::End();
     } else if (sidTrackerEditor) {
+        emulation->setSidLivePreview(false);       // closed: stop clocking the SID
         sidTrackerEditor->onWindowHidden();        // closed: release the keyboard grab
     }
     if (tms9918Enabled && showTMS9918) renderTMS9918Window();

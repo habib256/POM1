@@ -95,7 +95,7 @@ public:
     /// Hot-swap chip model. Internally rebuilds libresidfp's filter chain
     /// (the 6581 and 8580 use entirely different filter models).
     void      setChipModel(ChipModel m);
-    ChipModel getChipModel() const { return currentModel; }
+    ChipModel getChipModel() const { return currentModel.load(std::memory_order_relaxed); }
 
     struct Snapshot {
         std::array<uint8_t, kNumRegisters> regs{};
@@ -133,7 +133,9 @@ private:
     static constexpr size_t kRingCapacity = 16384;
 
     std::unique_ptr<reSIDfp::SID> chip;
-    ChipModel currentModel = ChipModel::MOS6581;
+    // Atomic: read lock-free by getChipModel()/SnapshotPublisher and the
+    // setChipModel() early-out, written under chipMutex in rebuildChip().
+    std::atomic<ChipModel> currentModel { ChipModel::MOS6581 };
     int outputRate = kSampleRate;
 
     /// Shadow of the last value written to each register. libresidfp does

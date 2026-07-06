@@ -91,6 +91,9 @@ void MainWindow_ImGui::handleGlfwKey(int key, int scancode, int action, int mods
     // Non-printable Apple-1 keys (Enter / Backspace / Escape) do not produce a
     // char callback, so queue them here — gated on autorepeat for REPEAT events.
     if (ImGui::GetIO().WantTextInput) return;
+    // Same guard as handleGlfwChar: while the SID Tracker owns the keyboard,
+    // don't also forward Enter/Backspace/Escape to the Apple-1.
+    if (sidTrackerEditor && sidTrackerEditor->wantsKeyboard()) return;
     const bool fire = (action == GLFW_PRESS) || (action == GLFW_REPEAT && keyboardAutorepeat);
     if (!fire) return;
 

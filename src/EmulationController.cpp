@@ -1808,6 +1808,12 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
     }
 
     bool telemetryStalled = false;
+    // Terminal Card pending reset/clear flags, captured under stateMutex below and
+    // acted on after the lock is released (hardReset/softReset re-acquire stateMutex,
+    // so they must run lock-free to avoid self-deadlock on the non-recursive mutex).
+    bool termHardReset = false;
+    bool termSoftReset = false;
+    bool termClearScreen = false;
     {
         std::lock_guard<PriorityMutex> lock(stateMutex);
         memory->getCassetteDevice().setLiveAudioTimebaseHz(static_cast<uint32_t>(std::max(1.0, cyclesPerSecond)));
@@ -1860,7 +1866,32 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
                     runRequested.store(false);
                 }
             }
+            else if (sidLivePreview_.load(std::memory_order_relaxed)
+                     && (memory->isSIDEnabled() || memory->isSIDSpecialEditionEnabled())) {
+                // CPU parked but the SID tracker is open: keep clocking the SID so
+                // a poked preview note actually fills the audio ring (cpu->run,
+                // which normally drives sid->advanceCycles, isn't running). Clock
+                // the chip directly — advancing all peripherals here would fire
+                // unrelated cycle side-effects. Producer stays single-threaded
+                // (this slice runs on the emulation thread; pokeSidRegisters only
+                // writes registers, never clocks).
+                memory->getSID().advanceCycles(cyclesToRun);
+                emulationCycleBudget -= static_cast<double>(cyclesToRun);
+            }
         }
+
+        // Terminal Card: read/clear pending reset/clear flags while holding
+        // stateMutex (the enable bool + consume state are mutated by the UI /
+        // TCP threads under the same lock). Act on the captured locals after
+        // the lock releases — hardReset/softReset re-acquire stateMutex.
+        if (memory->isTerminalCardEnabled()) {
+            termHardReset = memory->getTerminalCard().consumeHardResetPending();
+            if (!termHardReset) {
+                termSoftReset = memory->getTerminalCard().consumeResetPending();
+            }
+            termClearScreen = memory->getTerminalCard().consumeClearScreenPending();
+        }
+
         publisher.publish(*memory, *cpu, runRequested.load());
 
         // State-rewind capture: a few snapshots per second while the CPU is
@@ -1891,17 +1922,16 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
 #endif
     }
 
-    // Terminal Card: consume pending reset/clear OUTSIDE stateMutex
-    // to avoid deadlock (softReset acquires stateMutex internally)
-    if (memory->isTerminalCardEnabled()) {
-        if (memory->getTerminalCard().consumeHardResetPending()) {
-            hardReset();
-        } else if (memory->getTerminalCard().consumeResetPending()) {
-            softReset();
-        }
-        if (memory->getTerminalCard().consumeClearScreenPending()) {
-            if (screen) screen->clear();
-        }
+    // Terminal Card: act on the flags captured under stateMutex above, OUTSIDE
+    // the lock (hardReset/softReset re-acquire stateMutex internally, so calling
+    // them here avoids self-deadlock on the non-recursive PriorityMutex).
+    if (termHardReset) {
+        hardReset();
+    } else if (termSoftReset) {
+        softReset();
+    }
+    if (termClearScreen && screen) {
+        screen->clear();
     }
 }
 

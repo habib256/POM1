@@ -1772,6 +1772,17 @@ void Memory::setJukeBoxEnabled(bool b)
         bus.setEnabled(jukeBox32BusHandle, false);
         bus.setEnabled(jukeBox16BusHandle, false);
         bus.setEnabled(jukeBoxBankRegBusHandle, false);
+        // Clear the flat ROM shadow applyJukeBoxFlatMemoryMirror() wrote into
+        // $4000-$BFFF. Otherwise the executable ROM image lingers as if it were
+        // RAM after the card is unplugged — and, worse, a later
+        // setMicroSDEnabled(true) reads $8000 to decide whether to reload the SD
+        // CARD OS ($A9 00 signature guard); stale Juke-Box bytes there can defeat
+        // that guard. Skip during snapshot restore (MEM-then-FLAGS ordering, same
+        // as setCFFA1Enabled/setMicroSDEnabled).
+        if (!snapshotRestoreInProgress) {
+            std::fill(mem.begin() + 0x4000, mem.begin() + 0xC000, 0);
+            markPagesDirty(0x4000, 0x8000);
+        }
     }
 }
 

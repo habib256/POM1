@@ -33,7 +33,7 @@ reSIDfp::ChipModel toUpstream(SID::ChipModel m)
 SID::SID(int outputSampleRate)
     : outputRate(outputSampleRate)
 {
-    rebuildChip(currentModel);
+    rebuildChip(currentModel.load(std::memory_order_relaxed));
     pom1::log().info("SID",
         std::string("libresidfp engine initialised (MOS6581 @ ") +
         std::to_string(outputRate) + " Hz)");
@@ -52,7 +52,7 @@ void SID::rebuildChip(ChipModel m)
     chip->setSamplingParameters(kCpuClockHz, reSIDfp::DECIMATE,
                                 static_cast<double>(outputRate));
     chip->reset();
-    currentModel = m;
+    currentModel.store(m, std::memory_order_relaxed);
 }
 
 void SID::resetChip()
@@ -142,7 +142,7 @@ void SID::fillAudioBuffer(float* output, int frameCount)
 
 void SID::setChipModel(ChipModel m)
 {
-    if (m == currentModel) return;
+    if (m == currentModel.load(std::memory_order_relaxed)) return;
     std::lock_guard<std::mutex> lock(chipMutex);
     rebuildChip(m);
     // Restore last-written register state so a music program in flight
@@ -158,13 +158,13 @@ void SID::copySnapshot(Snapshot& out) const
 {
     std::lock_guard<std::mutex> lock(chipMutex);
     out.regs = shadowRegs;
-    out.chipModel = currentModel;
+    out.chipModel = currentModel.load(std::memory_order_relaxed);
 }
 
 void SID::serialize(SnapshotWriter& w) const
 {
     std::lock_guard<std::mutex> lock(chipMutex);
-    w.writeU8(static_cast<uint8_t>(currentModel));
+    w.writeU8(static_cast<uint8_t>(currentModel.load(std::memory_order_relaxed)));
     w.writeBytes(shadowRegs.data(), shadowRegs.size());
 }
 
