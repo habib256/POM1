@@ -1119,6 +1119,25 @@ target_include_directories(test_hgr_sprite_blit PRIVATE
 add_test(NAME hgr_sprite_blit_smoke COMMAND test_hgr_sprite_blit)
 set_tests_properties(hgr_sprite_blit_smoke PROPERTIES TIMEOUT 5)
 
+# -- GEN2-C ×2 colour inflate mirror -------------------------------------------
+# Pins the GEN2-C runtime's mono-×1 → ×2-colour inflate (dev/lib/gen2c/gen2_hgr_x2.c,
+# host-compiled as plain C) byte-identical to the editor's magnifyColor2x, so an
+# editor ×2 export and a runtime inflate of the same mono master agree. Same
+# two-implementations discipline as hgr_convert_smoke; no cc65/emulator needed.
+add_executable(test_hgr_inflate_x2
+    hgr_inflate_x2_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/hgrsprite/HgrSpriteBlit.cpp
+    ${CMAKE_SOURCE_DIR}/src/hgrpaint/HgrPaintModel.cpp
+    ${CMAKE_SOURCE_DIR}/dev/lib/gen2c/gen2_hgr_x2.c
+)
+target_compile_definitions(test_hgr_inflate_x2 PRIVATE GEN2_NO_APPLE1)
+target_include_directories(test_hgr_inflate_x2 PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/hgrpaint
+    ${CMAKE_SOURCE_DIR}/src/hgrsprite
+    ${CMAKE_SOURCE_DIR}/dev/lib/gen2c)
+add_test(NAME hgr_inflate_x2_smoke COMMAND test_hgr_inflate_x2)
+set_tests_properties(hgr_inflate_x2_smoke PROPERTIES TIMEOUT 5)
+
 # -- Sprite ASM export round-trip smoke test -----------------------------------
 # Pins the "Export ASM" feature of both sprite editors: hgrsprite/tmssprite::
 # formatSpriteAsm must emit exactly the ca65 dev-catalogue format that

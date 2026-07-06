@@ -32,6 +32,8 @@ GEN2C_PIXEL_SRCS   := $(GEN2C)/gen2_pixel.c     # gen2_hgr_plot/unplot
 GEN2C_RECT_SRCS    := $(GEN2C)/gen2_rect.c      # fill_rect / fill_pixrect / clear_pixrect / colorize
 GEN2C_TEXT_SRCS    := $(GEN2C)/gen2_text.c      # puts / puts_color / putu / putu_field / puti / putx / puts8 / putu8 + BBFont
 GEN2C_SPRITES_SRCS := $(GEN2C)/gen2_sprites.c   # hgr_blit / hgr_blit7
+GEN2C_X2_SRCS      := $(GEN2C)/gen2_hgr_x2.c    # gen2_hgr_inflate_x2 (mono ×1 -> ×2 colour; no buffer)
+GEN2C_X2BLIT_SRCS  := $(GEN2C)/gen2_hgr_blit_x2.c # gen2_hgr_blit_x2 (au-vol; needs X2 + CORE, owns a 256 B buffer)
 GEN2C_PRESHIFT_SRCS:= $(GEN2C)/gen2_preshift.c  # hgr_sprite (Buzzard-Bait 7-phase pre-shift; needs only CORE -- reuses gen2_blit7_run)
 GEN2C_SPRMASK_SRCS := $(GEN2C)/gen2_sprmask.s   # masked pre-shifted blit + save-under/restore kernels (needs only CORE)
 GEN2C_SPRENGINE_SRCS:= $(GEN2C)/gen2_sprengine.c # gen2_spr_* sprite engine (needs SPRMASK + CORE; owns a 1.5 KB BSS under-buffer pool)
@@ -45,6 +47,8 @@ GEN2C_ALL_SRCS := $(GEN2C_CORE_SRCS) \
                   $(GEN2C_RECT_SRCS) \
                   $(GEN2C_TEXT_SRCS) \
                   $(GEN2C_SPRITES_SRCS) \
+                  $(GEN2C_X2_SRCS) \
+                  $(GEN2C_X2BLIT_SRCS) \
                   $(GEN2C_PRESHIFT_SRCS) \
                   $(GEN2C_SPRMASK_SRCS) \
                   $(GEN2C_SPRENGINE_SRCS) \

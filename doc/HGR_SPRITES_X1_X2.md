@@ -209,9 +209,19 @@ le choix du groupe se fait dans l'éditeur (§4), pas dans le générateur.
    par octet dans les données, choisi dans l'éditeur ; les blits ×1 préservent le
    bit 7. Défaut générateur : groupe 0.
 
-## 8. Ordre d'implémentation suggéré
+## 8. Ordre d'implémentation — statut
 
-1. **B — export ×2 de l'éditeur** (débloque l'usage : octets ×2 sortis).
-2. **A — runtime** `inflate_x2` + `blit_x2` + enum + `hgr_inflate_x2_smoke`.
-3. Loader dev-library géométrie-agnostique + badges (§5).
-4. Bannières honnêtes + `<CAT>_HGR_W/H` dans `build_hgr_sprites.py` (§6).
+1. **B — export ×2 de l'éditeur** — ✅ fait. `ExportAsm`/`SaveSprite` conscients
+   du régime, label `_x2` + note couleur/parité/mode, indicateur UI, test ×2.
+   Plus : sélecteur **bit 7 ×1** (§4/décision 5) et **aperçu de parité honnête**
+   (l'aperçu suit la parité de Byte X ; placement impair permis + flaggé).
+2. **A — runtime** — ✅ fait. `gen2_hgr_inflate_x2` (`dev/lib/gen2c/gen2_hgr_x2.c`,
+   miroir exact de `magnifyColor2x`) + `gen2_hgr_blit_x2` (au-vol,
+   `gen2_hgr_blit_x2.c`) + enum `GEN2_X2_*` (ordre `HgrColor`) dans `gen2.h` +
+   split `gen2c.mk` (`GEN2C_X2_SRCS` / `GEN2C_X2BLIT_SRCS`). Pin :
+   `hgr_inflate_x2_smoke` croise le C runtime (compilé hôte) contre l'éditeur C++
+   sur 240 cas ; les deux `.c` compilent aussi sous cc65 `-t none -O`. NB : le test
+   est un cross-check hôte (pas d'exécution 6502) — même discipline que
+   `hgr_convert_smoke`.
+3. Loader dev-library géométrie-agnostique + badges (§5) — à faire.
+4. Bannières honnêtes + `<CAT>_HGR_W/H` dans `build_hgr_sprites.py` (§6) — à faire.

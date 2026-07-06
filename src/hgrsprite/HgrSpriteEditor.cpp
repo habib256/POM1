@@ -828,6 +828,17 @@ void HgrSpriteEditor::renderPlacementPanel(const std::vector<uint8_t>& memory)
     if (ImGui::Combo("Page", &pageIdx, "HGR1 ($2000)\0HGR2 ($4000)\0")) page2_ = (pageIdx == 1);
     ImGui::SetNextItemWidth(150);
     if (ImGui::SliderInt("Byte X", &destByteCol_, 0, std::max(0, kByteCols - magF() * wBytes_))) clampGeom();
+    // ×2 colour is parity-locked: EVEN byte columns keep the chosen hue, ODD ones
+    // flip it. We DON'T force even (advanced placement stays possible) — instead
+    // the colour view reflects the live parity and an odd column is flagged.
+    if (mag2_ && ImGui::IsItemHovered())
+        ImGui::SetTooltip("\xC3\x97""2 colour is parity-locked: EVEN byte columns keep the\n"
+                          "chosen hue; ODD columns flip Violet\xE2\x86\x94Green / Blue\xE2\x86\x94Orange.\n"
+                          "The colour view reflects the current parity (honest).");
+    if (mag2_ && (destByteCol_ & 1)) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "odd \xE2\x86\x92 hue flipped");
+    }
     ImGui::SetNextItemWidth(150);
     if (ImGui::SliderInt("Row Y", &destRow_, 0, std::max(0, kRows - magF() * hRows_))) clampGeom();
     if (ImGui::Checkbox("\xC3\x97""2 (magnify)", &mag2_)) clampGeom();
@@ -982,17 +993,23 @@ void HgrSpriteEditor::renderColorCanvas()
         // decode through the host NTSC pipeline (identical to the live card).
         std::vector<uint8_t> bytes; int wB = 0, hR = 0;
         buildSpriteBytes(bytes, wB, hR);
+        // Honest preview: stamp at the SAME column parity as the live Byte X
+        // (byte col 0 when even, 1 when odd) so the NTSC decode shows the real
+        // artifact hue — an odd Byte X flips Violet↔Green / Blue↔Orange exactly as
+        // it will on the page, instead of the always-even (colour-perfect) lie.
+        const int parityCol = destByteCol_ & 1;
         std::vector<uint8_t> pg(hgrpaint::kHiresSize, 0);
-        stamp(bytes.data(), wB, hR, 0, 0,
+        stamp(bytes.data(), wB, hR, parityCol, 0,
               [&](int off, uint8_t v) { pg[off] = v; });
         host->renderHgrPage(pg.data(), colorRgba_.data(), false, false);
         colorTex_ = host->uploadTexture(colorTex_, colorRgba_.data(),
                                         hgrpaint::kHiresWidth, hgrpaint::kHiresHeight, false);
         // Crop the full-page texture to the sprite's decoded region (wB*7 × hR px)
-        // and scale it to the B&W canvas footprint so both align row-for-row.
+        // starting at the parity column, and scale it to the B&W canvas footprint.
+        const int px0 = parityCol * 7;
         const int pw = wB * 7, ph = hR;
-        const ImVec2 uv0(0.0f, 0.0f);
-        const ImVec2 uv1(static_cast<float>(pw) / hgrpaint::kHiresWidth,
+        const ImVec2 uv0(static_cast<float>(px0) / hgrpaint::kHiresWidth, 0.0f);
+        const ImVec2 uv1(std::min(1.0f, static_cast<float>(px0 + pw) / hgrpaint::kHiresWidth),
                          static_cast<float>(ph) / hgrpaint::kHiresHeight);
         ImGui::Image(host->textureToImTexture(colorTex_),
                      ImVec2(W * cell, H * cell), uv0, uv1);
