@@ -10,3 +10,5 @@
 
 SYMBOLS_HGR_COUNT             = 23
 SYMBOLS_HGR_BYTES_PER_SPRITE  = 48
+SYMBOLS_HGR_W                 = 3
+SYMBOLS_HGR_H                 = 16

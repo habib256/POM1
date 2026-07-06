@@ -10,3 +10,5 @@
 
 CREATURES_HGR_COUNT             = 8
 CREATURES_HGR_BYTES_PER_SPRITE  = 48
+CREATURES_HGR_W                 = 3
+CREATURES_HGR_H                 = 16

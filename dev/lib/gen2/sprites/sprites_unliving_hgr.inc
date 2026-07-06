@@ -10,3 +10,5 @@
 
 UNLIVING_HGR_COUNT             = 8
 UNLIVING_HGR_BYTES_PER_SPRITE  = 48
+UNLIVING_HGR_W                 = 3
+UNLIVING_HGR_H                 = 16

@@ -10,3 +10,5 @@
 
 BUILDING_HGR_COUNT             = 23
 BUILDING_HGR_BYTES_PER_SPRITE  = 48
+BUILDING_HGR_W                 = 3
+BUILDING_HGR_H                 = 16

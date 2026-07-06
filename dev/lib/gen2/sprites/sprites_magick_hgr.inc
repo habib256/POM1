@@ -10,3 +10,5 @@
 
 MAGICK_HGR_COUNT             = 15
 MAGICK_HGR_BYTES_PER_SPRITE  = 48
+MAGICK_HGR_W                 = 3
+MAGICK_HGR_H                 = 16

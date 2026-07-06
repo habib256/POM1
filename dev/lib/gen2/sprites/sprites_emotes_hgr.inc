@@ -10,3 +10,5 @@
 
 EMOTES_HGR_COUNT             = 14
 EMOTES_HGR_BYTES_PER_SPRITE  = 48
+EMOTES_HGR_W                 = 3
+EMOTES_HGR_H                 = 16

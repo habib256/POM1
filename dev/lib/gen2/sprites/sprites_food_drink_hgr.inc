@@ -10,3 +10,5 @@
 
 FOOD_DRINK_HGR_COUNT             = 22
 FOOD_DRINK_HGR_BYTES_PER_SPRITE  = 48
+FOOD_DRINK_HGR_W                 = 3
+FOOD_DRINK_HGR_H                 = 16

@@ -10,3 +10,5 @@
 
 TROLLKIND_HGR_COUNT             = 4
 TROLLKIND_HGR_BYTES_PER_SPRITE  = 48
+TROLLKIND_HGR_W                 = 3
+TROLLKIND_HGR_H                 = 16

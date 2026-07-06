@@ -223,5 +223,12 @@ le choix du groupe se fait dans l'éditeur (§4), pas dans le générateur.
    sur 240 cas ; les deux `.c` compilent aussi sous cc65 `-t none -O`. NB : le test
    est un cross-check hôte (pas d'exécution 6502) — même discipline que
    `hgr_convert_smoke`.
-3. Loader dev-library géométrie-agnostique + badges (§5) — à faire.
-4. Bannières honnêtes + `<CAT>_HGR_W/H` dans `build_hgr_sprites.py` (§6) — à faire.
+3. **Loader dev-library géométrie-agnostique + badges (§5)** — ✅ fait.
+   `Pom1HgrPaintHost::parseSpriteFile` lit la géométrie par fichier (`<H> rows x
+   <W> bytes`), appelle `parseSpritesAsm` avec le bon `bytes/sprite`, et tague
+   `DevSprite` (régime + couleur via la note `x2 colour = …` / suffixe `_x2`). Le
+   browser affiche une pastille de teinte (×2) + le tag au survol.
+4. **Bannières honnêtes + `<CAT>_HGR_W/H` (§6)** — ✅ fait. `build_hgr_sprites.py`
+   annonce le régime « x1 mono, couleur = artefact NTSC, bit 7 = groupe (0 par
+   défaut) » et émet `<CAT>_HGR_W = 3` / `<CAT>_HGR_H = 16` dans le `.inc`. Les 15
+   catégories régénérées (`--check` clean).

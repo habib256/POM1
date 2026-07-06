@@ -10,3 +10,5 @@
 
 FAUNA_HGR_COUNT             = 13
 FAUNA_HGR_BYTES_PER_SPRITE  = 48
+FAUNA_HGR_W                 = 3
+FAUNA_HGR_H                 = 16

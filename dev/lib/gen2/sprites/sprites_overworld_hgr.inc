@@ -10,3 +10,5 @@
 
 OVERWORLD_HGR_COUNT             = 13
 OVERWORLD_HGR_BYTES_PER_SPRITE  = 48
+OVERWORLD_HGR_W                 = 3
+OVERWORLD_HGR_H                 = 16

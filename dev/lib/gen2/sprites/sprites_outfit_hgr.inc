@@ -10,3 +10,5 @@
 
 OUTFIT_HGR_COUNT             = 27
 OUTFIT_HGR_BYTES_PER_SPRITE  = 48
+OUTFIT_HGR_W                 = 3
+OUTFIT_HGR_H                 = 16

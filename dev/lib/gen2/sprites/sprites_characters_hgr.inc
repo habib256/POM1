@@ -10,3 +10,5 @@
 
 CHARACTERS_HGR_COUNT             = 33
 CHARACTERS_HGR_BYTES_PER_SPRITE  = 48
+CHARACTERS_HGR_W                 = 3
+CHARACTERS_HGR_H                 = 16
