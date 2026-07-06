@@ -1,0 +1,11 @@
+{
+  "profile": "tms9918",
+  "language": "asm",
+  "cfg": "sketchs/tms9918/game_chess/apple1_chess_codetank.cfg",
+  "extraAsm": [
+    "dev/lib/games/chess/chess_engine.asm",
+    "dev/lib/tms9918/text_bitmap.asm",
+    "dev/lib/tms9918/sprites_chess.asm"
+  ],
+  "defines": ["CODETANK_BUILD"]
+}

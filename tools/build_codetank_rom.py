@@ -906,6 +906,40 @@ def build_game6_upper_bank() -> bytes:
 
 
 # ---------------------------------------------------------------------------
+# GAME7 — TMS_Chess (lower) + blank (upper)
+# ---------------------------------------------------------------------------
+# Sources (multi-module, like Rogue/LOGO): the TMS renderer + game loop links
+# the shared chess engine, the Mode-2 driver, the on-bitmap font, and the
+# chess piece silhouettes. Built with -D CODETANK_BUILD for the status/help
+# text. Also runnable in-app via the DevBench (sketchs/.../.sketch.json).
+CHESS_TMS_ASM      = SK / "game_chess" / "TMS_Chess.asm"
+CHESS_CODETANK_CFG = SK / "game_chess" / "apple1_chess_codetank.cfg"
+CHESS_ENGINE_ASM   = LIB_CHESS / "chess_engine.asm"
+CHESS_M2_ASM       = LIB_TMS / "tms9918m2.asm"
+CHESS_TEXT_ASM     = LIB_TMS / "text_bitmap.asm"
+CHESS_SPRITES_ASM  = LIB_TMS / "sprites_chess.asm"
+
+
+def build_game7_lower_bank() -> bytes:
+    """Lower 16 kB: TMS_Chess alone, full $4000-$7FFF, run-in-place."""
+    print("[GAME7] Lower bank (TMS_Chess, full 16 kB):", file=sys.stderr)
+    chess = assemble_multi(
+        [CHESS_TMS_ASM, CHESS_ENGINE_ASM, CHESS_M2_ASM,
+         CHESS_TEXT_ASM, CHESS_SPRITES_ASM],
+        CHESS_CODETANK_CFG, "G7_Chess", HALF_SIZE,
+        extra_ca65_args=["-D", "CODETANK_BUILD"])
+    bank = bytearray(b"\xFF" * HALF_SIZE)
+    slot(bank, 0x0000, chess, HALF_SIZE, "Chess     ($4000-$7FFF)")
+    return bytes(bank)
+
+
+def build_game7_upper_bank() -> bytes:
+    """Upper 16 kB: blank $FF (reserved for a future second chess variant)."""
+    print("\n[GAME7] Upper bank: blank $FF", file=sys.stderr)
+    return b"\xFF" * HALF_SIZE
+
+
+# ---------------------------------------------------------------------------
 def build_two_bank(rom_name: str, lower_fn, upper_fn) -> bytes:
     """Concatenate a lower + upper 16 kB bank into a 32 kB CodeTank ROM."""
     print(f"\n========== {rom_name} ==========", file=sys.stderr)
@@ -985,6 +1019,12 @@ SIDECAR_GAME6 = (
     "  Upper jumper: 4000R → TMS_SilBench (29-test silicon benchmark menu)\n"
 )
 
+SIDECAR_GAME7 = (
+    "Codetank_GAME7.rom — TMS9918 P-LAB CodeTank cartridge (Chess)\n"
+    "  Lower jumper: 4000R → TMS_Chess (graphical Mode-2 chess vs AI / 2P)\n"
+    "  Upper jumper: 4000R → blank ($FF)\n"
+)
+
 SIDECAR_CODETANKDEV = (
     "CODETANKDEV.rom — TMS9918 P-LAB unified DevBench cartridge\n"
     "  Lower jumper: 4000R → the DevBench's flashed asm/C build (blank $FF here)\n"
@@ -1004,6 +1044,7 @@ CARTS = [
     ("4",   "Codetank_GAME4.rom",  SIDECAR_GAME4,       build_game4_lower_bank,  build_game4_upper_bank,  True),
     ("5",   "Codetank_GAME5.rom",  SIDECAR_GAME5,       build_game5_lower_bank,  build_game5_upper_bank,  True),
     ("6",   "Codetank_GAME6.rom",  SIDECAR_GAME6,       build_game6_lower_bank,  build_game6_upper_bank,  False),
+    ("7",   "Codetank_GAME7.rom",  SIDECAR_GAME7,       build_game7_lower_bank,  build_game7_upper_bank,  False),
     ("dev", "CODETANKDEV.rom",     SIDECAR_CODETANKDEV, None,                    None,                    False),
 ]
 
