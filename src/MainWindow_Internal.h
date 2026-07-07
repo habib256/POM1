@@ -137,7 +137,7 @@ struct MachineConfig {
     CodeTank::Jumper codeTankJumper;
     // Optional — when non-empty, the named ROM file is loaded into the
     // CodeTank card on plug. Empty falls back to the default probe path
-    // (roms/codetank/Codetank_GAME1.rom, then the legacy roms/codetank.rom).
+    // (roms/codetank/Codetank_ARCADE.rom, then the legacy roms/codetank.rom).
     const char* codeTankRomPath;
     // SWTPC GT-6144 Graphic Terminal (1976) — write-only 64x96 mono framebuffer
     // at $D00A. No bus conflicts with other cards at that address.

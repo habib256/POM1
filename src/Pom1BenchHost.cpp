@@ -58,8 +58,8 @@ static const char* kSketchAsmTms =       // asm x TMS9918 (Graphics I text, load
     "; HELLO WORLD on the TMS9918 (Graphics I). Proper init: regs loaded with the\n"
     "; display BLANKED, all 16 KB VRAM cleared, sprites parked, then font/colour/\n"
     "; message loaded and the screen turned on LAST. VDP data=$CC00, ctrl=$CC01.\n"
-    "; Upload flashes this into CODETANKDEV.rom (CodeTank dev cartridge) and boots\n"
-    "; 4000R - it runs in place from the ROM window, like every TMS9918 program.\n"
+    "; Upload flashes this into CODETANKDEV.rom (bank picked in the toolbar) and\n"
+    "; boots 4000R - it runs in place from the ROM window, like every TMS9918 program.\n"
     "VDAT = $CC00\n"
     "VCTL = $CC01\n"
     ".segment \"CODE\"\n"
@@ -398,20 +398,21 @@ std::string codeTankDevRomReadPath() {
     return {};
 }
 
-// APPLE-1 LOGO V2.6 lives in the LOWER bank of Codetank_GAME3.rom (4000R with the
-// jumper Lower). That cartridge ships under roms/codetank/; unlike the asm/C flash
-// slot it is never rewritten, so a read-only bundled copy is fine. Returns "" if
-// absent anywhere.
-std::string codeTankLogoRomReadPath() {
+// The stabilised language cartridge Codetank_BASIC_LOGO.rom carries BOTH
+// DevBench interpreters: APPLE-1 LOGO V2.6 in the LOWER bank and the Applesoft
+// TMS9918 in the UPPER bank (4000R with the matching jumper). It ships under
+// roms/codetank/; unlike the CODETANKDEV flash slots it is never rewritten, so
+// a read-only bundled copy is fine. Returns "" if absent anywhere.
+std::string codeTankBasicLogoRomReadPath() {
     namespace fs = std::filesystem;
     std::error_code ec;
     if (const char* env = std::getenv("POM1_CODETANK_DEV_DIR"); env && *env) {
-        std::string p = (fs::path(env) / "Codetank_GAME3.rom").string();
+        std::string p = (fs::path(env) / "Codetank_BASIC_LOGO.rom").string();
         if (fs::exists(p, ec)) return p;
     }
-    for (const char* c : {"roms/codetank/Codetank_GAME3.rom",
-                          "../roms/codetank/Codetank_GAME3.rom",
-                          "../../roms/codetank/Codetank_GAME3.rom"})
+    for (const char* c : {"roms/codetank/Codetank_BASIC_LOGO.rom",
+                          "../roms/codetank/Codetank_BASIC_LOGO.rom",
+                          "../../roms/codetank/Codetank_BASIC_LOGO.rom"})
         if (fs::exists(c, ec)) return c;
     return {};
 }
@@ -431,23 +432,27 @@ std::string codeTankDevRomWritePath() {
     return {};
 }
 
-// Flash the asm/C build at `binPath` into the LOWER 16 KB of CODETANKDEV.rom while
-// preserving the upper bank (Applesoft TMS9918) seeded from the best existing copy,
-// write it to `outPath`, and report whether the write actually landed (the old
-// code ignored ofstream failures, so a read-only roms/ booted a stale cartridge).
+// Flash the asm/C build at `binPath` into the chosen 16 KB bank of
+// CODETANKDEV.rom while preserving the OTHER bank (the user's previous flash)
+// seeded from the best existing copy, write it to `outPath`, and report
+// whether the write actually landed (the old code ignored ofstream failures,
+// so a read-only roms/ booted a stale cartridge). Both banks are flash slots
+// — the cartridge is created from blank $FF on first use, so the generated
+// rom needs no committed seed (works identically on WASM's MEMFS).
 bool flashCodeTankDevRom(const std::string& binPath, const std::string& outPath,
-                         std::string& err) {
+                         bool upperBank, std::string& err) {
     namespace fs = std::filesystem;
     std::vector<unsigned char> rom(0x8000, 0xFF);
-    // Seed the whole 32 KB from the best existing cartridge so the Applesoft upper
-    // bank survives, then clear + overwrite only the lower 16 KB with the build.
+    // Seed the whole 32 KB from the best existing cartridge so the other
+    // bank survives, then clear + overwrite only the chosen 16 KB half.
     if (std::string seed = codeTankDevRomReadPath(); !seed.empty()) {
         std::ifstream prev(seed, std::ios::binary);
         if (prev) prev.read(reinterpret_cast<char*>(rom.data()), 0x8000);
     }
-    std::fill_n(rom.begin(), 0x4000, 0xFF);
+    const size_t off = upperBank ? 0x4000 : 0x0000;
+    std::fill_n(rom.begin() + off, 0x4000, 0xFF);
     { std::ifstream in(binPath, std::ios::binary);
-      in.read(reinterpret_cast<char*>(rom.data()), 0x4000); }
+      in.read(reinterpret_cast<char*>(rom.data() + off), 0x4000); }
     std::error_code ec;
     fs::create_directories(fs::path(outPath).parent_path(), ec);
     std::ofstream out(outPath, std::ios::binary | std::ios::trunc);
@@ -571,7 +576,7 @@ const P1T kP1Targets[] = {
     // 6, injectLogo). The resident interpreter is cold-started, then LogoProgramLoader
     // pokes its procedure table directly + feeds ONE entry line (no keyboard typing —
     // the REPEAT break-poll would drop pasted lines). cfg = cold-start command.
-    //   14 LOGO TMS9918 — Codetank_GAME3.rom LOWER bank ($4000, jumper Lower), preset 1,
+    //   14 LOGO TMS9918 — Codetank_BASIC_LOGO.rom LOWER bank ($4000, jumper Lower), preset 1,
     //      16 KB-strict (proc_table $E431, n_procs $0260). codetankRom = true.
     //   15 LOGO GEN2 HGR — roms/logo-gen2.rom loaded at $6000, preset 2, 48 KB
     //      (proc_table $B431, n_procs $02E3).
@@ -618,6 +623,11 @@ const char* const kP1Machines[]  = {
     "LOGO TMS9918  (interpreter)",               // 7  LOGO  -> target 14
     "LOGO GEN2 HGR  (interpreter)",              // 8  LOGO  -> target 15
 };
+static_assert(sizeof(kP1Machines) / sizeof(kP1Machines[0]) ==
+                  kP1MachineLogoGen2 + 1,
+              "kP1Machines[] and the kP1Machine* index constants in "
+              "Pom1BenchHost.h are out of sync — update both together "
+              "(targetFor() and the boot profile chooser consume them)");
 const char* const kP1MachineHints[] = {
     "Stock Apple-1: 40x24 text printed through the WozMon ECHO routine ($FFEF).\n"
     "Easiest place to start - no graphics card needed.",
@@ -639,7 +649,7 @@ const char* const kP1MachineHints[] = {
     "bank ($E000-$EFFF), cold start E000R. No graphics, no floating point — the\n"
     "classic Apple-1 BASIC. Listing tokenised + loaded directly (no keyboard typing).",
     "APPLE-1 LOGO V2.6 on the P-LAB TMS9918 card — the turtle interpreter in the\n"
-    "LOWER bank of Codetank_GAME3.rom ($4000, jumper Lower), cold start 4000R, 16 KB.\n"
+    "LOWER bank of Codetank_BASIC_LOGO.rom ($4000, jumper Lower), cold start 4000R, 16 KB.\n"
     "Procedures poked into the proc table; entry line fed to the REPL. 256x192 bitmap.",
     "APPLE-1 LOGO V2.6 on Uncle Bernie's GEN2 HGR card — interpreter loaded at $6000\n"
     "(roms/logo-gen2.rom), cold start 6000R, 48 KB (preset 2). Same injection path,\n"
@@ -1653,17 +1663,17 @@ int Pom1BenchHost::targetFor(int language, int machine) const
     if (language == 1) return (machine >= 0 && machine <= 2) ? 3 + machine : -1;  // C   3..5
     if (language == 2) {                                                          // BASIC
         switch (machine) {
-            case 3: return 8;    // Applesoft Lite + microSD ($6000)
-            case 4: return 9;    // Applesoft GEN2 HGR ($9800)
-            case 5: return 11;   // Applesoft TMS9918 (CodeTank $4000)
-            case 6: return 7;    // Integer BASIC (Apple-1 dual-rom, $E000)
+            case kP1MachineApplesoftMicroSD: return 8;   // Applesoft Lite + microSD ($6000)
+            case kP1MachineApplesoftGen2:    return 9;   // Applesoft GEN2 HGR ($9800)
+            case kP1MachineApplesoftTms:     return 11;  // Applesoft TMS9918 (CodeTank $4000)
+            case kP1MachineIntegerBasic:     return 7;   // Integer BASIC (Apple-1 dual-rom, $E000)
         }
         return -1;
     }
     if (language == 3) {                                                          // LOGO
         switch (machine) {
-            case 7: return 14;   // LOGO TMS9918 (CodeTank $4000)
-            case 8: return 15;   // LOGO GEN2 HGR ($6000)
+            case kP1MachineLogoTms:  return 14;  // LOGO TMS9918 (CodeTank $4000)
+            case kP1MachineLogoGen2: return 15;  // LOGO GEN2 HGR ($6000)
         }
         return -1;
     }
@@ -1696,6 +1706,17 @@ bool Pom1BenchHost::warmStartApplies(int target) const
 {
     const int i = p1(target);
     return i >= 0 && i < kP1TargetCount && kP1Targets[i].mode == 4;
+}
+
+bool Pom1BenchHost::flashBankApplies(int target) const
+{
+    const int i = p1(target);
+    if (i < 0 || i >= kP1TargetCount) return false;
+    const P1T& t = kP1Targets[i];
+    // Only the asm/C build targets FLASH the CODETANKDEV cartridge; the
+    // Applesoft/LOGO interpreter targets (modes 4/6) also carry codetankRom
+    // but insert the stabilised Codetank_BASIC_LOGO.rom instead.
+    return t.codetankRom && (t.mode == 0 || t.mode == 3);
 }
 
 static bool sourcePathLooksGT6144(const std::string& path)
@@ -2073,17 +2094,18 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
     };
 
     // 1) For the TMS9918 Applesoft, the interpreter lives in the UPPER bank of the
-    //    unified CODETANKDEV cartridge (roms/codetank/CODETANKDEV.rom) — the lower
-    //    bank is the DevBench's asm/C flash slot. Resolve + validate the image UP
-    //    FRONT so a missing ROM aborts with the machine completely unchanged (no
-    //    preset switch, no half-plugged card, no default GAME1 cartridge).
+    //    stabilised language cartridge (roms/codetank/Codetank_BASIC_LOGO.rom) —
+    //    CODETANKDEV is now a pure two-slot flash cart. Resolve + validate the
+    //    image UP FRONT so a missing ROM aborts with the machine completely
+    //    unchanged (no preset switch, no half-plugged card, no default ARCADE
+    //    cartridge).
     std::string tmsCartPath;
     if (tms) {
-        tmsCartPath = codeTankDevRomReadPath();
+        tmsCartPath = codeTankBasicLogoRomReadPath();
         if (tmsCartPath.empty()) {
             r.console = std::string("[bench] ") + interp +
-                ": CODETANKDEV.rom not found — build it with "
-                "tools/build_codetank_rom.py --rom dev\n"
+                ": Codetank_BASIC_LOGO.rom not found — build it with "
+                "tools/build_codetank_rom.py --rom basiclogo\n"
                 "[bench] aborting injection; machine left unchanged.\n";
             r.status = std::string(interp) + ": ROM not found";
             r.ok = false;
@@ -2098,16 +2120,16 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
     if (tms) {
         std::string err;
         if (!emu->loadCodeTankRom(tmsCartPath, err)) {
-            r.console = std::string("[bench] ") + interp + ": CODETANKDEV.rom load FAILED — " + err + "\n";
+            r.console = std::string("[bench] ") + interp + ": Codetank_BASIC_LOGO.rom load FAILED — " + err + "\n";
             r.status = std::string(interp) + ": ROM load failed";
             r.ok = false;
             return r;
         }
         // When the switch to preset 1 was applied fresh (e.g. the Mode selector, or a
         // Run from another preset), applyMachineConfig queued the preset's DEFAULT
-        // CodeTank ROM (Codetank_GAME1.rom) for the still-pending plug. Clear that path
-        // now so finalizePendingCardPlugs() does NOT reload GAME1 over the Applesoft
-        // cartridge we just flashed.
+        // CodeTank ROM (Codetank_ARCADE.rom) for the still-pending plug. Clear that
+        // path now so finalizePendingCardPlugs() does NOT reload ARCADE over the
+        // Applesoft cartridge we just inserted.
         mw_->pendingCodeTankRomPath.clear();
     }
     mw_->finalizePendingCardPlugs();
@@ -2453,11 +2475,11 @@ bench::BuildResult Pom1BenchHost::injectLogo(int target, const std::string& src,
     //    the machine untouched (no preset switch, no half-plugged card).
     std::string tmsCartPath, gen2RomPath;
     if (tms) {
-        tmsCartPath = codeTankLogoRomReadPath();
+        tmsCartPath = codeTankBasicLogoRomReadPath();
         if (tmsCartPath.empty()) {
             r.console = "[bench] " + interp +
-                ": Codetank_GAME3.rom not found — build it with "
-                "tools/build_codetank_rom.py --rom=3\n"
+                ": Codetank_BASIC_LOGO.rom not found — build it with "
+                "tools/build_codetank_rom.py --rom basiclogo\n"
                 "[bench] aborting injection; machine left unchanged.\n";
             r.status = interp + ": ROM not found"; r.ok = false; return r;
         }
@@ -2472,15 +2494,15 @@ bench::BuildResult Pom1BenchHost::injectLogo(int target, const std::string& src,
         }
     }
 
-    // 2) Plug the interpreter's machine. For TMS, pre-load the LOGO cartridge (lower
-    //    bank) BEFORE draining the deferred plugs so enabling CodeTank doesn't
-    //    auto-probe the default GAME1 image, then pin the jumper to LOWER (4000R ->
+    // 2) Plug the interpreter's machine. For TMS, pre-load the BASIC_LOGO cartridge
+    //    BEFORE draining the deferred plugs so enabling CodeTank doesn't
+    //    auto-probe the default ARCADE image, then pin the jumper to LOWER (4000R ->
     //    LOGO). GEN2 loads the interpreter into RAM at $6000 after the reset.
     onTargetSelected(target);
     if (tms) {
         std::string err;
         if (!emu->loadCodeTankRom(tmsCartPath, err)) {
-            r.console = "[bench] " + interp + ": Codetank_GAME3.rom load FAILED — " + err + "\n";
+            r.console = "[bench] " + interp + ": Codetank_BASIC_LOGO.rom load FAILED — " + err + "\n";
             r.status = interp + ": ROM load failed"; r.ok = false; return r;
         }
         mw_->pendingCodeTankRomPath.clear();
@@ -3300,21 +3322,25 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         // read-only packaged roms/ no longer makes the flash fail silently.
         fs::path romPath = codeTankDevRomWritePath();
         if (romPath.empty()) romPath = dir / "CODETANKDEV.rom";   // fallback: temp build dir
-        // Flash the lower bank, preserving the Applesoft TMS9918 upper bank; abort
-        // loudly if the write didn't land instead of booting a stale cartridge.
+        // Flash the bank picked in the bench toolbar (default Lower), preserving
+        // the other flash slot; abort loudly if the write didn't land instead of
+        // booting a stale cartridge.
+        const bool upper = benchFlashUpper_;
         std::string error;
-        if (!flashCodeTankDevRom(binB.string(), romPath.string(), error)) {
+        if (!flashCodeTankDevRom(binB.string(), romPath.string(), upper, error)) {
             r.status = "CODETANKDEV.rom flash failed: " + error; r.ok = false; return r;
         }
         if (!emu->loadCodeTankRom(romPath.string(), error)) { r.status = "CODETANKDEV.rom load failed: " + error; r.ok = false; return r; }
-        mw_->codeTankJumper = CodeTank::Jumper::Lower16;
+        mw_->codeTankJumper = upper ? CodeTank::Jumper::Upper16
+                                    : CodeTank::Jumper::Lower16;
         emu->setCodeTankJumper(mw_->codeTankJumper);
         if (!mw_->tms9918Enabled) { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
         if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCodeTankEnabled(true); }
         emu->hardReset(/*animateBoot=*/false); // DevBench: no ~3 s power-on scenario
         mw_->codeTankPendingWozRunAt = ImGui::GetTime() + 1.0;
         emu->copySnapshot(mw_->uiSnapshot);
-        r.console += "[ok] flashed CODETANKDEV.rom (lower bank) - 4000R\n";
+        r.console += std::string("[ok] flashed CODETANKDEV.rom (")
+                     + (upper ? "upper" : "lower") + " bank) - 4000R\n";
         r.status = "CODETANKDEV.rom flashed - boot 4000R"; r.ok = true;
         return r;
     }
@@ -3408,25 +3434,31 @@ bench::BuildResult Pom1BenchHost::pollBuild()
     ejectTapeForAciProgramOutput(emu, r, t.preset);
 
     if (t.codetankRom) {
-        // TMS9918 asm: wrap the .bin into a CodeTank dev ROM, flash it, jumper to
-        // the lower 16K bank, reset + boot 4000R (mirrors the desktop path). Write
-        // target is a writable copy (POM1_CODETANK_DEV_DIR in an AppImage), so a
+        // TMS9918 asm: wrap the .bin into a CodeTank dev ROM, flash the bank
+        // picked in the bench toolbar, jumper to it, reset + boot 4000R
+        // (mirrors the desktop path). Write target is a writable copy
+        // (POM1_CODETANK_DEV_DIR in an AppImage; MEMFS on WASM), so a
         // read-only packaged roms/ no longer makes the flash fail silently.
+        // CODETANKDEV.rom is generated (never committed): the flash composes
+        // it from blank $FF when absent.
         fs::path romPath = codeTankDevRomWritePath();
         if (romPath.empty()) romPath = "/tmp/CODETANKDEV.rom";
+        const bool upper = benchFlashUpper_;
         std::string error;
-        if (!flashCodeTankDevRom("/tmp/pom1_bench.bin", romPath.string(), error)) {
+        if (!flashCodeTankDevRom("/tmp/pom1_bench.bin", romPath.string(), upper, error)) {
             r.status = "CODETANKDEV.rom flash failed: " + error; r.ok = false; return r;
         }
         if (!emu->loadCodeTankRom(romPath.string(), error)) { r.status = "CODETANKDEV.rom load failed: " + error; r.ok = false; return r; }
-        mw_->codeTankJumper = CodeTank::Jumper::Lower16;
+        mw_->codeTankJumper = upper ? CodeTank::Jumper::Upper16
+                                    : CodeTank::Jumper::Lower16;
         emu->setCodeTankJumper(mw_->codeTankJumper);
         if (!mw_->tms9918Enabled) { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
         if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCodeTankEnabled(true); }
         emu->hardReset(/*animateBoot=*/false); // DevBench: no ~3 s power-on scenario
         mw_->codeTankPendingWozRunAt = ImGui::GetTime() + 1.0;
         emu->copySnapshot(mw_->uiSnapshot);
-        r.console += "[ok] flashed CODETANKDEV.rom (lower bank) - 4000R\n";
+        r.console += std::string("[ok] flashed CODETANKDEV.rom (")
+                     + (upper ? "upper" : "lower") + " bank) - 4000R\n";
         r.status = "CODETANKDEV.rom flashed - boot 4000R"; r.ok = true;
         return r;
     }

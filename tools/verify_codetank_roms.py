@@ -53,68 +53,68 @@ ROMS = ROOT / "roms" / "codetank"
 # that draws; wrong keys are harmlessly ignored by the programs.
 M = 1_000_000
 SCENARIOS = [
-    # GAME1 lower — Tetris (Nino Porcino). RETURN starts, then a few moves.
-    ("GAME1-lower-Tetris", "Codetank_GAME1.rom", "lower",
+    # CLASSICS lower — Tetris (Nino Porcino). RETURN starts, then a few moves.
+    ("CLASSICS-lower-Tetris", "Codetank_CLASSICS.rom", "lower",
      [(6 * M, "\r"), (10 * M, "j"), (14 * M, "l"), (18 * M, "k")],
      [8 * M, 22 * M]),
-    # GAME1 upper — menu -> Galaga (1), keyboard pick, fire through title.
-    ("GAME1-upper-Galaga", "Codetank_GAME1.rom", "upper",
-     [(6 * M, "1"), (12 * M, "1"), (18 * M, " "), (24 * M, "j")],
-     [10 * M, 28 * M]),
-    # GAME1 upper — menu -> Sokoban (2).
-    ("GAME1-upper-Sokoban", "Codetank_GAME1.rom", "upper",
-     [(6 * M, "2"), (12 * M, " "), (16 * M, "d"), (20 * M, "w")],
-     [10 * M, 24 * M]),
-    # GAME1 upper — menu -> Snake (3), keyboard pick, walls pick, play.
-    ("GAME1-upper-Snake", "Codetank_GAME1.rom", "upper",
-     [(6 * M, "3"), (12 * M, "1"), (16 * M, "1"), (20 * M, "w"), (24 * M, "d")],
-     [10 * M, 28 * M]),
-    # GAME2 lower — Rogue alone. Keyboard pick then a few moves.
-    ("GAME2-lower-Rogue", "Codetank_GAME2.rom", "lower",
-     [(8 * M, "1"), (14 * M, "j"), (18 * M, "l"), (22 * M, "k")],
-     [12 * M, 26 * M]),
-    # GAME2 upper — Nyan (free-running animation, no keys needed).
-    ("GAME2-upper-Nyan", "Codetank_GAME2.rom", "upper",
-     [],
-     [6 * M, 14 * M]),
-    # GAME3 lower — TMS LOGO V2.6 (boots to its REPL banner).
-    ("GAME3-lower-Logo", "Codetank_GAME3.rom", "lower",
+    # CLASSICS upper — TMS_Chess: Mode-2 board draws from the title; pick a
+    # mode then let the engine sit at the board.
+    ("CLASSICS-upper-Chess", "Codetank_CLASSICS.rom", "upper",
+     [(8 * M, "1")],
+     [12 * M, 24 * M]),
+    # BASIC_LOGO lower — TMS LOGO V2.6 (boots to its REPL banner).
+    ("BASIC_LOGO-lower-Logo", "Codetank_BASIC_LOGO.rom", "lower",
      [],
      [8 * M]),
-    # GAME3 upper — menu -> Life (1) / then next pattern key.
-    ("GAME3-upper-Life", "Codetank_GAME3.rom", "upper",
+    # BASIC_LOGO upper — Applesoft TMS9918 (boots to its banner + prompt);
+    # evaluate one immediate expression through the REPL.
+    ("BASIC_LOGO-upper-Applesoft", "Codetank_BASIC_LOGO.rom", "upper",
+     [(10 * M, "?1+1\r")],
+     [12 * M, 18 * M]),
+    # ARCADE lower — menu -> Galaga (1), keyboard pick, fire through title.
+    ("ARCADE-lower-Galaga", "Codetank_ARCADE.rom", "lower",
+     [(6 * M, "1"), (12 * M, "1"), (18 * M, " "), (24 * M, "j")],
+     [10 * M, 28 * M]),
+    # ARCADE lower — menu -> Sokoban (2).
+    ("ARCADE-lower-Sokoban", "Codetank_ARCADE.rom", "lower",
+     [(6 * M, "2"), (12 * M, " "), (16 * M, "d"), (20 * M, "w")],
+     [10 * M, 24 * M]),
+    # ARCADE lower — menu -> Snake (3), keyboard pick, walls pick, play.
+    ("ARCADE-lower-Snake", "Codetank_ARCADE.rom", "lower",
+     [(6 * M, "3"), (12 * M, "1"), (16 * M, "1"), (20 * M, "w"), (24 * M, "d")],
+     [10 * M, 28 * M]),
+    # ARCADE upper — Rogue alone. Keyboard pick then a few moves.
+    ("ARCADE-upper-Rogue", "Codetank_ARCADE.rom", "upper",
+     [(8 * M, "1"), (14 * M, "j"), (18 * M, "l"), (22 * M, "k")],
+     [12 * M, 26 * M]),
+    # DEMOS lower — menu -> Life (1) / then next pattern key.
+    ("DEMOS-lower-Life", "Codetank_DEMOS.rom", "lower",
      [(6 * M, "1"), (16 * M, "k")],
      [12 * M, 22 * M]),
-    # GAME3 upper — menu -> Mandel (2): slow progressive render.
-    ("GAME3-upper-Mandel", "Codetank_GAME3.rom", "upper",
+    # DEMOS lower — menu -> Mandel (2): slow progressive render.
+    ("DEMOS-lower-Mandel", "Codetank_DEMOS.rom", "lower",
      [(6 * M, "2")],
      [20 * M]),
-    # GAME3 upper — menu -> Plasma (3).
-    ("GAME3-upper-Plasma", "Codetank_GAME3.rom", "upper",
+    # DEMOS lower — menu -> Plasma (3).
+    ("DEMOS-lower-Plasma", "Codetank_DEMOS.rom", "lower",
      [(6 * M, "3")],
      [14 * M]),
-    # GAME4 lower — menu -> Split (1). Auto-exits to Wozmon after ~600
-    # frames (~10 M cycles): keep both checkpoints inside the run window.
-    ("GAME4-lower-Split", "Codetank_GAME4.rom", "lower",
-     [(6 * M, "1")],
-     [9 * M, 14 * M]),
-    # GAME4 lower — menu -> Vague (2): free-running boat-on-a-wave.
-    ("GAME4-lower-Vague", "Codetank_GAME4.rom", "lower",
-     [(6 * M, "2")],
+    # DEMOS lower — menu -> Vague (4): free-running boat-on-a-wave.
+    ("DEMOS-lower-Vague", "Codetank_DEMOS.rom", "lower",
+     [(6 * M, "4")],
      [10 * M, 20 * M]),
-    # GAME4 lower — menu -> Hello (3): static HELLO POM1 screen.
-    ("GAME4-lower-Hello", "Codetank_GAME4.rom", "lower",
-     [(6 * M, "3")],
-     [9 * M, 14 * M]),
-    # GAME4 upper — demo_sprite_animals (free-running, no keys needed).
-    ("GAME4-upper-Animals", "Codetank_GAME4.rom", "upper",
+    # DEMOS lower — menu -> Nyan (5): free-running Mode III animation.
+    ("DEMOS-lower-Nyan", "Codetank_DEMOS.rom", "lower",
+     [(6 * M, "5")],
+     [10 * M, 18 * M]),
+    # DEMOS upper — demo_sprite_animals (free-running, no keys needed).
+    ("DEMOS-upper-Animals", "Codetank_DEMOS.rom", "upper",
      [],
      [6 * M, 14 * M]),
-    # NOTE: GAME5 (nino-democ / screen1) and GAME6 (Maze3D / OrbitalPool /
-    # Stars / SilBench) were retired in the July-2026 cleanup (their .rom
-    # banks + source demos removed from the tree). The canonical burn-ready
-    # CodeTank library is GAME1-4; add scenarios back here if those banks
-    # are ever rebuilt.
+    # NOTE: the juillet 2026 reorganisation folded the GAME1-7 line-up into
+    # these four cartridges (CODETANKDEV is a generated flash cart with no
+    # fixed content to verify). Every shipped bank has at least one scenario
+    # — keep it that way when adding carts.
 ]
 
 DROP_RE = re.compile(r"^\[TMS9918 DROP")

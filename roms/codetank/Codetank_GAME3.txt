@@ -1,3 +1,0 @@
-Codetank_GAME3.rom — TMS9918 P-LAB CodeTank cartridge
-  Lower jumper: 4000R → TMS_LOGO V2.6 turtle interpreter
-  Upper jumper: 4000R → menu → 1=Life 2=Mandel 3=Plasma

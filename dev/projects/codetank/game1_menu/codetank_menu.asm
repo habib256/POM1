@@ -3,7 +3,7 @@
 ; and TMS_SNAKE. All three share the lower 16 kB bank ($4000-$7FFF
 ; when CodeTank board jumper = Lower).
 ;
-; Layout in the lower bank (Codetank_GAME1.rom):
+; Layout in the lower bank (Codetank_ARCADE.rom):
 ;   $4000-$40FF  Menu (this file)                   (256 B)
 ;   $4100-$61FF  TMS_A1GALAGA   (linked at $4100)   (8 448 B slot)
 ;   $6200-$75FF  TMS_SOKOBAN    (linked at $6200)   (5 120 B slot)
@@ -13,10 +13,10 @@
 ; 8 192 B; absorbed by shifting Sokoban entry +256 B (was $6100, now $6200).
 ; Snake entry kept at $7600 — its slot stayed at 2 560 B.
 ;
-; Life moved to its own cartridge (Codetank_GAME3.rom). The upper 16 kB
-; bank ships TMS_LOGO V2.6 (turtle interpreter) at $4000 — flip the
-; CodeTank board jumper to "Upper" and type 4000R from Wozmon to launch
-; the REPL.
+; The upper 16 kB bank ships TMS_Rogue (dungeon crawler) at $4000 — flip
+; the CodeTank board jumper to "Upper" and type 4000R from Wozmon to
+; launch it. (Life lives on Codetank_DEMOS.rom; LOGO V2.6 on
+; Codetank_BASIC_LOGO.rom.)
 ;
 ; Wozmon entry: 4000R after plugging the CodeTank card.
 ; =============================================
@@ -68,12 +68,12 @@ start:
 ;     Apple-1 display. $0D = CR (Apple-1 wraps + line-feeds on its own).
 prompt:
         .byte $0D
-        .byte "P-LAB CODETANK GAME1", $0D
+        .byte "P-LAB CODETANK ARCADE", $0D
         .byte $0D
         .byte "1 = GALAGA", $0D
         .byte "2 = SOKOBAN", $0D
         .byte "3 = SNAKE", $0D
-        .byte "(LOGO V2 ON UPPER JUMPER)", $0D
+        .byte "(ROGUE ON UPPER JUMPER)", $0D
         .byte $0D
         .byte "PICK 1, 2 OR 3 ? "
         .byte 0

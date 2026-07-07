@@ -81,27 +81,13 @@ ln -sf POM1.png "${APPDIR}/.DirIcon"
 # User-facing release note (parity with the Windows ZIP / macOS DMG READMEs).
 cp "${REPO_ROOT}/packaging/linux/README.txt" "${APPDIR}/README.txt"
 
-# 3a. CODETANKDEV.rom : produite par tools/build_codetank_rom.py et exigée par la
-# DevBench TMS9918 (Applesoft .apf) à roms/codetank/CODETANKDEV.rom. On la
-# (re)génère ici, avec ca65/ld65 issus du bundle cc65 si besoin, pour garantir
-# qu'une copie FRAÎCHE finit dans l'AppImage même si le checkout est périmé.
-# (Le binaire est tracké en plus de son sidecar .txt ; la régénération est
-# idempotente quand les sources dev/ n'ont pas bougé.)
-CC65_BIN=""
-if [ -n "${POM1_CC65_BUNDLE:-}" ] && [ -d "${POM1_CC65_BUNDLE}/bin" ]; then
-    CC65_BIN="${POM1_CC65_BUNDLE}/bin"
-elif [ -d "${REPO_ROOT}/dist/cc65-bundle/cc65/bin" ]; then
-    CC65_BIN="${REPO_ROOT}/dist/cc65-bundle/cc65/bin"
-fi
-if PATH="${CC65_BIN:+${CC65_BIN}:}${PATH}" command -v ca65 >/dev/null 2>&1; then
-    echo "[appimage] Génération de roms/codetank/CODETANKDEV.rom…"
-    PATH="${CC65_BIN:+${CC65_BIN}:}${PATH}" \
-        python3 "${REPO_ROOT}/tools/build_codetank_rom.py" --rom dev >/dev/null
-elif [ ! -f "${REPO_ROOT}/roms/codetank/CODETANKDEV.rom" ]; then
-    echo "[appimage] ATTENTION : ca65 introuvable et CODETANKDEV.rom absente —" \
-         "la DevBench TMS9918 Applesoft échouera. Installez cc65 ou fournissez" \
-         "POM1_CC65_BUNDLE, puis relancez."
-fi
+# 3a. CODETANKDEV.rom : cartouche de flash DevBench (deux banks $FF, générée,
+# jamais commitée — l'Applesoft TMS vit désormais dans Codetank_BASIC_LOGO.rom).
+# Sa génération ne requiert AUCUNE toolchain ; POM1 sait aussi la recréer à la
+# volée au premier flash, mais on en met une copie fraîche dans l'AppImage pour
+# que le répertoire seedé soit complet.
+echo "[appimage] Génération de roms/codetank/CODETANKDEV.rom…"
+python3 "${REPO_ROOT}/tools/build_codetank_rom.py" --rom dev >/dev/null
 
 # Données embarquées : tout ce que les probes cwd/exe-relatives cherchent.
 # ini_defaults/ = baseline des layouts par preset (résolu exe-relatif :

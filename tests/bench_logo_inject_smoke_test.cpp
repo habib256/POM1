@@ -9,7 +9,7 @@
 //
 // This test exercises that mechanism headlessly at the Memory + M6502 level, on BOTH
 // LOGO cards, and asserts the TURTLE actually drew:
-//   * LOGO TMS9918 — Codetank_GAME3.rom LOWER bank @ $4000 (cold 4000R), proc_table
+//   * LOGO TMS9918 — Codetank_BASIC_LOGO.rom LOWER bank @ $4000 (cold 4000R), proc_table
 //     $E431 / n_procs $0260, turtle into the Graphics-II pattern table (TMS VRAM).
 //   * LOGO GEN2 HGR — roms/logo-gen2.rom @ $6000 (cold 6000R), proc_table $B431 /
 //     n_procs $02E3, turtle into the HGR page-1 framebuffer ($2000-$3FFF RAM).
@@ -101,7 +101,7 @@ const char* kRosette =
 
 int main()
 {
-    // ---- LOGO TMS9918 (Codetank_GAME3.rom lower bank @ $4000) ---------------
+    // ---- LOGO TMS9918 (Codetank_BASIC_LOGO.rom lower bank @ $4000) ----------
     {
         logo::Target tgt = logo::targetTms();
         assert(tgt.coldEntry == 0x4000 && "LOGO TMS cold-start moved");
@@ -111,9 +111,9 @@ int main()
         logo::Result prog = logo::compile(kRosette, tgt);
         if (!prog.ok) return fail(("TMS LOGO parse: " + prog.error).c_str());
 
-        std::vector<unsigned char> rom = readRom("roms/codetank/Codetank_GAME3.rom");
+        std::vector<unsigned char> rom = readRom("roms/codetank/Codetank_BASIC_LOGO.rom");
         if (rom.empty()) {
-            std::fprintf(stderr, "SKIP: roms/codetank/Codetank_GAME3.rom not found\n");
+            std::fprintf(stderr, "SKIP: roms/codetank/Codetank_BASIC_LOGO.rom not found\n");
             return kSkip;
         }
         Memory mem; mem.initMemory(); mem.setTMS9918Enabled(true);

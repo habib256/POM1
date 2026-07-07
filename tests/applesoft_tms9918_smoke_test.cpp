@@ -17,7 +17,7 @@
 //     GR   : colour $0000  name table $0800 (multicolor 64x48 nibble buffer)
 //     HGR  : pattern $0000  colour $2000  name $3800 (Graphics II 256x192)
 //
-// ROM path: $POM1_ASTMS_ROM, else roms/codetank/CODETANKDEV.rom (upper bank).
+// ROM path: $POM1_ASTMS_ROM, else roms/codetank/Codetank_BASIC_LOGO.rom (upper bank).
 #include "TMS9918.h"
 #include "WiFiModem.h"    // IWYU pragma: keep
 #include "TerminalCard.h" // IWYU pragma: keep
@@ -46,17 +46,17 @@ public:
 
 bool loadRom(Memory& mem)
 {
-    // The interpreter lives in the UPPER bank of CODETANKDEV.rom (the unified TMS
-    // DevBench cartridge); take bytes [$4000:$8000] into the $4000 CodeTank window.
+    // The interpreter lives in the UPPER bank of Codetank_BASIC_LOGO.rom (the
+    // stabilised language cartridge); take bytes [$4000:$8000] into the $4000 CodeTank window.
     // A <=16 KB standalone .bin (via POM1_ASTMS_ROM) is taken whole.
     const char* env = std::getenv("POM1_ASTMS_ROM");
-    const std::string path = env ? env : "roms/codetank/CODETANKDEV.rom";
+    const std::string path = env ? env : "roms/codetank/Codetank_BASIC_LOGO.rom";
     std::ifstream f(path, std::ios::binary);
     std::vector<unsigned char> buf;
     if (f) buf.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
     if (buf.empty()) {
         std::fprintf(stderr, "cannot load Applesoft TMS9918 ROM '%s'. Build it with "
-                             "tools/build_codetank_rom.py --rom dev (or set POM1_ASTMS_ROM).\n",
+                             "tools/build_codetank_rom.py --rom basiclogo (or set POM1_ASTMS_ROM).\n",
                              path.c_str());
         return false;
     }

@@ -99,7 +99,8 @@ Contents
   roms\                 Apple 1 and expansion ROMs
                         (WozMonitor, Integer BASIC, Applesoft Lite,
                          applesoft-gen2, ACI, Krusader, SD CARD OS,
-                         CFFA1, Juke-Box, charmap, codetank/CODETANKDEV)
+                         CFFA1, Juke-Box, charmap, codetank/ — CLASSICS,
+                         BASIC_LOGO, ARCADE, DEMOS + generated CODETANKDEV)
   ini_defaults\         Curated per-preset window layouts (factory baseline)
   sketchs\              DevBench source sketches (asm, C, BASIC .apf)
   dev\                  cc65 linker configs, runtime libs, project sources

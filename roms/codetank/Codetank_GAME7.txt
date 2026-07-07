@@ -1,3 +1,0 @@
-Codetank_GAME7.rom — TMS9918 P-LAB CodeTank cartridge (Chess)
-  Lower jumper: 4000R → TMS_Chess (graphical Mode-2 chess vs AI / 2P)
-  Upper jumper: 4000R → blank ($FF)

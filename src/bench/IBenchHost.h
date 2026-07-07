@@ -93,6 +93,17 @@ public:
     virtual bool warmStart() const { return false; }
     virtual void setWarmStart(bool /*on*/) {}
 
+    // ---- Flash-bank picker (dev-cartridge targets) ----
+    // Some targets flash the build into one 16 kB bank of a two-slot dev
+    // cartridge (POM1's CODETANKDEV 28c256) and boot the matching board
+    // jumper. flashBankApplies() tells CodeBench whether to show the
+    // Lower/Upper toggle for a target; flashUpperBank()/setFlashUpperBank()
+    // carry the toggle state the host consults on the next Run. Default: no
+    // such toggle (targets that load into RAM have no banked cartridge).
+    virtual bool flashBankApplies(int /*target*/) const { return false; }
+    virtual bool flashUpperBank() const { return false; }
+    virtual void setFlashUpperBank(bool /*upper*/) {}
+
     // ---- Machine + build (the emulator-specific work) ----
     // Apply the machine (preset/cards) a target runs on + adopt its source mode.
     virtual void        onTargetSelected(int target)                                     = 0;

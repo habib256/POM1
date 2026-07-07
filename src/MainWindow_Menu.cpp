@@ -431,6 +431,10 @@ void MainWindow_ImGui::renderMenuBar()
                 if (showSidTracker && !sidEnabled) {
                     sidEnabled = true;
                     sidSpecialEditionEnabled = false;
+                    // setSIDEnabled also evicts the Juke-Box on the bus
+                    // ($CA00 sits inside the SID window) — mirror the flag
+                    // like the Hardware-menu A1-SID item does.
+                    jukeBoxEnabled = false;
                     emulation->setSIDEnabled(true);
                     setStatusMessage("A1-SID plugged for SID Tracker", 2.0f);
                 }

@@ -26,7 +26,7 @@
 // `n_procs` (a single byte) is the live procedure count the interpreter iterates.
 // The proc_table base and n_procs address are fixed by the LOGO RAM linker cfg
 // (PROC + LINEBUF segments) and are STABLE across CODE placement -- both cartridge
-// (Codetank_GAME3) and run-in-place builds share PROC=$E000 / LBUF=$0200 (TMS) or
+// (Codetank_BASIC_LOGO) and run-in-place builds share PROC=$E000 / LBUF=$0200 (TMS) or
 // $B000 / $0280 (GEN2). Pinned against the shipped ROMs by bench_logo_inject_smoke.
 //
 // Pure: depends on <string>/<vector>/<cstdint> only, so it links into the bench
@@ -62,7 +62,7 @@ struct Target {
     uint16_t    nProcs    = 0;  // n_procs counter (TMS $0260 / GEN2 $02E3)
 };
 
-// LOGO TMS9918 (Codetank_GAME3.rom lower bank @ $4000, cold start 4000R).
+// LOGO TMS9918 (Codetank_BASIC_LOGO.rom lower bank @ $4000, cold start 4000R).
 Target targetTms();
 // LOGO GEN2 HGR (roms/logo-gen2.rom @ $6000, cold start 6000R).
 Target targetGen2();

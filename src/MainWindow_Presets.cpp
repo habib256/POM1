@@ -115,7 +115,7 @@ const MachineConfig kMachinePresets[] = {
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ true, CodeTank::Jumper::Lower16,
-        /*codeTankRom*/ "roms/codetank/Codetank_GAME1.rom",
+        /*codeTankRom*/ "roms/codetank/Codetank_ARCADE.rom",
         /*gt6144*/ false,
         /*iecCard*/ false,
         {
@@ -282,7 +282,7 @@ const MachineConfig kMachinePresets[] = {
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 with TMS9918 (CodeTank daughterboard)",
         "P-LAB Graphic Card (TMS9918A VDP) with the CodeTank 28c256 ROM daughterboard "
-        "(Codetank_GAME1.rom) at $4000-$7FFF, no BASIC (CodeTank ROM is the program). "
+        "(Codetank_ARCADE.rom) at $4000-$7FFF, no BASIC (CodeTank ROM is the program). "
         "Replica/Originals dual-bank RAM: 4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF "
         "(Parmigiani's standard 8 KB layout — same as 99% of Originals; with no BASIC "
         "loaded the upper bank is free RAM). The CodeTank piggybacks the Graphic Card "
@@ -295,7 +295,7 @@ const MachineConfig kMachinePresets[] = {
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ true, CodeTank::Jumper::Lower16,
-        /*codeTankRom*/ "roms/codetank/Codetank_GAME1.rom",
+        /*codeTankRom*/ "roms/codetank/Codetank_ARCADE.rom",
         /*gt6144*/ false,
         /*iecCard*/ false,
         {
@@ -320,7 +320,7 @@ const MachineConfig kMachinePresets[] = {
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ true, CodeTank::Jumper::Lower16,
-        /*codeTankRom*/ "roms/codetank/Codetank_GAME1.rom",
+        /*codeTankRom*/ "roms/codetank/Codetank_ARCADE.rom",
         /*gt6144*/ false,
         /*iecCard*/ false,
         {
@@ -1048,6 +1048,7 @@ void MainWindow_ImGui::renderProfileChooser()
     int chosenLang        = -1;   // DevBench language axis (2=BASIC, 3=LOGO)
     int chosenMachine     = -1;   // DevBench machine axis (see kP1Machines[])
     int chosenPaint       = -1;   // 0 = HGR Painter, 1 = TMS9918 Painter
+    int chosenAudio       = -1;   // 0 = Beeper SFX, 1 = SID Tracker
     // A profile row: accent-coloured button (width w) + a dim wrapped description.
     // onClick writes the chosen action; the caller runs it after ImGui::End().
     auto actionButton = [&](const char* label, const char* desc,
@@ -1145,8 +1146,8 @@ void MainWindow_ImGui::renderProfileChooser()
     //   Create   (violet)— write graphics programs in BASIC or LOGO (opens the
     //                       Bench with the interpreter live + a starter demo).
     //   Develop  (green) — hand-write 6502 assembly or C in the DevBench.
-    // Machine-axis indices in the Create column track kP1Machines[]
-    // (4 = Applesoft GEN2, 5 = Applesoft TMS, 9 = LOGO TMS, 10 = LOGO GEN2).
+    // Machine-axis values in the Create column are the kP1Machine* constants
+    // (Pom1BenchHost.h), pinned to kP1Machines[] by a static_assert.
     const ImU32 mB = IM_COL32(28, 68, 92, 255),  mH = IM_COL32(42, 96, 126, 255), mA = IM_COL32(20, 52, 74, 255);
     const ImU32 vB = IM_COL32(74, 46, 96, 255),  vH = IM_COL32(102, 64, 132, 255), vA = IM_COL32(56, 34, 74, 255);
     const ImU32 dB = IM_COL32(34, 74, 46, 255),  dH = IM_COL32(48, 100, 64, 255),  dA = IM_COL32(26, 56, 36, 255);
@@ -1181,22 +1182,22 @@ void MainWindow_ImGui::renderProfileChooser()
         langButton("Applesoft — HGR",
                    "Color-graphics BASIC (HGR, HPLOT, HCOLOR) on the GEN2 card. Opens the "
                    "editor with a demo ready to run.",
-                   /*BASIC*/ 2, /*Applesoft GEN2*/ 4, vB, vH, vA, vw, 46.0f);
+                   /*BASIC*/ 2, kP1MachineApplesoftGen2, vB, vH, vA, vw, 46.0f);
         ImGui::Dummy(ImVec2(0.0f, 8.0f));
         langButton("Applesoft — TMS9918",
                    "The same graphics BASIC driving the P-LAB TMS9918 chip. Opens the "
                    "editor with a demo ready to run.",
-                   /*BASIC*/ 2, /*Applesoft TMS*/ 5, vB, vH, vA, vw, 46.0f);
+                   /*BASIC*/ 2, kP1MachineApplesoftTms, vB, vH, vA, vw, 46.0f);
         ImGui::Dummy(ImVec2(0.0f, 8.0f));
         langButton("LOGO — HGR",
                    "Turtle graphics (LOGO V2.6) on the GEN2 HGR card. Draw with TO, "
                    "REPEAT, FD and TR.",
-                   /*LOGO*/ 3, /*LOGO GEN2*/ 10, vB, vH, vA, vw, 46.0f);
+                   /*LOGO*/ 3, kP1MachineLogoGen2, vB, vH, vA, vw, 46.0f);
         ImGui::Dummy(ImVec2(0.0f, 8.0f));
         langButton("LOGO — TMS9918",
                    "Turtle graphics (LOGO V2.6) on the P-LAB TMS9918 card. Draw with TO, "
                    "REPEAT, FD and TR.",
-                   /*LOGO*/ 3, /*LOGO TMS*/ 9, vB, vH, vA, vw, 46.0f);
+                   /*LOGO*/ 3, kP1MachineLogoTms, vB, vH, vA, vw, 46.0f);
 
         // Column 3 — DevBench profiles (green accent).
         ImGui::TableNextColumn();
@@ -1220,22 +1221,37 @@ void MainWindow_ImGui::renderProfileChooser()
         ImGui::EndTable();
     }
 
-    // Pixel-art tools: direct access to the HGR / TMS9918 Paint editors, centred
-    // below the columns. Each plugs its graphics card and opens the editor.
+    // Media tools: direct access to the Paint editors (HGR / TMS9918) and the
+    // audio editors (Beeper SFX / SID Tracker) on ONE centred row. Each plugs its
+    // matching card and opens the editor — mirroring the Tools-menu actions. Paint
+    // buttons keep the amber accent, audio buttons the magenta one.
     ImGui::Dummy(ImVec2(0.0f, 18.0f));
-    centeredScaledText(ICON_FA_PAINTBRUSH "  Paint editors", 1.0f, IM_COL32(140, 153, 179, 255));
+    centeredScaledText(ICON_FA_PAINTBRUSH "  Paint & Audio editors", 1.0f, IM_COL32(140, 153, 179, 255));
     ImGui::Dummy(ImVec2(0.0f, 4.0f));
     {
-        const float pbW = 320.0f, pbGap = 16.0f, pbH = 44.0f;
-        const float rowW = 2.0f * pbW + pbGap;
+        // Clamp to the viewport like the columns above — the chooser window has
+        // NoScrollbar, so an unclamped 4-button row would clip past the right
+        // edge (unreachable buttons) on OS windows narrower than ~1000 px.
+        const float ebGap = 14.0f, ebH = 44.0f;
+        const float ebW = std::min(240.0f, (std::min(1080.0f, winW - 40.0f) - 3.0f * ebGap) / 4.0f);
+        const float rowW = 4.0f * ebW + 3.0f * ebGap;
         if (winW > rowW) ImGui::SetCursorPosX((winW - rowW) * 0.5f);
         const ImU32 pB = IM_COL32(150, 96, 34, 255), pH = IM_COL32(190, 128, 52, 255), pA = IM_COL32(120, 76, 26, 255);
+        const ImU32 aB = IM_COL32(120, 60, 96, 255), aH = IM_COL32(152, 78, 124, 255), aA = IM_COL32(96, 48, 76, 255);
         ImGui::PushStyleColor(ImGuiCol_Button, pB);
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, pH);
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, pA);
-        if (ImGui::Button(ICON_FA_PAINTBRUSH "  HGR Painter", ImVec2(pbW, pbH))) chosenPaint = 0;
-        ImGui::SameLine(0.0f, pbGap);
-        if (ImGui::Button(ICON_FA_PAINTBRUSH "  TMS9918 Painter", ImVec2(pbW, pbH))) chosenPaint = 1;
+        if (ImGui::Button(ICON_FA_PAINTBRUSH "  HGR Painter", ImVec2(ebW, ebH))) chosenPaint = 0;
+        ImGui::SameLine(0.0f, ebGap);
+        if (ImGui::Button(ICON_FA_PAINTBRUSH "  TMS9918 Painter", ImVec2(ebW, ebH))) chosenPaint = 1;
+        ImGui::PopStyleColor(3);
+        ImGui::SameLine(0.0f, ebGap);
+        ImGui::PushStyleColor(ImGuiCol_Button, aB);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, aH);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, aA);
+        if (ImGui::Button(ICON_FA_VOLUME_HIGH "  Beeper SFX", ImVec2(ebW, ebH))) chosenAudio = 0;
+        ImGui::SameLine(0.0f, ebGap);
+        if (ImGui::Button(ICON_FA_MUSIC "  SID Tracker", ImVec2(ebW, ebH))) chosenAudio = 1;
         ImGui::PopStyleColor(3);
     }
 
@@ -1252,7 +1268,7 @@ void MainWindow_ImGui::renderProfileChooser()
 
     // Enter with nothing else picked = boot the flagship default (POM1 FANTASY),
     // exactly like clicking the big amber button — a one-keystroke "just start".
-    if (chosenPreset < 0 && chosenLang < 0 &&
+    if (chosenPreset < 0 && chosenLang < 0 && chosenPaint < 0 && chosenAudio < 0 &&
         (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)))
         chosenPreset = kMachinePresetCount - 1;
 
@@ -1265,6 +1281,9 @@ void MainWindow_ImGui::renderProfileChooser()
         showProfileChooser = false;
     } else if (chosenPaint >= 0) {
         launchPaintEditorFromChooser(/*tms=*/chosenPaint == 1);
+        showProfileChooser = false;
+    } else if (chosenAudio >= 0) {
+        launchAudioEditorFromChooser(/*sid=*/chosenAudio == 1);
         showProfileChooser = false;
     }
 }
@@ -1286,6 +1305,40 @@ void MainWindow_ImGui::launchPaintEditorFromChooser(bool tms)
         showGraphicsCard = true;
         emulation->setHgrFramebufferAttached(true);
         showHGRPaintEditor = true;
+    }
+}
+
+// Open an audio editor straight from the chooser. Boot a plain Apple-1 with the
+// ACI (kPresetIntegerCassette) as the base machine, then raise the editor
+// window. Card plugs ride the deferred rail (pending* flags, plugged by
+// finalizePendingCardPlugs ~15 frames after the reset) like
+// launchPaintEditorFromChooser — a same-frame plug is the documented
+// silent-card-on-boot condition, and the deferred finalize would otherwise
+// honour a CLI --enable sid-se/jukebox override queued by applyBootConfig and
+// evict the SID the user just asked for.
+void MainWindow_ImGui::launchAudioEditorFromChooser(bool sid)
+{
+    applyBootConfig(kPresetIntegerCassette);
+    if (sid) {
+        sidEnabled = true;
+        pendingSidEnable = true;
+        // A1-SID evicts its bus rivals (A1-AUDIO SE shares $C800-$CFFF, the
+        // Juke-Box latch sits at $CA00) — clear their pendings too so the
+        // finalize pass can't plug one and evict the SID right back.
+        sidSpecialEditionEnabled = false;
+        pendingSidSEEnable = false;
+        jukeBoxEnabled = false;
+        pendingJukeBoxEnable = false;
+        showSidTracker = true;
+    } else {
+        // kPresetIntegerCassette carries the ACI (cfg.aci queues the deferred
+        // plug), but a persistent CLI `--disable aci` override is re-applied
+        // inside every applyBootConfig — re-assert the pendings after the call
+        // (like the SID branch above) so the editor never falls back on its
+        // render guard's same-frame emergency plug (silent-card-on-boot).
+        aciEnabled = true;
+        pendingAciEnable = true;
+        showSfxEditor = true;
     }
 }
 

@@ -88,13 +88,13 @@ bool loadRomAt(Memory& mem, const char* path, uint16_t addr)
 }
 
 // Load the TMS9918 Applesoft interpreter into the $4000-$7FFF window. It lives in
-// the UPPER bank of the unified CODETANKDEV cartridge, so we take bytes
+// the UPPER bank of the Codetank_BASIC_LOGO cartridge, so we take bytes
 // [$4000:$8000] of the 32 KB image (a <=16 KB standalone .bin is taken whole).
 // Returns false if the cartridge isn't present (so the caller can skip).
 bool loadTmsApplesoft(Memory& mem)
 {
     const char* env = std::getenv("POM1_ASTMS_ROM");
-    const std::string path = env ? env : "roms/codetank/CODETANKDEV.rom";
+    const std::string path = env ? env : "roms/codetank/Codetank_BASIC_LOGO.rom";
     std::ifstream f(path, std::ios::binary);
     if (!f) return false;
     std::vector<unsigned char> buf((std::istreambuf_iterator<char>(f)),

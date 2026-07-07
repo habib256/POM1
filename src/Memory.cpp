@@ -1927,18 +1927,17 @@ int Memory::loadCodeTankRom(const std::string& path)
         return 1;
     }
     // Default probe order. The shipped CodeTank library image
-    // (`Codetank_GAME1.rom`, built by tools/build_codetank_rom.py) wins
+    // (`Codetank_ARCADE.rom`, built by tools/build_codetank_rom.py) wins
     // so plugging the CodeTank from the toolbar/Hardware menu drops the
     // user straight into the bundled software: lower jumper = 3-game
-    // menu (Galaga/Sokoban/Snake), upper jumper = TMS_LOGO V2.6 turtle
-    // interpreter. The legacy single-file `roms/codetank.rom` (kept
-    // around from before the library directory) stays as a fallback.
-    // Other carts (GAME2/GAME3/TEST) are picked via File → P-LAB
-    // CodeTank Library.
+    // menu (Galaga/Sokoban/Snake), upper jumper = TMS_Rogue. The legacy
+    // single-file `roms/codetank.rom` (kept around from before the
+    // library directory) stays as a fallback. Other carts (CLASSICS /
+    // BASIC_LOGO / DEMOS) are picked via File → P-LAB CodeTank Library.
     const char* candidates[] = {
-        "roms/codetank/Codetank_GAME1.rom",
-        "../roms/codetank/Codetank_GAME1.rom",
-        "../../roms/codetank/Codetank_GAME1.rom",
+        "roms/codetank/Codetank_ARCADE.rom",
+        "../roms/codetank/Codetank_ARCADE.rom",
+        "../../roms/codetank/Codetank_ARCADE.rom",
         "codetank.rom",
         "roms/codetank.rom", "../roms/codetank.rom", "../../roms/codetank.rom",
     };
@@ -1950,7 +1949,7 @@ int Memory::loadCodeTankRom(const std::string& path)
         }
     }
     lastError = "CodeTank ROM not found "
-                "(expected roms/codetank/Codetank_GAME1.rom)";
+                "(expected roms/codetank/Codetank_ARCADE.rom)";
     pom1::log().warn("Mem", lastError);
     return 1;
 }

@@ -10,6 +10,60 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — CodeTank ROM library: four release cartridges (Claudio burn plan)
+
+- **The GAME1-7 line-up is reorganised into 4 named cartridges** so Claudio's
+  four EPROM burns cover the whole library (silicon-validated titles ride the
+  same chips as the remediated/new banks he must test):
+  **`Codetank_CLASSICS.rom`** (Tetris ✅ | Chess 🆕),
+  **`Codetank_BASIC_LOGO.rom`** (LOGO V2.6 ✅ | Applesoft TMS 🆕),
+  **`Codetank_ARCADE.rom`** (menu Galaga 🔴/Sokoban ✅/Snake ✅ | Rogue 🔴),
+  **`Codetank_DEMOS.rom`** (menu Life ✅/Mandel 🔴/Plasma ✅/Vague 🆕/Nyan ✅ |
+  Animals 🆕). The DEMOS lower bank packs all five small demos behind a new
+  5-entry menu (`dev/projects/codetank/demos_menu/`, slots $4200/$4A00/$5200/
+  $5A00/$6000 pinned by new `*_demos_bank.cfg`s); Nyan is slot-linked at
+  $6000, Animals keeps its full-bank C build. TMS9918_Hello and TMS_Split
+  leave the cartridge line-up (DevBench sketches only); the GAME5/6 packer
+  machinery left `build_codetank_rom.py`. `TMS_Mandel.asm` (remediated build)
+  was restored from git history — its source had left the tree while its bank
+  still shipped. ARCADE is the default probe rom (`Memory.cpp`, presets).
+  `tools/verify_codetank_roms.py` scenarios rewritten for the 4 carts —
+  **Chess, Applesoft, Vague-from-menu and Nyan-from-menu are now covered by
+  the Claudio gate** (Chess/GAME7 previously had no scenario at all).
+- **`CODETANKDEV.rom` is now a pure two-slot flash cartridge — generated,
+  never committed** (untracked + .gitignore). Both 16 kB banks are blank $FF
+  flash slots; `flashCodeTankDevRom` composes the file from scratch when
+  absent (desktop and WASM MEMFS alike, no toolchain needed — packagers call
+  `--rom dev` unconditionally now). The Applesoft TMS bank it used to carry
+  ships stabilised in `Codetank_BASIC_LOGO.rom`, and the DevBench injection
+  paths for **both** TMS interpreters (Applesoft upper / LOGO lower) load
+  that cartridge (`Pom1BenchHost.cpp`; tests updated:
+  `applesoft_tms9918_smoke`, `applesoft_gen2_smoke`, `basic_compiler_smoke`,
+  `bench_logo_inject_smoke`, `codetank_smoke`).
+- **DevBench flash-bank picker**: CodeTank asm/C targets get an "Upper"
+  toggle in the bench toolbar (new `IBenchHost::flashBankApplies`/
+  `flashUpperBank` seam, default hidden) — Run flashes the chosen 16 kB half
+  of CODETANKDEV and boots the matching board jumper, preserving the other
+  bank's program across flashes.
+
+### Fixed — boot profile chooser (bug-hunt pass)
+
+- **The chooser's LOGO buttons were dead**: they passed machine indices 9/10
+  into `targetFor()` after the `kP1Machines[]` compaction moved LOGO to rows
+  7/8, so both buttons resolved to target -1. Machine rows consumed by name
+  are now the `kP1Machine*` constants (`Pom1BenchHost.h`) with a size
+  static_assert on the array.
+- **Beeper SFX from the chooser vs `--disable aci`**: the Beeper branch now
+  re-asserts `aciEnabled`/`pendingAciEnable` after `applyBootConfig` (like
+  the SID branch) — the persistent CLI override used to clear the pending
+  plug and force the editor's same-frame emergency plug (the documented
+  silent-card-on-boot condition).
+- **Tools → SID Tracker left a phantom Juke-Box checkmark**: the handler now
+  clears `jukeBoxEnabled` like the Hardware-menu A1-SID item —
+  `Memory::setSIDEnabled` already evicted the card on the bus ($CA00 sits in
+  the SID window), so the stale UI flag even produced a bogus conflict row in
+  the Silicon Strict Inspector.
+
 ### Added — Terminal Card: `Ctrl-K` injection hand-over
 
 - **`Ctrl-K` (or `ESC K`) suspends/resumes keyboard injection** on the Terminal

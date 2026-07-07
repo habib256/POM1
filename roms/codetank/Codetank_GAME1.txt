@@ -1,3 +1,0 @@
-Codetank_GAME1.rom — TMS9918 P-LAB CodeTank cartridge
-  Lower jumper: 4000R → Tetris/CodeTank (full 16 kB drop-in)
-  Upper jumper: 4000R → menu → 1=Galaga 2=Sokoban 3=Snake

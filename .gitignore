@@ -139,3 +139,5 @@ software/**/*.bin
 # NOTE: roms/codetank/CODETANKDEV.rom IS tracked (canonical cartridge — blank $FF
 # flash slot + Applesoft TMS9918 upper bank). The DevBench rewrites its lower bank
 # at runtime, but the clean image ships so the TMS9918 DevBench works out of the box.
+roms/codetank/CODETANKDEV.rom
+roms/codetank/CODETANKDEV.txt

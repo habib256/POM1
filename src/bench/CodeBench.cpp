@@ -638,6 +638,19 @@ void CodeBench::render(const char* title, bool* open)
                               "keeping a program already typed at the REPL.\n"
                               "Off = cold start (E000R / 6000R), a clean interpreter.");
     }
+    // Flash-bank toggle — only for dev-cartridge flash targets (CodeTank asm/C).
+    // Picks which 16 kB half of the two-slot dev cartridge the next Run flashes
+    // and boots (the board jumper follows). Off = lower bank.
+    if (host_->flashBankApplies(doc.targetIndex)) {
+        ImGui::SameLine(0, 10);
+        ImGui::SetCursorPosY(5.0f + (34.0f - ImGui::GetFrameHeight()) * 0.5f);
+        bool upper = host_->flashUpperBank();
+        if (ImGui::Checkbox("Upper", &upper)) host_->setFlashUpperBank(upper);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("CODETANKDEV flash bank. Off = lower 16 kB (jumper Lower),\n"
+                              "On = upper 16 kB (jumper Upper). Both banks are flash\n"
+                              "slots; the other bank's program survives the flash.");
+    }
     sep();
     ImGui::SameLine(0, 6);
     if (circleBtn(ICON_FA_FILE,          "##benchnew",      "New sketch (pick language + target) — opens a tab")) doNewChoose();

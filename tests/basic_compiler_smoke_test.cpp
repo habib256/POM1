@@ -68,12 +68,12 @@ bool loadBinaryAt(Memory& mem, const std::string& path, uint16_t addr)
     return false;
 }
 
-// Load the TMS9918 Applesoft interpreter (upper bank of CODETANKDEV.rom) into the
+// Load the TMS9918 Applesoft interpreter (upper bank of Codetank_BASIC_LOGO.rom) into the
 // $4000 CodeTank window. Returns false if the cartridge isn't present.
 bool loadTmsApplesoft(Memory& mem)
 {
     const char* env = std::getenv("POM1_ASTMS_ROM");
-    const std::string base = env ? env : "roms/codetank/CODETANKDEV.rom";
+    const std::string base = env ? env : "roms/codetank/Codetank_BASIC_LOGO.rom";
     std::vector<unsigned char> buf;
     for (const char* pre : {"", "../", "../../"}) {
         std::ifstream f(pre + base, std::ios::binary);
@@ -160,7 +160,7 @@ int main()
 
         Memory mem; mem.initMemory(); mem.setTMS9918Enabled(true);
         if (!loadTmsApplesoft(mem)) {
-            std::fprintf(stderr, "SKIP: CODETANKDEV.rom (TMS Applesoft) not found\n");
+            std::fprintf(stderr, "SKIP: Codetank_BASIC_LOGO.rom (TMS Applesoft) not found\n");
             return kSkip;
         }
         CaptureDisplay disp; mem.setDisplayDevice(&disp);

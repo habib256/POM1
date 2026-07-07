@@ -15,6 +15,19 @@
 class MainWindow_ImGui;
 class EmulationController;
 
+// Machine-axis indices into kP1Machines[] (Pom1BenchHost.cpp), the "Target"
+// combo's machine rows. Shared by targetFor() and the boot profile chooser so
+// a kP1Machines[] reorder is a one-line edit here instead of silent breakage
+// across scattered integer literals (a size static_assert next to the array
+// pins the sync). asm/C machines 0-2 are positional (targetFor uses the raw
+// index); only the BASIC/LOGO rows are consumed by name.
+inline constexpr int kP1MachineApplesoftMicroSD = 3;
+inline constexpr int kP1MachineApplesoftGen2    = 4;
+inline constexpr int kP1MachineApplesoftTms     = 5;
+inline constexpr int kP1MachineIntegerBasic     = 6;
+inline constexpr int kP1MachineLogoTms          = 7;
+inline constexpr int kP1MachineLogoGen2         = 8;
+
 class Pom1BenchHost : public bench::IBenchHost
 {
 public:
@@ -31,6 +44,9 @@ public:
     bool        warmStartApplies(int target) const override;   // true for BASIC (mode 4)
     bool        warmStart() const override { return benchWarmStart_; }
     void        setWarmStart(bool on) override { benchWarmStart_ = on; }
+    bool        flashBankApplies(int target) const override;   // true for CodeTank flash targets
+    bool        flashUpperBank() const override { return benchFlashUpper_; }
+    void        setFlashUpperBank(bool upper) override { benchFlashUpper_ = upper; }
     int         defaultTargetIndex()         const override;
     std::string starterSketch(int target)    const override;
 
@@ -166,6 +182,10 @@ private:
     // typed at the REPL survives a Verify/Run. Off = the classic cold start
     // (E000R / 6000R). See warmStartApplies()/injectBasic().
     bool benchWarmStart_ = false;
+    // Bench toolbar "Upper" toggle for CodeTank flash targets: which 16 kB
+    // bank of CODETANKDEV.rom the next Run flashes + boots (jumper follows).
+    // Off = lower (the historical behaviour). See flashBankApplies().
+    bool benchFlashUpper_ = false;
     // kP1Targets[] index of the BASIC interpreter currently cold-started + resident
     // (-1 = none). Warm start is only honoured when it matches the target being
     // injected — a warm re-entry into a never-cold-started (or wrong) interpreter

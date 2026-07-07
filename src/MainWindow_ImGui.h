@@ -632,6 +632,9 @@ private:
     // Open a pixel-art editor straight from the chooser: plug the matching
     // graphics machine (GEN2 HGR or TMS9918) and raise its Paint editor window.
     void launchPaintEditorFromChooser(bool tms);
+    // Open an audio editor straight from the chooser: boot a plain Apple-1, plug
+    // the matching sound card (ACI beeper or A1-SID) and raise its editor window.
+    void launchAudioEditorFromChooser(bool sid);
     void finalizePendingCardPlugs();
     void applyPendingLayout(const char* windowName);
     // Restore every window (and the main OS window) to the active preset's
