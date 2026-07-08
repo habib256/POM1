@@ -1,15 +1,16 @@
 ; =============================================
-; CodeTank GAME6 copy — TMS_Maze3D, RESURRECTED verbatim from git
+; CodeTank bank program — TMS_Maze3D, RESURRECTED verbatim from git
 ; 686fe03^:dev/projects/tms9918_maze3d/TMS_Maze3D.asm (source deleted in
-; the 686fe03 refactor, never migrated to sketchs/). Re-added here as a
-; RUN-IN-PLACE CodeTank bank program because the shipped Woz-hex image
-; (software/Graphic TMS9918/TMS_Maze3D.txt, $0280-$1A78 + BSS $1B00)
-; CANNOT be RAM-loaded on Parmigiani dual-bank machines: everything in
-; [$1000, $8000) is out-of-range there (Memory.cpp strict OOR), so the
-; GAME6 ROM->RAM packer would lose the image's upper 2.7 kB. Linked at
-; $4200 in ROM instead (apple1_maze3d_codetank_game6_bank.cfg), with
-; GRID/STK/MOBS relocated into the low 4 kB bank ($0E00-$0EFF).
+; the 686fe03 refactor, never migrated to sketchs/). RUN-IN-PLACE from
+; ROM at $4000 (full bank — `main:` is the first byte of CODE, so 4000R
+; boots it; apple1_maze3d_codetank_bank.cfg) because the historical
+; Woz-hex image ($0280-$1A78 + BSS $1B00) CANNOT be RAM-loaded on
+; Parmigiani dual-bank machines: everything in [$1000, $8000) is
+; out-of-range there (Memory.cpp strict OOR). GRID/STK/MOBS state is
+; relocated into the low 4 kB bank ($0E00-$0EFF).
 ; Code is ROM-clean: every runtime store targets ZP or those segments.
+; Build: `make` alongside; the DevBench flashes the bank into
+; CODETANKDEV (a 5th release cartridge slot is planned).
 ; =============================================
 ; =============================================
 ; TMS MAZE 3D - Wizardry-style line maze
@@ -29,15 +30,12 @@
 ;   ESC = quit
 ;
 ; =============================================
-; Assemble:
-;   ca65 -o build/TMS_Maze3D.o software/tms9918/TMS_Maze3D.asm
-;   ld65 -C software/tms9918/apple1_maze3d.cfg \
-;        -o build/TMS_Maze3D.bin build/TMS_Maze3D.o
-; or:
-;   python3 software/tms9918/emit_TMS_Maze3D_txt.py
+; Assemble: `make` in this directory (ca65 + tms9918_pad.asm + ld65 with
+; apple1_maze3d_codetank_bank.cfg -> TMS_Maze3D.bin, a $4000 bank image).
 ;
-; Run in POM1: TMS9918 auto-enables when loading from
-; software/tms9918/. File > Load Memory TMS_Maze3D.txt, then 280R.
+; Run in POM1: DevBench > open this file > Run flashes the CODETANKDEV
+; bank and boots 4000R. Headless: --enable codetank --codetank-rom
+; <32k image> --codetank-jumper lower --run 0x4000.
 ; =============================================
 
 ; ---- Apple 1 I/O ----
@@ -1726,18 +1724,11 @@ render_3d:
         WAIT_VBLANK
         JSR clear_bitmap
 
-        ; floor & ceiling base lines (horizon at y=96)
-        LDA #0
-        STA fl_x0
-        LDA #255
-        STA fl_x1
-        LDA #95
-        STA fl_y0
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
-        JSR hline
-        LDA #96
-        STA fl_y0
-        JSR hline
+        ; (No full-width horizon lines here: they crossed every wall and
+        ; passage without occlusion and turned the scene to mush — the
+        ; nested frame geometry alone carries the perspective, Wizardry
+        ; style. Fixed juillet 2026 together with the front-wall frame
+        ; off-by-one below.)
 
         ; precompute facing -> dx,dy (rd_dx, rd_dy)
         JSR setup_face_deltas
@@ -1763,7 +1754,14 @@ render_3d:
         ; check front
         JSR check_front_wall
         BEQ @no_front
-        ; front blocked: draw closing front wall
+        ; front blocked: the wall sits on the FAR edge of cell d, so the
+        ; closing rectangle lives at frame d+1 — drawing it at frame d
+        ; (the old off-by-one) painted a rectangle one whole cell too
+        ; near (full-screen when d=0!) across the side walls just drawn.
+        ; rd_depth <= MAX_DEPTH-1 here, so d+1 stays inside the 5-entry
+        ; frame tables. rd_blocked stops all further drawing, so the
+        ; stale rd_depth value after this is never used for geometry.
+        INC rd_depth
         JSR draw_front_wall
         LDA #1
         STA rd_blocked
@@ -2083,6 +2081,18 @@ draw_left_wall:
         LDA frame_by+1,X
         STA fl_y1
         JSR vline
+        ; far vertical corner of the opening (at lx[d+1]) — without it the
+        ; passage box stayed open-ended whenever the NEXT depth had no wall
+        ; to supply that edge (its near vertical coincides when it does;
+        ; the double draw is a harmless OR).
+        LDX rd_depth
+        LDA frame_lx+1,X
+        STA fl_x0
+        LDA frame_ty+1,X
+        STA fl_y0
+        LDA frame_by+1,X
+        STA fl_y1
+        JSR vline
         RTS
 @wall:
         LDX rd_depth
@@ -2160,6 +2170,16 @@ draw_right_wall:
         LDA frame_by+1,X
         STA fl_y1
         JSR vline
+        ; far vertical corner of the opening (at rx[d+1]) — mirror of the
+        ; left-side fix; see the note there.
+        LDX rd_depth
+        LDA frame_rx+1,X
+        STA fl_x0
+        LDA frame_ty+1,X
+        STA fl_y0
+        LDA frame_by+1,X
+        STA fl_y1
+        JSR vline
         RTS
 @wall:
         LDX rd_depth
@@ -2210,6 +2230,12 @@ draw_right_wall:
 ; with two simple horizontal seams to suggest stone courses.
 ; =============================================
 draw_front_wall:
+        ; hline/vline CLOBBER X (their 8-px batching loops: TAX/INX) — every
+        ; frame_*,X load below reloads X from rd_depth after a JSR. The old
+        ; code reused X across the calls: the bottom hline picked a random
+        ; frame_by and the right edge landed at frame_rx[vl_cnt] (a phantom
+        ; vertical at x=183 in every blocked scene — the juillet 2026 render
+        ; mess, together with the frame off-by-one fixed in render_3d).
         LDX rd_depth
         LDA frame_lx,X
         STA fl_x0
@@ -2218,6 +2244,7 @@ draw_front_wall:
         LDA frame_ty,X
         STA fl_y0
         JSR hline
+        LDX rd_depth
         LDA frame_by,X
         STA fl_y0
         JSR hline
@@ -2229,6 +2256,7 @@ draw_front_wall:
         LDA frame_by,X
         STA fl_y1
         JSR vline
+        LDX rd_depth
         LDA frame_rx,X
         STA fl_x0
         JSR vline
@@ -3148,8 +3176,10 @@ str_title4:   .byte "FOR P-LAB TMS9918 + APPLE 1",0
 str_press_any:.byte "PRESS ANY KEY...",0
 
 str_help_h1:  .byte "HOW TO PLAY",0
-str_help_l1:  .byte "I   FORWARD       J   TURN LEFT",0
-str_help_l2:  .byte "K   BACKWARD      L   TURN RIGHT",0
+; 31 chars max: printed at ch_cx=1 on the 32-column grid — the old l2 was
+; 32 chars, its final 'T' wrapped to the next row ("TK BACKWARD" glitch).
+str_help_l1:  .byte "I   FORWARD       J  TURN LEFT",0
+str_help_l2:  .byte "K   BACKWARD      L  TURN RIGHT",0
 str_help_l3:  .byte "M   TOGGLE MAP / 3D VIEW",0
 str_help_l4:  .byte "A   ATTACK   F  FLEE  (COMBAT)",0
 str_help_l5:  .byte "ESC  QUIT TO MONITOR",0
