@@ -2280,73 +2280,111 @@ draw_front_wall:
         LDA frame_rx,X
         STA fl_x0
         JSR vline
-        ; mortar seam: horizontal mid-line spanning the wall
-        LDX rd_depth
-        LDA frame_lx,X
-        CLC
-        ADC #1
-        STA fl_x0
-        LDA frame_rx,X
-        SEC
-        SBC #1
-        STA fl_x1
-        LDA frame_ty,X
-        CLC
-        ADC frame_by,X
-        ROR
-        STA fl_y0
-        JSR hline
+        ; (No mortar seam: the mid-height line across the closing wall read
+        ; as clutter, not texture — removed juillet 2026 on request.)
         RTS
 
 ; =============================================
 ; draw_hud_3d - small status under the floor area
 ; =============================================
 draw_hud_3d:
+        ; Status panel in the 4-line text zone (rows 20-23, y 160..191):
+        ;   y=159      full-width floor line closing the 3D viewport
+        ;   row 20     HP nn    ATK n    DEF n     (combat stats)
+        ;   row 21     LVL n    XP nn    DIR X     (progression + facing)
+        ;   rows 22-23 free for game messages.
+        ; Three aligned columns at cx 1 / 11 / 21, values 2 cells after
+        ; their label (write_decimal_2d blanks a leading zero tens digit).
         LDA #0
+        STA fl_x0
+        LDA #255
+        STA fl_x1
+        LDA #159
+        STA fl_y0
+        JSR hline
+
+        ; --- row 20: HP / ATK / DEF ---
+        LDA #1
         STA ch_cx
         LDA #20
         STA ch_cy
         LDA #<str_hud_hp
         LDX #>str_hud_hp
         JSR print_str_ax
-        LDA #4
+        LDA #5
         STA ch_cx
         LDA #20
         STA ch_cy
         LDA p_hp
         JSR write_decimal_2d
 
-        LDA #8
+        LDA #11
         STA ch_cx
         LDA #20
         STA ch_cy
         LDA #<str_hud_atk
         LDX #>str_hud_atk
         JSR print_str_ax
-        LDA #13
+        LDA #15
         STA ch_cx
         LDA #20
         STA ch_cy
         LDA p_atk
         JSR write_decimal_2d
 
-        LDA #16
+        LDA #21
         STA ch_cx
         LDA #20
+        STA ch_cy
+        LDA #<str_hud_def
+        LDX #>str_hud_def
+        JSR print_str_ax
+        LDA #25
+        STA ch_cx
+        LDA #20
+        STA ch_cy
+        LDA p_def
+        JSR write_decimal_2d
+
+        ; --- row 21: LVL / XP / DIR ---
+        LDA #1
+        STA ch_cx
+        LDA #21
         STA ch_cy
         LDA #<str_hud_lvl
         LDX #>str_hud_lvl
         JSR print_str_ax
-        LDA #20
+        LDA #5
         STA ch_cx
-        LDA #20
+        LDA #21
         STA ch_cy
         LDA p_lvl
         JSR write_decimal_2d
 
-        LDA #24
+        LDA #11
         STA ch_cx
-        LDA #20
+        LDA #21
+        STA ch_cy
+        LDA #<str_hud_xp
+        LDX #>str_hud_xp
+        JSR print_str_ax
+        LDA #15
+        STA ch_cx
+        LDA #21
+        STA ch_cy
+        LDA p_xp
+        JSR write_decimal_2d
+
+        LDA #21
+        STA ch_cx
+        LDA #21
+        STA ch_cy
+        LDA #<str_hud_dir
+        LDX #>str_hud_dir
+        JSR print_str_ax
+        LDA #25
+        STA ch_cx
+        LDA #21
         STA ch_cy
         LDA p_face
         TAX
@@ -3167,6 +3205,9 @@ str_map_help: .byte "M=BACK TO 3D  ESC=QUIT",0
 str_hud_hp:   .byte "HP",0
 str_hud_atk:  .byte "ATK",0
 str_hud_lvl:  .byte "LVL",0
+str_hud_def:  .byte "DEF",0
+str_hud_xp:   .byte "XP",0
+str_hud_dir:  .byte "DIR",0
 
 str_combat_title:   .byte "COMBAT!",0
 str_mob_hp:   .byte "HP",0
