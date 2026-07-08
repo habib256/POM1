@@ -24,6 +24,12 @@
 ; --- Apple 1 I/O ---
 .include "apple1.inc"
 
+; menu_select scratch — the menu cfg has no ZEROPAGE segment (256 B
+; ROM stub), so alias tmp/tmp2 onto the canonical zp.inc slots $00/$01
+; as plain equates. The games re-initialise their own ZP on entry.
+tmp   := $0000
+tmp2  := $0001
+
 ; --- Game entry points (must match the linker configs):
 ;     apple1_galaga_codetank_bank.cfg   start=$4100
 ;     apple1_sokoban_codetank_bank.cfg  start=$6200
@@ -37,23 +43,21 @@ SNAKE_ENTRY   = $7600
 start:
         LDX #0
 @print: LDA prompt,X
-        BEQ @wait_key
+        BEQ @pick
         ORA #$80                ; Apple-1 display wants bit 7 set
         JSR ECHO
         INX
         BNE @print
 
-@wait_key:
-        LDA KBDCR
-        BPL @wait_key           ; KBDCR bit 7 = 1 when a key is ready
-        LDA KBD                 ; bit 7 always set on Apple-1 keyboard
-        CMP #('1' | $80)
+@pick:
+        LDA #'1'                ; menu_select blocks until '1'..'3',
+        LDX #'3'                ; echoes the digit, returns it in A
+        JSR menu_select
+        CMP #'1'
         BEQ @go_galaga
-        CMP #('2' | $80)
+        CMP #'2'
         BEQ @go_sokoban
-        CMP #('3' | $80)
-        BEQ @go_snake
-        JMP @wait_key
+        JMP SNAKE_ENTRY         ; only '3' left
 
 @go_galaga:
         JMP GALAGA_ENTRY
@@ -61,8 +65,9 @@ start:
 @go_sokoban:
         JMP SOKOBAN_ENTRY
 
-@go_snake:
-        JMP SNAKE_ENTRY
+; --- Shared library routines (dev/lib) ---
+.include "kbd.asm"              ; wait_key (lib/apple1)
+.include "menu.asm"             ; menu_select (lib/text40)
 
 ; --- Prompt string. NUL-terminated; print loop ORs in bit 7 for the
 ;     Apple-1 display. $0D = CR (Apple-1 wraps + line-feeds on its own).

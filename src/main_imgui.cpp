@@ -55,6 +55,15 @@ void pom1_paste_text(const char* s)
 {
     if (g_wasmPasteTarget && s) g_wasmPasteTarget->pasteText(s);
 }
+// Called by shell.html on pagehide/visibilitychange:hidden — flush the active
+// preset's layout + global UI settings to the IDBFS-backed ini/ before the
+// tab goes away (the Emscripten main loop never returns, so the desktop
+// shutdown save can't run here).
+EMSCRIPTEN_KEEPALIVE
+void pom1_save_layout_now()
+{
+    if (g_wasmPasteTarget) g_wasmPasteTarget->saveActivePresetLayoutNow();
+}
 }
 #else
 #include <atomic>
@@ -799,8 +808,14 @@ int main(int argc, char* argv[])
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
-    // NE PAS activer NavEnableKeyboard - le clavier est pour l'Apple 1, pas pour ImGui!
+    // NE PAS activer NavEnableKeyboard au boot - le clavier est pour l'Apple 1,
+    // pas pour ImGui. L'utilisateur peut basculer en mode navigation UI avec
+    // F10 (MainWindow_ImGui::setUiNavMode) — accessibilité clavier complète,
+    // avec indicateur "UI NAV" dans la barre de statut.
     // io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    // La navigation manette, elle, ne rentre jamais en conflit avec le clavier
+    // Apple 1 — toujours active (no-op sans manette branchée).
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     // io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // Disponible seulement dans la branche docking
     // Disable ImGui's automatic imgui.ini load/save. POM1 manages per-preset
     // ini files under ini/imgui_preset_NN.ini manually via
@@ -837,6 +852,13 @@ int main(int argc, char* argv[])
     // elle scale mal, ce que l'aperçu Markdown (titres agrandis) rend visible.
     ImFontConfig fontConfig;
     fontConfig.SizePixels = 15.0f;
+    // DejaVu carries legacy X11 PUA glyphs (U+F001/U+F002 are seven-segment
+    // "88" ligature leftovers) that shadow same-codepoint FontAwesome icons in
+    // the merge below (first font holding a glyph wins) — ICON_FA_MUSIC used
+    // to render as "88". Exclude the whole icon window from the UI font so
+    // FontAwesome always supplies it.
+    static const ImWchar uiFontExclude[] = { ICON_MIN_FA, ICON_MAX_16_FA, 0 };
+    fontConfig.GlyphExcludeRanges = uiFontExclude;
     ImFont* defaultFont = nullptr;
 #if POM1_IS_WASM
     const std::string uiFontPath = "fonts/DejaVuSans.ttf";   // preloaded in MEMFS
@@ -1098,11 +1120,9 @@ int main(int argc, char* argv[])
         pom1::renderer()->present();
     }
 
-    // Cleanup — save the active preset's ini BEFORE DestroyContext() so
-    // ImGui still has its window-position state available to write.
-    if (mainWindow.getActivePresetIndex() >= 0) {
-        mainWindow.savePresetLayout(mainWindow.getActivePresetIndex());
-    }
+    // Cleanup — save the active preset's ini + global UI settings BEFORE
+    // DestroyContext() so ImGui still has its window-position state available.
+    mainWindow.saveActivePresetLayoutNow();
     mainWindow.releaseGLResources();   // delete editor / hardware textures while ctx is live
     rendererOwned->shutdownImGuiBackend();
     ImGui_ImplGlfw_Shutdown();

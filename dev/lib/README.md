@@ -192,7 +192,7 @@ Every cell links to that lib's own README (the per-lib API + ZP detail).
 | [`tms9918`](tms9918/README.md) / [`tms9918c`](tms9918c/README.md) | asm / C | P-LAB TMS9918 card (modes 1/2, sprites) |
 | [`gfx`](gfx/README.md) | C | card-neutral geometry + number formatting (link-time backend) |
 | [`sid`](sid/README.md) [`sd`](sd/README.md) [`wifi`](wifi/README.md) [`a1io`](a1io/README.md) [`gt6144`](gt6144/README.md) | asm | peripheral drivers: A1-SID, microSD, Wi-Fi modem, A1-IO/RTC, SWTPC GT-6144 |
-| [`text40`](text40/README.md) | asm | 40×24 text-mode UI helpers (layout / menu / repeat) |
+| [`text40`](text40/README.md) | asm | 40×24 text-mode UI helpers (menu / repeat) — `menu_select` linked by the CodeTank launcher menus |
 | [`games`](games/README.md) | asm | display-agnostic game engines — see per-game READMEs below |
 | └ [`games/chess`](games/chess/README.md) · [`games/rogue`](games/rogue/README.md) · [`games/sokoban`](games/sokoban/README.md) | asm | chess engine, roguelike FOV/dungeon-gen, Sokoban core |
 | [`telemetry`](telemetry/README.md) | asm + C | dev telemetry side channel (`$C440-$C443`) |
@@ -351,7 +351,6 @@ both park names in the same low region — check before combining:
 | [`m6502/prng8.asm`](m6502/prng8.asm) | `prng_lo`, `prng_hi` | — | shared with `prng16.asm` **by design** (`.ifndef`-guarded) |
 | [`sd/sd.asm`](sd/sd.asm) | `sd_str_lo`, `sd_str_hi` | — | string pointer |
 | [`sid/sid_player.asm`](sid/sid_player.asm) | `sid_ptr[2]`, `sid_frames`, `sid_ctrl` (all `.exportzp`'d) | — |  |
-| [`text40/layout.asm`](text40/layout.asm) | `key_up_code`, `key_left_code` | — | arrow-key remap |
 | [`tms9918/bubble.asm`](tms9918/bubble.asm) | — | `ln_x0`, `ln_y0`, `ln_x1`, `ln_y1` | bubble raster (TMS side of the `draw_bubble` shadow pair) |
 | [`tms9918/buffer_editor.asm`](tms9918/buffer_editor.asm) | `ed_cur_line`, `ed_n_lines` | `line_idx`, `shape_pat_lo`, `shape_pat_hi`, `pix_x`, `pix_y`, `ln_x0`, `ln_y0`, `ln_x1`, `ln_y1`, `tmp`, `tmp2`, `arg_lo`, `arg_hi`, `BUFED_BODYLEN_OFF`, `BUFED_BODY_OFF`, `BUFED_BODY_MAX`, `BUFED_NAME_LEN`, `BUFED_LINE_MAX` | reuses `math.asm`'s `arg_*` argument window — not storage; reload per call |
 | [`tms9918/sprite_helpers.asm`](tms9918/sprite_helpers.asm) | — | `spr_size`, `spr_xoff`, `spr_yoff`, `spr_r1`, `th_lo`, `th_hi`, `tmp`, `tmp2` | imports the caller's sprite shadow registers (`spr_*`) |

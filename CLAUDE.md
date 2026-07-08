@@ -36,7 +36,7 @@ All C++ sources under **`src/`** (vendored deps in `src/third_party/`). `imgui/`
 
 ### Parmigiani's golden rule — "one board at a time"
 
-Claudio PARMIGIANI (P-LAB designer): on real hardware exactly ONE P-LAB card is plugged. The 6502 bus has no arbitration and many P-LAB cards overlap windows (A1-SID `$C800-$CFFF` vs TMS9918 `$CC00/$CC01`; A1-IO RTC `$2000-$200F` vs GEN2 HGR `$2000-$3FFF`; Juke-Box claims `$4000-$BFFF`). POM1 **breaks this on purpose** in the "Multiplexing Fantasy" preset — fantasy, not buildable. Mutex rules elsewhere mirror real bus conflicts. When adding a card, honour the rule and document any intentional coexistence.
+Claudio PARMIGIANI (P-LAB designer): on real hardware exactly ONE P-LAB card is plugged. The 6502 bus has no arbitration and many P-LAB cards overlap windows (A1-SID `$C800-$CFFF` vs TMS9918 `$CC00/$CC01`; A1-IO RTC `$2000-$200F` vs GEN2 HGR `$2000-$3FFF`; Juke-Box claims `$4000-$BFFF`; microSD's Applesoft Lite EEPROM `$6000-$7FFF` vs CodeTank `$4000-$7FFF` — plugging either evicts the other, TMS9918 host stays). POM1 **breaks this on purpose** in the "Multiplexing Fantasy" preset — fantasy, not buildable. Mutex rules elsewhere mirror real bus conflicts. When adding a card, honour the rule and document any intentional coexistence.
 
 ### Core layers
 

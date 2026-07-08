@@ -46,7 +46,7 @@ struct BusConflict {
 /// Mutually-exclusive card pairs. Symmetric: order in the pair doesn't
 /// matter. Tests iterate this table to verify both
 /// `setA(true) ⇒ B disabled` and `setB(true) ⇒ A disabled`.
-inline constexpr std::array<BusConflict, 11> kBusConflicts{{
+inline constexpr std::array<BusConflict, 12> kBusConflicts{{
     // GEN2 HGR framebuffer at $2000-$3FFF overlaps the A1-IO/RTC VIA
     // window at $2000-$200F.
     {"GEN2 HGR",  "A1-IO/RTC",   "$2000-$200F overlap"},
@@ -74,6 +74,10 @@ inline constexpr std::array<BusConflict, 11> kBusConflicts{{
     // CodeTank's 16 kB ROM half occupies $4000-$7FFF, which is also the
     // Juke-Box's lower-window territory in RAM-16/ROM-32 mode.
     {"CodeTank",  "Juke-Box",    "$4000-$7FFF overlap"},
+
+    // The microSD EEPROM also serves Applesoft Lite at $6000-$7FFF,
+    // inside CodeTank's fixed $4000-$7FFF window.
+    {"CodeTank",  "microSD",     "$6000-$7FFF Applesoft Lite SD ROM overlap"},
 
     // CodeTank is wired as a TMS9918 daughterboard; it has no edge
     // connector of its own. Listed here so a contributor can grep for

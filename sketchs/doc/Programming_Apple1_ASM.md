@@ -339,49 +339,27 @@ Sokoban convention: `#` wall, `.` target, `$` crate, `@` player, `*` crate on ta
 
 For non-rectangular levels (e.g. Microban), pad short lines with spaces before compiling.
 
-### QWERTY/AZERTY keyboard prompt
+### Movement keys: fixed IJKL
 
-The `1` and `2` keys are at the same physical position on both layouts, ideal as a prompt. Store the variable keys in zero-page:
+Use `I`/`J`/`K`/`L` (up/left/down/right) for movement. These keys sit at the
+same physical position on QWERTY and AZERTY keyboards, so no layout prompt is
+needed — every game in this tree dropped its old `1=QWERTY / 2=AZERTY`
+selector in juillet 2026. Compare against literal constants:
 
 ```asm
-.zeropage
-key_up_code:   .res 1   ; 'W' (QWERTY) or 'Z' (AZERTY)
-key_left_code: .res 1   ; 'A' or 'Q'
-
 .code
-        LDA #<str_layout
-        LDX #>str_layout
-        JSR print_str_ax
-@wait:
         JSR wait_key
-        CMP #'1'
-        BEQ @qwerty
-        CMP #'2'
-        BEQ @azerty
-        JMP @wait
-@qwerty:
-        LDA #'W'
-        STA key_up_code
-        LDA #'A'
-        STA key_left_code
-        JMP @start
-@azerty:
-        LDA #'Z'
-        STA key_up_code
-        LDA #'Q'
-        STA key_left_code
-@start:
+        CMP #'I'
+        BEQ @up
+        CMP #'K'
+        BEQ @down
+        CMP #'J'
+        BEQ @left
+        CMP #'L'
+        BEQ @right
         ; ...
 
-; In move_loop:
-        CMP key_up_code
-        BEQ key_up
-        CMP #'S'                    ; S and D share the physical position
-        BEQ key_down
-        CMP key_left_code
-        BEQ key_left
-        CMP #'D'
-        BEQ key_right
+; If the KBD value keeps bit 7 set, compare #('I' | $80) instead.
 ```
 
 ### Logic / rendering separation
@@ -492,7 +470,7 @@ Reusable libraries (`dev/lib/`):
 6. Add delta rendering after validating the full rendering
 7. For HGR: draw byte-aligned tiles (width multiple of 7) if possible
 8. For TMS: use the colour-group trick from the start if multiple colours are needed
-9. Handle the keyboard layout (prompt `1`/`2`, store the keys in ZP)
+9. Use the fixed IJKL movement keys (same physical keys on QWERTY and AZERTY)
 10. Test edge cases: full grid, borders, exotic victory condition
 
 ---

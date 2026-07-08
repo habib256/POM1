@@ -63,9 +63,14 @@ void MainWindow_ImGui::renderMenuBar()
             // CodeTank is a daughterboard of the TMS9918 Graphic Card — auto-
             // plug the host so the UI flags stay in sync with what Memory's
             // setCodeTankEnabled would do anyway. Also evict the Juke-Box
-            // (overlapping $4000-$7FFF window).
+            // (overlapping $4000-$7FFF window) and the microSD (its Applesoft
+            // Lite EEPROM window $6000-$7FFF sits inside CodeTank's) — Memory
+            // does the bus side, mirror the UI flags (incl. the IEC add-on
+            // that cascades off microSD).
             jukeBoxEnabled = false;
             emulation->setJukeBoxEnabled(false);
+            microSDEnabled = false;
+            iecCardEnabled = false;
             if (!tms9918Enabled) {
                 tms9918Enabled = true;
                 showTMS9918 = true;
@@ -227,6 +232,51 @@ void MainWindow_ImGui::renderMenuBar()
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Off (default): matches a real TTL keyboard - holding a key asserts STROBE once.\n"
                                   "On: OS autorepeat reaches the Apple 1 (useful when using POM1 as a terminal).");
+            {
+                bool navMode = uiNavMode_;
+                if (ImGui::MenuItem("UI keyboard navigation", shortcutLabel(GLFW_KEY_F10), &navMode))
+                    setUiNavMode(navMode);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip(
+                        "Accessibility: Tab / arrows / Space / Enter drive the POM1 interface\n"
+                        "instead of typing into the Apple-1. Toggle any time with F10.");
+            }
+            if (ImGui::BeginMenu("UI Theme")) {
+                const char* names[] = { "Dark (default)", "Light", "High contrast" };
+                for (int t = 0; t < 3; ++t) {
+                    if (ImGui::MenuItem(names[t], nullptr, uiTheme_ == t) && uiTheme_ != t) {
+                        applyUiTheme(t);
+                        saveUiSettings();
+                    }
+                }
+                ImGui::EndMenu();
+            }
+            ImGui::Separator();
+            {
+                int startupPreset = -1;
+                bool autoStart = readStartupPreset(startupPreset);
+                bool toggled = autoStart;
+                if (ImGui::MenuItem("Skip profile chooser at startup", nullptr, &toggled)) {
+                    writeStartupPreset(toggled ? activePresetIndex : -1);
+                    setStatusMessage(toggled
+                        ? "POM1 will boot straight into this profile"
+                        : "POM1 will show the profile chooser at startup", 3.0f);
+                }
+                if (ImGui::IsItemHovered()) {
+                    const char* n = getPresetName(startupPreset);
+                    if (autoStart && n)
+                        ImGui::SetTooltip("Currently booting straight into \"%s\".\n"
+                                          "Uncheck to get the profile chooser back.", n);
+                    else
+                        ImGui::SetTooltip("Check to always boot into the CURRENT profile\n"
+                                          "(you can also tick the box on the chooser itself).");
+                }
+                if (ImGui::MenuItem("Profile chooser now...")) {
+                    showProfileChooser = true;
+                }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Reopen the boot profile screen (picking a profile restarts the machine).");
+            }
 #if !POM1_IS_WASM
             {
                 bool nativeDialogs = pom1::NativeFileDialog::isEnabled();
@@ -545,15 +595,23 @@ void MainWindow_ImGui::renderMenuBar()
                 if (microSDEnabled) {
                     cffa1Enabled = false; // sync UI
                     jukeBoxEnabled = false;
+                    if (codeTankEnabled) {
+                        // Memory evicts CodeTank ($6000-$7FFF Applesoft Lite
+                        // overlap); mirror UI. The TMS9918 host stays plugged.
+                        codeTankEnabled = false;
+                        showCodeTankLibrary = false;
+                        codeTankPendingWozRunAt = 0.0;
+                    }
                 } else {
                     iecCardEnabled = false; // cascade
                 }
             }
             showHardwareTooltip(
                 "P-LAB microSD Storage Card\n"
-                "ROM/VIA window: $8000-$9FFF and $A000-$A00F.\n\n"
-                "Plugging it unplugs CFFA1 and Juke-Box, because their ROM\n"
-                "windows overlap the microSD firmware area.");
+                "ROM/VIA window: $8000-$9FFF, $A000-$A00F, and the Applesoft\n"
+                "Lite EEPROM at $6000-$7FFF.\n\n"
+                "Plugging it unplugs CFFA1, Juke-Box, and the CodeTank\n"
+                "daughterboard, because their ROM windows overlap.");
             {
                 bool gateOk = microSDEnabled;
                 ImGui::BeginDisabled(!gateOk);
@@ -644,8 +702,10 @@ void MainWindow_ImGui::renderMenuBar()
                 "28c256 EEPROM; fixed ROM window: $4000-$7FFF.\n"
                 "The board jumper selects lower or upper 16 kB of the 32 kB device.\n\n"
                 "Daughterboard of the TMS9918 Graphic Card — no edge connector.\n"
-                "Plugging it auto-plugs the TMS9918 host (and evicts A1-AUDIO SE\n"
-                "and the Juke-Box). Unplugging the TMS9918 cascade-unplugs CodeTank.");
+                "Plugging it auto-plugs the TMS9918 host (and evicts A1-AUDIO SE,\n"
+                "the Juke-Box, and the microSD — its Applesoft Lite window at\n"
+                "$6000-$7FFF sits inside the CodeTank ROM). Unplugging the\n"
+                "TMS9918 cascade-unplugs CodeTank.");
             if (ImGui::MenuItem("P-LAB I/O Board & RTC", nullptr, &a1ioRtcEnabled)) {
                 if (!gateStrictPlug("A1-IO-RTC", a1ioRtcEnabled)) {
                     emulation->setA1IO_RTCEnabled(a1ioRtcEnabled);
@@ -768,6 +828,7 @@ void MainWindow_ImGui::renderMenuBar()
             }
             ImGui::MenuItem("Hardware Reference", nullptr, &showHardwareReference);
             ImGui::MenuItem("Software Reference", nullptr, &showSoftwareReference);
+            ImGui::MenuItem("Keyboard Shortcuts", nullptr, &showShortcutsHelp);
             if (ImGui::BeginMenu("Photos")) {
                 ImGui::MenuItem("Woz & Jobs (1976)", nullptr, &showWozJobsPhoto);
                 ImGui::MenuItem("Apple-1 Demo Session (1976)", nullptr, &showWozJobsRectPhoto);
@@ -833,6 +894,11 @@ void MainWindow_ImGui::renderToolbar()
         auto plugCodeTankFromToolbar = [&]() {
             jukeBoxEnabled = false;
             emulation->setJukeBoxEnabled(false);
+            // Memory's setCodeTankEnabled evicts the microSD ($6000-$7FFF
+            // Applesoft Lite overlap) and cascade-drops the IEC add-on —
+            // mirror the UI flags.
+            microSDEnabled = false;
+            iecCardEnabled = false;
             // CodeTank is a daughterboard of the TMS9918 Graphic Card — auto-
             // plug the host so UI flags match what Memory just did.
             if (!tms9918Enabled) {
@@ -880,7 +946,7 @@ void MainWindow_ImGui::renderToolbar()
             "Fixed ROM window: $4000-$7FFF. Daughterboard of the TMS9918 Graphic\n"
             "Card - has no edge connector, cannot exist standalone on the bus.\n\n"
             "Click plugs CodeTank, auto-plugs the TMS9918 host (evicts A1-AUDIO SE +\n"
-            "Juke-Box), and opens the CodeTank Library. Click again to unplug.\n"
+            "Juke-Box + microSD), and opens the CodeTank Library. Click again to unplug.\n"
             "Unplugging the TMS9918 toolbar/menu entry also cascade-unplugs CodeTank.");
 
         ImGui::SameLine();
@@ -892,6 +958,13 @@ void MainWindow_ImGui::renderToolbar()
             if (microSDEnabled) {
                 cffa1Enabled = false; // mutual exclusion
                 jukeBoxEnabled = false;
+                if (codeTankEnabled) {
+                    // Memory evicts CodeTank ($6000-$7FFF Applesoft Lite
+                    // overlap); mirror UI. The TMS9918 host stays plugged.
+                    codeTankEnabled = false;
+                    showCodeTankLibrary = false;
+                    codeTankPendingWozRunAt = 0.0;
+                }
             } else {
                 // setMicroSDEnabled(false) → setIECCardEnabled(false) on the bus;
                 // mirror the IEC UI flag or its window keeps rendering an unplugged
@@ -905,8 +978,10 @@ void MainWindow_ImGui::renderToolbar()
         ImGui::PopStyleColor();
         showHardwareTooltip(
             "P-LAB microSD Storage Card\n"
-            "ROM/VIA window: $8000-$9FFF and $A000-$A00F.\n\n"
-            "Click toggles the card. Plugging it unplugs CFFA1 and Juke-Box.");
+            "ROM/VIA window: $8000-$9FFF, $A000-$A00F, and the Applesoft\n"
+            "Lite EEPROM at $6000-$7FFF.\n\n"
+            "Click toggles the card. Plugging it unplugs CFFA1, Juke-Box,\n"
+            "and the CodeTank daughterboard.");
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
@@ -1537,12 +1612,17 @@ void MainWindow_ImGui::renderStatusBar()
             siliconText = "| FANTASY";
         }
 
+        // Accessibility: while F10 UI-navigation mode is on, typed keys drive
+        // the interface (not the Apple-1) — make that state impossible to miss.
+        std::string navText = uiNavMode_ ? "| UI NAV (F10)" : "";
+
         const float spacing = ImGui::GetStyle().ItemSpacing.x;
         float rightWidth =
             ImGui::CalcTextSize(cpuText.c_str()).x +
             ImGui::CalcTextSize(speedText.c_str()).x +
             ImGui::CalcTextSize(ramText.c_str()).x +
             ImGui::CalcTextSize(siliconText.c_str()).x +
+            (navText.empty() ? 0.0f : ImGui::CalcTextSize(navText.c_str()).x) +
             (audioText.empty() ? 0.0f : ImGui::CalcTextSize(audioText.c_str()).x) +
             spacing * 5.0f;
 
@@ -1566,6 +1646,11 @@ void MainWindow_ImGui::renderStatusBar()
             ? ImVec4(0.85f, 0.55f, 0.25f, 1.0f)   // ambre = silicium réel
             : ImVec4(0.55f, 0.55f, 0.95f, 1.0f),  // bleu  = fantasy permissif
             "%s", siliconText.c_str());
+
+        if (!navText.empty()) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.95f, 0.95f, 0.20f, 1.0f), "%s", navText.c_str());
+        }
 
         if (!uiSnapshot.cassetteAudioAvailable) {
             ImGui::SameLine();

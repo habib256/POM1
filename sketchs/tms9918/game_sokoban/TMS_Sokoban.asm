@@ -80,14 +80,12 @@ dir_dy:        .res 1   ; $13
 dir_dx:        .res 1   ; $14
 draw_row:      .res 1   ; $15
 draw_col:      .res 1   ; $16
-key_up_code:   .res 1   ; $17
-key_left_code: .res 1   ; $18
 ; --- Undo state + move counter ---
-prev_player_row: .res 1 ; $19
-prev_player_col: .res 1 ; $1A
-undo_avail:      .res 1 ; $1B  1 = execute_undo is valid, 0 = no move to undo
-had_push:        .res 1 ; $1C  1 = last move was a push (box needs undo too)
-moves:           .res 1 ; $1D  move counter (saturates at $FF)
+prev_player_row: .res 1 ; $17
+prev_player_col: .res 1 ; $18
+undo_avail:      .res 1 ; $19  1 = execute_undo is valid, 0 = no move to undo
+had_push:        .res 1 ; $1A  1 = last move was a push (box needs undo too)
+moves:           .res 1 ; $1B  move counter (saturates at $FF)
 
 ; --- Code ---
 .code
@@ -97,7 +95,8 @@ moves:           .res 1 ; $1D  move counter (saturates at $FF)
 ; =============================================
 main:
         ; Bring up the TMS9918 first so the graphical title is visible
-        ; while the Apple-1 text screen shows the credits + prompt.
+        ; while the Apple-1 text screen shows the credits. Controls are
+        ; fixed IJKL — same physical keys on QWERTY and AZERTY.
         JSR init_vdp
         JSR draw_title_tms
 
@@ -105,29 +104,7 @@ main:
         LDX #>str_title
         JSR print_str_ax
 
-        ; Layout prompt
-        LDA #<str_layout
-        LDX #>str_layout
-        JSR print_str_ax
-@lp_wait:
-        JSR wait_key
-        CMP #'1'
-        BEQ @qwerty
-        CMP #'2'
-        BEQ @azerty
-        JMP @lp_wait
-@qwerty:
-        LDA #'W'
-        STA key_up_code
-        LDA #'A'
-        STA key_left_code
-        JMP @start
-@azerty:
-        LDA #'Z'
-        STA key_up_code
-        LDA #'Q'
-        STA key_left_code
-@start:
+        JSR wait_key                    ; any key starts
         LDA #$00
         STA level_idx
 
@@ -143,13 +120,13 @@ game_loop:
 
 move_loop:
         JSR wait_key
-        CMP key_up_code
+        CMP #'I'
         BEQ key_up
-        CMP #'S'
+        CMP #'K'
         BEQ key_down
-        CMP key_left_code
+        CMP #'J'
         BEQ key_left
-        CMP #'D'
+        CMP #'L'
         BEQ key_right
         CMP #'R'
         BEQ key_reset
@@ -300,7 +277,7 @@ init_vdp:
         BNE @patloop
 
         ; --- Upload HUD + title glyph patterns at VRAM $01C0 ---
-        ; (chars 56..94 = 39 glyphs x 8 = 312 bytes; two blocks because
+        ; (chars 56..95 = 40 glyphs x 8 = 320 bytes; two blocks because
         ; the loop counter is 8-bit.)
         LDA #$C0
         STA VDP_CTRL
@@ -320,7 +297,7 @@ init_vdp:
         LDA hud_patterns+256,X
         STA VDP_DATA
         INX
-        CPX #56                         ; remaining 312-256 = 56 bytes
+        CPX #64                         ; remaining 320-256 = 64 bytes
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BCC @hudpat2
 
@@ -1042,34 +1019,24 @@ draw_title_tms:
         LDX #$59
         JSR draw_title_tms_line
 
-        ; "SELECT KEYBOARD" row 12 col 8 -> $1988 (15 chars)
+        ; "MOVE IJKL" row 12 col 11 -> $198B (9 chars)
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
-        LDA #<title_select_kb_tms
+        LDA #<title_move_tms
         STA sptr_lo
-        LDA #>title_select_kb_tms
+        LDA #>title_move_tms
         STA sptr_hi
-        LDA #$88
+        LDA #$8B
         LDX #$59
         JSR draw_title_tms_line
 
-        ; "1 QWERTY (WASD)" row 15 col 8 -> $19E8
+        ; "PRESS A KEY" row 15 col 10 -> $19EA
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
-        LDA #<title_qwerty_tms
+        LDA #<title_press_key_tms
         STA sptr_lo
-        LDA #>title_qwerty_tms
+        LDA #>title_press_key_tms
         STA sptr_hi
-        LDA #$E8
+        LDA #$EA
         LDX #$59
-        JSR draw_title_tms_line
-
-        ; "2 AZERTY (ZQSD)" row 16 col 8 -> $1A08
-        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
-        LDA #<title_azerty_tms
-        STA sptr_lo
-        LDA #>title_azerty_tms
-        STA sptr_hi
-        LDA #$08
-        LDX #$5A
         JSR draw_title_tms_line
 
         ; "H HELP" row 20 col 12 -> $1A8C
@@ -1114,23 +1081,13 @@ draw_help_tms:
         LDX #$58
         JSR draw_title_tms_line
 
-        ; "QWERTY (WASD)" row 6 col 10 -> $18CA (align with command rows)
+        ; "MOVE IJKL" row 6 col 10 -> $18CA (align with command rows)
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
-        LDA #<help_qwerty_tms
+        LDA #<title_move_tms
         STA sptr_lo
-        LDA #>help_qwerty_tms
+        LDA #>title_move_tms
         STA sptr_hi
         LDA #$CA
-        LDX #$58
-        JSR draw_title_tms_line
-
-        ; "AZERTY (ZQSD)" row 7 col 10 -> $18EA
-        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
-        LDA #<help_azerty_tms
-        STA sptr_lo
-        LDA #>help_azerty_tms
-        STA sptr_hi
-        LDA #$EA
         LDX #$58
         JSR draw_title_tms_line
 
@@ -1249,9 +1206,9 @@ draw_success_tms:
 ;   56=M  57=V  58=:  59..68='0'..'9'  69=S  70=O  71=K  72=B  73=A
 ;   74=N  75=P  76=R  77=E  78=L  79=space  80=G  81=H  82=T  83=D
 ;   84=Y  85=I  86=U  87=Q  88=W  89=Z  90=C  91=X  92=F  93=(  94=)
-title_select_kb_tms:
-        ; SELECT KEYBOARD
-        .byte 69,77,78,77,90,82,79,71,77,84,72,70,73,76,83, $FF
+title_move_tms:
+        ; M  O  V  E  _  I  J  K  L
+        .byte 56,70,57,77,79,85,95,71,78, $FF
 title_sokoban_tms:
         ; S  O  K  O  B  A  N
         .byte 69,70,71,70,72,73,74, $FF
@@ -1264,12 +1221,6 @@ title_card_tms:
 title_author_tms:
         ; B  Y  _  V  E  R  H  I  L  L  E  _  A  R  N  A  U  D
         .byte 72,84,79,57,77,76,81,85,78,78,77,79,73,76,74,73,86,83, $FF
-title_qwerty_tms:
-        ; 1  _  QWERTY  _  ( WASD )
-        .byte 60,79,87,88,77,76,82,84,79,93,88,73,69,83,94, $FF
-title_azerty_tms:
-        ; 2  _  AZERTY  _  ( ZQSD )
-        .byte 61,79,73,89,77,76,82,84,79,93,89,87,69,83,94, $FF
 title_success_tms:
         ; S  U  C  C  E  S  S
         .byte 69,86,90,90,77,69,69, $FF
@@ -1284,12 +1235,6 @@ title_h_help_tms:
 help_title_tms:
         ; H  E  L  P
         .byte 81,77,78,75, $FF
-help_qwerty_tms:
-        ; QWERTY  ( WASD )
-        .byte 87,88,77,76,82,84,79,93,88,73,69,83,94, $FF
-help_azerty_tms:
-        ; AZERTY  ( ZQSD )
-        .byte 73,89,77,76,82,84,79,93,89,87,69,83,94, $FF
 help_u_tms:
         ; U  _  U  N  D  O
         .byte 86,79,86,74,83,70, $FF
@@ -1438,15 +1383,15 @@ hud_patterns:
         ;   ....X...  $08
         ;   ........  $00
         .byte $00, $08, $04, $02, $02, $04, $08, $00
+        ; char 95 'J' — local extra (from bbfont master $4A, TMS bit order)
+        .byte $0C, $0C, $0C, $0C, $CC, $FC, $78, $00
 
 ; --- Strings (ASCII, high bit set by print_str_ax) ---
 str_title:
         .byte $0D, " SOKOBAN + TMS9918", $0D
         .byte " MICROBAN I 45LV  V.ARNAUD 26", $0D
-        .byte " PUSH BOXES ON TARGETS  U R N", $0D, 0
-
-str_layout:
-        .byte $0D, " KEYBOARD: 1 QWERTY  2 AZERTY", $0D, 0
+        .byte " PUSH BOXES ON TARGETS  U R N", $0D
+        .byte " MOVE: IJKL  ANY KEY STARTS", $0D, 0
 
 str_win:
         .byte $0D, " CLEARED! KEY=NEXT", $0D, 0

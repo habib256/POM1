@@ -4,27 +4,22 @@
 
 *Tutorial: [step-by-step Apple-1 assembly guide](../../../sketchs/doc/Programming_Apple1_ASM.md).*
 
-Small, mode-neutral UI helpers (keyboard-layout picker, numbered menu,
-repeat-char) factored from the patterns that recur across the text / HGR /
-TMS9918 games in this tree. Each `.asm` is a textual `.include` (Model A — no
+Small, mode-neutral UI helpers (numbered menu, repeat-char) factored from the
+patterns that recur across the text / HGR / TMS9918 games in this tree. Each `.asm` is a textual `.include` (Model A — no
 separate compilation; see the [library hub](../README.md)), builds on
 [`../apple1/`](../apple1/)'s `print_str_ax` / `wait_key` / `ECHO`, and parks its
 scratch in that directory's [`zp.inc`](../apple1/zp.inc) slot pool.
 
-**Status: available, not yet adopted.** These are extracted, validated helpers
-that no shipping project links *yet* — the games they were modelled on still
-carry their own inline copies (see *Adoption* below). They are ready to drop in;
-the snippet under *Use* is all it takes.
+**Status: adopted.** `menu_select` is linked by both shipping CodeTank launcher
+menus (`dev/projects/codetank/game1_menu/` + `demos_menu/` — the ARCADE and
+DEMOS cartridges); see *Adoption* below for the per-helper history. The snippet
+under *Use* is all it takes to drop one into a new project.
 
 ## Files
 
-- **`layout.asm`** — `prompt_wasd_layout` + `select_wasd_layout`.
-  QWERTY/AZERTY keyboard selector. Stores `key_up_code` (W/Z) and
-  `key_left_code` (A/Q) in ZP; down='S' / right='D' are universal.
-  Replaces 17 lines of dispatch in 6+ projects.
 - **`menu.asm`** — `menu_select`. Wait for a digit in `[min..max]`,
-  echo it, return. For top-level menus (CodeTank picker, layout
-  prompt, in-game options).
+  echo it, return. For top-level menus (CodeTank picker, in-game
+  options).
 - **`repeat.asm`** — `repeat_char_ax`. Print A (low 7 bits) X times
   via ECHO. For grid borders, padding, separators.
 
@@ -32,16 +27,11 @@ the snippet under *Use* is all it takes.
 
 | Routine | Inputs | Output | Clobbers | ZP |
 |---|---|---|---|---|
-| `prompt_wasd_layout` | — | `key_up_code`/`key_left_code` set | A | `key_up_code`, `key_left_code` |
-| `select_wasd_layout` | — | same | A | same |
 | `menu_select` | A=min, X=max digit | A=key | A | `tmp`, `tmp2` |
 | `repeat_char_ax` | A=char, X=count | X=0 | A | none |
 
 ## ZP convention
 
-- `key_up_code` / `key_left_code` (1 byte each) — owned by `layout.asm`,
-  guarded by `.ifndef`. Allocate via `zp.inc` extension OR alias to
-  existing scratch in tight projects.
 - `tmp` / `tmp2` — used by `menu.asm`, expected from
   `lib/apple1/zp.inc` (or caller-declared).
 
@@ -52,16 +42,14 @@ the snippet under *Use* is all it takes.
 .include "zp.inc"
 .include "print.asm"
 .include "kbd.asm"
-.include "layout.asm"
 .include "menu.asm"
 .include "repeat.asm"
 
 main:
-        ; --- Banner + layout pick ---
+        ; --- Banner ---
         LDA #<msg_banner
         LDX #>msg_banner
         JSR print_str_ax
-        JSR prompt_wasd_layout      ; sets key_up_code + key_left_code
 
         ; --- Menu pick (1..3) ---
         LDA #<msg_menu
@@ -87,16 +75,27 @@ three sources so they can't rot before the first project adopts them.
 
 ## Adoption
 
-No shipping project links text40 *yet* — the games these helpers were modelled
-on still carry their own inline copies of the same patterns:
+- `menu_select` — **adopted juillet 2026** by the two CodeTank launcher menus
+  (`dev/projects/codetank/game1_menu/codetank_menu.asm` +
+  `demos_menu/codetank_demos_menu.asm`, shipped in the ARCADE and DEMOS
+  cartridges). Their cfgs have no ZEROPAGE segment (tiny ROM stubs), so they
+  alias `tmp`/`tmp2` onto $00/$01 with plain equates instead of `zp.inc` —
+  the supported stand-alone mode documented in `menu.asm`'s header. Net
+  effect vs the old inline loops: out-of-range keys are rejected by bounds
+  check instead of an exact-match list, and the chosen digit is echoed.
+- `repeat_char_ax` — modelled on Little Tower's `GRAPH`/`GRAPHIT` subroutine,
+  which turned out to be dead code (never called) and was deleted from
+  `LittleTower-1.0.asm` in juillet 2026; Connect 4's `+---+` separator is a
+  static string a repeat loop can't produce. So the helper currently has no
+  shipping consumer — it is for NEW grid/border code.
 
-- `select_wasd_layout` ⟵ the ~17-line WASD-layout dispatch in the apple1 / gen2 /
-  tms9918 Sokoban variants, tms9918 Snake / Galaga, and Connect 4.
-- `menu_select` ⟵ the CodeTank menu prompts (now under `dev/projects/codetank/`).
-- `repeat_char_ax` ⟵ the grid/border build-up in Little Tower and Connect 4.
+(The former `layout.asm` — the QWERTY/AZERTY WASD-layout selector — was retired
+in juillet 2026 when every game switched to fixed IJKL controls, the same
+physical keys on both layouts.)
 
-Each is correct by inspection and exercised by the `make -C dev/lib check`
-compile. Adopting one is a mechanical swap: delete the project's inline copy, add
-`.include "layout.asm"` (etc.) plus `-I ../../lib/text40`, and confirm the symbol
+Everything here is exercised by the `make -C dev/lib check` compile *and* (for
+`menu_select`) by the CodeTank ROM gate (`tools/verify_codetank_roms.py`).
+Adopting a helper is a mechanical swap: delete the project's inline copy, add
+`.include "menu.asm"` (etc.) plus `-I ../../lib/text40`, and confirm the symbol
 names line up with the *Public routines* table above. New 40×24 UI code should
 prefer these over hand-rolling the loop again.

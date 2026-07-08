@@ -88,7 +88,6 @@ static unsigned char bonusx, bonusy; /* bonus cell */
 static unsigned char bonus_ttl;    /* ticks left before the bonus fades        */
 static unsigned char bonus_new;    /* set the tick a bonus spawns  -> loop draws it  */
 static unsigned char bonus_gone;   /* set the tick a bonus expires -> loop erases it */
-static unsigned char layout = 1u;  /* keyboard: 1 = QWERTY (WASD), 2 = AZERTY (ZQSD) */
 /* "HGR Snake" title colour, cycled through the four NTSC artifact colours on every
  * apple — a little visual reward. The recolour is all-asm: gen2_hgr_clear_pixrect
  * (gen2_pixrect_asm) wipes the label box, gen2_hgr_puts_color draws it again with
@@ -251,7 +250,7 @@ static void new_game(void)
     alive = 1;
     score = 0;
     score_shown = 0;           /* redraw() draws score 0; the loop redraws only on change */
-    tick_spins = 3565u;        /* reset to the (genuine x2) starting speed (layout kept) */
+    tick_spins = 3565u;        /* reset to the (genuine x2) starting speed */
     apples = 0;
     title_hue = 0;             /* HGR Snake starts violet, shifts colour per apple */
     bonus_active = 0;          /* no bonus until the cadence drops one */
@@ -270,22 +269,16 @@ static void set_dir(unsigned char d)
     pending = d;
 }
 
-/* Read the keyboard for the layout chosen at startup, plus the harness TELE_IN
- * direction byte. Down/right are S/D in both layouts; only up/left differ —
- * QWERTY = W/A, AZERTY = Z/Q — so a key meant for the other layout is ignored. */
+/* Read the keyboard (fixed IJKL — the same physical keys on QWERTY and
+ * AZERTY), plus the harness TELE_IN direction byte. */
 static void read_input(void)
 {
     unsigned char k = apple1_readkey();
     if (k) {
-        if (k == 'S' || k == 's')      set_dir(DIR_DOWN);
-        else if (k == 'D' || k == 'd') set_dir(DIR_RIGHT);
-        else if (layout == 2u) {                 /* AZERTY: ZQSD */
-            if (k == 'Z' || k == 'z')      set_dir(DIR_UP);
-            else if (k == 'Q' || k == 'q') set_dir(DIR_LEFT);
-        } else {                                 /* QWERTY: WASD */
-            if (k == 'W' || k == 'w')      set_dir(DIR_UP);
-            else if (k == 'A' || k == 'a') set_dir(DIR_LEFT);
-        }
+        if (k == 'I' || k == 'i')      set_dir(DIR_UP);
+        else if (k == 'K' || k == 'k') set_dir(DIR_DOWN);
+        else if (k == 'J' || k == 'j') set_dir(DIR_LEFT);
+        else if (k == 'L' || k == 'l') set_dir(DIR_RIGHT);
     }
     /* Harness-driven direction: 1=up 2=down 3=left 4=right. */
     while (tele_inlen() != 0) {
@@ -431,8 +424,8 @@ void main(void)
 {
     unsigned int t;
 
-    /* ---- Title page: the name + the two control layouts, each prefixed with the
-     * key that selects it. Press 1 for QWERTY (WASD) or 2 for AZERTY (ZQSD). ---- */
+    /* ---- Title page: the name + the fixed IJKL controls (same physical keys
+     * on QWERTY and AZERTY). Any key starts. ---- */
     gen2_hgr_init();
     gen2_hgr_clear(0);
     /* Title card: Apple-1  "SNAKE HGR", split over two lines so the whole name
@@ -440,9 +433,8 @@ void main(void)
      * livelier look (HIRES's four colours: violet / green / orange / blue). */
     gen2_hgr_puts_color(114, 12, "A-1",           GEN2_GREEN);   /* line 1, centred */
     gen2_hgr_puts_color(42,  40, "\"SNAKE HGR\"", GEN2_VIOLET);  /* line 2: game name */
-    gen2_hgr_puts_color(10,  72, "1 QWERTY  WASD", GEN2_BLUE);
-    gen2_hgr_puts_color(10, 102, "2 AZERTY  ZQSD", GEN2_ORANGE);
-    gen2_hgr_puts_color(38, 150, "PRESS 1 OR 2",   GEN2_GREEN);
+    gen2_hgr_puts_color(10,  72, "MOVE  I J K L", GEN2_BLUE);
+    gen2_hgr_puts_color(38, 150, "PRESS ANY KEY", GEN2_GREEN);
 
     /* Telemetry: declare the schema once, then run free (live play, fire-hose).
      * tele_arm / tele_stat are unused in this free-running tap but cost nothing:
@@ -450,8 +442,8 @@ void main(void)
     emit_schema();
     tele_freerun();
 
-    /* Hold the title until the player picks a layout with '1' or '2', a telemetry
-     * harness drives play, or the title TIMES OUT to the QWERTY default.
+    /* Hold the title until the player presses any key, a telemetry harness
+     * drives play, or the title TIMES OUT and auto-starts.
      *
      * The timeout MUST be short and telemetry-INDEPENDENT: a standalone run has
      * no harness, so tele_inlen() stays 0 forever and the game can only start via
@@ -459,21 +451,19 @@ void main(void)
      * ~0.33 s per poll x 90 = ~30 s), which looked like "Snake hangs waiting for
      * telemetry" — it started promptly ONLY when a harness byte arrived. Here we
      * force a SHORT poll delay so the title auto-starts in ~4 s unattended, and
-     * polls the keyboard ~45x/s so a quick 1/2 tap is never missed.
+     * polls the keyboard ~45x/s so a quick key tap is never missed.
      *
      * tick_spins is set explicitly (not trusted from its initializer): on the
      * -t none GEN2-C build initialised globals are unreliable, and this also
      * decouples the menu cadence from the game speed. new_game() resets it to the
      * real starting game speed. gen2_hgr_init() is re-asserted DURING the hold so
      * the title appears once the GEN2 card finishes its deferred plug. */
-    layout = 1u;                       /* default if the title times out */
     tick_spins = 240u;                 /* brief menu-poll delay (~22 ms/poll) */
     for (t = 0; t < 180u; ++t) {       /* ~4 s title hold, then auto-start */
         unsigned char k;
         gen2_hgr_init();
         k = apple1_readkey();
-        if (k == '1') { layout = 1u; break; }
-        if (k == '2') { layout = 2u; break; }
+        if (k) break;                  /* any key starts */
         if (tele_inlen() != 0) break;
         throttle();
     }

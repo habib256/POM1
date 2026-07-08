@@ -54,10 +54,6 @@ RESET = $FF1A		;Bios Getline
 
 ;********* Zero Page Variables *********
 
-;For GRAPHIC subroutine
-CharacValue = $00	;Character Value
-CharacNumb = $01	;Character Number
-
 ;For Subroutine
 AddressL = $02	        ;Txt Start Address low byte
 AddressH = $03	        ;Txt Start Address high byte
@@ -560,17 +556,6 @@ NEXTCHAR:	LDA KBDCR
 		CMP #$8D	;CR ?
 		BNE NOTCR	;No
 		RTS
-
-;*** Subroutine for repetitive GRAPH ***
-;param CharacValue, CharacNumb
-
-GRAPH: 		LDY #$00	;reset index
-		LDA CharacValue	;Load charac Value
-GRAPHIT:	INY		;Advance index
-		JSR ECHO	;Output Charac
-		CPY CharacNumb	;Number reach ?
-		BNE GRAPHIT	;No, continue
-		RTS		;Return
 
 ;*** Subroutine for reading Txt adress ***
 ;param AddressL, AdressH

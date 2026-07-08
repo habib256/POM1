@@ -395,9 +395,10 @@ VIS_VISIBLE     = $01
 VIS_BUFFER_SIZE = 20            ; (LOGICAL_COLS * LOGICAL_ROWS + 7) / 8
 
 ; --- Apple 1 keyboard codes (high bit set, KBD always has bit 7 = 1) ---
-; The four movement-key slots are loaded at runtime from the title-screen
-; layout choice (QWERTY HJKL vs AZERTY QZSD), so the game loop compares
-; the live key against the configured codes rather than literal constants.
+; Movement is fixed IJKL (same physical keys on QWERTY and AZERTY):
+; I=north, J=west, K=south, L=east. The four movement-key slots are
+; bound once at startup; the game loop compares the live key against
+; them rather than literal constants.
 
 ; --- Zero page ---
 .zeropage
@@ -412,7 +413,7 @@ player_row:     .res 1          ; logical 0..9
 tgt_col:        .res 1          ; movement target — set by handle_input;
                                 ; doubles as scratch (col/row) for set_tile
 tgt_row:        .res 1
-key_west:       .res 1          ; e.g. 'H'|$80 (QWERTY) or 'Q'|$80 (AZERTY)
+key_west:       .res 1          ; 'J'|$80
 key_east:       .res 1
 key_north:      .res 1
 key_south:      .res 1
@@ -698,12 +699,12 @@ start:
         ; populated VDP state — no garbage flash even at NMOS phase corners.
         JSR override_r1_16x16
 
-        JSR draw_title          ; ROGUE banner + key-layout prompt
-        JSR wait_kb_choice      ; bind keys + seed prng_lo/hi from key timing
+        JSR draw_title          ; ROGUE banner + controls reminder
+        JSR wait_kb_choice      ; bind IJKL keys + seed prng from key timing
 
         JSR clear_name_table    ; second title page = mission briefing
         JSR draw_briefing       ; lore + mechanics primer
-        LDA KBD                 ; drain layout-choice strobe ('1' / '2')
+        LDA KBD                 ; drain the start-key strobe
         JSR wait_key            ; explicit ack before the dungeon appears
 
         LDA #1                  ; first level — new_level INCs from here
@@ -771,9 +772,9 @@ main_loop:
         JSR wait_key            ; A = raw key (high bit still set)
         ; --- Commands (each via BNE-skip-then-JMP trampoline; handlers
         ; sit past 127 bytes from this dispatch point). Item use happens
-        ; from the inventory modal (I + slot letter); E was removed as a
+        ; from the inventory modal (B + slot letter); E was removed as a
         ; redundant playfield prompt.
-        CMP     #('I' | $80)
+        CMP     #('B' | $80)    ; B = bag ('I' now moves north)
         BNE     @nx_i
         JMP     @do_inv
 @nx_i:  CMP     #('T' | $80)
@@ -781,7 +782,7 @@ main_loop:
         JMP     @do_throw
 @nx_t:  CMP     #('?' | $80)
         BEQ     @help_jmp       ; both keys land on the same trampoline
-        CMP     #('H' | $80)    ; H is free in both layouts (WASD / ZQSD)
+        CMP     #('H' | $80)    ; H is free (movement is IJKL)
         BNE     @nx_h
 @help_jmp:
         JMP     @do_help
@@ -6326,11 +6327,9 @@ handle_throw:
 ; then redraws the playfield. Always a free action — caller does NOT
 ; tick monsters or call finish_turn.
 ;
-; The reference card lives in cartridge ROM as 16 short $FF-terminated
+; The reference card lives in cartridge ROM as short $FF-terminated
 ; strings (~250 B), keeping the player from needing the README on real
-; hardware. Both keyboard layouts (QWERTY-WASD / AZERTY-ZQSD) are
-; printed because the title-screen choice is forgotten by the time
-; the player needs the reminder.
+; hardware.
 ; ----------------------------------------------------------------------------
 show_help:
         ; Sync to VBlank before the help-screen rebuild burst.
@@ -6370,8 +6369,7 @@ help_table:
         ;       str_lo,         str_hi,         vram_lo, vram_hi
         .byte   <hlp_title,     >hlp_title,     $2E, $58  ; row  1 col 14
         .byte   <hlp_move_hdr,  >hlp_move_hdr,  $62, $58  ; row  3 col  2
-        .byte   <hlp_move_qw,   >hlp_move_qw,   $84, $58  ; row  4 col  4
-        .byte   <hlp_move_az,   >hlp_move_az,   $A4, $58  ; row  5 col  4
+        .byte   <hlp_move_keys, >hlp_move_keys, $84, $58  ; row  4 col  4
         .byte   <hlp_cmds_hdr,  >hlp_cmds_hdr,  $E2, $58  ; row  7 col  2
         .byte   <hlp_cmd_i,     >hlp_cmd_i,     $04, $59  ; row  8 col  4
         .byte   <hlp_cmd_t,     >hlp_cmd_t,     $24, $59  ; row  9 col  4
@@ -6390,10 +6388,9 @@ help_table_end:
 ; the death/win shared pool to avoid a duplicate). ---
 hlp_title:      .byte "HELP", $FF
 hlp_move_hdr:   .byte "MOVEMENT KEYS", $FF
-hlp_move_qw:    .byte "1 QWERTY  W A S D", $FF
-hlp_move_az:    .byte "2 AZERTY  Z Q S D", $FF
+hlp_move_keys:  .byte "I UP J LEFT K DOWN L RIGHT", $FF
 hlp_cmds_hdr:   .byte "COMMANDS", $FF
-hlp_cmd_i:      .byte "I  INVENTORY OPEN/USE", $FF
+hlp_cmd_i:      .byte "B  BAG OPEN/USE ITEMS", $FF
 hlp_cmd_t:      .byte "T  THROW DAGGER", $FF
 hlp_cmd_q:      .byte "H/?  THIS HELP SCREEN", $FF
 hlp_cmd_rest:   .byte ".  REST ONE TURN", $FF
@@ -6441,9 +6438,8 @@ title_table:
         .byte   <title_rogue,     >title_rogue,     $8D, $58  ; row  4 col 13
         .byte   <title_subtitle,  >title_subtitle,  $E4, $58  ; row  7 col  4
         .byte   <title_author,    >title_author,    $27, $59  ; row  9 col  7
-        .byte   <title_select_kb, >title_select_kb, $A8, $59  ; row 13 col  8
-        .byte   <title_qwerty,    >title_qwerty,    $E8, $59  ; row 15 col  8
-        .byte   <title_azerty,    >title_azerty,    $28, $5A  ; row 17 col  8
+        .byte   <title_select_kb, >title_select_kb, $AB, $59  ; row 13 col 11
+        .byte   <title_anykey,    >title_anykey,    $E8, $59  ; row 15 col  8
         .byte   <title_help_hint, >title_help_hint, $86, $5A  ; row 20 col  6
 title_table_end:
 
@@ -6510,13 +6506,10 @@ brf_win:        .byte "DEPTH 13 = ESCAPE", $FF
 
 
 ; ----------------------------------------------------------------------------
-; wait_kb_choice: spin until the user types '1' (QWERTY HJKL) or '2'
-; (AZERTY QZSD), then bind key_west / key_east / key_north / key_south
-; in zero page so handle_input routes the right physical keys to the
-; right cardinal directions. Bit 7 stays set on every comparison —
-; the Apple-1 KBD always returns chars with high bit set.
-;   QWERTY: H=west, L=east, K=north, J=south  (vi keys, classic roguelike)
-;   AZERTY: Q=west, D=east, Z=north, S=south  (ZQSD layout, French gamers)
+; wait_kb_choice: spin until the user presses any key to start, then
+; bind the fixed IJKL movement keys (same physical keys on QWERTY and
+; AZERTY): I=north, J=west, K=south, L=east. Bit 7 stays set on every
+; comparison — the Apple-1 KBD always returns chars with high bit set.
 ; ----------------------------------------------------------------------------
 wait_kb_choice:
         ; Clear the hidden-boss cheat flag — BSS is uninitialised on Apple-1
@@ -6528,9 +6521,9 @@ wait_kb_choice:
         ; below increments prng_lo every iteration so the actual seed
         ; depends on how many cycles the user takes to press a key —
         ; effectively a hardware-RNG fed by reaction time. A final EOR
-        ; with the keypress byte mixes the chosen layout into the seed
-        ; so '1' and '2' produce divergent dungeons even at the same
-        ; reaction-time count.
+        ; with the keypress byte mixes the pressed key into the seed so
+        ; different start keys produce divergent dungeons even at the
+        ; same reaction-time count.
         LDA     #$01
         STA     prng_lo
         STA     prng_hi
@@ -6541,47 +6534,24 @@ wait_kb_choice:
         LDA     KBDCR
         BPL     @lp             ; bit 7 = 0 -> no key yet, keep counting
         LDA     KBD
-        PHA                     ; preserve the raw key for the choice CMPs
+        PHA                     ; preserve the raw key for the cheat CMP
         EOR     prng_lo
         STA     prng_lo         ; mix keypress into the seed
         PLA
-        CMP     #('1' | $80)
-        BEQ     @qwerty
-        CMP     #('2' | $80)
-        BEQ     @azerty
         CMP     #('B' | $80)    ; hidden code — jump straight to boss room
-        BEQ     @boss_cheat
-        JMP     @lp             ; not a layout key; keep waiting + seeding
-@boss_cheat:
+        BNE     @bind
         ; Secret cheat: 'B' at the title spawns the player directly in the
-        ; depth-13 boss room with full HP / empty inventory. Defaults to
-        ; AZERTY bindings (ZQSD) — French keyboard, jumps to @azerty below.
+        ; depth-13 boss room with full HP / empty inventory.
         LDA     #1
         STA     boss_cheat
-        JMP     @azerty
-@qwerty:
-        ; QWERTY → standard WASD: W=north, A=west, S=south, D=east.
-        ; Matches the AZERTY ZQSD bindings below: each key sits at the
-        ; same physical position on its respective layout.
-        LDA     #('A' | $80)
+@bind:
+        LDA     #('J' | $80)
         STA     key_west
-        LDA     #('D' | $80)
+        LDA     #('L' | $80)
         STA     key_east
-        LDA     #('W' | $80)
+        LDA     #('I' | $80)
         STA     key_north
-        LDA     #('S' | $80)
-        STA     key_south
-        RTS
-@azerty:
-        ; AZERTY → ZQSD (= WASD shifted by the French keyboard's W↔Z
-        ; and A↔Q swaps). Z=north, Q=west, S=south, D=east.
-        LDA     #('Q' | $80)
-        STA     key_west
-        LDA     #('D' | $80)
-        STA     key_east
-        LDA     #('Z' | $80)
-        STA     key_north
-        LDA     #('S' | $80)
+        LDA     #('K' | $80)
         STA     key_south
         RTS
 
@@ -6598,15 +6568,9 @@ title_subtitle:
 title_author:
         .byte   "BY VERHILLE ARNAUD", $FF
 title_select_kb:
-        .byte   "SELECT KEYBOARD", $FF
-; The Quale font has no usable paren glyphs (its "lparen"/"rparen" labels
-; are mis-extracted), so the keys ride the title line as bare letters.
-; QWERTY = WASD (N/W/S/E mnemonic), AZERTY = ZQSD (= same physical keys
-; on a French keyboard).
-title_qwerty:
-        .byte   "1 QWERTY WASD", $FF
-title_azerty:
-        .byte   "2 AZERTY ZQSD", $FF
+        .byte   "MOVE IJKL", $FF
+title_anykey:
+        .byte   "ANY KEY TO START", $FF
 ; Hint line so a first-time player knows the in-game help is one
 ; keypress away. Brackets render fine in the Quale font (the bracket
 ; glyphs survived the extraction; only the parens were broken).

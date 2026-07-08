@@ -7,11 +7,10 @@
 ;     Output:   X = 0
 ;     Clobbers: A. Y preserved.
 ;
-; Models the GRAPH/GRAPHIT subroutine inlined in
-; games_little_tower/LittleTower-1.0.asm:566-575 and the per-line
-; "+---+---+---+..." build-up in games_connect4/Connect4.asm. Lets
-; future projects build grids and separators without re-deriving the
-; counter loop.
+; Modelled on Little Tower's GRAPH/GRAPHIT subroutine (dead code,
+; deleted from LittleTower-1.0.asm in juillet 2026). Lets future
+; projects build grids, padding and separators without re-deriving
+; the counter loop.
 ;
 ; No ZP usage — character lives on the 6502 stack across each ECHO call.
 ;

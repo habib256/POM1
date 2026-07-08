@@ -250,8 +250,8 @@ address `$1800 + row*32 + col`, latch it on `$CC01`, write a single
 character code to `$CC00`. No clearing needed, no neighbour redraw.
 
 The Apple 1 text screen and the TMS9918 window are **two independent
-displays**. Convention: use the text screen for the title, the keyboard
-prompt (QWERTY / AZERTY), and the victory messages; use TMS for the game
+displays**. Convention: use the text screen for the title, the controls
+reminder (fixed IJKL), and the victory messages; use TMS for the game
 itself.
 
 ---
@@ -1187,11 +1187,11 @@ Cfgs: `apple1_galaga_codetank.cfg` / `apple1_sokoban_codetank.cfg` (DevBench,
 
 #### Visual validation
 
-POM1 `--preset 9 --terminal --silicon-strict`, `4000R`, pick QWERTY:
+POM1 `--preset 9 --terminal --silicon-strict`, `4000R`, any key to start:
 
 - Full splash page `A1GALAGA / APPLE-1 TMS9918 / BY VERHILLE ARNAUD`.
 - 3 alien sprites SCOUT / FIGHTER / BOSS with HP labels.
-- Clean keyboard menu `1 QWERTY (A D S) / 2 AZERTY (Q D S) / SPACE FIRE`.
+- Clean controls card `CONTROLS / MOVE ( J L ) / STOP ( K ) / SPACE FIRE`.
 - Gameplay: HUD `SCORE/LIVES/W:01`, 6-8 star starfield scrolling smoothly,
   player ship + enemies without flicker.
 

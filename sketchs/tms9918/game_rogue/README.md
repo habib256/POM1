@@ -242,18 +242,18 @@ batches of 8 for the Mode-1 1-pair-per-group constraint:
 
 ## Controls
 
-The title screen lets you pick QWERTY (HJKL) or AZERTY (QZSD); the
-game loop binds the four movement keys at runtime.
+Movement is fixed IJKL — the same physical keys on QWERTY and AZERTY
+keyboards — bound once when the title screen is dismissed (any key
+starts).
 
-- `H` / `J` / `K` / `L` — west / south / north / east (QWERTY layout)
-- `Q` / `Z` / `S` / `D` — west / north / south / east (AZERTY layout)
-- `I` — show **inventory** (modal). Type a slot letter `A..Z` from
+- `I` / `J` / `K` / `L` — north / west / south / east
+- `B` — show the **bag** (inventory modal). Type a slot letter `A..Z` from
   inside the modal to activate the item directly; any other key
   dismisses. Weapons / armor / rings / torches arm timed buffs; food /
   potions heal; scrolls reveal the map one-shot; daggers are thrown with
   `T` instead.
 - `T` — **throw** a dagger. Auto-picks the first dagger in your bag,
-  then asks for a direction (vi keys). The dagger flies in that
+  then asks for a direction (IJKL). The dagger flies in that
   direction until it hits a monster (deals damage), an obstacle
   (wall / door / stairs / pit), or runs out of range — and **vanishes
   on impact**. No floor drops. Free action with `NO DAGGER` if the bag
@@ -262,8 +262,8 @@ game loop binds the four movement keys at runtime.
   the regen amulet pulses (if active), and every buff timer ticks down.
   Useful when an amulet is on and you want the +1 HP heal without
   giving up positioning.
-- `?` — open the **help** modal (free action). Static reference card
-  listing both keyboard layouts, every command, and the gameplay rules
+- `?` / `H` — open the **help** modal (free action). Static reference
+  card listing the movement keys, every command, and the gameplay rules
   — so the player on a real cartridge doesn't need this README.
 - Stepping onto `TILE_STAIRS_DOWN` advances to a deeper level (depth++,
   harder monster pool); walking off a screen-edge `TILE_DOOR` warps to

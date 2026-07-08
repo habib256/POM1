@@ -16,7 +16,7 @@
 ; =============================================================================
 
 BBFONT_SOKOBAN_BYTES_PER_GLYPH = 8
-BBFONT_SOKOBAN_GLYPH_COUNT     = 38
+BBFONT_SOKOBAN_GLYPH_COUNT     = 39
 
 HGR_Sokoban_bbfont:
         .byte $1E, $33, $33, $33, $33, $33, $1E, $00  ; 0 '0'
@@ -57,5 +57,6 @@ HGR_Sokoban_bbfont:
         .byte $33, $33, $1E, $0C, $1E, $33, $33, $00  ; 35 'X'
         .byte $38, $1C, $0E, $0E, $0E, $1C, $38, $00  ; 36 '('
         .byte $07, $0E, $1C, $1C, $1C, $0E, $07, $00  ; 37 ')'
+        .byte $30, $30, $30, $30, $33, $3F, $1E, $00  ; 38 'J' (from bbfont_cp437 $4A)
 
 .assert (* - HGR_Sokoban_bbfont) = (BBFONT_SOKOBAN_GLYPH_COUNT * BBFONT_SOKOBAN_BYTES_PER_GLYPH), error

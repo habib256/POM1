@@ -1591,6 +1591,11 @@ void MainWindow_ImGui::renderCodeTankLibraryWindow()
                 jukeBoxEnabled = false;
                 emulation->setJukeBoxEnabled(false);
             }
+            // Memory's setCodeTankEnabled evicts the microSD ($6000-$7FFF
+            // Applesoft Lite overlap) and cascade-drops the IEC add-on —
+            // mirror the UI flags.
+            microSDEnabled = false;
+            iecCardEnabled = false;
             // CodeTank is a daughterboard of the TMS9918 — auto-plug the host
             // so the UI flags match what Memory's setCodeTankEnabled is about
             // to do.

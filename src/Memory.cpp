@@ -1592,6 +1592,11 @@ void Memory::setMicroSDEnabled(bool b)
         // Mutually exclusive with CFFA1 and Juke-Box (shared $8000-$9FFF window)
         if (cffa1Enabled) setCFFA1Enabled(false);
         if (jukeBoxEnabled) setJukeBoxEnabled(false);
+        // Mutually exclusive with CodeTank: the microSD EEPROM decodes
+        // Applesoft Lite at $6000-$7FFF, inside CodeTank's $4000-$7FFF
+        // ROM window. Unplugs only the daughterboard — its TMS9918 host
+        // stays on the bus.
+        if (codeTankEnabled) setCodeTankEnabled(false);
         // Reload only when the ROM window is empty (first plug after it was
         // cleared by a previous disable, or after CFFA1 / Juke-Box overwrote
         // $8000). initMemory() pre-loads the SD CARD OS for the default
@@ -1874,6 +1879,11 @@ void Memory::setCodeTankEnabled(bool b)
         // $4000-$BFFF / $4000-$7FFF half. Keep one ROM card plugged at a
         // time — matches Parmigiani's "one board" rule.
         if (jukeBoxEnabled) setJukeBoxEnabled(false);
+        // The microSD card's EEPROM also decodes Applesoft Lite at
+        // $6000-$7FFF (memory map: "Applesoft Lite SD ROM"), inside the
+        // CodeTank window — evict it too. Cascade-drops the IEC add-on
+        // (setMicroSDEnabled(false) → setIECCardEnabled(false)).
+        if (microSDEnabled) setMicroSDEnabled(false);
         // Probe for a default ROM image when the user hasn't loaded one
         // explicitly through the CodeTank Library. The same probe paths
         // the previous Juke-Box CodeTank chip mode used.

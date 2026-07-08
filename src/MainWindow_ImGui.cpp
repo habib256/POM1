@@ -344,7 +344,11 @@ void MainWindow_ImGui::applyBootCliOverrides()
                                 codeTankEnabled = false; pendingCodeTankEnable = false; }
                 break;
             case pom1::CliCard::MicroSD:
-                microSDEnabled = o.enable; pendingMicroSDEnable = o.enable; break;
+                microSDEnabled = o.enable; pendingMicroSDEnable = o.enable;
+                // microSD ($6000-$7FFF Applesoft Lite EEPROM) is mutually
+                // exclusive with the CodeTank ROM window — mirror Memory.
+                if (o.enable) { codeTankEnabled = false; pendingCodeTankEnable = false; }
+                break;
             case pom1::CliCard::Tms9918:
                 tms9918Enabled = o.enable; pendingTms9918Enable = o.enable;
                 if (o.enable) { sidSpecialEditionEnabled = false; pendingSidSEEnable = false; }
@@ -392,6 +396,11 @@ void MainWindow_ImGui::applyBootCliOverrides()
                 codeTankEnabled = o.enable; pendingCodeTankEnable = o.enable;
                 if (o.enable) {
                     jukeBoxEnabled = false; pendingJukeBoxEnable = false;
+                    // microSD's Applesoft Lite EEPROM ($6000-$7FFF) sits
+                    // inside the CodeTank window — evict it (and the IEC
+                    // add-on riding on its VIA), mirroring Memory.
+                    microSDEnabled = false; pendingMicroSDEnable = false;
+                    iecCardEnabled = false; pendingIECCardEnable = false;
                     // CodeTank is a daughterboard of the TMS9918 — schedule
                     // the host so finalizePendingCardPlugs() plugs it first
                     // (TMS9918 is finalized before CodeTank in that order).
@@ -474,6 +483,23 @@ void MainWindow_ImGui::applyBootCliOverrides()
 void MainWindow_ImGui::render()
 {
     float deltaTime = ImGui::GetIO().DeltaTime;
+    // Global UI settings (theme + HiDPI scale) need a live ImGui context, so
+    // they load on the first frame rather than in the constructor.
+    if (!uiSettingsLoaded_) {
+        uiSettingsLoaded_ = true;
+        loadUiSettings();
+    }
+#if !POM1_IS_WASM
+    // Track the WINDOWED rect while neither maximized, fullscreen nor
+    // iconified — savePresetLayout persists this rect (plus the flags), so a
+    // maximized/fullscreen session still restores a sane underlying window.
+    if (window && !fullscreen
+        && !glfwGetWindowAttrib(window, GLFW_MAXIMIZED)
+        && !glfwGetWindowAttrib(window, GLFW_ICONIFIED)) {
+        glfwGetWindowPos(window, &windowedPosX, &windowedPosY);
+        glfwGetWindowSize(window, &windowedWidth, &windowedHeight);
+    }
+#endif
     updateStatus(deltaTime);
     emulation->copySnapshot(uiSnapshot);
     cpuRunning = uiSnapshot.cpuRunning;
@@ -561,10 +587,14 @@ void MainWindow_ImGui::render()
     // reaches render(), so it is unaffected.
     if (!bootChooserDecided) {
         bootChooserDecided = true;
-        if (defaultPresetIndex >= 0 && defaultPresetIndex < kMachinePresetCount)
-            applyBootConfig(defaultPresetIndex);
-        else
+        int startupPreset = -1;
+        if (defaultPresetIndex >= 0 && defaultPresetIndex < kMachinePresetCount) {
+            applyBootConfig(defaultPresetIndex);      // CLI --preset wins
+        } else if (readStartupPreset(startupPreset)) {
+            applyBootConfig(startupPreset);           // opt-in ini/startup pref
+        } else {
             showProfileChooser = true;
+        }
     }
     if (showProfileChooser) {
         renderProfileChooser();
@@ -676,6 +706,7 @@ void MainWindow_ImGui::render()
     if (showSpecialThanks) renderSpecialThanksWindow();
     if (showHardwareReference) renderHardwareReferenceWindow();
     if (showSoftwareReference) renderSoftwareReferenceWindow();
+    if (showShortcutsHelp) renderShortcutsHelpWindow();
     if (showWelcome) renderWelcomeWindow();
     if (showTutorialIntegerBasic) renderTutorialIntegerBasicWindow();
     if (showTutorialApplesoft) renderTutorialApplesoftWindow();
@@ -836,6 +867,10 @@ void MainWindow_ImGui::render()
     // (main_imgui.cpp) qui suit la taille CSS du viewport ; wasmCanvasPixelW/H
     // n'est relu qu'à la sortie du plein écran. Rien à faire ici en fin de frame.
 #endif
+
+    // Autosave débouncé du layout (fenêtres déplacées / ouvertes / fermées) —
+    // après tous les widgets pour que la frame courante soit déjà intégrée.
+    maybeAutosaveLayout(deltaTime);
 
     // Après tous les widgets (barre d’outils, menus, débogueur) pour que la vitesse
     // soit poussée vers l’émulation dès le clic, pas au frame suivant.

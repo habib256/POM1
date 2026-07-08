@@ -16,13 +16,20 @@ TMS9918 programs that live as standalone DevBench sketches under
 [`../../../sketchs/tms9918/`](../../../sketchs/tms9918/) — CodeTank just packages
 them at fixed bank offsets.
 
-Each menu directory is named after the cartridge ROM it ships in:
+Directories (juillet 2026 four-cartridge layout — CLASSICS / BASIC_LOGO /
+ARCADE / DEMOS, see `tools/build_codetank_rom.py --help`):
 
 | Project             | ROM / role                                               |
 |---------------------|----------------------------------------------------------|
-| `game1_menu/`       | GAME1 **upper**-bank launcher ($4000-$40FF) → Galaga/Sokoban/Snake |
-| `game3_menu/`       | GAME3 upper-bank launcher → Life/Mandel/Plasma           |
+| `game1_menu/`       | **ARCADE lower**-bank launcher ($4000-$40FF) → Galaga/Sokoban/Snake |
+| `demos_menu/`       | **DEMOS lower**-bank launcher ($4000-$41FF) → Life/Mandel/Plasma/Vague/Nyan |
+| `game6_maze3d/`     | Maze3D (retired from the cart line-up; kept as a buildable project) |
+| `game6_menu/`       | retired launcher kept alongside it                       |
 | `bank_cfgs/`        | per-game ld65 **bank-layout** cfgs (`apple1_*_codetank_bank.cfg`) — pin each game at its fixed cartridge offset |
+
+Both menus print their prompt then dispatch through `menu_select` from
+[`dev/lib/text40/menu.asm`](../../lib/text40/README.md) (adopted juillet 2026 —
+the old inline wait/dispatch loops were the pattern it was factored from).
 
 The games/demos themselves are standalone DevBench programs under
 [`../../../sketchs/tms9918/`](../../../sketchs/tms9918/); each keeps only its
@@ -35,28 +42,33 @@ it stays with the sketch.)
 Not every bank has a menu — some hold a single run-in-place program selected
 by the lower/upper jumper:
 
-- **GAME1 upper bank** — TMS LOGO V2.6 (jumper Upper → `4000R` boots it directly).
-- **GAME2** — Rogue alone (lower) / Nyan (upper); jumper-selected, no menu.
+- **CLASSICS** — Tetris (lower) / Chess (upper); jumper-selected, no menu.
+- **BASIC_LOGO** — LOGO V2.6 (lower) / Applesoft TMS (upper); no menu.
+- **ARCADE upper bank** — Rogue alone (`4000R` boots it directly).
+- **DEMOS upper bank** — Sprite Animals (cc65 C) alone.
 
 The cartridge ROMs (`roms/codetank/*.rom`) are assembled by
-**`tools/build_codetank_rom.py`** (`--rom=1|2|3`), which pulls these menus
+**`tools/build_codetank_rom.py`**
+(`--rom {classics,basiclogo,arcade,demos,dev,all}`), which pulls these menus
 plus the TMS9918 cart sources and lands the result under `roms/codetank/`.
-(The TEST and GAME4/LightCorridor carts were retired June 2026.)
+Burn gate: `tools/verify_codetank_roms.py` (14 scenarios under
+silicon-strict + vram-noise + dram-refresh). (The TEST and GAME4/LightCorridor
+carts were retired June 2026; the GAME1-7 line-up in juillet 2026.)
 
 ## Creating a new game ROM entry
 
 A cart game is just a TMS9918 sketch given a fixed bank slot. Two cases:
 
-- **Menu game (shares an upper bank with siblings)** — needs a bank-layout cfg.
+- **Menu game (shares a bank with siblings)** — needs a bank-layout cfg.
   Copy an existing template from `bank_cfgs/` (e.g. `apple1_snake_codetank_bank.cfg`)
   to `apple1_<game>_codetank_bank.cfg` and edit the `CODE:` line: set `start` to
   the game's fixed cartridge offset and `size` to its reserved slot (the standalone
   `sketchs/tms9918/<game>/*_codetank.cfg` keeps the run-in-place `$4000`/`$4000`
   full-bank layout — the bank cfg only differs in those two fields). Disambiguate
   when the same program is pinned at a different offset on another cart by adding a
-  `_<rom>` infix — `apple1_life_codetank_game3_bank.cfg` is GAME3's Life slot.
+  `_<rom>` infix — `apple1_life_codetank_demos_bank.cfg` is DEMOS' Life slot.
   Add a corresponding entry to the menu's `codetank_menu.asm` /
-  `codetank_game3_menu.asm` dispatch table.
+  `codetank_demos_menu.asm` dispatch table.
 - **Full-bank run-in-place program (owns a whole lower/upper bank, no menu)** —
   needs **no** bank cfg: its standalone `*_codetank.cfg` already loads at `$4000`
   and fills 16 kB, so it doubles as the cartridge layout (Rogue, Nyan, LOGO V2.6).

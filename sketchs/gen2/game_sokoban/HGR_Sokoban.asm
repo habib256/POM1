@@ -116,10 +116,7 @@ prev_player_row: .res 1 ; $19
 prev_player_col: .res 1 ; $1A
 undo_avail:      .res 1 ; $1B  1 = execute_undo is valid, 0 = no move to undo
 had_push:        .res 1 ; $1C  1 = last move was a push (box needs undo too)
-; Keyboard layout (set once at startup based on user choice)
-key_up_code:   .res 1  ; $1D  'W' (QWERTY) or 'Z' (AZERTY)
-key_left_code: .res 1  ; $1E  'A' (QWERTY) or 'Q' (AZERTY)
-moves:         .res 1  ; $1F  move counter (saturates at $FF, shown next to level #)
+moves:         .res 1  ; $1D  move counter (saturates at $FF, shown next to level #)
 
 ; hgr_tables.inc references these for its (unused) plot_pixel routine —
 ; alias them onto the undo bytes so the assembler resolves the symbols.
@@ -138,7 +135,8 @@ mul_res0 = had_push
 main:
         JSR gen2_hgr_init
         ; Graphical splash on the GEN2 framebuffer (visible while the
-        ; Apple-1 text screen shows the credits + layout prompt).
+        ; Apple-1 text screen shows the credits). Controls are fixed
+        ; IJKL — same physical keys on QWERTY and AZERTY.
         JSR clear_hgr
         JSR draw_title
 
@@ -147,33 +145,8 @@ main:
         LDX #>str_title
         JSR print_str_ax
 
-        ; Prompt for keyboard layout
-        LDA #<str_layout
-        LDX #>str_layout
-        JSR print_str_ax
+        JSR wait_key                    ; any key starts
 
-@layout_wait:
-        JSR wait_key
-        CMP #'1'
-        BEQ @qwerty
-        CMP #'2'
-        BEQ @azerty
-        JMP @layout_wait                ; ignore other keys
-
-@qwerty:
-        LDA #'W'
-        STA key_up_code
-        LDA #'A'
-        STA key_left_code
-        JMP @layout_ok
-
-@azerty:
-        LDA #'Z'
-        STA key_up_code
-        LDA #'Q'
-        STA key_left_code
-
-@layout_ok:
         ; Start at level 0
         LDA #$00
         STA level_idx
@@ -193,13 +166,13 @@ move_loop:
         JSR wait_key
         ; A = ASCII char, bit 7 stripped
 
-        CMP key_up_code                 ; W (QWERTY) or Z (AZERTY)
+        CMP #'I'
         BEQ key_up
-        CMP #'S'
+        CMP #'K'
         BEQ key_down
-        CMP key_left_code               ; A (QWERTY) or Q (AZERTY)
+        CMP #'J'
         BEQ key_left
-        CMP #'D'
+        CMP #'L'
         BEQ key_right
         CMP #'R'
         BEQ key_reset
@@ -1058,17 +1031,16 @@ title_table:
         .byte <title_apple,   >title_apple,   $0D, $30, $00
         .byte <title_card,    >title_card,    $03, $40, $00    ; "GEN2 UNCLE BERNIE"
         .byte <title_author,  >title_author,  $02, $60, $00
-        ; SELECT KEYBOARD; blank $78-$8F; then 1 QWERTY (WASD) / 2 AZERTY (ZQSD)
-        .byte <title_kb_hint, >title_kb_hint, $05, $70, $00
-        .byte <title_qwerty,  >title_qwerty,  $05, $90, $00
-        .byte <title_azerty,  >title_azerty,  $05, $A0, $00
-        .byte <title_h_help,  >title_h_help,  $0E, $B8, $00    ; "H HELP" reminder
+        ; MOVE IJKL (fixed controls, same keys on QWERTY and AZERTY);
+        ; blank $78-$8F; then PRESS A KEY
+        .byte <title_kb_hint,   >title_kb_hint,   $0B, $70, $00
+        .byte <title_press_key, >title_press_key, $09, $90, $00
+        .byte <title_h_help,    >title_h_help,    $0E, $B8, $00  ; "H HELP" reminder
         .byte $FF
 
 help_table:
         .byte <help_big_title, >help_big_title, $10, $10, $01  ; big HELP
-        .byte <help_qwerty,    >help_qwerty,    $07, $30, $00
-        .byte <help_azerty,    >help_azerty,    $07, $40, $00
+        .byte <help_move,      >help_move,      $0B, $38, $00  ; MOVE IJKL
         .byte <help_u,         >help_u,         $0E, $58, $00
         .byte <help_r,         >help_r,         $0D, $68, $00
         .byte <help_n,         >help_n,         $0E, $78, $00
@@ -1282,8 +1254,8 @@ draw_title_glyph:
 ;   20=R  21=E  22=L  23=space  24=G  25=H  26=T  27=D  28=Y  29=I
 ;   30=U  31=Q  32=W  33=Z  34=C  35=X  36=(  37=)
 title_kb_hint:
-        ; SELECT KEYBOARD (15 glyphs x 2 cols = 30; col 5 centres in 40)
-        .byte 13,21,22,21,34,26,23,15,21,28,16,14,17,20,27, $FF
+        ; MOVE IJKL (9 glyphs x 2 cols = 18; col 11 centres in 40)
+        .byte 10,14,11,21,23,29,38,15,22, $FF
 title_sokoban:
         ; S  O  K  O  B  A  N
         .byte 13,14,15,14,16,17,18, $FF
@@ -1296,12 +1268,6 @@ title_card:
 title_author:
         ; B  Y  _  V  E  R  H  I  L  L  E  _  A  R  N  A  U  D
         .byte 16,28,23,11,21,20,25,29,22,22,21,23,17,20,18,17,30,27, $FF
-title_qwerty:
-        ; 1  _  QWERTY  _  ( WASD )
-        .byte  1,23,31,32,21,20,26,28,23,36,32,17,13,27,37, $FF
-title_azerty:
-        ; 2  _  AZERTY  _  ( ZQSD )
-        .byte  2,23,17,33,21,20,26,28,23,36,33,31,13,27,37, $FF
 title_h_help:
         ; H  _  H  E  L  P
         .byte 25,23,25,21,22,19, $FF
@@ -1316,12 +1282,9 @@ title_press_key:
 help_big_title:
         ; H  E  L  P
         .byte 25,21,22,19, $FF
-help_qwerty:
-        ; QWERTY  ( WASD )
-        .byte 31,32,21,20,26,28,23,36,32,17,13,27,37, $FF
-help_azerty:
-        ; AZERTY  ( ZQSD )
-        .byte 17,33,21,20,26,28,23,36,33,31,13,27,37, $FF
+help_move:
+        ; M  O  V  E  _  I  J  K  L
+        .byte 10,14,11,21,23,29,38,15,22, $FF
 help_u:
         ; U  _  U  N  D  O
         .byte 30,23,30,18,27,14, $FF
@@ -1433,10 +1396,8 @@ level_ptrs_hi:
 str_title:
         .byte $0D, " SOKOBAN + GEN2 HGR", $0D
         .byte " MICROBAN I 45LV  V.ARNAUD 26", $0D
-        .byte " PUSH BOXES ON TARGETS  U R N", $0D, 0
-
-str_layout:
-        .byte $0D, " KEYBOARD: 1 QWERTY  2 AZERTY", $0D, 0
+        .byte " PUSH BOXES ON TARGETS  U R N", $0D
+        .byte " MOVE: IJKL  ANY KEY STARTS", $0D, 0
 
 str_win:
         .byte $0D, " CLEARED! KEY=NEXT", $0D, 0

@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 #include <memory>
+#include <cstdint>
 #include <cstring>
 #include <GLFW/glfw3.h>
 #include "CpuClock.h"
@@ -131,6 +132,19 @@ public:
     void savePresetLayout(int presetIndex);
     bool loadPresetLayout(int presetIndex);  // returns true if a file was found
 
+    // Debounced layout autosave — called once per frame from render(). Saves
+    // the active preset's layout a couple of seconds after the last window
+    // move/resize (io.WantSaveIniSettings, which ImGui raises when
+    // io.IniFilename == nullptr) or open/close change (presence hash). Covers
+    // crash on desktop and tab-close on WASM, where the shutdown save never
+    // runs (the Emscripten main loop does not return).
+    void maybeAutosaveLayout(float deltaTime);
+
+    // Save the active preset's layout + global UI settings right now.
+    // WASM: called from the shell's pagehide/visibilitychange handler via the
+    // exported pom1_save_layout_now() bridge.
+    void saveActivePresetLayoutNow();
+
     // ── Window registry — single source of truth for every dismissable window.
     // One row per window: a stable persistence key, the ImGui Begin() title
     // (the geometry key ImGui already stores in the .ini), the backing show*
@@ -238,6 +252,7 @@ private:
     bool showSpecialThanks = false;
     bool showHardwareReference = false;
     bool showSoftwareReference = false;
+    bool showShortcutsHelp = false;    // Help > Keyboard Shortcuts
     bool showWelcome = false;  // First-boot greeting panel next to the Apple 1 screen
     // Boot profile chooser: a full-viewport preset selector shown before any
     // other UI at startup when no explicit --preset was given. See
@@ -468,6 +483,36 @@ private:
     float uiHiDpiManualScale_ = 1.0f;
     bool uiHiDpiInit_ = false;
 
+    // ── Global (not per-preset) UI settings — ini/ui.settings ──────────────
+    // Theme + HiDPI scale choice persist across sessions and presets. Loaded
+    // lazily on the first render() frame (needs a live ImGui context), saved
+    // whenever the user changes one of them. On WASM the file lives under the
+    // IDBFS-backed ini/ mount, so it survives page reloads too.
+    int  uiTheme_ = 0;              // 0=Dark (default) 1=Light 2=High contrast
+    bool uiSettingsLoaded_ = false;
+    void applyUiTheme(int theme);
+    void loadUiSettings();
+    void saveUiSettings();
+
+    // ── Layout autosave state (maybeAutosaveLayout) ────────────────────────
+    float layoutDirtyForSeconds_ = -1.0f;  // <0 = clean, else time since last change
+    uint64_t lastPresenceHash_ = 0;        // FNV of the show* presence bitset
+    bool presenceHashValid_ = false;
+
+    // ── UI keyboard-navigation mode (F10) ──────────────────────────────────
+    // While ON, ImGui gets full keyboard navigation (Tab/arrows/Space/Enter)
+    // and the Apple-1 stops receiving typed keys; F10 toggles back. Gamepad
+    // navigation is always on (it never conflicts with the Apple-1 keyboard).
+    bool uiNavMode_ = false;
+    void setUiNavMode(bool on);
+
+    // ── Startup profile preference — ini/startup ──────────────────────────
+    // Opt-in "always boot this preset" written by the Profile Chooser's
+    // checkbox (or Settings menu). CLI --preset still wins over it.
+    bool chooserRememberChoice_ = false;   // live checkbox state in the chooser
+    static bool readStartupPreset(int& presetIndex);   // false = no auto-start
+    static void writeStartupPreset(int presetIndex);   // -1 = clear the pref
+
     // Keyboard input
     bool keyboardAutorepeat = false;  // default off: TTL keyboard has no repeat
     bool nextCharIsRepeat = false;    // set by handleGlfwKey, consumed by handleGlfwChar
@@ -534,6 +579,7 @@ private:
     void renderSpecialThanksWindow();
     void renderHardwareReferenceWindow();
     void renderSoftwareReferenceWindow();
+    void renderShortcutsHelpWindow();
     void renderWelcomeWindow();
     void renderTutorialIntegerBasicWindow();
     void renderTutorialApplesoftWindow();
@@ -635,6 +681,9 @@ private:
     // Open an audio editor straight from the chooser: boot a plain Apple-1, plug
     // the matching sound card (ACI beeper or A1-SID) and raise its editor window.
     void launchAudioEditorFromChooser(bool sid);
+    // Boot a CodeTank release cartridge from the chooser's Play column: TMS9918
+    // preset + picked cart/jumper on the deferred rail + auto-4000R.
+    void launchGameFromChooser(int game);
     void finalizePendingCardPlugs();
     void applyPendingLayout(const char* windowName);
     // Restore every window (and the main OS window) to the active preset's

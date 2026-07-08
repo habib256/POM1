@@ -2146,11 +2146,14 @@ void MainWindow_ImGui::renderScreenConfigDialog()
                 uiHiDpiManualScale_ = io.FontGlobalScale > 0.1f ? io.FontGlobalScale : 1.0f;
                 uiHiDpiInit_ = true;
             }
-            if (ImGui::Checkbox("Auto (follow monitor DPI)", &uiHiDpiAuto_) && uiHiDpiAuto_)
-                uiHiDpiManualScale_ = detected;
+            if (ImGui::Checkbox("Auto (follow monitor DPI)", &uiHiDpiAuto_)) {
+                if (uiHiDpiAuto_) uiHiDpiManualScale_ = detected;
+                saveUiSettings();   // persists across sessions (ini/ui.settings)
+            }
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Scale the whole UI font by the monitor's content scale.\n"
-                                  "Turn off to pin a fixed scale with the slider.");
+                                  "Turn off to pin a fixed scale with the slider.\n"
+                                  "The choice is remembered across sessions.");
             if (uiHiDpiAuto_) {
                 io.FontGlobalScale = detected;   // live-follow while the dialog is open
                 ImGui::BeginDisabled();
@@ -2160,6 +2163,8 @@ void MainWindow_ImGui::renderScreenConfigDialog()
             } else {
                 if (ImGui::SliderFloat("UI font scale", &uiHiDpiManualScale_, 0.75f, 3.0f, "%.2f×"))
                     io.FontGlobalScale = uiHiDpiManualScale_;
+                if (ImGui::IsItemDeactivatedAfterEdit())
+                    saveUiSettings();   // save once when the drag ends, not per pixel
             }
             ImGui::TextDisabled("Detected monitor scale: %.2f×", detected);
         }
@@ -3425,3 +3430,71 @@ void MainWindow_ImGui::renderTutorialIECCardWindow()
     ImGui::End();
 }
 
+
+// ---------------------------------------------------------------------------
+// Help > Keyboard Shortcuts — one place listing every host-side key binding.
+// The F1-F10 rows mirror MainWindow_Keyboard.cpp's shortcuts[] table; update
+// both together (the table is tiny and the prose here needs context anyway).
+// ---------------------------------------------------------------------------
+void MainWindow_ImGui::renderShortcutsHelpWindow()
+{
+    ImGui::SetNextWindowSize(ImVec2(560, 520), ImGuiCond_FirstUseEver);
+    applyPendingLayout("Keyboard Shortcuts");
+    if (ImGui::Begin("Keyboard Shortcuts", &showShortcutsHelp)) {
+        ImGui::TextWrapped(
+            "Every printable key you type goes to the Apple-1 keyboard. "
+            "The keys below are grabbed by POM1 itself.");
+        ImGui::Spacing();
+
+        auto row = [](const char* keys, const char* what) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextColored(ImVec4(0.95f, 0.80f, 0.30f, 1.0f), "%s", keys);
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextWrapped("%s", what);
+        };
+
+        if (ImGui::BeginTable("shortcuts", 2,
+                              ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH)) {
+            ImGui::TableSetupColumn("Key", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+            ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthStretch);
+
+            row("F1",       "Toggle the Memory Viewer");
+            row("F2",       "Toggle the Memory Map Grid");
+            row("F3",       "Toggle the CPU Debug Console");
+            row("F5",       "Soft reset (Apple-1 RESET line)");
+            row("Ctrl+F5",  "Hard reset (power cycle: RAM cleared)");
+            row("F6",       "Start / stop the CPU");
+            row("F7",       "Single-step one instruction (hold to repeat)");
+            row("F10",      "UI keyboard navigation mode on/off (accessibility): "
+                            "Tab / arrows / Space / Enter drive the POM1 interface "
+                            "instead of typing into the Apple-1. The status bar "
+                            "shows \"UI NAV\" while active.");
+            row("Ctrl+O",   "Load Memory (program file)");
+            row("Ctrl+S",   "Save Memory");
+            row("Ctrl+V",   "Paste host clipboard text to the Apple-1 keyboard");
+#if !POM1_IS_WASM
+            row("Ctrl+Q",   "Quit POM1");
+#endif
+            row("Enter",    "On the startup profile chooser: boot the default profile");
+            ImGui::EndTable();
+        }
+
+        ImGui::Spacing();
+        ImGui::SeparatorText("Mouse-only input (accessibility)");
+        ImGui::TextWrapped(
+            "Help > Photos > Apple-1 ASCII Keyboard opens an interactive photo "
+            "of the original keyboard: click the keycaps to type into the "
+            "Apple-1 without using your physical keyboard (SHIFT and CTRL "
+            "latch for one keystroke, the red keycap is a warm reset).");
+
+#if !POM1_IS_WASM
+        ImGui::Spacing();
+        ImGui::SeparatorText("P-LAB Terminal Card (telnet side)");
+        ImGui::TextWrapped(
+            "While connected to localhost:6502 - Ctrl-S or ESC S: save a PNG "
+            "screenshot of the POM1 window; Ctrl-R: Apple-1 reset.");
+#endif
+    }
+    ImGui::End();
+}

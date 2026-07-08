@@ -75,13 +75,15 @@ SCENARIOS = [
     ("ARCADE-lower-Galaga", "Codetank_ARCADE.rom", "lower",
      [(6 * M, "1"), (12 * M, "1"), (18 * M, " "), (24 * M, "j")],
      [10 * M, 28 * M]),
-    # ARCADE lower — menu -> Sokoban (2).
+    # ARCADE lower — menu -> Sokoban (2). Movement is IJKL — the old w/d
+    # script keys were ignored by the game, so its moves never happened.
     ("ARCADE-lower-Sokoban", "Codetank_ARCADE.rom", "lower",
-     [(6 * M, "2"), (12 * M, " "), (16 * M, "d"), (20 * M, "w")],
+     [(6 * M, "2"), (12 * M, " "), (16 * M, "l"), (20 * M, "i")],
      [10 * M, 24 * M]),
     # ARCADE lower — menu -> Snake (3), keyboard pick, walls pick, play.
+    # Movement is IJKL (same fix as Sokoban).
     ("ARCADE-lower-Snake", "Codetank_ARCADE.rom", "lower",
-     [(6 * M, "3"), (12 * M, "1"), (16 * M, "1"), (20 * M, "w"), (24 * M, "d")],
+     [(6 * M, "3"), (12 * M, "1"), (16 * M, "1"), (20 * M, "i"), (24 * M, "l")],
      [10 * M, 28 * M]),
     # ARCADE upper — Rogue alone. Keyboard pick then a few moves.
     ("ARCADE-upper-Rogue", "Codetank_ARCADE.rom", "upper",

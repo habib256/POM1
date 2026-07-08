@@ -207,6 +207,13 @@ bool MainWindow_ImGui::performMemoryLoad(const std::string& path,
         if (!microSDEnabled) {
             microSDEnabled = true;
             emulation->setMicroSDEnabled(true);
+            if (codeTankEnabled) {
+                // Memory evicts CodeTank ($6000-$7FFF Applesoft Lite
+                // overlap); mirror UI. The TMS9918 host stays plugged.
+                codeTankEnabled = false;
+                showCodeTankLibrary = false;
+                codeTankPendingWozRunAt = 0.0;
+            }
             setStatusMessage("P-LAB microSD Card plugged", 2.0f);
         }
     } else if (pathHas("/NET/", "\\NET\\")) {

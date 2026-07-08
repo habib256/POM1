@@ -111,8 +111,6 @@ won:            .res 1
 prng_lo:        .res 1
 prng_hi:        .res 1
 
-key_up_code:    .res 1
-key_left_code:  .res 1
 wrap_mode:      .res 1          ; 0 = walls deadly, 1 = walls wrap-around
 hi_score:       .res 1          ; best score this session (persists across new_game)
 
@@ -131,40 +129,13 @@ main:
         JSR init_vdp
         JSR draw_title_tms
 
+        ; Controls are fixed IJKL — same physical keys on QWERTY and
+        ; AZERTY — so the only startup question left is the wall mode.
         LDA #<str_title
         LDX #>str_title
         JSR print_str_ax
-        LDA #<str_layout
-        LDX #>str_layout
-        JSR print_str_ax
 
-@kb_wait:
-        JSR wait_key
-        PHA                     ; save key
-        EOR prng_lo             ; mix key timing into PRNG seed
-        STA prng_lo
-        PLA                     ; restore key
-        CMP #'1'
-        BEQ @qwerty
-        CMP #'2'
-        BEQ @azerty
-        JMP @kb_wait
-@qwerty:
-        LDA #'W'
-        STA key_up_code
-        LDA #'A'
-        STA key_left_code
-        JMP @ask_walls
-@azerty:
-        LDA #'Z'
-        STA key_up_code
-        LDA #'Q'
-        STA key_left_code
-
-@ask_walls:
-        ; Refresh the TMS splash so the wall-mode choice is visible
-        ; in graphics output too — overwrite the keyboard prompt rows
-        ; in-place. Strings are sized to fully clobber the old text.
+        ; Wall-mode choice, on the TMS splash rows + the text screen.
         LDA #<title_walls_select_tms
         STA sptr_lo
         LDA #>title_walls_select_tms
@@ -696,18 +667,18 @@ delay_and_input:
 
 
 ; handle_key: A = ASCII (bit 7 stripped). Updates pend_dx/pend_dy.
-; Recognises W/A/S/D (or Z/Q/S/D after AZERTY pick), and 'P' to
-; pause/freeze the game until any other key resumes it.
+; Recognises I/J/K/L (same physical keys on QWERTY and AZERTY), and
+; 'P' to pause/freeze the game until any other key resumes it.
 handle_key:
         CMP #'P'
         BEQ @pause
-        CMP key_up_code
+        CMP #'I'
         BEQ @up
-        CMP #'S'
+        CMP #'K'
         BEQ @down
-        CMP key_left_code
+        CMP #'J'
         BEQ @left
-        CMP #'D'
+        CMP #'L'
         BEQ @right
         RTS
 @pause:
@@ -810,7 +781,7 @@ init_vdp:
         BNE @tlp
 
         ; --- Upload HUD glyph patterns at char 56 (VRAM $01C0) ---
-        ; 39 glyphs * 8 bytes = 312 bytes (chars 56..94).
+        ; 40 glyphs * 8 bytes = 320 bytes (chars 56..95).
         LDA #$C0
         STA VDP_CTRL
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
@@ -827,7 +798,7 @@ init_vdp:
 @hp2:   LDA hud_patterns+256,X
         STA VDP_DATA
         INX
-        CPX #56                 ; remaining 312-256
+        CPX #64                 ; remaining 320-256
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (back-to-back VDP store)
         BCC @hp2
 
@@ -1018,7 +989,7 @@ hud_hi_str:
 
 ; =============================================
 ; draw_title_tms: splash on the TMS9918 while the Apple-1 text screen
-; prints credits + layout prompt. Five centred lines using HUD glyphs.
+; prints the credits. Centred lines using HUD glyphs.
 ; The first init_arena call wipes them with a name-table clear.
 ; =============================================
 draw_title_tms:
@@ -1049,21 +1020,14 @@ draw_title_tms:
         LDX #$59
         JSR draw_str_tms
 
+        ; "MOVE IJKL" sits on row 21 so the wall-mode prompt (rows 15
+        ; and 18) never clobbers it.
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
-        LDA #<title_select_tms
+        LDA #<title_move_tms
         STA sptr_lo
-        LDA #>title_select_tms
+        LDA #>title_move_tms
         STA sptr_hi
-        LDA #$E8                ; $19E8 = row 15 col 8
-        LDX #$59
-        JSR draw_str_tms
-
-        JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
-        LDA #<title_keys_tms
-        STA sptr_lo
-        LDA #>title_keys_tms
-        STA sptr_hi
-        LDA #$48                ; $1A48 = row 18 col 8
+        LDA #$AB                ; $1AAB = row 21 col 11
         LDX #$5A
         JMP draw_str_tms        ; tail-call
 
@@ -1327,6 +1291,8 @@ hud_patterns:
         .byte $08, $10, $20, $20, $20, $10, $08, $00
         ; char 94 ')'
         .byte $20, $10, $08, $08, $08, $10, $20, $00
+        ; char 95 'J' — local extra (from bbfont master $4A, TMS bit order)
+        .byte $0C, $0C, $0C, $0C, $CC, $FC, $78, $00
 
 ; --- TMS title strings (raw TMS char codes, $FF terminated) ---
 title_snake_tms:
@@ -1338,18 +1304,14 @@ title_card_tms:
 title_author_tms:
         ; B  Y  _  V  E  R  H  I  L  L  E  _  A  R  N  A  U  D
         .byte 72,84,79,57,77,76,81,85,78,78,77,79,73,76,74,73,86,83, $FF
-title_select_tms:
-        ; S E L E C T _ K E Y B O A R D
-        .byte 69,77,78,77,90,82,79,71,77,84,72,70,73,76,83, $FF
-title_keys_tms:
-        ; 1 _ ( W A S D )  2 _ ( Z Q S D )
-        ; layout fits 16 chars centred at col 8
-        .byte 60,79,93,88,73,69,83,94,79,61,79,93,89,87,69,83,94, $FF
+title_move_tms:
+        ; M O V E _ I J K L
+        .byte 56,70,57,77,79,85,95,71,78, $FF
 title_walls_select_tms:
-        ; S E L E C T _ W A L L S _ _ _   (15 chars to clobber "SELECT KEYBOARD")
-        .byte 69,77,78,77,90,82,79,88,73,78,78,69,79,79,79, $FF
+        ; S E L E C T _ W A L L S
+        .byte 69,77,78,77,90,82,79,88,73,78,78,69, $FF
 title_walls_keys_tms:
-        ; 1 _ ( D E A D L Y ) _ 2 _ ( W R A P )   (19 chars, covers old 17-char prompt)
+        ; 1 _ ( D E A D L Y ) _ 2 _ ( W R A P )
         .byte 60,79,93,83,77,73,83,78,84,94,79,61,79,93,88,76,73,75,94, $FF
 title_over_tms:
         ; G A M E _ O V E R
@@ -1366,10 +1328,7 @@ str_title:
         .byte $0D, " SNAKE FOR APPLE 1 + TMS9918", $0D
         .byte " V.ARNAUD 26  EAT THE APPLES!", $0D
         .byte " WALLS AND TAIL ARE FATAL.", $0D
-        .byte " P = PAUSE   HI = BEST SCORE", $0D, 0
-
-str_layout:
-        .byte $0D, " KEYBOARD: 1 QWERTY  2 AZERTY", $0D, 0
+        .byte " MOVE: IJKL  P = PAUSE", $0D, 0
 
 str_walls:
         .byte $0D, " WALLS:    1 DEADLY  2 WRAP", $0D, 0

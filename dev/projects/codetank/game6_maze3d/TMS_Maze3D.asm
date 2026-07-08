@@ -21,9 +21,9 @@
 ; depth shading (stipple/hatching), top-down map toggle and
 ; turn-based combat against three monster archetypes.
 ;
-; Controls (AZERTY):
-;   Z = forward          Q = turn left
-;   S = backward         D = turn right
+; Controls (IJKL — same physical keys on QWERTY and AZERTY):
+;   I = forward          J = turn left
+;   K = backward         L = turn right
 ;   M = toggle map / 3D view
 ;   A = attack (combat)  F = flee  (combat)
 ;   ESC = quit
@@ -50,10 +50,10 @@
 
 ; ---- Keys (Apple 1 ASCII | $80, upper-cased by the keyboard) ----
 KEY_ESC   = $9B
-KEY_Z     = $DA       ; forward
-KEY_S     = $D3       ; backward
-KEY_Q     = $D1       ; turn left
-KEY_D     = $C4       ; turn right
+KEY_FWD   = $C9       ; 'I' forward
+KEY_BACK  = $CB       ; 'K' backward
+KEY_LEFT  = $CA       ; 'J' turn left
+KEY_RIGHT = $CC       ; 'L' turn right
 KEY_M     = $CD       ; toggle map / 3D
 KEY_A     = $C1       ; attack
 KEY_F     = $C6       ; flee
@@ -371,7 +371,7 @@ play_input:
         LDA #ST_PLAYMAP
         STA gstate
         RTS
-@n2:    CMP #KEY_Q
+@n2:    CMP #KEY_LEFT
         BNE @n3
         ; turn left
         LDA p_face
@@ -380,7 +380,7 @@ play_input:
         AND #$03
         STA p_face
         RTS
-@n3:    CMP #KEY_D
+@n3:    CMP #KEY_RIGHT
         BNE @n4
         ; turn right
         LDA p_face
@@ -389,13 +389,13 @@ play_input:
         AND #$03
         STA p_face
         RTS
-@n4:    CMP #KEY_Z
+@n4:    CMP #KEY_FWD
         BNE @n5
         ; forward
         LDA p_face
         JSR try_move
         RTS
-@n5:    CMP #KEY_S
+@n5:    CMP #KEY_BACK
         BNE @other
         ; backward = move opposite of facing
         LDA p_face
@@ -3148,8 +3148,8 @@ str_title4:   .byte "FOR P-LAB TMS9918 + APPLE 1",0
 str_press_any:.byte "PRESS ANY KEY...",0
 
 str_help_h1:  .byte "HOW TO PLAY",0
-str_help_l1:  .byte "Z   FORWARD       Q   TURN LEFT",0
-str_help_l2:  .byte "S   BACKWARD      D   TURN RIGHT",0
+str_help_l1:  .byte "I   FORWARD       J   TURN LEFT",0
+str_help_l2:  .byte "K   BACKWARD      L   TURN RIGHT",0
 str_help_l3:  .byte "M   TOGGLE MAP / 3D VIEW",0
 str_help_l4:  .byte "A   ATTACK   F  FLEE  (COMBAT)",0
 str_help_l5:  .byte "ESC  QUIT TO MONITOR",0

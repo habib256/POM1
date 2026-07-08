@@ -20,6 +20,12 @@
 ; --- Apple 1 I/O ---
 .include "apple1.inc"
 
+; menu_select scratch — the menu cfg has no ZEROPAGE segment (512 B
+; ROM stub), so alias tmp/tmp2 onto the canonical zp.inc slots $00/$01
+; as plain equates. The demos re-initialise their own ZP on entry.
+tmp   := $0000
+tmp2  := $0001
+
 ; --- Demo entry points (must match the linker configs):
 ;     apple1_life_codetank_demos_bank.cfg    start=$4200
 ;     apple1_mandel_codetank_demos_bank.cfg  start=$4A00
@@ -37,27 +43,25 @@ NYAN_ENTRY   = $6000
 start:
         LDX #0
 @print: LDA prompt,X
-        BEQ @wait_key
+        BEQ @pick
         ORA #$80                ; Apple-1 display wants bit 7 set
         JSR ECHO
         INX
         BNE @print
 
-@wait_key:
-        LDA KBDCR
-        BPL @wait_key           ; KBDCR bit 7 = 1 when a key is ready
-        LDA KBD                 ; bit 7 always set on Apple-1 keyboard
-        CMP #('1' | $80)
+@pick:
+        LDA #'1'                ; menu_select blocks until '1'..'5',
+        LDX #'5'                ; echoes the digit, returns it in A
+        JSR menu_select
+        CMP #'1'
         BEQ @go_life
-        CMP #('2' | $80)
+        CMP #'2'
         BEQ @go_mandel
-        CMP #('3' | $80)
+        CMP #'3'
         BEQ @go_plasma
-        CMP #('4' | $80)
+        CMP #'4'
         BEQ @go_vague
-        CMP #('5' | $80)
-        BEQ @go_nyan
-        JMP @wait_key
+        JMP NYAN_ENTRY          ; only '5' left
 
 @go_life:
         JMP LIFE_ENTRY
@@ -71,8 +75,9 @@ start:
 @go_vague:
         JMP VAGUE_ENTRY
 
-@go_nyan:
-        JMP NYAN_ENTRY
+; --- Shared library routines (dev/lib) ---
+.include "kbd.asm"              ; wait_key (lib/apple1)
+.include "menu.asm"             ; menu_select (lib/text40)
 
 ; --- Prompt string. NUL-terminated; print loop ORs in bit 7 for the
 ;     Apple-1 display. $0D = CR (Apple-1 wraps + line-feeds on its own).

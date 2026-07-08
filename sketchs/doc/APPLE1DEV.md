@@ -359,7 +359,7 @@ Add a C++ test in `tests/`. Template: `tests/peripheral_bus_smoke_test.cpp` — 
 1. Fits the linker config? `ls -l build/*.bin` vs CODE size.
 2. ZP usage in `$0000-$0022`?
 3. Every `CMP` uses uppercase letters?
-4. WASD prompt: QWERTY/AZERTY `1`/`2` selector with `key_up_code` / `key_left_code` in ZP?
+4. Movement on the fixed IJKL keys (same physical keys on QWERTY and AZERTY)?
 5. Branches in range? (ca65 catches at assembly time.)
 6. Both intermediate states handled (e.g. *player on target*)?
 7. Loaded via File > Load Memory, watched at least one full loop?

@@ -22,6 +22,8 @@
 
 #if !POM1_IS_WASM
 #include <GLFW/glfw3.h>
+#else
+#include <emscripten.h>   // EM_ASM — FS.syncfs flush of the IDBFS-backed ini/
 #endif
 
 #include <algorithm>
@@ -309,14 +311,16 @@ const MachineConfig kMachinePresets[] = {
     },
     {   //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI
         "P-LAB Apple-1 Multiplexing Fantasy",
-        "Emulator-only fantasy: plugs microSD, A1-SID, TMS9918 (+ CodeTank), I/O & RTC, "
+        "Emulator-only fantasy: plugs A1-SID, TMS9918 (+ CodeTank), I/O & RTC, "
         "Wi-Fi modem, and Terminal Card all at once. Violates Claudio Parmigiani's golden "
         "rule \"one board at a time\" - impossible on real Apple-1 silicon (the 6502 bus has "
         "no arbitration, and several of these cards share overlapping address windows). "
-        "Provided for convenience only.",
-        false, true, true, true, true, true, true,
+        "The microSD stays unplugged even here: its Applesoft Lite EEPROM window "
+        "($6000-$7FFF) sits inside the CodeTank ROM ($4000-$7FFF) — plug it from the "
+        "Hardware menu and the CodeTank pops out. Provided for convenience only.",
+        false, false, true, true, true, true, true,
         /*pr40*/ false,
-        false, false, false, 64, BasicType::ApplesoftLite,
+        false, false, false, 64, BasicType::Integer,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ true, CodeTank::Jumper::Lower16,
@@ -1049,6 +1053,7 @@ void MainWindow_ImGui::renderProfileChooser()
     int chosenMachine     = -1;   // DevBench machine axis (see kP1Machines[])
     int chosenPaint       = -1;   // 0 = HGR Painter, 1 = TMS9918 Painter
     int chosenAudio       = -1;   // 0 = Beeper SFX, 1 = SID Tracker
+    int chosenGame        = -1;   // kChooserGames[] index (CodeTank cartridges)
     // A profile row: accent-coloured button (width w) + a dim wrapped description.
     // onClick writes the chosen action; the caller runs it after ImGui::End().
     auto actionButton = [&](const char* label, const char* desc,
@@ -1085,7 +1090,7 @@ void MainWindow_ImGui::renderProfileChooser()
     // Title — a red apple glyph next to the "POM1" wordmark, the whole row
     // centred. Drawn as two coloured segments at the same big font scale (a
     // single Text can't mix colours), positioned on one baseline.
-    const float titleScale = 2.6f;
+    const float titleScale = 1.8f;
     ImGui::SetWindowFontScale(titleScale);
     const ImVec2 appleSz = ImGui::CalcTextSize(ICON_FA_APPLE_WHOLE);
     const float  titleGap = ImGui::CalcTextSize(" ").x;
@@ -1105,9 +1110,9 @@ void MainWindow_ImGui::renderProfileChooser()
     ImGui::PopStyleColor();
     ImGui::SetWindowFontScale(1.0f);
 
-    ImGui::Dummy(ImVec2(0.0f, 2.0f));
-    centeredScaledText("Choose an Apple-1 profile", 1.15f, IM_COL32(150, 158, 172, 255));
-    ImGui::Dummy(ImVec2(0.0f, 26.0f));
+    ImGui::Dummy(ImVec2(0.0f, 1.0f));
+    centeredScaledText("Choose an Apple-1 profile", 1.0f, IM_COL32(150, 158, 172, 255));
+    ImGui::Dummy(ImVec2(0.0f, 10.0f));
 
     // Top: the flagship "everything plugged" fantasy machine (always last
     // preset) — amber accent, flanked by the POM1 app icon on each side. The
@@ -1139,23 +1144,45 @@ void MainWindow_ImGui::renderProfileChooser()
     centeredScaledText("Everything plugged in at once — sound, Wi-Fi, microSD and terminal. "
                        "The all-in-one machine to explore POM1.",
                        1.0f, IM_COL32(133, 143, 163, 255));
-    ImGui::Dummy(ImVec2(0.0f, 22.0f));
+    ImGui::Dummy(ImVec2(0.0f, 14.0f));
 
-    // Three columns, each answering "what do you want to do?":
+    // Four columns, each answering "what do you want to do?":
+    //   Play     (red)   — insert a CodeTank release cartridge and play (auto
+    //                       plugs TMS9918 + CodeTank, jumper set, 4000R typed).
     //   Machines (teal)  — boot a faithful single-card Apple-1 and use it.
     //   Create   (violet)— write graphics programs in BASIC or LOGO (opens the
     //                       Bench with the interpreter live + a starter demo).
     //   Develop  (green) — hand-write 6502 assembly or C in the DevBench.
     // Machine-axis values in the Create column are the kP1Machine* constants
     // (Pom1BenchHost.h), pinned to kP1Machines[] by a static_assert.
+    const ImU32 gB = IM_COL32(140, 45, 45, 255), gH = IM_COL32(180, 62, 62, 255),  gA = IM_COL32(110, 34, 34, 255);
     const ImU32 mB = IM_COL32(28, 68, 92, 255),  mH = IM_COL32(42, 96, 126, 255), mA = IM_COL32(20, 52, 74, 255);
     const ImU32 vB = IM_COL32(74, 46, 96, 255),  vH = IM_COL32(102, 64, 132, 255), vA = IM_COL32(56, 34, 74, 255);
     const ImU32 dB = IM_COL32(34, 74, 46, 255),  dH = IM_COL32(48, 100, 64, 255),  dA = IM_COL32(26, 56, 36, 255);
     if (indent > 0.0f) ImGui::SetCursorPosX(indent);
-    if (ImGui::BeginTable("##profilecols", 3, ImGuiTableFlags_SizingStretchSame, ImVec2(colW, 0.0f))) {
+    if (ImGui::BeginTable("##profilecols", 4, ImGuiTableFlags_SizingStretchSame, ImVec2(colW, 0.0f))) {
         ImGui::TableNextRow();
 
-        // Column 1 — faithful single-card machines (teal accent).
+        // Column 1 — the CodeTank release cartridges (red accent). One click =
+        // cartridge in the slot, jumper set, machine reset, 4000R auto-typed.
+        ImGui::TableNextColumn();
+        columnHeader(ICON_FA_GAMEPAD "  Play");
+        const float gw = ImGui::GetContentRegionAvail().x;
+        auto gameButton = [&](const char* label, const char* desc, int game) {
+            actionButton(label, desc, gB, gH, gA, gw, 46.0f,
+                         [&, game]() { chosenGame = game; });
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        };
+        gameButton("ARCADE — 3 games",
+                   "Galaga, Sokoban and Snake from the ARCADE cartridge menu.", 0);
+        gameButton("TETRIS",
+                   "Nino Porcino's Tetris (CLASSICS cartridge).", 1);
+        gameButton("CHESS",
+                   "Graphical chess vs AI or 2-player (CLASSICS cartridge).", 2);
+        gameButton("DEMOS — 6 demos",
+                   "Life, Mandel, Plasma, Vague, Nyan and the sprite Animals.", 3);
+
+        // Column 2 — faithful single-card machines (teal accent).
         ImGui::TableNextColumn();
         columnHeader(ICON_FA_MICROCHIP "  Machines");
         const float mw = ImGui::GetContentRegionAvail().x;
@@ -1174,32 +1201,43 @@ void MainWindow_ImGui::renderProfileChooser()
                      "and three built-in games.",
                      kPresetTMS9918Card, mB, mH, mA, mw, 46.0f);
 
-        // Column 2 — graphical languages (violet accent). Each boots the
-        // interpreter live on its card and opens the Bench with a matching demo.
+        // Column 3 — graphical languages (violet accent). Each boots the
+        // interpreter live on its card and opens the Bench with a matching
+        // demo. Compact form: one dim label per language + two half-width
+        // card buttons (HGR / TMS9918); the long blurbs moved to tooltips.
         ImGui::TableNextColumn();
         columnHeader(ICON_FA_PALETTE "  Create");
         const float vw = ImGui::GetContentRegionAvail().x;
-        langButton("Applesoft — HGR",
-                   "Color-graphics BASIC (HGR, HPLOT, HCOLOR) on the GEN2 card. Opens the "
-                   "editor with a demo ready to run.",
-                   /*BASIC*/ 2, kP1MachineApplesoftGen2, vB, vH, vA, vw, 46.0f);
-        ImGui::Dummy(ImVec2(0.0f, 8.0f));
-        langButton("Applesoft — TMS9918",
-                   "The same graphics BASIC driving the P-LAB TMS9918 chip. Opens the "
-                   "editor with a demo ready to run.",
-                   /*BASIC*/ 2, kP1MachineApplesoftTms, vB, vH, vA, vw, 46.0f);
-        ImGui::Dummy(ImVec2(0.0f, 8.0f));
-        langButton("LOGO — HGR",
-                   "Turtle graphics (LOGO V2.6) on the GEN2 HGR card. Draw with TO, "
-                   "REPEAT, FD and TR.",
-                   /*LOGO*/ 3, kP1MachineLogoGen2, vB, vH, vA, vw, 46.0f);
-        ImGui::Dummy(ImVec2(0.0f, 8.0f));
-        langButton("LOGO — TMS9918",
-                   "Turtle graphics (LOGO V2.6) on the P-LAB TMS9918 card. Draw with TO, "
-                   "REPEAT, FD and TR.",
-                   /*LOGO*/ 3, kP1MachineLogoTms, vB, vH, vA, vw, 46.0f);
+        auto langPair = [&](const char* name, const char* what, int lang,
+                            int machineHgr, int machineTms,
+                            const char* tipHgr, const char* tipTms) {
+            ImGui::TextColored(ImVec4(0.72f, 0.66f, 0.82f, 1.0f), "%s", name);
+            ImGui::SameLine(0.0f, 6.0f);
+            ImGui::TextColored(ImVec4(0.52f, 0.56f, 0.64f, 1.0f), "%s", what);
+            const float half = (vw - 8.0f) * 0.5f;
+            ImGui::PushID(name);
+            langButton("HGR", nullptr, lang, machineHgr, vB, vH, vA, half, 38.0f);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tipHgr);
+            ImGui::SameLine(0.0f, 8.0f);
+            langButton("TMS9918", nullptr, lang, machineTms, vB, vH, vA, half, 38.0f);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tipTms);
+            ImGui::PopID();
+        };
+        langPair("Applesoft", "graphics BASIC", /*BASIC*/ 2,
+                 kP1MachineApplesoftGen2, kP1MachineApplesoftTms,
+                 "Color-graphics BASIC (HGR, HPLOT, HCOLOR) on Uncle Bernie's GEN2 card.\n"
+                 "Opens the editor with a demo ready to run.",
+                 "The same graphics BASIC driving the P-LAB TMS9918 chip.\n"
+                 "Opens the editor with a demo ready to run.");
+        ImGui::Dummy(ImVec2(0.0f, 12.0f));
+        langPair("LOGO", "turtle graphics", /*LOGO*/ 3,
+                 kP1MachineLogoGen2, kP1MachineLogoTms,
+                 "Turtle graphics (LOGO V2.6) on the GEN2 HGR card.\n"
+                 "Draw with TO, REPEAT, FD and TR.",
+                 "Turtle graphics (LOGO V2.6) on the P-LAB TMS9918 card.\n"
+                 "Draw with TO, REPEAT, FD and TR.");
 
-        // Column 3 — DevBench profiles (green accent).
+        // Column 4 — DevBench profiles (green accent).
         ImGui::TableNextColumn();
         columnHeader(ICON_FA_WRENCH "  Develop");
         const float dw = ImGui::GetContentRegionAvail().x;
@@ -1226,7 +1264,7 @@ void MainWindow_ImGui::renderProfileChooser()
     // matching card and opens the editor — mirroring the Tools-menu actions. Paint
     // buttons keep the amber accent, audio buttons the magenta one.
     ImGui::Dummy(ImVec2(0.0f, 18.0f));
-    centeredScaledText(ICON_FA_PAINTBRUSH "  Paint & Audio editors", 1.0f, IM_COL32(140, 153, 179, 255));
+    centeredScaledText(ICON_FA_PAINTBRUSH "  Studio — Paint & Audio editors", 1.0f, IM_COL32(140, 153, 179, 255));
     ImGui::Dummy(ImVec2(0.0f, 4.0f));
     {
         // Clamp to the viewport like the columns above — the chooser window has
@@ -1255,6 +1293,19 @@ void MainWindow_ImGui::renderProfileChooser()
         ImGui::PopStyleColor(3);
     }
 
+    // Opt-in startup preference: when checked, the machine profile picked
+    // below is written to ini/startup and the chooser is skipped on the next
+    // launches (Settings > Show profile chooser at startup re-enables it).
+    // Applies to the machine-profile buttons only — the activity launchers
+    // (language / paint / audio / game) are one-off compositions.
+    {
+        const char* rememberLabel = "Always start with the profile I pick (skip this screen)";
+        const float chkW = ImGui::CalcTextSize(rememberLabel).x
+                         + ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x;
+        ImGui::SetCursorPosX(std::max(0.0f, (ImGui::GetWindowWidth() - chkW) * 0.5f));
+        ImGui::Checkbox(rememberLabel, &chooserRememberChoice_);
+    }
+
     // Footer anchored near the bottom of the viewport: a dim, centred nod to
     // Apple's 50th anniversary (1976-2026).
     const char* footer = "Celebrating 50 years of Apple  —  1976-2026";
@@ -1269,11 +1320,14 @@ void MainWindow_ImGui::renderProfileChooser()
     // Enter with nothing else picked = boot the flagship default (POM1 FANTASY),
     // exactly like clicking the big amber button — a one-keystroke "just start".
     if (chosenPreset < 0 && chosenLang < 0 && chosenPaint < 0 && chosenAudio < 0 &&
+        chosenGame < 0 &&
         (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)))
         chosenPreset = kMachinePresetCount - 1;
 
     // Run the picked action after ImGui::End() (every path dismisses the chooser).
     if (chosenPreset >= 0) {
+        if (chooserRememberChoice_)
+            writeStartupPreset(chosenPreset);
         applyBootConfig(chosenPreset);
         showProfileChooser = false;
     } else if (chosenLang >= 0) {
@@ -1285,7 +1339,37 @@ void MainWindow_ImGui::renderProfileChooser()
     } else if (chosenAudio >= 0) {
         launchAudioEditorFromChooser(/*sid=*/chosenAudio == 1);
         showProfileChooser = false;
+    } else if (chosenGame >= 0) {
+        launchGameFromChooser(chosenGame);
+        showProfileChooser = false;
     }
+}
+
+// Boot a CodeTank release cartridge straight from the chooser's Play column:
+// apply the TMS9918 (CodeTank) preset, swap the queued cartridge + jumper for
+// the picked game (the pendings ride the deferred plug rail, and setting them
+// AFTER applyBootConfig also wins over a --codetank-rom/-jumper CLI override,
+// like the audio branch does for its card), then auto-type 4000R once the
+// cold boot settles — the same UX as the CodeTank Library window's Run.
+void MainWindow_ImGui::launchGameFromChooser(int game)
+{
+    static const struct { const char* rom; CodeTank::Jumper jumper; } kChooserGames[] = {
+        { "roms/codetank/Codetank_ARCADE.rom",   CodeTank::Jumper::Lower16 },  // Galaga/Sokoban/Snake menu
+        { "roms/codetank/Codetank_CLASSICS.rom", CodeTank::Jumper::Lower16 },  // Tetris
+        { "roms/codetank/Codetank_CLASSICS.rom", CodeTank::Jumper::Upper16 },  // Chess
+        { "roms/codetank/Codetank_DEMOS.rom",    CodeTank::Jumper::Lower16 },  // demo menu
+    };
+    constexpr int kChooserGameCount =
+        static_cast<int>(sizeof(kChooserGames) / sizeof(kChooserGames[0]));
+    if (game < 0 || game >= kChooserGameCount) return;
+
+    applyBootConfig(kPresetTMS9918Card);
+    pendingCodeTankRomPath = kChooserGames[game].rom;
+    pendingCodeTankJumper  = kChooserGames[game].jumper;
+    codeTankJumper         = kChooserGames[game].jumper;
+    // ~3 s: covers the deferred card plug (~0.2 s) + the power-on scenario,
+    // mirroring the CodeTank Library's kCodeTankColdBootSeconds.
+    codeTankPendingWozRunAt = ImGui::GetTime() + 3.0;
 }
 
 // Open a pixel-art editor straight from the chooser. Plug the matching graphics
@@ -1527,24 +1611,109 @@ bool copyIniDefaultsFileTo(const char* basename, const std::string& destPath)
     return !ec;
 }
 
-bool loadSizeFile(int idx, int& w, int& h)
+// The OS-window sidecar grew from "W H" to "W H X Y M F" (position +
+// maximized + fullscreen) in juillet 2026. The extra fields are optional on
+// read, so a legacy 2-field file still loads (position untouched, windowed).
+struct OsWindowGeom {
+    int  w = 0, h = 0;
+    bool havePos = false;
+    int  x = 0, y = 0;
+    bool maximized = false;
+    bool fullscreen = false;
+};
+
+bool loadSizeFile(int idx, OsWindowGeom& g)
 {
     std::ifstream f(sizePathForPreset(idx));
     // Reject a corrupt sidecar: parse failure, non-positive, or absurd dims that
     // would be handed straight to glfwSetWindowSize. 16384 comfortably exceeds
     // any real display while ruling out garbage like "2000000000".
-    return bool(f && (f >> w >> h)) &&
-           w > 0 && h > 0 && w <= 16384 && h <= 16384;
+    if (!(f && (f >> g.w >> g.h)) ||
+        g.w <= 0 || g.h <= 0 || g.w > 16384 || g.h > 16384)
+        return false;
+    int x = 0, y = 0, m = 0, fs = 0;
+    if (f >> x >> y) {
+        // Same sanity bound as the size, but positions may be negative
+        // (left/upper monitor in a multi-head setup).
+        if (x >= -16384 && x <= 16384 && y >= -16384 && y <= 16384) {
+            g.havePos = true;
+            g.x = x;
+            g.y = y;
+        }
+        if (f >> m >> fs) {
+            g.maximized  = (m != 0);
+            g.fullscreen = (fs != 0);
+        }
+    }
+    return true;
 }
 
-bool saveSizeFile(int idx, int w, int h)
+bool saveSizeFile(int idx, const OsWindowGeom& g)
 {
     std::error_code ec;
     std::filesystem::create_directories("ini", ec);
     std::ofstream f(sizePathForPreset(idx));
     if (!f) return false;
-    f << w << ' ' << h << '\n';
+    f << g.w << ' ' << g.h;
+    // Factory defaults (pregenerate) carry no position — write the legacy
+    // 2-field form so restoring them leaves the OS free to place the window.
+    if (g.havePos) {
+        f << ' ' << g.x << ' ' << g.y << ' '
+          << (g.maximized ? 1 : 0) << ' ' << (g.fullscreen ? 1 : 0);
+    }
+    f << '\n';
     return bool(f);
+}
+
+#if !POM1_IS_WASM
+// Clamp a restored window rect so its title bar stays reachable on SOME
+// monitor. Guards against layouts saved on a since-unplugged second screen
+// (the classic "my window restored off-screen" trap). If the rect overlaps
+// no monitor's work area by at least kMinVisible px, snap it into the
+// primary monitor's work area.
+void clampToVisibleMonitor(GLFWwindow* /*window*/, OsWindowGeom& g)
+{
+    if (!g.havePos) return;
+    constexpr int kMinVisible = 64;
+    int count = 0;
+    GLFWmonitor** monitors = glfwGetMonitors(&count);
+    for (int i = 0; i < count; ++i) {
+        int mx = 0, my = 0, mw = 0, mh = 0;
+        glfwGetMonitorWorkarea(monitors[i], &mx, &my, &mw, &mh);
+        const int ovX = std::min(g.x + g.w, mx + mw) - std::max(g.x, mx);
+        const int ovY = std::min(g.y + g.h, my + mh) - std::max(g.y, my);
+        if (ovX >= kMinVisible && ovY >= kMinVisible)
+            return;                          // visible enough — keep as saved
+    }
+    GLFWmonitor* primary = glfwGetPrimaryMonitor();
+    if (!primary) { g.havePos = false; return; }
+    int mx = 0, my = 0, mw = 0, mh = 0;
+    glfwGetMonitorWorkarea(primary, &mx, &my, &mw, &mh);
+    g.w = std::min(g.w, mw);
+    g.h = std::min(g.h, mh);
+    g.x = mx + std::max(0, (mw - g.w) / 2);
+    g.y = my + std::max(0, (mh - g.h) / 2);
+}
+#endif
+
+// WASM: ini/ is mounted on IDBFS (see shell.html preRun) — writes only reach
+// IndexedDB after an FS.syncfs flush. Debounced JS-side so bursts of saves
+// coalesce into one IndexedDB transaction.
+void syncIniToIdbfs()
+{
+#if POM1_IS_WASM
+    EM_ASM({
+        if (typeof FS === 'undefined' || !FS.syncfs) return;
+        if (Module.pom1IniSyncPending) return;
+        Module.pom1IniSyncPending = true;
+        setTimeout(function() {
+            Module.pom1IniSyncPending = false;
+            FS.syncfs(false, function(err) {
+                if (err) console.warn('POM1 ini sync failed:', err);
+            });
+        }, 250);
+    });
+#endif
 }
 
 /** Flush Memory Map Bar geometry into ImGui .ini settings before SaveIniSettingsToDisk.
@@ -1615,11 +1784,28 @@ void MainWindow_ImGui::savePresetLayout(int idx)
         "Saved preset " + std::to_string(idx) + " → " + iniPath);
 #if !POM1_IS_WASM
     if (window) {
-        int w = 0, h = 0;
-        glfwGetWindowSize(window, &w, &h);
-        if (w > 0 && h > 0) saveSizeFile(idx, w, h);
+        // Persist the WINDOWED rect (windowedPos/Width members, tracked every
+        // frame while the window is neither maximized nor fullscreen — see
+        // render()) plus the maximized/fullscreen flags, so a maximized or
+        // fullscreen session restores with a sane underlying windowed rect.
+        OsWindowGeom g;
+        const bool maxed = glfwGetWindowAttrib(window, GLFW_MAXIMIZED) != 0;
+        if (!maxed && !fullscreen) {
+            glfwGetWindowSize(window, &g.w, &g.h);
+            glfwGetWindowPos(window, &g.x, &g.y);
+        } else {
+            g.w = windowedWidth;
+            g.h = windowedHeight;
+            g.x = windowedPosX;
+            g.y = windowedPosY;
+        }
+        g.havePos    = true;
+        g.maximized  = maxed;
+        g.fullscreen = fullscreen;
+        if (g.w > 0 && g.h > 0) saveSizeFile(idx, g);
     }
 #endif
+    syncIniToIdbfs();
 }
 
 bool MainWindow_ImGui::loadPresetLayout(int idx)
@@ -1639,9 +1825,40 @@ bool MainWindow_ImGui::loadPresetLayout(int idx)
         loadWindowFlags(idx);
 #if !POM1_IS_WASM
     if (window) {
-        int w = 0, h = 0;
-        if (loadSizeFile(idx, w, h)) {
-            glfwSetWindowSize(window, w, h);
+        OsWindowGeom g;
+        if (loadSizeFile(idx, g)) {
+            clampToVisibleMonitor(window, g);
+            const bool isFullscreenNow = glfwGetWindowMonitor(window) != nullptr;
+            if (g.fullscreen) {
+                // Restore straight into fullscreen; keep the windowed rect in
+                // the tracking members so leaving fullscreen lands right.
+                windowedWidth  = g.w;
+                windowedHeight = g.h;
+                if (g.havePos) { windowedPosX = g.x; windowedPosY = g.y; }
+                GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+                const GLFWvidmode* mode = monitor ? glfwGetVideoMode(monitor) : nullptr;
+                if (monitor && mode) {
+                    glfwSetWindowMonitor(window, monitor, 0, 0,
+                                         mode->width, mode->height, mode->refreshRate);
+                    fullscreen = true;
+                }
+            } else {
+                if (isFullscreenNow) {
+                    // Previous preset left us fullscreen — drop back to windowed.
+                    glfwSetWindowMonitor(window, nullptr,
+                                         g.havePos ? g.x : windowedPosX,
+                                         g.havePos ? g.y : windowedPosY,
+                                         g.w, g.h, 0);
+                    fullscreen = false;
+                } else {
+                    if (g.havePos) glfwSetWindowPos(window, g.x, g.y);
+                    glfwSetWindowSize(window, g.w, g.h);
+                }
+                if (g.maximized)
+                    glfwMaximizeWindow(window);
+                else if (glfwGetWindowAttrib(window, GLFW_MAXIMIZED))
+                    glfwRestoreWindow(window);
+            }
         }
     }
 #endif
@@ -1722,6 +1939,7 @@ MainWindow_ImGui::windowRegistry()
         { "SpecialThanks",        "Ports & acknowledgements",                  &MW::showSpecialThanks,      K::Info,        true  },
         { "HardwareReference",    "Hardware Reference",                        &MW::showHardwareReference,  K::Info,        true  },
         { "SoftwareReference",    "Software Reference",                        &MW::showSoftwareReference,  K::Info,        true  },
+        { "ShortcutsHelp",        "Keyboard Shortcuts",                        &MW::showShortcutsHelp,      K::Info,        true  },
         { "Welcome",              "Welcome",                                   &MW::showWelcome,            K::Info,        true  },
         { "WozJobsPhoto",         "Woz & Jobs (1976)",                         &MW::showWozJobsPhoto,       K::Info,        true  },
         { "WozJobsRectPhoto",     "Apple-1 Demo Session (1976)",               &MW::showWozJobsRectPhoto,   K::Info,        true  },
@@ -2013,7 +2231,10 @@ void MainWindow_ImGui::pregenerateMissingPresetLayouts()
                 ImVec2 fext = pom1::mainwindow::detail::computePresetLayoutExtent(fantasy, fallback);
                 if (fext.x > 0.0f) w = std::max(w, static_cast<int>(std::ceil(fext.x + 10.0f)));
                 if (fext.y > 0.0f) h = std::max(h, static_cast<int>(std::ceil(fext.y + 60.0f)));
-                saveSizeFile(idx, w, h);
+                OsWindowGeom g;
+                g.w = w;
+                g.h = h;   // no position: factory default leaves placement to the OS
+                saveSizeFile(idx, g);
             }
         }
         ++generated;
@@ -2023,4 +2244,209 @@ void MainWindow_ImGui::pregenerateMissingPresetLayouts()
             "Pre-generated " + std::to_string(generated) +
             " preset layout file(s) under ini/");
     }
+}
+
+// ---------------------------------------------------------------------------
+// Debounced layout autosave. ImGui raises io.WantSaveIniSettings a few seconds
+// after any window move/resize/collapse when io.IniFilename == nullptr; window
+// presence (the show* flags) never touches ImGui's settings, so it is tracked
+// by hashing the persistent-flag bitset. Either signal arms a short debounce,
+// then the active preset's whole profile is saved. This is what makes a crash
+// (desktop) or a tab close (WASM — the shutdown save never runs there) lose at
+// most a few seconds of arrangement instead of the whole session.
+// ---------------------------------------------------------------------------
+void MainWindow_ImGui::maybeAutosaveLayout(float deltaTime)
+{
+    if (activePresetIndex < 0 || showProfileChooser) return;
+    // Don't autosave while the deferred card plug (preset switch) is still in
+    // flight — the incoming preset's windows are still being raised.
+    if (pendingCardEnableFrames > 0) {
+        presenceHashValid_ = false;
+        layoutDirtyForSeconds_ = -1.0f;
+        return;
+    }
+
+    ImGuiIO& io = ImGui::GetIO();
+    bool dirty = false;
+    if (io.WantSaveIniSettings) {
+        io.WantSaveIniSettings = false;   // consumed — we own persistence
+        dirty = true;
+    }
+
+    // FNV-1a over the presence bitset — presence changes don't mark ImGui's
+    // settings dirty, so they need their own change detection.
+    uint64_t h = 1469598103934665603ull;
+    for (const auto& wf : persistentWindowFlags())
+        h = (h ^ (*wf.second ? 0x9Eu : 0x3Bu)) * 1099511628211ull;
+    if (!presenceHashValid_) {
+        lastPresenceHash_ = h;
+        presenceHashValid_ = true;
+    } else if (h != lastPresenceHash_) {
+        lastPresenceHash_ = h;
+        dirty = true;
+    }
+
+    constexpr float kAutosaveDebounceSeconds = 2.0f;
+    if (dirty)
+        layoutDirtyForSeconds_ = 0.0f;
+    else if (layoutDirtyForSeconds_ >= 0.0f)
+        layoutDirtyForSeconds_ += deltaTime;
+
+    if (layoutDirtyForSeconds_ >= kAutosaveDebounceSeconds) {
+        layoutDirtyForSeconds_ = -1.0f;
+        savePresetLayout(activePresetIndex);
+    }
+}
+
+void MainWindow_ImGui::saveActivePresetLayoutNow()
+{
+    if (activePresetIndex >= 0)
+        savePresetLayout(activePresetIndex);
+    saveUiSettings();
+    layoutDirtyForSeconds_ = -1.0f;
+}
+
+// ---------------------------------------------------------------------------
+// Global UI settings — ini/ui.settings. Session-wide (NOT per preset): theme,
+// HiDPI mode + manual scale. Tiny key=value file, rewritten on every change.
+// On WASM it lives under the IDBFS ini/ mount like the preset layouts.
+// ---------------------------------------------------------------------------
+void MainWindow_ImGui::applyUiTheme(int theme)
+{
+    uiTheme_ = theme < 0 ? 0 : (theme > 2 ? 2 : theme);
+    ImGuiStyle& style = ImGui::GetStyle();
+    switch (uiTheme_) {
+    case 1:
+        ImGui::StyleColorsLight();
+        style.FrameBorderSize = 0.0f;
+        break;
+    case 2: {
+        // High contrast: dark base pushed to pure black/white with visible
+        // borders — for low-vision use, not aesthetics.
+        ImGui::StyleColorsDark();
+        ImVec4* c = style.Colors;
+        c[ImGuiCol_Text]           = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
+        c[ImGuiCol_TextDisabled]   = ImVec4(0.80f, 0.80f, 0.80f, 1.00f);
+        c[ImGuiCol_WindowBg]       = ImVec4(0.00f, 0.00f, 0.00f, 1.00f);
+        c[ImGuiCol_PopupBg]        = ImVec4(0.00f, 0.00f, 0.00f, 1.00f);
+        c[ImGuiCol_Border]         = ImVec4(1.00f, 1.00f, 1.00f, 0.80f);
+        c[ImGuiCol_FrameBg]        = ImVec4(0.10f, 0.10f, 0.10f, 1.00f);
+        c[ImGuiCol_FrameBgHovered] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
+        c[ImGuiCol_FrameBgActive]  = ImVec4(0.35f, 0.35f, 0.35f, 1.00f);
+        c[ImGuiCol_TitleBg]        = ImVec4(0.00f, 0.00f, 0.00f, 1.00f);
+        c[ImGuiCol_TitleBgActive]  = ImVec4(0.15f, 0.15f, 0.60f, 1.00f);
+        c[ImGuiCol_MenuBarBg]      = ImVec4(0.05f, 0.05f, 0.05f, 1.00f);
+        c[ImGuiCol_CheckMark]      = ImVec4(1.00f, 1.00f, 0.00f, 1.00f);
+        c[ImGuiCol_Button]         = ImVec4(0.15f, 0.15f, 0.15f, 1.00f);
+        c[ImGuiCol_ButtonHovered]  = ImVec4(0.90f, 0.90f, 0.00f, 1.00f);
+        c[ImGuiCol_ButtonActive]   = ImVec4(1.00f, 1.00f, 0.30f, 1.00f);
+        c[ImGuiCol_NavCursor]      = ImVec4(1.00f, 1.00f, 0.00f, 1.00f);
+        style.FrameBorderSize = 1.0f;
+        break;
+    }
+    default:
+        ImGui::StyleColorsDark();
+        style.FrameBorderSize = 0.0f;
+        break;
+    }
+}
+
+void MainWindow_ImGui::loadUiSettings()
+{
+    std::ifstream f("ini/ui.settings");
+    if (!f) { applyUiTheme(uiTheme_); return; }
+    std::string line;
+    int   theme = uiTheme_;
+    int   hidpiAuto = uiHiDpiAuto_ ? 1 : 0;
+    float hidpiScale = uiHiDpiManualScale_;
+    while (std::getline(f, line)) {
+        const auto eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        const std::string key = line.substr(0, eq);
+        const std::string val = line.substr(eq + 1);
+        try {
+            if      (key == "theme")       theme      = std::stoi(val);
+            else if (key == "hidpi_auto")  hidpiAuto  = std::stoi(val);
+            else if (key == "hidpi_scale") hidpiScale = std::stof(val);
+        } catch (...) { /* ignore malformed line */ }
+    }
+    applyUiTheme(theme);
+    uiHiDpiAuto_ = (hidpiAuto != 0);
+    if (hidpiScale >= 0.75f && hidpiScale <= 3.0f)
+        uiHiDpiManualScale_ = hidpiScale;
+    if (!uiHiDpiAuto_) {
+        ImGui::GetIO().FontGlobalScale = uiHiDpiManualScale_;
+        uiHiDpiInit_ = true;   // don't let the dialog re-latch over the file
+    }
+}
+
+void MainWindow_ImGui::saveUiSettings()
+{
+    std::error_code ec;
+    std::filesystem::create_directories("ini", ec);
+    std::ofstream f("ini/ui.settings");
+    if (!f) return;
+    f << "theme=" << uiTheme_ << '\n'
+      << "hidpi_auto=" << (uiHiDpiAuto_ ? 1 : 0) << '\n'
+      << "hidpi_scale=" << uiHiDpiManualScale_ << '\n';
+    f.close();
+    syncIniToIdbfs();
+}
+
+// ---------------------------------------------------------------------------
+// Startup profile preference — ini/startup. Written by the Profile Chooser's
+// "always start with this profile" checkbox (or the Settings menu toggle);
+// read by render()'s boot gate. CLI --preset always wins over it.
+// ---------------------------------------------------------------------------
+bool MainWindow_ImGui::readStartupPreset(int& presetIndex)
+{
+    std::ifstream f("ini/startup");
+    if (!f) return false;
+    std::string line;
+    int autoStart = 0, preset = -1;
+    while (std::getline(f, line)) {
+        const auto eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        const std::string key = line.substr(0, eq);
+        const std::string val = line.substr(eq + 1);
+        try {
+            if      (key == "auto")   autoStart = std::stoi(val);
+            else if (key == "preset") preset    = std::stoi(val);
+        } catch (...) { /* ignore malformed line */ }
+    }
+    if (autoStart != 1 || preset < 0 || preset >= kMachinePresetCount)
+        return false;
+    presetIndex = preset;
+    return true;
+}
+
+void MainWindow_ImGui::writeStartupPreset(int presetIndex)
+{
+    std::error_code ec;
+    if (presetIndex < 0) {
+        std::filesystem::remove("ini/startup", ec);
+    } else {
+        std::filesystem::create_directories("ini", ec);
+        std::ofstream f("ini/startup");
+        if (f) f << "auto=1\npreset=" << presetIndex << '\n';
+    }
+    syncIniToIdbfs();
+}
+
+// ---------------------------------------------------------------------------
+// UI keyboard-navigation mode (F10). While ON, ImGui owns the keyboard
+// (Tab / arrows / Space / Enter navigate the UI) and the Apple-1 receives
+// nothing; F10 toggles back. The status bar shows "UI NAV" while active.
+// ---------------------------------------------------------------------------
+void MainWindow_ImGui::setUiNavMode(bool on)
+{
+    uiNavMode_ = on;
+    ImGuiIO& io = ImGui::GetIO();
+    if (on)
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    else
+        io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableKeyboard;
+    setStatusMessage(on
+        ? "UI keyboard navigation ON (F10 to return keys to the Apple-1)"
+        : "Keyboard back to the Apple-1", 3.0f);
 }

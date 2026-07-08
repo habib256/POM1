@@ -101,6 +101,7 @@ LIB_SOKOBAN       = ROOT / "dev" / "lib" / "games" / "sokoban"
 LIB_GEN2          = ROOT / "dev" / "lib" / "gen2"
 LIB_CHESS         = ROOT / "dev" / "lib" / "games" / "chess"
 LIB_ROGUE         = ROOT / "dev" / "lib" / "games" / "rogue"
+LIB_TEXT40        = ROOT / "dev" / "lib" / "text40"
 
 # --- ARCADE sources (menu + Galaga + Sokoban + Snake lower; Rogue upper) ---
 MENU_ASM          = CT / "game1_menu" / "codetank_menu.asm"
@@ -205,7 +206,7 @@ def _common_includes(asm: pathlib.Path) -> list[str]:
     return [
         "-I", str(LIB_APPLE1), "-I", str(LIB_M6502), "-I", str(LIB_TMS),
         "-I", str(LIB_SOKOBAN), "-I", str(LIB_GEN2), "-I", str(LIB_CHESS),
-        "-I", str(LIB_ROGUE), "-I", str(asm.parent),
+        "-I", str(LIB_ROGUE), "-I", str(LIB_TEXT40), "-I", str(asm.parent),
     ]
 
 

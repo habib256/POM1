@@ -4,6 +4,10 @@
 //   - CodeTank cannot exist standalone: enabling it auto-plugs TMS9918.
 //   - Unplugging TMS9918 cascade-unplugs CodeTank.
 //   - Unplugging CodeTank does NOT touch TMS9918 (the host is independent).
+//   - CodeTank ↔ microSD are mutually exclusive (the microSD EEPROM decodes
+//     Applesoft Lite at $6000-$7FFF, inside CodeTank's $4000-$7FFF window);
+//     the TMS9918 host survives the eviction, and the IEC add-on cascades
+//     off with its microSD host.
 //
 // Run from CMAKE_SOURCE_DIR so Memory's constructor finds roms/.
 
@@ -88,6 +92,41 @@ int main()
         mem.setCodeTankEnabled(true);  // no-op
         mustBeTrue(mem.isTMS9918Enabled() && mem.isCodeTankEnabled(),
                    "double-enable CodeTank must remain consistent");
+    }
+
+    // 5. Plugging CodeTank evicts the microSD (its Applesoft Lite EEPROM
+    //    window $6000-$7FFF sits inside CodeTank's $4000-$7FFF) and
+    //    cascade-drops the IEC add-on riding on the microSD's VIA.
+    {
+        Memory mem;
+        mem.setIECCardEnabled(true);   // cascade-plugs microSD
+        mustBeTrue(mem.isMicroSDEnabled() && mem.isIECCardEnabled(),
+                   "setup: microSD + IEC plugged");
+
+        mem.setCodeTankEnabled(true);
+        mustBeTrue(mem.isCodeTankEnabled() && mem.isTMS9918Enabled(),
+                   "setCodeTankEnabled(true) must plug CodeTank + TMS9918 host");
+        mustBeTrue(!mem.isMicroSDEnabled(),
+                   "setCodeTankEnabled(true) must evict the microSD ($6000-$7FFF overlap)");
+        mustBeTrue(!mem.isIECCardEnabled(),
+                   "microSD eviction must cascade-drop the IEC add-on");
+    }
+
+    // 6. Symmetric: plugging the microSD evicts the CodeTank daughterboard
+    //    but leaves its TMS9918 host on the bus.
+    {
+        Memory mem;
+        mem.setCodeTankEnabled(true);  // also auto-plugs TMS9918
+        mustBeTrue(mem.isCodeTankEnabled() && mem.isTMS9918Enabled(),
+                   "setup: CodeTank + TMS9918 plugged");
+
+        mem.setMicroSDEnabled(true);
+        mustBeTrue(mem.isMicroSDEnabled(),
+                   "setMicroSDEnabled(true) must enable the microSD");
+        mustBeTrue(!mem.isCodeTankEnabled(),
+                   "setMicroSDEnabled(true) must evict the CodeTank daughterboard");
+        mustBeTrue(mem.isTMS9918Enabled(),
+                   "microSD eviction must NOT touch the TMS9918 host");
     }
 
     std::printf("codetank_tms9918_dependency: OK\n");

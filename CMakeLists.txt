@@ -484,10 +484,14 @@ if(EMSCRIPTEN)
         "--preload-file ${PRELOAD_DIR}/build-wasm/cc65/include@cc65/include"
         "--preload-file ${PRELOAD_DIR}/build-wasm/cc65/lib@cc65/lib"
         "--shell-file ${SHELL_FILE}"
-        "-s EXPORTED_FUNCTIONS=[${POM1_MAIN_EXPORT}_pom1_fillAudioBuffer,_pom1_paste_text,_malloc,_free]"
+        "-s EXPORTED_FUNCTIONS=[${POM1_MAIN_EXPORT}_pom1_fillAudioBuffer,_pom1_paste_text,_pom1_save_layout_now,_malloc,_free]"
         # FS is exported so the cc65 glue (shell.html) can read the preloaded
         # dev/ files out of POM1's MEMFS and feed them to the cc65 tool modules.
         "-s EXPORTED_RUNTIME_METHODS=['ccall','HEAPF32','FS']"
+        # IDBFS backs the ini/ mount (per-preset window layouts, ui.settings,
+        # startup pref) so profiles survive page reloads — shell.html mounts it
+        # in preRun and savePresetLayout flushes with FS.syncfs.
+        "-lidbfs.js"
     )
     # Join list into a single space-separated string for linker flags
     list(JOIN EM_LINK_FLAGS " " EM_LINK_FLAGS_STR)

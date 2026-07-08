@@ -52,7 +52,7 @@ Lookup tables for the GEN2 HGR framebuffer (passive RAM-mapped at `$2000-$3FFF`,
   HGR C slice (`dev/lib/gen2c/gen2_bbfont.inc`, bit 0 = left) *and* the TMS9918
   pattern tables (`dev/lib/tms9918/bbfont_tms.inc` + `font_hud8x8.inc`,
   bit 7 = left, the bit-reverse) from it — edit here, re-run the tool.
-- **`bbfont_subset.inc`** — 38-glyph subset of the same font, hand-curated
+- **`bbfont_subset.inc`** — 39-glyph subset of the same font, hand-curated
   for the HGR Sokoban HUD/title (digits, "MOVES:", "PUSHES:", "SOKOBAN",
   letters). Label: `HGR_Sokoban_bbfont`. Used by
   `sketchs/gen2/game_sokoban/`. Drop-in compatible with `bbfont_cp437.inc`
@@ -90,7 +90,7 @@ provides (real names — `.import` them or `.include` the file, then `JSR`).
 | `subbyte4.inc` | tables `sb4_byte_off`, `sb4_mask1`, `sb4_mask2` (7-phase, 4-px blocks) |
 | `subbyte_fill.asm` | `subbyte_fill_4` (ZP `sb_ptr_lo/sb_ptr_hi`, `tmp`, `tmp2`) |
 | `bbfont_cp437.inc` | `HGR_BBFont` + `HGR_BBFONT_BYTES_PER_GLYPH` (8) / `HGR_BBFONT_GLYPH_COUNT` (256) |
-| `bbfont_subset.inc` | `HGR_Sokoban_bbfont` + `BBFONT_SOKOBAN_BYTES_PER_GLYPH` (8) / `BBFONT_SOKOBAN_GLYPH_COUNT` (38) |
+| `bbfont_subset.inc` | `HGR_Sokoban_bbfont` + `BBFONT_SOKOBAN_BYTES_PER_GLYPH` (8) / `BBFONT_SOKOBAN_GLYPH_COUNT` (39) |
 | `smiley.inc` | `hgr_smiley28_font` + `HGR_SMILEY_BYTES_PER_GLYPH` (112) / `HGR_SMILEY_GLYPH_COUNT` (6) |
 
 ## Sub-byte rendering quick reference

@@ -24,6 +24,7 @@ const MainWindow_ImGui::Shortcut MainWindow_ImGui::shortcuts[] = {
     { GLFW_KEY_F1, 0,                "F1",       nullptr }, // toggle showMemoryViewer
     { GLFW_KEY_F2, 0,                "F2",       nullptr }, // toggle showMemoryMapGrid
     { GLFW_KEY_F3, 0,                "F3",       nullptr }, // toggle showDebugger
+    { GLFW_KEY_F10, 0,               "F10",      nullptr }, // toggle UI keyboard-navigation mode
 };
 const int MainWindow_ImGui::shortcutCount = sizeof(shortcuts) / sizeof(shortcuts[0]);
 
@@ -43,6 +44,9 @@ void MainWindow_ImGui::handleGlfwChar(unsigned int codepoint)
     nextCharIsRepeat = false;
 
     if (ImGui::GetIO().WantTextInput) return;
+    // UI keyboard-navigation mode (F10): ImGui owns every key; nothing
+    // reaches the Apple-1 until the user toggles back.
+    if (uiNavMode_) return;
     // The SID Tracker plays notes off the PC keyboard while focused — don't also
     // send those keys to the Apple-1.
     if (sidTrackerEditor && sidTrackerEditor->wantsKeyboard()) return;
@@ -83,6 +87,8 @@ void MainWindow_ImGui::handleGlfwKey(int key, int scancode, int action, int mods
                 showMemoryMapGrid = !showMemoryMapGrid;
             } else if (key == GLFW_KEY_F3) {
                 showDebugger = !showDebugger;
+            } else if (key == GLFW_KEY_F10) {
+                setUiNavMode(!uiNavMode_);   // accessibility: keyboard drives the UI
             }
             return;
         }
@@ -91,6 +97,7 @@ void MainWindow_ImGui::handleGlfwKey(int key, int scancode, int action, int mods
     // Non-printable Apple-1 keys (Enter / Backspace / Escape) do not produce a
     // char callback, so queue them here — gated on autorepeat for REPEAT events.
     if (ImGui::GetIO().WantTextInput) return;
+    if (uiNavMode_) return;   // F10 mode: keys navigate the UI, not the Apple-1
     // Same guard as handleGlfwChar: while the SID Tracker owns the keyboard,
     // don't also forward Enter/Backspace/Escape to the Apple-1.
     if (sidTrackerEditor && sidTrackerEditor->wantsKeyboard()) return;

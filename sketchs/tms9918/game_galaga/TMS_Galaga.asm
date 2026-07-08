@@ -288,15 +288,10 @@ wave:           .res 1
 prng_lo:        .res 1
 prng_hi:        .res 1
 
-key_left_code:  .res 1
-key_right_code: .res 1
-key_stop_code:  .res 1
-key_fire_code:  .res 1
-
 ; --- Player movement (direct direction set on press) ---
 ; Apple-1 keyboards have no key-release event, so each direction key
 ; flips player_dir to that direction; the ship moves continuously
-; until the player presses the opposite direction (reverse) or S
+; until the player presses the opposite direction (reverse) or K
 ; (full stop + aim shot).
 ;   $FF = moving left, $01 = moving right, $00 = stopped
 player_dir:     .res 1
@@ -342,50 +337,25 @@ main:
         LDA #<str_title
         LDX #>str_title
         JSR print_str_ax
-        LDA #<str_layout
-        LDX #>str_layout
-        JSR print_str_ax
 
         ; Clear hidden-boss cheat flag (BSS is uninitialised on Apple-1
         ; cold boot — RAM may be noise per silicon-strict reset model).
         LDA #0
         STA boss_cheat
-@kb_wait:
+        ; Any key starts. Controls are fixed IJKL (same physical keys
+        ; on QWERTY and AZERTY): J = left, L = right, K = stop.
         JSR title_wait_key
         PHA
         EOR prng_lo
         STA prng_lo
         PLA
-        CMP #'1'
-        BEQ @qwerty
-        CMP #'2'
-        BEQ @azerty
         CMP #'B'                ; hidden code — jump straight to wave 11
-        BEQ @boss_cheat
-        JMP @kb_wait
-@boss_cheat:
+        BNE @begin
         ; Secret cheat: 'B' at title spawns the player at SUPER_WAVE_1
-        ; (single super boss). Defaults to AZERTY (Q=left, D=right) —
-        ; French keyboard, jumps to @azerty.
+        ; (single super boss).
         LDA #1
         STA boss_cheat
-        JMP @azerty
-@qwerty:
-        LDA #'A'
-        STA key_left_code
-        LDA #'D'
-        STA key_right_code
-        JMP @begin
-@azerty:
-        LDA #'Q'
-        STA key_left_code
-        LDA #'D'
-        STA key_right_code
 @begin:
-        LDA #'S'                ; S = stop (both layouts)
-        STA key_stop_code
-        LDA #' '                ; space = fire (same on both layouts)
-        STA key_fire_code
         LDA #$5B                ; non-zero seed init (key timing also mixes in)
         STA prng_lo
         LDA #$A3
@@ -528,7 +498,7 @@ play_loop:
         JSR print_str_ax
         JSR wait_key
         ; Full restart: hand back to the title screen so the player can
-        ; switch keyboard layout, re-read the help, etc.
+        ; re-read the help, retry the boss code, etc.
         JMP main
 
 
@@ -3396,34 +3366,34 @@ draw_title_tms:
         LDA #C_P
         STA VDP_DATA
 
-        ; --- Keyboard layout prompt ---
-        ; "SELECT KEYBOARD" - row 17 col 8 -> $1A28
+        ; --- Controls hint ---
+        ; "CONTROLS" - row 17 col 12 -> $1A2C
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
         LDA #<title_select_tms
         STA sptr_lo
         LDA #>title_select_tms
         STA sptr_hi
-        LDA #$28
+        LDA #$2C
         LDX #$5A
         JSR draw_str_tms
 
-        ; "1 QWERTY (A D S)" - row 19 col 8 -> $1A68
+        ; "MOVE ( J L )" - row 19 col 10 -> $1A6A
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
-        LDA #<title_qwerty_tms
+        LDA #<title_move_tms
         STA sptr_lo
-        LDA #>title_qwerty_tms
+        LDA #>title_move_tms
         STA sptr_hi
-        LDA #$68
+        LDA #$6A
         LDX #$5A
         JSR draw_str_tms
 
-        ; "2 AZERTY (Q D S)" - row 20 col 8 -> $1A88
+        ; "STOP ( K )" - row 20 col 11 -> $1A8B
         JSR     tms9918_pad18   ; +18c silicon-strict pad18-v4 (before LDA #imm bridge)
-        LDA #<title_azerty_tms
+        LDA #<title_stop_tms
         STA sptr_lo
-        LDA #>title_azerty_tms
+        LDA #>title_stop_tms
         STA sptr_hi
-        LDA #$88
+        LDA #$8B
         LDX #$5A
         JSR draw_str_tms
 
@@ -4455,13 +4425,13 @@ delay_and_input:
 
 
 handle_key:
-        CMP key_left_code
+        CMP #'J'                ; left
         BEQ @left
-        CMP key_right_code
+        CMP #'L'                ; right
         BEQ @right
-        CMP key_stop_code
+        CMP #'K'                ; stop (+ aim-shot)
         BEQ @stop
-        CMP key_fire_code
+        CMP #' '                ; space = fire
         BEQ @fire
         RTS
 @left:
@@ -4473,7 +4443,7 @@ handle_key:
         STA player_dir
         RTS
 @stop:
-        ; S = full stop AND aim-shot (bypass cooldown)
+        ; K = full stop AND aim-shot (bypass cooldown)
         LDA #$00
         STA player_dir
         STA fire_cd
@@ -5059,8 +5029,8 @@ hud_patterns:
         .byte $38, $44, $44, $44, $54, $48, $34, $00
         ; 88 'W'
         .byte $44, $44, $44, $54, $54, $6C, $44, $00
-        ; 89 'Z'
-        .byte $7C, $04, $08, $10, $20, $40, $7C, $00
+        ; 89 'J' (was 'Z' — freed when the AZERTY prompt was removed)
+        .byte $1C, $08, $08, $08, $08, $48, $30, $00
         ; 90 'C'
         .byte $38, $44, $40, $40, $40, $44, $38, $00
         ; 91 'X'
@@ -5081,7 +5051,7 @@ hud_patterns:
 ; Char map (lifted from snake/sokoban):
 ;   56=M 57=V 58=: 59..68='0'..'9' 69=S 70=O 71=K 72=B 73=A 74=N
 ;   75=P 76=R 77=E 78=L 79=space 80=G 81=H 82=T 83=D 84=Y 85=I
-;   86=U 87=Q 88=W 89=Z 90=C 91=X 92=F 93=( 94=)
+;   86=U 87=Q 88=W 89=J 90=C 91=X 92=F 93=( 94=)
 title_galaga:
         ; A 1 G A L A G A   (8 chars)
         .byte 73,60,80,73,78,73,80,73, $FF
@@ -5095,14 +5065,14 @@ title_hp_tms:
         ; H P _ 2 _ 4 _ 6
         .byte 81,75,79,61,79,63,79,65, $FF
 title_select_tms:
-        ; S E L E C T _ K E Y B O A R D
-        .byte 69,77,78,77,90,82,79,71,77,84,72,70,73,76,83, $FF
-title_qwerty_tms:
-        ; 1 _ Q W E R T Y _ ( A _ D _ S )
-        .byte 60,79,87,88,77,76,82,84,79,93,73,79,83,79,69,94, $FF
-title_azerty_tms:
-        ; 2 _ A Z E R T Y _ ( Q _ D _ S )
-        .byte 61,79,73,89,77,76,82,84,79,93,87,79,83,79,69,94, $FF
+        ; C O N T R O L S
+        .byte 90,70,74,82,76,70,78,69, $FF
+title_move_tms:
+        ; M O V E _ ( J _ L )
+        .byte 56,70,57,77,79,93,89,79,78,94, $FF
+title_stop_tms:
+        ; S T O P _ ( K )
+        .byte 69,82,70,75,79,93,71,94, $FF
 title_keys_tms:
         ; S P A C E _ F I R E
         .byte 69,75,73,90,77,79,92,85,76,77, $FF
@@ -5143,10 +5113,8 @@ title_help_bomb:
 
 ; --- Apple-1 text strings (ASCII; print_str_ax sets bit 7) ---
 str_title:
-        .byte $0D, " A1GALAGA  V.ARNAUD 2026", $0D, 0
-
-str_layout:
-        .byte $0D, " 1 QWERTY  2 AZERTY", $0D, 0
+        .byte $0D, " A1GALAGA  V.ARNAUD 2026", $0D
+        .byte " J LEFT  L RIGHT  K STOP  SPC FIRE", $0D, 0
 
 str_over:
         .byte $0D, " GAME OVER -- KEY", $0D, 0

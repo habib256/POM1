@@ -1,8 +1,9 @@
 ; ============================================================================
 ; menu.asm -- numbered menu selector with bounds + echo
 ; ============================================================================
-; Promoted from inline copies in the CodeTank menus (now under
-; dev/projects/codetank/) and the layout-select pattern in every game.
+; Promoted from the inline wait/dispatch loops of the CodeTank menus,
+; which now .include this file (dev/projects/codetank/game1_menu/ +
+; demos_menu/ — see the README's Adoption section).
 ;
 ;   menu_select -- block on a digit in [min..max], echo it, return.
 ;     Inputs:   A = min digit (e.g. '1')

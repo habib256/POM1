@@ -77,14 +77,12 @@ dir_dy:        .res 1   ; $11  (signed -1, 0, 1)
 dir_dx:        .res 1   ; $12
 render_r:      .res 1   ; $13
 render_c:      .res 1   ; $14
-key_up_code:   .res 1   ; $15  'W' or 'Z'
-key_left_code: .res 1   ; $16  'A' or 'Q'
 ; --- Undo state + move counter ---
-prev_player_row: .res 1 ; $17  player_row before the last successful move
-prev_player_col: .res 1 ; $18
-undo_avail:    .res 1   ; $19  1 = execute_undo is valid, 0 = no move to undo
-had_push:      .res 1   ; $1A  1 = last move was a push (box needs undo too)
-moves:         .res 1   ; $1B  move counter (0..255, saturates at $FF for display)
+prev_player_row: .res 1 ; $15  player_row before the last successful move
+prev_player_col: .res 1 ; $16
+undo_avail:    .res 1   ; $17  1 = execute_undo is valid, 0 = no move to undo
+had_push:      .res 1   ; $18  1 = last move was a push (box needs undo too)
+moves:         .res 1   ; $19  move counter (0..255, saturates at $FF for display)
 
 ; --- Code at $0280 ---
 .code
@@ -97,29 +95,7 @@ main:
         LDX #>str_title
         JSR print_str_ax
 
-        ; Keyboard layout prompt
-        LDA #<str_layout
-        LDX #>str_layout
-        JSR print_str_ax
-@layout_wait:
-        JSR wait_key
-        CMP #'1'
-        BEQ @qwerty
-        CMP #'2'
-        BEQ @azerty
-        JMP @layout_wait
-@qwerty:
-        LDA #'W'
-        STA key_up_code
-        LDA #'A'
-        STA key_left_code
-        JMP @start
-@azerty:
-        LDA #'Z'
-        STA key_up_code
-        LDA #'Q'
-        STA key_left_code
-@start:
+        ; Controls: IJKL (same physical keys on QWERTY and AZERTY)
         LDA #$00
         STA level_idx
 
@@ -134,13 +110,13 @@ game_loop:
 
 move_loop:
         JSR wait_key
-        CMP key_up_code
+        CMP #'I'
         BEQ key_up
-        CMP #'S'
+        CMP #'K'
         BEQ key_down
-        CMP key_left_code
+        CMP #'J'
         BEQ key_left
-        CMP #'D'
+        CMP #'L'
         BEQ key_right
         CMP #'R'
         BEQ key_reset
@@ -642,14 +618,11 @@ str_title:
         .byte $0D, " SOKOBAN 4K 45LV MICROBAN", $0D
         .byte " V.ARNAUD 26  SKINNER", $0D, 0
 
-str_layout:
-        .byte $0D, " 1=QWERTY  2=AZERTY", $0D, 0
-
 str_moves_prefix:
         .byte $0D, " MV:", 0
 
 str_footer:
-        .byte " U R N", $0D, 0
+        .byte " IJKL U R N", $0D, 0
 
 str_win:
         .byte $0D, " WIN! KEY", $0D, 0
