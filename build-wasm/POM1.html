@@ -102,6 +102,26 @@
 
   var Module = {
     canvas: document.getElementById('canvas'),
+    // Persistance des profils : ini/ (layouts par preset + ui.settings +
+    // startup) est monté sur IDBFS (IndexedDB). Le chargement initial est
+    // asynchrone — addRunDependency retient main() jusqu'à ce que les
+    // fichiers sauvés soient visibles, pour que pregenerateMissingPresetLayouts
+    // voie les versions utilisateur avant de semer les défauts d'usine.
+    // Les écritures sont poussées par FS.syncfs(false) côté C++
+    // (MainWindow_Presets.cpp) et sur pagehide/visibilitychange ci-dessous.
+    preRun: [function() {
+      try {
+        try { FS.mkdir('/ini'); } catch (_) {}   // may already exist
+        FS.mount(FS.filesystems.IDBFS, {}, '/ini');
+        addRunDependency('pom1-idbfs-load');
+        FS.syncfs(true, function(err) {
+          if (err) console.warn('POM1: IDBFS initial sync failed:', err);
+          removeRunDependency('pom1-idbfs-load');
+        });
+      } catch (e) {
+        console.warn('POM1: IDBFS unavailable, layouts will not survive reloads:', e);
+      }
+    }],
     print:    (text) => { console.log(text); },
     printErr: (text) => { console.warn(text); },
     setStatus: (text) => {
@@ -140,6 +160,27 @@
         event.preventDefault();
       }
     } catch (_) {}
+  });
+
+  // Flush du layout vers IndexedDB quand l'onglet part en arrière-plan ou se
+  // ferme : la boucle Emscripten ne retourne jamais, donc la sauvegarde de
+  // fermeture du desktop n'existe pas ici. pagehide est l'événement fiable
+  // (beforeunload ne l'est pas sur mobile) ; visibilitychange:hidden couvre
+  // le changement d'onglet. Best-effort — l'autosave débouncé côté C++ a
+  // normalement déjà tout écrit.
+  function pom1FlushLayout() {
+    try {
+      if (window.Module && window.Module.ccall)
+        window.Module.ccall('pom1_save_layout_now', null, [], []);
+    } catch (_) {}
+    try {
+      if (window.Module && window.Module.FS)
+        window.Module.FS.syncfs(false, function(){});
+    } catch (_) {}
+  }
+  window.addEventListener('pagehide', pom1FlushLayout);
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'hidden') pom1FlushLayout();
   });
 
   window.addEventListener('unhandledrejection', event => {
