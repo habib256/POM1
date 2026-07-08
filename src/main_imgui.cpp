@@ -553,7 +553,8 @@ static int runHeadless(pom1::CliPlan& plan)
         emu.setRamWriteTrap(true);
         needPowerOnReset = true;
         pom1::log().info("RAMTRAP", "read-before-write trap ARMED (--ram-trap): "
-                                    "logging uninitialised RAM reads in [0,$2000)");
+                                    "logging uninitialised RAM reads in [0,$2000) + "
+                                    "[$E000,$F000) (Parmigiani high RAM bank)");
     }
     if (needPowerOnReset)
         emu.hardReset(/*animateBoot=*/false);

@@ -607,14 +607,26 @@ private :
     bool systemRamNoiseOnReset = false; // see setSystemRamNoiseOnReset()
     // Read-before-write trap state (see setRamPoison / setRamWriteTrap).
     static constexpr uint16_t kRamTrapEnd = 0x2000;  // watch ZP/stack/BSS/user RAM
+    // Also watch the Parmigiani dual-bank HIGH RAM ($E000-$EFFF). On real P-LAB
+    // Apple-1s that region is RAM (power-on garbage); POM1 pre-seeds it from
+    // basic.rom, so a program that reads its high-bank BSS (e.g. TMS_Rogue's
+    // map_buffer / monster pools at $E000+) before writing it gets deterministic
+    // BASIC bytes here but garbage on silicon — the "works on POM1, breaks on
+    // silicon" mask (TMS9918 cause #2). Neither poison nor the low-window trap
+    // covered it. loadBasic() seeds via direct mem[] writes (not memWrite), so
+    // the BASIC seed never marks these cells "written" for the trap.
+    static constexpr uint16_t kRamTrapHiStart = 0xE000;
+    static constexpr uint16_t kRamTrapHiEnd   = 0xF000;
+    static constexpr bool ramTrapWatches(uint16_t a)
+    { return a < kRamTrapEnd || (a >= kRamTrapHiStart && a < kRamTrapHiEnd); }
     bool     systemRamPoison    = false;
     uint8_t  systemRamPoisonByte = 0xA5;
     bool     ramWriteTrap       = false;
     uint64_t ramTrapHitCount    = 0;
-    std::vector<uint8_t> ramWritten;   // 1 = written this run; sized lazily to kRamTrapEnd
+    std::vector<uint8_t> ramWritten;   // 1 = written this run; sized to 64K, gated by ramTrapWatches()
     std::vector<uint8_t> ramTrapLogged;// 1 = already logged (one line per address)
     void resetRamWriteTrap();
-    void noteRamWriteForTrap(uint16_t address) { if (address < kRamTrapEnd && !ramWritten.empty()) ramWritten[address] = 1; }
+    void noteRamWriteForTrap(uint16_t address) { if (ramTrapWatches(address) && !ramWritten.empty()) ramWritten[address] = 1; }
     void checkRamReadTrap(uint16_t address);
     bool hgrFramebufferAttached = false;  // GEN2 HGR card supplies RAM at $2000-$3FFF
     // GEN2 HGR cold-boot fidelity — four independent knobs (Silicon Strict

@@ -679,8 +679,10 @@ void Memory::initMemory(){
 void Memory::resetRamWriteTrap()
 {
     if (ramWriteTrap) {
-        ramWritten.assign(kRamTrapEnd, 0);
-        ramTrapLogged.assign(kRamTrapEnd, 0);
+        // Sized to the full address space so the high-bank window ($E000-$EFFF)
+        // is directly indexable; ramTrapWatches() gates which cells are live.
+        ramWritten.assign(0x10000, 0);
+        ramTrapLogged.assign(0x10000, 0);
     } else {
         ramWritten.clear();
         ramTrapLogged.clear();
@@ -690,7 +692,7 @@ void Memory::resetRamWriteTrap()
 
 void Memory::checkRamReadTrap(uint16_t address)
 {
-    if (address >= kRamTrapEnd || ramWritten.empty()) return;
+    if (!ramTrapWatches(address) || ramWritten.empty()) return;
     if (ramWritten[address] || ramTrapLogged[address]) return;
     ramTrapLogged[address] = 1;
     ++ramTrapHitCount;
@@ -1315,8 +1317,9 @@ uint8_t Memory::memRead(uint16_t address)
     if (anyWatch_ && !watchHit_.tripped && (watchFlags_[address] & 0x01))
         watchHit_ = { true, address, false };
 
-    // Read-before-write trap: flag uninitialised RAM reads ([0,$2000) is always
-    // RAM — ZP/stack/BSS/user — no peripherals there). --ram-trap only.
+    // Read-before-write trap: flag uninitialised RAM reads. Watches [0,$2000)
+    // (ZP/stack/BSS/user) plus the Parmigiani high RAM bank [$E000,$F000) — both
+    // pure RAM, no peripherals. --ram-trap only. See ramTrapWatches().
     if (ramWriteTrap) checkRamReadTrap(address);
 
     // Memory-mapped peripherals (A1IO_RTC, CFFA1, microSD, WiFiModem, SID,

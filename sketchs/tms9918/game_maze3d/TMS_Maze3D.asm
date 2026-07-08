@@ -40,7 +40,10 @@
 
 ; ---- Apple 1 I/O ----
         .import tms9918_pad12  ; silicon-strict pad12-v3 (helper from tms9918_pad.asm)
-        .import vdp_display_off ; R1=$80 blanking idiom (tms9918_pad.asm)
+        .import vdp_display_off ; R1=$80 blank (tms9918_pad.asm)
+        .import vdp_display_on  ; R1=$C0 16K + screen ON (Mode II) -- used to
+                               ; BLANK the display during each full redraw so
+                               ; the player never sees the frame being drawn
         ; SCROLL-O-SPRITES 16x16 monster patterns (dev/lib/tms9918/sprites_*.asm,
         ; linked via the Makefile's EXTRA_ASM) — drawn as BITMAPS into the
         ; Graphics II pattern table by draw_sprite16_x2/_x4, NOT as hardware
@@ -64,6 +67,7 @@ KEY_BACK  = $CB       ; 'K' backward
 KEY_LEFT  = $CA       ; 'J' turn left
 KEY_RIGHT = $CC       ; 'L' turn right
 KEY_M     = $CD       ; toggle map / 3D
+KEY_H     = $C8       ; help screen (in game)
 KEY_A     = $C1       ; attack
 KEY_F     = $C6       ; flee
 KEY_SPACE = $A0
@@ -153,6 +157,26 @@ sp_tr:      .res 1     ; tile row counter
 sp_tc:      .res 1     ; tile col counter
 sp_i:       .res 1     ; row-in-tile counter
 sp_b:       .res 1     ; current source byte
+; --- monster cluster (draw_mob_indicator): up to 3 mobs on one cell ---
+mob_depth:  .res 1     ; depth 1..3 of the nearest occupied cell (0=none)
+mob_scan_d: .res 1     ; corridor-scan depth cursor (check_front_wall-proof)
+mob_cnt:    .res 1     ; monsters found on that cell (0..3)
+mob_base:   .res 1     ; (mob_depth-1)*3 — cluster table row
+mob_slot_i: .res 1     ; cluster draw loop counter
+mob_slot0:  .res 1     ; mob indices on the cell (slot0/1/2 CONTIGUOUS)
+mob_slot1:  .res 1
+mob_slot2:  .res 1
+mob_sz:     .res 1     ; current monster magnify 1/2/4
+mob_cur:    .res 1     ; current monster index (for archetype colour)
+last_mob_depth: .res 1 ; depth coloured last frame (0=none) -> reset target
+; --- colour-table fill (color_rect) ---
+cr_x:       .res 1     ; rect origin/size (pixels, multiples of 8)
+cr_y:       .res 1
+cr_w:       .res 1
+cr_h:       .res 1
+cr_col:     .res 1     ; colour byte (fg<<4 | bg)
+cr_cx:      .res 1     ; color_rect loop cursors
+cr_cy:      .res 1
 
 ; --- line / Bresenham ---
 ln_x0:      .res 1     ; $10
@@ -190,6 +214,10 @@ gstate:     .res 1     ; $2A
 prev_state: .res 1     ; previous gameplay state for combat return
 quit_flag:  .res 1
 view_mode:  .res 1     ; 0=3D, 1=MAP
+hud_dirty:  .res 1     ; 1 = HUD text/colour must be rebuilt (stats/facing
+                       ; changed, or we just entered the 3D view); 0 = it
+                       ; persists (clear_viewport spares the HUD zone), so
+                       ; plain forward/back moves skip it entirely.
 
 ; --- Combat scratch ---
 cur_mob:    .res 1     ; $2E   index of current foe ($FF=none)
@@ -255,6 +283,13 @@ main:
         LDA #0
         STA quit_flag
         STA view_mode
+        ; MUST zero before the first render: color_reset_last reads
+        ; last_mob_depth, and a garbage value indexes the reset_* tables
+        ; out of bounds -> color_rect with wild bounds that can write into
+        ; the NAME TABLE ($3800+), which is built once at init and never
+        ; rebuilt -> PERMANENT corruption (missing wall spans + HUD on a
+        ; warm/noisy boot; headless zeroes RAM, so it hid in tests).
+        STA last_mob_depth
         JSR init_vdp_g2         ; regs + name/color tables, display kept OFF
         JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         JSR clear_bitmap
@@ -283,10 +318,10 @@ main_loop:
         JSR vdp_display_off
         JMP WOZMON
 @cont:
+        ; ONE intro screen (juillet 2026): the title only. The controls +
+        ; objective page is no longer forced here -- it moved behind the
+        ; in-game H key (see play_input), and the title points to it.
         JSR show_title
-        LDA quit_flag
-        BNE main_loop
-        JSR show_help
         LDA quit_flag
         BNE main_loop
 
@@ -332,6 +367,10 @@ new_game:
         LDA #0
         STA p_xp
         STA view_mode
+        STA last_mob_depth      ; fresh maze: nothing coloured yet
+        JSR fill_color_white    ; wipe the title screen's colours
+        LDA #1
+        STA hud_dirty           ; first 3D frame must build the HUD
         LDA #ST_PLAY3D
         STA gstate
 
@@ -377,7 +416,13 @@ play_input:
         RTS
 @n1:    CMP #KEY_M
         BNE @n2
-        ; toggle view
+        ; toggle view. Wipe colours ONCE here (not in the per-frame
+        ; render_map/render_3d): otherwise the 3D monster/HUD tint would
+        ; bleed onto the map grid and vice-versa.
+        JSR fill_color_white
+        LDA #1
+        STA hud_dirty           ; the map full-clears the HUD zone; rebuild
+                                ; it when we return to 3D
         LDA view_mode
         EOR #$01
         STA view_mode
@@ -397,6 +442,8 @@ play_input:
         SBC #1
         AND #$03
         STA p_face
+        LDA #1
+        STA hud_dirty           ; DIR changed -> rebuild the HUD line
         RTS
 @n3:    CMP #KEY_RIGHT
         BNE @n4
@@ -406,6 +453,8 @@ play_input:
         ADC #1
         AND #$03
         STA p_face
+        LDA #1
+        STA hud_dirty           ; DIR changed
         RTS
 @n4:    CMP #KEY_FWD
         BNE @n5
@@ -414,13 +463,19 @@ play_input:
         JSR try_move
         RTS
 @n5:    CMP #KEY_BACK
-        BNE @other
+        BNE @n6
         ; backward = move opposite of facing
         LDA p_face
         CLC
         ADC #2
         AND #$03
         JSR try_move
+        RTS
+@n6:    CMP #KEY_H
+        BNE @other
+        ; help screen on demand; when it returns, play_loop redraws the
+        ; current view (gstate unchanged).
+        JSR show_help
         RTS
 @other: JMP play_input          ; unknown key, or wait_key's synthetic
                                 ; timeout SPACE: wait again WITHOUT
@@ -830,6 +885,21 @@ wait_key:
         LDA #$A0
         RTS
 
+; wait_key_real: block until a REAL key -- no timeout. The menu screens
+; (title/help/win/lose) use this so they actually WAIT for the player
+; instead of auto-advancing on wait_key's ~3 s synthetic SPACE. Mixing
+; the key VALUE into the PRNG also seeds the maze from WHICH key was
+; pressed (real-hardware variety, the wait_key entropy contract).
+wait_key_real:
+@spin:  LDA KBDCR
+        BPL @spin
+        LDA KBD
+        PHA
+        EOR prng_lo
+        STA prng_lo
+        PLA
+        RTS
+
 ; =============================================
 ; init_vdp_g2 - Graphics II (bitmap) mode
 ;   pattern  $0000-$17FF (6144 B)
@@ -934,12 +1004,18 @@ init_sat:
 ; =============================================
 ; clear_bitmap - write 0 to all 6144 pattern bytes
 ; =============================================
+; clear_viewport: clear ONLY rows 0..19 (the 3D corridor, y 0..159). The
+; viewport was rescaled to frame_by[0]=159, so nothing the 3D view draws
+; reaches rows 20-23 -- the HUD zone is left intact frame-to-frame (its
+; text/colour persist; draw_hud_3d only rewrites it when dirty). ~5120 B
+; instead of 6144 -> a shorter blanked redraw.
+clear_viewport:
+        LDX #20
+        .byte $2C              ; BIT abs: swallow the next LDX #24
 clear_bitmap:
-        LDX #24                ; 24 char rows * 256 B = 6144 B. NOTE: a
-                               ; "skip the HUD row" variant is NOT safe —
-                               ; the 3D view bleeds into rows 22-23
-                               ; (frame_by[0] = 191), stale wall art would
-                               ; linger under the HUD.
+        LDX #24                ; full 6144 B (map / combat / menus). The old
+                               ; "skip-HUD is unsafe" note held only while
+                               ; frame_by[0]=191; the viewport now ends at 159.
         LDA #$00
         STA VDP_CTRL
         JSR     tms9918_pad12   ; +18c silicon-strict (back-to-back CTRL store)
@@ -962,6 +1038,27 @@ clear_bitmap:
         DEY
         BNE @lp
         LDY #64
+        DEX
+        BNE @lp
+        RTS
+
+; clear_hud: clear ONLY the HUD zone (rows 20..23 = $1400-$17FF, 1024 B).
+; Called before rebuilding the HUD so no stale text lingers between the
+; HUD fields (a partial-clear world: clear_viewport spares this zone).
+clear_hud:
+        LDA #$00
+        STA VDP_CTRL
+        JSR     tms9918_pad12
+        LDA #$54                ; $14 | $40 = write from $1400 (row 20)
+        STA VDP_CTRL
+        JSR     tms9918_pad12
+        LDX #4                  ; 4 pages of 256 = rows 20..23
+        LDY #0
+        LDA #$00
+@lp:    STA VDP_DATA
+        JSR     tms9918_pad12
+        INY
+        BNE @lp
         DEX
         BNE @lp
         RTS
@@ -1378,184 +1475,179 @@ print_str_ax:
 ; show_title: title screen on bitmap
 ; =============================================
 show_title:
+        JSR vdp_display_off     ; draw the whole title blanked, reveal at end
+        JSR fill_color_white    ; clean colour slate (may arrive from the game)
         JSR clear_bitmap
-        ; Banner box
-        LDA #20
+        ; Banner box (white)
+        LDA #24
         STA fl_x0
-        LDA #235
+        LDA #232
         STA fl_x1
-        LDA #28
+        LDA #16
         STA fl_y0
-        JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
+        JSR     tms9918_pad12
         JSR hline
-        LDA #60
+        LDA #48
         STA fl_y0
         JSR hline
-        LDA #20
+        LDA #24
         STA fl_x0
-        LDA #28
+        LDA #16
         STA fl_y0
-        LDA #60
+        LDA #48
         STA fl_y1
         JSR vline
-        LDA #235
+        LDA #232
         STA fl_x0
         JSR vline
 
-        ; "MAZE 3D" big text (use 8x8 font, centered)
-        LDA #11
+        ; "MAZE 3D" (row 3, col 12)
+        LDA #12
         STA ch_cx
-        LDA #4
+        LDA #3
         STA ch_cy
         LDA #<str_title1
         LDX #>str_title1
         JSR print_str_ax
-
-        LDA #6
-        STA ch_cx
+        ; subtitle (rows 7, 9)
         LDA #9
+        STA ch_cx
+        LDA #7
         STA ch_cy
         LDA #<str_title2
         LDX #>str_title2
         JSR print_str_ax
-
-        LDA #7
+        LDA #8
         STA ch_cx
-        LDA #11
+        LDA #9
         STA ch_cy
         LDA #<str_title3
         LDX #>str_title3
         JSR print_str_ax
-
-        LDA #5
+        ; goblin mascot (x2, centred) -- replaces the old wireframe that
+        ; overlapped the credits line
+        LDA #<troll_goblin_pat
+        STA sp_ptr
+        LDA #>troll_goblin_pat
+        STA sp_ptr+1
+        LDA #112
+        STA sp_x
+        LDA #88
+        STA sp_y
+        JSR draw_sprite16_x2
+        ; credits (row 16)
+        LDA #2
         STA ch_cx
-        LDA #14
+        LDA #16
         STA ch_cy
         LDA #<str_title4
         LDX #>str_title4
         JSR print_str_ax
-
-        LDA #4
+        ; help hint (row 18)
+        LDA #8
         STA ch_cx
-        LDA #20
+        LDA #18
+        STA ch_cy
+        LDA #<str_title_hint
+        LDX #>str_title_hint
+        JSR print_str_ax
+        ; press any key (row 21)
+        LDA #8
+        STA ch_cx
+        LDA #21
         STA ch_cy
         LDA #<str_press_any
         LDX #>str_press_any
         JSR print_str_ax
 
-        ; small dungeon decoration: 3D wireframe of a closed room
-        LDA #160
-        STA ln_x0
-        LDA #105
-        STA ln_y0
-        LDA #220
-        STA ln_x1
-        LDA #105
-        STA ln_y1
-        JSR line_xy
-        LDA #220
-        STA ln_x0
-        LDA #105
-        STA ln_y0
-        LDA #220
-        STA ln_x1
-        LDA #170
-        STA ln_y1
-        JSR line_xy
-        LDA #220
-        STA ln_x0
-        LDA #170
-        STA ln_y0
-        LDA #160
-        STA ln_x1
-        LDA #170
-        STA ln_y1
-        JSR line_xy
-        LDA #160
-        STA ln_x0
-        LDA #170
-        STA ln_y0
-        LDA #160
-        STA ln_x1
-        LDA #105
-        STA ln_y1
-        JSR line_xy
-        ; perspective lines
-        LDA #160
-        STA ln_x0
-        LDA #105
-        STA ln_y0
-        LDA #185
-        STA ln_x1
-        LDA #125
-        STA ln_y1
-        JSR line_xy
-        LDA #220
-        STA ln_x0
-        LDA #105
-        STA ln_y0
-        LDA #195
-        STA ln_x1
-        LDA #125
-        STA ln_y1
-        JSR line_xy
-        LDA #220
-        STA ln_x0
-        LDA #170
-        STA ln_y0
-        LDA #195
-        STA ln_x1
-        LDA #150
-        STA ln_y1
-        JSR line_xy
-        LDA #160
-        STA ln_x0
-        LDA #170
-        STA ln_y0
-        LDA #185
-        STA ln_x1
-        LDA #150
-        STA ln_y1
-        JSR line_xy
-        ; back wall
-        LDA #185
-        STA ln_x0
-        LDA #125
-        STA ln_y0
-        LDA #195
-        STA ln_x1
-        LDA #125
-        STA ln_y1
-        JSR line_xy
-        LDA #195
-        STA ln_x0
-        LDA #125
-        STA ln_y0
-        LDA #195
-        STA ln_x1
-        LDA #150
-        STA ln_y1
-        JSR line_xy
-        LDA #195
-        STA ln_x0
-        LDA #150
-        STA ln_y0
-        LDA #185
-        STA ln_x1
-        LDA #150
-        STA ln_y1
-        JSR line_xy
-        LDA #185
-        STA ln_x0
-        LDA #150
-        STA ln_y0
-        LDA #185
-        STA ln_x1
-        LDA #125
-        STA ln_y1
-        JSR line_xy
+        ; --- colours ---
+        ; MAZE 3D -> yellow
+        LDA #96
+        STA cr_x
+        LDA #24
+        STA cr_y
+        LDA #56
+        STA cr_w
+        LDA #8
+        STA cr_h
+        LDA #$B1
+        STA cr_col
+        JSR color_rect
+        ; subtitle line 1 -> green
+        LDA #56
+        STA cr_x
+        LDA #56
+        STA cr_y
+        LDA #152
+        STA cr_w
+        LDA #8
+        STA cr_h
+        LDA #$31
+        STA cr_col
+        JSR color_rect
+        ; subtitle line 2 -> green
+        LDA #56
+        STA cr_x
+        LDA #72
+        STA cr_y
+        LDA #152
+        STA cr_w
+        LDA #8
+        STA cr_h
+        LDA #$31
+        STA cr_col
+        JSR color_rect
+        ; mascot -> green
+        LDA #112
+        STA cr_x
+        LDA #88
+        STA cr_y
+        LDA #32
+        STA cr_w
+        LDA #32
+        STA cr_h
+        LDA #$31
+        STA cr_col
+        JSR color_rect
+        ; credits -> cyan
+        LDA #16
+        STA cr_x
+        LDA #128
+        STA cr_y
+        LDA #216
+        STA cr_w
+        LDA #8
+        STA cr_h
+        LDA #$71
+        STA cr_col
+        JSR color_rect
+        ; hint -> yellow
+        LDA #64
+        STA cr_x
+        LDA #144
+        STA cr_y
+        LDA #128
+        STA cr_w
+        LDA #8
+        STA cr_h
+        LDA #$B1
+        STA cr_col
+        JSR color_rect
+        ; press any key -> magenta
+        LDA #64
+        STA cr_x
+        LDA #168
+        STA cr_y
+        LDA #128
+        STA cr_w
+        LDA #8
+        STA cr_h
+        LDA #$D1
+        STA cr_col
+        JSR color_rect
 
-        JSR wait_key
+        JSR vdp_display_on      ; reveal the finished title
+        JSR wait_key_real
         CMP #KEY_ESC
         BNE @ok
         INC quit_flag
@@ -1565,6 +1657,8 @@ show_title:
 ; show_help: instructions screen
 ; =============================================
 show_help:
+        JSR vdp_display_off     ; hide the redraw
+        JSR fill_color_white   ; wipe colours from the game/previous screen
         JSR clear_bitmap
 
         LDA #8
@@ -1657,7 +1751,8 @@ show_help:
         LDX #>str_press_any
         JSR print_str_ax
 
-        JSR wait_key
+        JSR vdp_display_on      ; reveal the finished screen
+        JSR wait_key_real
         CMP #KEY_ESC
         BNE @ok
         INC quit_flag
@@ -1667,6 +1762,8 @@ show_help:
 ; show_win
 ; =============================================
 show_win:
+        JSR vdp_display_off     ; hide the redraw
+        JSR fill_color_white   ; wipe colours from the game/previous screen
         JSR clear_bitmap
         LDA #6
         STA ch_cx
@@ -1697,7 +1794,8 @@ show_win:
         LDA #<str_press_any
         LDX #>str_press_any
         JSR print_str_ax
-        JSR wait_key
+        JSR vdp_display_on      ; reveal the finished screen
+        JSR wait_key_real
         CMP #KEY_ESC
         BNE @ok
         INC quit_flag
@@ -1707,6 +1805,8 @@ show_win:
 ; show_lose
 ; =============================================
 show_lose:
+        JSR vdp_display_off     ; hide the redraw
+        JSR fill_color_white   ; wipe colours from the game/previous screen
         JSR clear_bitmap
         LDA #6
         STA ch_cx
@@ -1730,7 +1830,8 @@ show_lose:
         LDA #<str_press_any
         LDX #>str_press_any
         JSR print_str_ax
-        JSR wait_key
+        JSR vdp_display_on      ; reveal the finished screen
+        JSR wait_key_real
         CMP #KEY_ESC
         BNE @ok
         INC quit_flag
@@ -1742,7 +1843,10 @@ show_lose:
 render_3d:
         ; Sync to VBlank before the full 3D-scene rebuild burst.
         WAIT_VBLANK
-        JSR clear_bitmap
+        ; Blank the display for the whole redraw so the player never sees
+        ; the frame being drawn -- it reappears complete when we unblank.
+        JSR vdp_display_off
+        JSR clear_viewport      ; only rows 0..19; HUD zone persists
 
         ; (No full-width horizon lines here: they crossed every wall and
         ; passage without occlusion and turned the scene to mush — the
@@ -1811,9 +1915,10 @@ render_3d:
 @closed:
         ; HUD: HP, ATK, level, facing
         JSR draw_hud_3d
-        ; mob present at next forward cell? (give a hint via sprite-like icon)
+        ; monsters visible in the corridor ahead (up to 3, on the floor)
         JSR draw_mob_indicator
 
+        JSR vdp_display_on      ; reveal the finished frame in one go
         RTS
 
 ; =============================================
@@ -2290,11 +2395,15 @@ draw_front_wall:
 draw_hud_3d:
         ; Status panel in the 4-line text zone (rows 20-23, y 160..191):
         ;   y=159      full-width floor line closing the 3D viewport
-        ;   row 20     HP nn    ATK n    DEF n     (combat stats)
-        ;   row 21     LVL n    XP nn    DIR X     (progression + facing)
-        ;   rows 22-23 free for game messages.
+        ;   row 20     (blank -- 8px of air so the text is not glued
+        ;              to the floor line; juillet 2026 request)
+        ;   row 21     HP nn    ATK n    DEF n     (combat stats)
+        ;   row 22     LVL n    XP nn    DIR X     (progression + facing)
+        ;   row 23     free for game messages.
         ; Three aligned columns at cx 1 / 11 / 21, values 2 cells after
         ; their label (write_decimal_2d blanks a leading zero tens digit).
+        ; Floor line (y159) closes the viewport -- it lives in the cleared
+        ; region (rows 0..19), so it is redrawn EVERY frame.
         LDA #0
         STA fl_x0
         LDA #255
@@ -2303,45 +2412,56 @@ draw_hud_3d:
         STA fl_y0
         JSR hline
 
+        ; The text panel (rows 20..23) is NOT cleared by clear_viewport, so
+        ; it persists across plain moves. Rebuild it only when dirty (a
+        ; stat/facing change, or a fresh entry into the 3D view).
+        LDA hud_dirty
+        BNE @rebuild
+        RTS
+@rebuild:
+        LDA #0
+        STA hud_dirty
+        JSR clear_hud           ; wipe rows 20..23 -> no field-gap remnants
+
         ; --- row 20: HP / ATK / DEF ---
         LDA #1
         STA ch_cx
-        LDA #20
+        LDA #21
         STA ch_cy
         LDA #<str_hud_hp
         LDX #>str_hud_hp
         JSR print_str_ax
         LDA #5
         STA ch_cx
-        LDA #20
+        LDA #21
         STA ch_cy
         LDA p_hp
         JSR write_decimal_2d
 
         LDA #11
         STA ch_cx
-        LDA #20
+        LDA #21
         STA ch_cy
         LDA #<str_hud_atk
         LDX #>str_hud_atk
         JSR print_str_ax
         LDA #15
         STA ch_cx
-        LDA #20
+        LDA #21
         STA ch_cy
         LDA p_atk
         JSR write_decimal_2d
 
         LDA #21
         STA ch_cx
-        LDA #20
+        LDA #21
         STA ch_cy
         LDA #<str_hud_def
         LDX #>str_hud_def
         JSR print_str_ax
         LDA #25
         STA ch_cx
-        LDA #20
+        LDA #21
         STA ch_cy
         LDA p_def
         JSR write_decimal_2d
@@ -2349,118 +2469,361 @@ draw_hud_3d:
         ; --- row 21: LVL / XP / DIR ---
         LDA #1
         STA ch_cx
-        LDA #21
+        LDA #22
         STA ch_cy
         LDA #<str_hud_lvl
         LDX #>str_hud_lvl
         JSR print_str_ax
         LDA #5
         STA ch_cx
-        LDA #21
+        LDA #22
         STA ch_cy
         LDA p_lvl
         JSR write_decimal_2d
 
         LDA #11
         STA ch_cx
-        LDA #21
+        LDA #22
         STA ch_cy
         LDA #<str_hud_xp
         LDX #>str_hud_xp
         JSR print_str_ax
         LDA #15
         STA ch_cx
-        LDA #21
+        LDA #22
         STA ch_cy
         LDA p_xp
         JSR write_decimal_2d
 
         LDA #21
         STA ch_cx
-        LDA #21
+        LDA #22
         STA ch_cy
         LDA #<str_hud_dir
         LDX #>str_hud_dir
         JSR print_str_ax
         LDA #25
         STA ch_cx
-        LDA #21
+        LDA #22
         STA ch_cy
         LDA p_face
         TAX
         LDA face_chars,X
         STA ch_code
         JSR write_char
+
+        ; Colour the two HUD text rows: vitals (row 21) green,
+        ; progression (row 22) cyan. Done every frame -- cheap (2 rows),
+        ; and keeps the tint after a combat/map excursion wiped it. The
+        ; monster colour region (rows 6..16) never reaches down here.
+        LDA #8
+        STA cr_x
+        LDA #168                ; row 21 (HP / ATK / DEF)
+        STA cr_y
+        LDA #216
+        STA cr_w
+        LDA #8
+        STA cr_h
+        LDA #$31                ; light green
+        STA cr_col
+        JSR color_rect
+        LDA #8
+        STA cr_x
+        LDA #176                ; row 22 (LVL / XP / DIR)
+        STA cr_y
+        LDA #216
+        STA cr_w
+        LDA #8
+        STA cr_h
+        LDA #$71                ; cyan
+        STA cr_col
+        JSR color_rect
         RTS
 
 face_chars:
         .byte 'N', 'E', 'S', 'W'
 
 ; =============================================
-; draw_mob_indicator: if the next forward cell holds a live mob AND the
-; passage to it is open (a mob behind a wall is not visible), draw the
-; monster standing in the corridor + a '!' above it. The old code drew
-; only a lone '!' floating at the top of the screen, wall or no wall.
+; draw_mob_indicator: draw the monsters standing on the NEAREST occupied
+; cell straight ahead. A cell can hold several monsters (placement lets
+; up to 3 stack -- "the original idea"): all of them are drawn CLUSTERED
+; on that one cell, NOT spread one-per-depth down the corridor. Line of
+; sight scans depths 1..3 and stops at the first wall OR the first cell
+; that holds a monster; that cell's depth sets the sprite size (depth 1
+; = x2 / 32x32, depths 2-3 = x1 / 16x16). Monsters stand ON THE FLOOR of
+; the cell; no '!' marker. Cluster slots are staggered so the front
+; monster (drawn last) overdraws the ones behind (blits are pure stores,
+; so overwrite = occlusion).
 ; =============================================
 draw_mob_indicator:
-        ; visible only through an open passage
+        JSR color_reset_last    ; repaint last frame's coloured tiles white
+                                ; (the colour table is NOT wiped by
+                                ; clear_bitmap, only the pattern table)
+        LDA #0
+        STA mob_depth           ; 0 = no monster in view yet
         LDA p_col
         STA rd_col
         LDA p_row
         STA rd_row
-        JSR check_front_wall
-        BNE @none
-        ; target = (p_col + dx, p_row + dy)
-        LDA p_col
-        CLC
-        ADC rd_dx
-        STA tmp
-        LDA p_row
-        CLC
-        ADC rd_dy
-        STA tmp2
+        LDA #1
+        STA mob_scan_d          ; current depth -- a dedicated var because
+                                ; check_front_wall clobbers tmp (via
+                                ; cell_index_xy's STX tmp)
+@dscan:
+        JSR check_front_wall    ; wall ahead of the scan cursor?
+        BNE @done               ; view blocked -> nothing more to see
+        JSR step_forward        ; advance the cursor one cell
+        JSR count_mobs_rd       ; -> A = mobs on (rd_col,rd_row), slots filled
+        CMP #0
+        BNE @found
+        INC mob_scan_d
+        LDA mob_scan_d
+        CMP #4
+        BNE @dscan
+@done:  LDA #0
+        STA last_mob_depth      ; nothing drawn -> nothing to reset next frame
+        RTS
+@found:
+        LDA mob_scan_d
+        STA mob_depth
+        STA last_mob_depth      ; remember for next frame's colour reset
+        JSR draw_mob_cluster
+        RTS
+
+; count_mobs_rd: scan every mob; record up to 3 living ones standing on
+; (rd_col, rd_row) into mob_slot0/1/2. Returns A = count (0..3).
+count_mobs_rd:
+        LDA #0
+        STA mob_cnt
         LDX #0
 @lp:    LDA mob_type,X
         CMP #MOB_DEAD
         BEQ @nx
         LDA mob_col,X
-        CMP tmp
+        CMP rd_col
         BNE @nx
         LDA mob_row,X
-        CMP tmp2
+        CMP rd_row
         BNE @nx
-        JMP draw_mob_figure     ; mob ahead and visible
+        LDY mob_cnt
+        CPY #3
+        BCS @nx                 ; already have 3 -- ignore extras
+        TXA
+        STA mob_slot0,Y         ; slot0/1/2 contiguous
+        INC mob_cnt
 @nx:    INX
         CPX #NUM_MOBS
         BNE @lp
-@none:  RTS
+        LDA mob_cnt
+        RTS
 
-; =============================================
-; draw_mob_figure: the monster standing in the corridor one cell ahead —
-; its SCROLL-O-SPRITES image (by archetype) blitted x2 (32x32) centered on
-; the corridor (x 112..143, y 64..95, horizon 80), '!' warning above.
-; Entry: X = mob index (from draw_mob_indicator's scan loop).
-; =============================================
-draw_mob_figure:
+; draw_mob_cluster: draw mob_cnt monsters (mob_slot0..2) on the cell at
+; mob_depth. Position/size come from cluster_x/y/sz[(depth-1)*3+slot];
+; drawn highest slot first so slot 0 (the big centred FRONT monster) is
+; laid last, on top. The two others sit CLOSE BEHIND it -- barely offset
+; sideways and one size smaller, their heads poking up above the front's
+; shoulders (they sit high enough that the front's box never erases them).
+; Size: depth 1 front = x4, its flankers x1; depth 2 front x2 / flankers
+; x1; depth 3 all x1. Each monster's tiles are then coloured by archetype.
+draw_mob_cluster:
+        LDA mob_depth
+        SEC
+        SBC #1
+        STA tmp
+        ASL
+        CLC
+        ADC tmp
+        STA mob_base            ; (depth-1)*3
+        LDA mob_cnt
+        STA mob_slot_i
+@dl:    DEC mob_slot_i          ; slots cnt-1 .. 0
+        LDY mob_slot_i
+        LDA mob_slot0,Y
+        STA mob_cur             ; remember index for colouring
+        TAX
+        JSR mob_sprite_ptr      ; sp_ptr := sprite of that mob's type
+        LDA mob_base
+        CLC
+        ADC mob_slot_i
+        TAY
+        LDA cluster_x,Y
+        STA sp_x
+        LDA cluster_y,Y
+        STA sp_y
+        LDA cluster_sz,Y
+        STA mob_sz              ; 1 / 2 / 4
+        CMP #4
+        BNE @not4
+        JSR draw_sprite16_x4
+        JMP @colour
+@not4:  CMP #2
+        BNE @s1
+        JSR draw_sprite16_x2
+        JMP @colour
+@s1:    JSR draw_sprite16_x1
+@colour:
+        JSR color_current_mob   ; tint this monster's tiles by archetype
+        LDA mob_slot_i
+        BNE @dl
+        RTS
+
+; color_current_mob: fill the colour table for the mob_sz*16-square block
+; at (sp_x, sp_y) with mob_cur's archetype colour.
+color_current_mob:
+        LDA sp_x
+        STA cr_x
+        LDA sp_y
+        STA cr_y
+        LDA mob_sz
+        ASL
+        ASL
+        ASL
+        ASL                     ; sz * 16 = side in pixels
+        STA cr_w
+        STA cr_h
+        LDX mob_cur
+        LDA mob_type,X
+        TAY
+        LDA mob_colors,Y
+        STA cr_col
+        JMP color_rect          ; tail call
+
+; color_reset_last: repaint last frame's cluster region white ($F1) so a
+; monster that moved/vanished does not leave a coloured ghost on the
+; corridor lines drawn there this frame. last_mob_depth (0 = nothing).
+color_reset_last:
+        LDA last_mob_depth
+        BNE @go
+        RTS
+@go:    CMP #4                  ; guard: only 1..3 index the reset_* tables.
+        BCS @done               ; a stray value must never run color_rect
+                                ; with wild bounds (it could reach the name
+                                ; table $3800+ and corrupt it permanently).
+        TAX
+        DEX                     ; depth 1..3 -> row 0..2
+        LDA reset_x,X
+        STA cr_x
+        LDA reset_y,X
+        STA cr_y
+        LDA reset_w,X
+        STA cr_w
+        LDA reset_h,X
+        STA cr_h
+        LDA #$F1                ; white on black
+        STA cr_col
+        JMP color_rect          ; tail call
+@done:  RTS
+
+; color_rect: fill the TMS9918 Graphics II colour table with cr_col for
+; every 8x8 tile in the pixel rectangle (cr_x, cr_y, cr_w, cr_h) -- all
+; multiples of 8. The colour table mirrors the pattern table at +$2000,
+; and a tile's 8 rows are 8 CONSECUTIVE colour addresses, so each tile is
+; one address setup + 8 streamed bytes (like vline's batching).
+color_rect:
+        LDA cr_y
+        STA cr_cy
+@yl:    LDA cr_x
+        STA cr_cx
+@xl:    LDA cr_cx
+        AND #$F8
+        STA pix_addr_lo         ; tile row 0 low byte = x & $F8
+        LDA cr_cy
+        LSR
+        LSR
+        LSR                     ; y >> 3  (0..23)
+        CLC
+        ADC #$20                ; + colour-table third base ($2000 hi = $20)
+        STA pix_addr_hi
+        JSR vdp_set_write       ; ORs in the $40 write bit
+        JSR     tms9918_pad12   ; CTRL -> first DATA store
+        LDX #8
+@wr:    LDA cr_col
+        STA VDP_DATA
+        JSR     tms9918_pad12   ; DATA -> DATA stream discipline
+        DEX
+        BNE @wr
+        LDA cr_cx
+        CLC
+        ADC #8
+        STA cr_cx
+        SEC
+        SBC cr_x
+        CMP cr_w
+        BCC @xl
+        LDA cr_cy
+        CLC
+        ADC #8
+        STA cr_cy
+        SEC
+        SBC cr_y
+        CMP cr_h
+        BCC @yl
+        RTS
+
+; fill_color_white: repaint the WHOLE colour table ($2000-$37FF, 6144 B)
+; white-on-black. Called on screen transitions (title/help/win/lose/map
+; toggle/new game) to wipe the colour a previous screen left -- the table
+; is never cleared by clear_bitmap. (Same stream as init_vdp_g2's fill.)
+fill_color_white:
+        LDA #$00
+        STA VDP_CTRL
+        JSR     tms9918_pad12
+        LDA #$60                ; $2000 | write
+        STA VDP_CTRL
+        LDX #24                 ; 24 pages of 256
+        LDY #0
+@cl:    LDA #$F1
+        JSR     tms9918_pad12
+        STA VDP_DATA
+        INY
+        JSR     tms9918_pad12
+        BNE @cl
+        DEX
+        BNE @cl
+        RTS
+
+; Cluster layout, indexed (depth-1)*3 + slot. All multiples of 8 (blit +
+; colour are tile-aligned). slot 0 = big centred front monster (feet on
+; the cell floor); slots 1/2 = smaller, barely offset, sitting HIGHER so
+; their heads show above the front's shoulders:
+;   depth 1: front x4 feet y=128 (floor 114..134); flankers x1 at y=48,
+;            just above the front (top y=64) so never erased.
+;   depth 2: front x2 feet y=112; flankers x1 at y=72.
+;   depth 3: all x1, a tight row (narrow far cell x 96..159).
+cluster_x:
+        .byte  96,  88, 152      ; depth 1
+        .byte 112,  96, 152      ; depth 2
+        .byte 120, 104, 136      ; depth 3
+cluster_y:
+        .byte  64,  48,  48      ; depth 1
+        .byte  80,  72,  72      ; depth 2
+        .byte  80,  72,  72      ; depth 3
+cluster_sz:
+        .byte   4,   1,   1      ; depth 1: big front, small flankers
+        .byte   2,   1,   1      ; depth 2
+        .byte   1,   1,   1      ; depth 3
+
+; Colour-reset boxes (pixel x,y,w,h — mult of 8) covering each depth's
+; whole cluster, so one color_rect repaints it white next frame.
+reset_x: .byte  88,  96, 104
+reset_y: .byte  48,  72,  72
+reset_w: .byte  88,  80,  56
+reset_h: .byte  88,  48,  48
+
+; Archetype colours (TMS9918 fg<<4 | bg=black): goblin=light green,
+; orc=light red, dark mage=magenta.
+mob_colors:
+        .byte $31, $91, $D1
+
+; mob_sprite_ptr: sp_ptr := SCROLL-O-SPRITES pattern of mob X's archetype
+mob_sprite_ptr:
         LDA mob_type,X
         TAY
         LDA mob_sprites_lo,Y
         STA sp_ptr
         LDA mob_sprites_hi,Y
         STA sp_ptr+1
-        LDA #112
-        STA sp_x
-        LDA #64
-        STA sp_y
-        JSR draw_sprite16_x2
-        ; '!' warning above the monster
-        LDA #15
-        STA ch_cx
-        LDA #7
-        STA ch_cy
-        LDA #'!'
-        STA ch_code
-        JMP write_char
+        RTS
 
 ; =============================================
 ; write_decimal_2d: A=value, prints two decimal digits at
@@ -2515,6 +2878,7 @@ write_decimal_2d:
 render_map:
         ; Sync to VBlank before the top-down map rebuild burst.
         WAIT_VBLANK
+        JSR vdp_display_off     ; hide the redraw
         JSR clear_bitmap
         LDA #4
         STA ch_cx
@@ -2716,6 +3080,7 @@ render_map:
         LDX #>str_map_help
         JSR     tms9918_pad12   ; +12c silicon-strict pad12-v3 (back-to-back VDP store)
         JSR print_str_ax
+        JSR vdp_display_on      ; reveal the finished map
         RTS
 
 arrow_chars:
@@ -2748,6 +3113,9 @@ run_combat:
 @stay:  RTS
 @flee_ok:
         ; pop back to previous gameplay state
+        LDA #1
+        STA hud_dirty           ; combat wiped the HUD zone + may have changed
+                                ; HP; rebuild it on the 3D return
         LDA prev_state
         STA gstate
         RTS
@@ -2811,7 +3179,18 @@ run_combat:
         BNE @nolvl
         INC p_def
 @nolvl:
-        ; back to previous gameplay state
+        ; A cell can hold up to 3 monsters ("the original idea"): if
+        ; another is still standing on the player's cell, fight it too —
+        ; stay in ST_COMBAT (cur_mob := next foe) so play_loop re-enters
+        ; run_combat and redraws. Only when the cell is clear do we drop
+        ; back to the previous state.
+        JSR find_mob_here
+        BMI @cell_clear
+        STA cur_mob
+        RTS
+@cell_clear:
+        LDA #1
+        STA hud_dirty           ; combat changed stats + wiped the HUD zone
         LDA prev_state
         STA gstate
         RTS
@@ -2861,8 +3240,14 @@ mob_attacks:
 ; draw_combat_screen
 ; =============================================
 draw_combat_screen:
+        ; Wipe any monster tint the 3D view left in the colour table (its
+        ; depth-1 region is larger than the portrait box, so leftover
+        ; colour could tinge the combat text). The portrait gets its own
+        ; tint below.
+        JSR color_reset_last
         ; Sync to VBlank before the combat-scene rebuild burst.
         WAIT_VBLANK
+        JSR vdp_display_off     ; hide the redraw
         JSR clear_bitmap
         ; Title bar
         LDA #10
@@ -2963,6 +3348,23 @@ draw_combat_screen:
         LDA #48
         STA sp_y
         JSR draw_sprite16_x4
+        ; tint the portrait with the foe's archetype colour (and wipe any
+        ; stale colour left by the 3D view, whose monster region overlaps
+        ; this 64x64 box). Reuse color_rect over the portrait rectangle.
+        LDA #96
+        STA cr_x
+        LDA #48
+        STA cr_y
+        LDA #64
+        STA cr_w
+        STA cr_h
+        LDX cur_mob
+        LDA mob_type,X
+        TAY
+        LDA mob_colors,Y
+        STA cr_col
+        JSR color_rect
+        JSR vdp_display_on      ; reveal the finished combat screen
         RTS
 
 ; =============================================
@@ -3049,6 +3451,61 @@ draw_sprite16_x2:
         INC sp_tr
         LDA sp_tr
         CMP #4
+        BNE @trlp
+        RTS
+
+; x1: plain 16x16 (2x2 tiles) -- the far-monster size.
+draw_sprite16_x1:
+        LDA #0
+        STA sp_tr
+@trlp:  LDA #0
+        STA sp_tc
+@tclp:  LDA sp_tc
+        ASL
+        ASL
+        ASL
+        CLC
+        ADC sp_x
+        STA pix_x
+        LDA sp_tr
+        ASL
+        ASL
+        ASL
+        CLC
+        ADC sp_y
+        STA pix_y
+        JSR calc_pix_addr
+        JSR vdp_set_write
+        JSR tms9918_pad12       ; CTRL -> first DATA store
+        LDA #0
+        STA sp_i
+@rowlp: LDA sp_tr
+        ASL
+        ASL
+        ASL
+        CLC
+        ADC sp_i                ; source row 0..15
+        TAY
+        LDA sp_tc
+        BEQ @left1
+        TYA
+        CLC
+        ADC #16                 ; right column bytes 16..31
+        TAY
+@left1: LDA (sp_ptr),Y
+        STA VDP_DATA
+        JSR tms9918_pad12
+        INC sp_i
+        LDA sp_i
+        CMP #8
+        BNE @rowlp
+        INC sp_tc
+        LDA sp_tc
+        CMP #2
+        BNE @tclp
+        INC sp_tr
+        LDA sp_tr
+        CMP #2
         BNE @trlp
         RTS
 
@@ -3174,6 +3631,7 @@ str_title1:   .byte "MAZE 3D",0
 str_title2:   .byte "WIZARDRY-STYLE",0
 str_title3:   .byte "DUNGEON CRAWLER",0
 str_title4:   .byte "FOR P-LAB TMS9918 + APPLE 1",0
+str_title_hint:.byte "IN GAME: H=HELP",0
 str_press_any:.byte "PRESS ANY KEY...",0
 
 str_help_h1:  .byte "HOW TO PLAY",0
