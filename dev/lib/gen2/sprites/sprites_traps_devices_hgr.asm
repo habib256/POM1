@@ -22,9 +22,9 @@
 ; linked). The format is implicit in which .o the project
 ; pulls in.
 ; ============================================================================
-.export trap_net_pat, trap_web_pat, trap_spikes_pat, trap_caltrops_pat, trap_dart_pat
-.export trap_pit_pat, trap_grate_pat, trap_chest_open_pat, trap_chest_pat, trap_button_pat
-.export trap_lever_down_pat, trap_lever_up_pat
+.export trap_grate_pat, trap_web_pat, trap_beartrap_ready_pat, trap_beartrap_used_pat, trap_trap_ready_pat
+.export trap_trap_used_pat, trap_trapdoor_ready_pat, trap_trapdoor_used_pat, trap_button_ready_pat, trap_button_used_pat
+.export trap_switch_left_pat, trap_switch_right_pat
 .export traps_devices_hgr_data
 
 ; Constants like TRAPS_DEVICES_HGR_COUNT live in the sister
@@ -36,8 +36,8 @@
 .segment "CODE"
 
 traps_devices_hgr_data:
-; slot 01/12 of "Traps & Devices" row -- net
-trap_net_pat:
+; slot 01/12 of "Traps & Devices" row -- grate  (was: net)
+trap_grate_pat:
         .byte $00, $00, $00, $40, $04, $00, $48, $24, $00, $7C, $7F, $00  ; rows 00..03
         .byte $48, $24, $00, $48, $24, $00, $6E, $7F, $01, $48, $24, $00  ; rows 04..07
         .byte $48, $20, $00, $7E, $71, $01, $48, $20, $00, $48, $24, $00  ; rows 08..11
@@ -48,62 +48,62 @@ trap_web_pat:
         .byte $48, $46, $00, $2E, $2D, $00, $34, $52, $00, $54, $4B, $00  ; rows 04..07
         .byte $24, $57, $00, $14, $59, $00, $68, $6A, $01, $44, $25, $00  ; rows 08..11
         .byte $3A, $28, $00, $60, $17, $00, $20, $20, $00, $00, $00, $00  ; rows 12..15
-; slot 03/12 of "Traps & Devices" row -- spikes
-trap_spikes_pat:
+; slot 03/12 of "Traps & Devices" row -- beartrap_ready  (was: spikes)
+trap_beartrap_ready_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 00..03
         .byte $00, $00, $00, $00, $00, $00, $60, $0F, $00, $00, $00, $00  ; rows 04..07
         .byte $2A, $2B, $01, $7E, $7C, $01, $00, $00, $00, $00, $00, $00  ; rows 08..11
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 04/12 of "Traps & Devices" row -- caltrops
-trap_caltrops_pat:
+; slot 04/12 of "Traps & Devices" row -- beartrap_used  (was: caltrops)
+trap_beartrap_used_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 00..03
         .byte $40, $06, $00, $40, $05, $00, $40, $06, $00, $40, $05, $00  ; rows 04..07
         .byte $40, $06, $00, $40, $05, $00, $00, $00, $00, $00, $03, $00  ; rows 08..11
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 05/12 of "Traps & Devices" row -- dart
-trap_dart_pat:
+; slot 05/12 of "Traps & Devices" row -- trap_ready  (was: dart)
+trap_trap_ready_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 00..03
         .byte $40, $10, $00, $60, $18, $00, $60, $18, $00, $00, $00, $00  ; rows 04..07
         .byte $00, $00, $00, $20, $08, $00, $30, $0C, $00, $30, $0C, $00  ; rows 08..11
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 06/12 of "Traps & Devices" row -- pit
-trap_pit_pat:
+; slot 06/12 of "Traps & Devices" row -- trap_used  (was: pit)
+trap_trap_used_pat:
         .byte $00, $00, $00, $7C, $7F, $00, $06, $40, $01, $02, $00, $01  ; rows 00..03
         .byte $42, $10, $01, $62, $18, $01, $62, $18, $01, $02, $00, $01  ; rows 04..07
         .byte $02, $00, $01, $22, $08, $01, $32, $0C, $01, $32, $0C, $01  ; rows 08..11
         .byte $02, $00, $01, $06, $40, $01, $7C, $7F, $00, $00, $00, $00  ; rows 12..15
-; slot 07/12 of "Traps & Devices" row -- grate
-trap_grate_pat:
+; slot 07/12 of "Traps & Devices" row -- trapdoor_ready  (was: grate)
+trap_trapdoor_ready_pat:
         .byte $00, $00, $00, $7C, $7F, $00, $06, $40, $01, $72, $1F, $01  ; rows 00..03
         .byte $4A, $24, $01, $4A, $24, $01, $7A, $3F, $01, $4A, $24, $01  ; rows 04..07
         .byte $4A, $24, $01, $7A, $3F, $01, $4A, $24, $01, $4A, $24, $01  ; rows 08..11
         .byte $72, $1F, $01, $06, $40, $01, $7C, $7F, $00, $00, $00, $00  ; rows 12..15
-; slot 08/12 of "Traps & Devices" row -- chest_open
-trap_chest_open_pat:
+; slot 08/12 of "Traps & Devices" row -- trapdoor_used  (was: chest_open)
+trap_trapdoor_used_pat:
         .byte $00, $00, $00, $7C, $7F, $00, $06, $40, $01, $02, $00, $01  ; rows 00..03
         .byte $02, $00, $01, $02, $00, $01, $02, $00, $01, $02, $00, $01  ; rows 04..07
         .byte $02, $00, $01, $02, $00, $01, $02, $00, $01, $02, $00, $01  ; rows 08..11
         .byte $72, $1F, $01, $06, $40, $01, $7C, $7F, $00, $00, $00, $00  ; rows 12..15
-; slot 09/12 of "Traps & Devices" row -- chest
-trap_chest_pat:
+; slot 09/12 of "Traps & Devices" row -- button_ready  (was: chest)
+trap_button_ready_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $78, $3F, $00  ; rows 00..03
         .byte $08, $20, $00, $68, $2F, $00, $68, $2F, $00, $68, $2C, $00  ; rows 04..07
         .byte $68, $2E, $00, $68, $2F, $00, $68, $2F, $00, $08, $20, $00  ; rows 08..11
         .byte $78, $3F, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 10/12 of "Traps & Devices" row -- button
-trap_button_pat:
+; slot 10/12 of "Traps & Devices" row -- button_used  (was: button)
+trap_button_used_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $78, $3F, $00  ; rows 00..03
         .byte $08, $20, $00, $08, $20, $00, $48, $2F, $00, $48, $2F, $00  ; rows 04..07
         .byte $48, $29, $00, $48, $2D, $00, $48, $2F, $00, $08, $20, $00  ; rows 08..11
         .byte $78, $3F, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 11/12 of "Traps & Devices" row -- lever_down
-trap_lever_down_pat:
+; slot 11/12 of "Traps & Devices" row -- switch_left  (was: lever_down)
+trap_switch_left_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $06, $00, $00  ; rows 00..03
         .byte $06, $00, $00, $08, $00, $00, $10, $00, $00, $20, $00, $00  ; rows 04..07
         .byte $58, $3E, $00, $0C, $61, $00, $7C, $7F, $00, $7C, $7F, $00  ; rows 08..11
         .byte $7C, $7F, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 12/12 of "Traps & Devices" row -- lever_up
-trap_lever_up_pat:
+; slot 12/12 of "Traps & Devices" row -- switch_right  (was: lever_up)
+trap_switch_right_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $40, $01  ; rows 00..03
         .byte $00, $40, $01, $00, $20, $00, $00, $10, $00, $00, $08, $00  ; rows 04..07
         .byte $78, $35, $00, $0C, $62, $00, $7C, $7F, $00, $7C, $7F, $00  ; rows 08..11

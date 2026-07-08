@@ -55,16 +55,16 @@ SECTIONS: List[dict] = [
         "rows": [(96, 13), (112, 13), (128, 7)],
         "names": [
             # Row 1 (slots 1..13)
-            "villager", "villager2", "worker", "traveler",
-            "knight", "warrior", "archer", "king",
-            "youth", "imp", "child", "stout", "priest",
+            "normal_m", "archer_m", "knight_m", "priest_m",
+            "thief_m", "wizard_m", "monk_m", "ruler_m",
+            "child_m", "dog", "lunatic_m", "wrestler_m", "phantom_m",
             # Row 2 (slots 14..26)
-            "adventurer", "wizard", "knight2", "cleric",
-            "paladin", "grim", "hooded", "woman",
-            "kitten", "cat_big", "monk", "dwarf", "skull",
+            "normal_f", "archer_f", "knight_f", "priest_f",
+            "thief_f", "wizard_f", "monk_f", "ruler_f",
+            "child_f", "cat", "lunatic_f", "wrestler_f", "phantom_f",
             # Row 3 (slots 27..33)
-            "princess", "skeleton", "mage", "robed",
-            "priest2", "squire", "death",
+            "elder_m", "pirate_m", "mage", "cultist",
+            "necromancer_m", "assassin", "mermaid_f",
         ],
     },
     {
@@ -73,8 +73,8 @@ SECTIONS: List[dict] = [
         "title": "Expression",
         "rows": [(176, 12)],
         "names": [
-            "normal", "happy", "super", "sad", "upset", "angry",
-            "grumpy", "perv", "sick", "sleep", "pirate", "shades",
+            "serious", "happy", "excited", "sad", "hurt", "angry",
+            "upset", "smug", "sick", "sleeping", "yarr", "nerd",
         ],
     },
     {
@@ -83,9 +83,9 @@ SECTIONS: List[dict] = [
         "title": "Fauna",
         "rows": [(224, 13)],
         "names": [
-            "dog", "rabbit", "spider", "octopus",
-            "cat", "snake", "bat", "kitten",
-            "bear", "snail", "lion", "tiger", "horse",
+            "rat", "bat", "centipede", "spider",
+            "scorpion", "snail", "snake", "wolf",
+            "lion", "bear", "drake", "dragon", "horse",
         ],
     },
     {
@@ -93,7 +93,7 @@ SECTIONS: List[dict] = [
         "prefix": "troll",
         "title": "Trollkind",
         "rows": [(272, 4)],
-        "names": ["grunt", "warrior", "chief", "brute"],
+        "names": ["goblin", "hobgoblin", "cyclops", "orc"],
     },
     {
         "key": "unliving",
@@ -101,8 +101,8 @@ SECTIONS: List[dict] = [
         "title": "The Unliving",
         "rows": [(320, 8)],
         "names": [
-            "skull", "skull_small", "crossbones", "crossbones_big",
-            "mummy", "ghost", "wraith", "shroud",
+            "skull", "hand", "crossbones", "diehard",
+            "mummy", "ghost", "skull", "stalker",
         ],
     },
     {
@@ -111,8 +111,8 @@ SECTIONS: List[dict] = [
         "title": "Creatures",
         "rows": [(368, 8)],
         "names": [
-            "wolf", "dragon", "cyclops", "blob",
-            "wisp", "rat", "floater", "goblin",
+            "jelly", "kraken", "gazer", "imp",
+            "ifrit", "mimic", "automaton", "golem",
         ],
     },
     {
@@ -122,15 +122,15 @@ SECTIONS: List[dict] = [
         "rows": [(416, 16), (432, 7)],
         "names": [
             # Row 1 (slots 1..16)
-            "brick_wall", "brick_wall2", "brick_wall3",
-            "cobble", "cobble2", "cobble3",
-            "window", "window_grate",
-            "door_locked", "door",
-            "house", "stairs", "battlement", "pillar",
-            "rubble", "dome",
+            "brick_a", "brick_b", "brick_c",
+            "stone_a", "stone_b", "stone_c",
+            "panel_ready", "panel_used",
+            "block", "slot",
+            "house", "stairs", "battlement", "door_open",
+            "pyre", "wheel",
             # Row 2 (slots 17..23)
-            "tent", "signpost", "stool",
-            "bench", "shelf", "bridge", "arch",
+            "tombstone", "sign", "stool",
+            "cupboard", "bookcase", "table", "bed",
         ],
     },
     {
@@ -139,9 +139,9 @@ SECTIONS: List[dict] = [
         "title": "Traps & Devices",
         "rows": [(496, 12)],
         "names": [
-            "net", "web", "spikes", "caltrops",
-            "dart", "pit", "grate", "chest_open",
-            "chest", "button", "lever_down", "lever_up",
+            "grate", "web", "beartrap_ready", "beartrap_used",
+            "trap_ready", "trap_used", "trapdoor_ready", "trapdoor_used",
+            "button_ready", "button_used", "switch_left", "switch_right",
         ],
     },
     {
@@ -150,10 +150,10 @@ SECTIONS: List[dict] = [
         "title": "Overworld",
         "rows": [(544, 13)],
         "names": [
-            "grass", "pebbles", "bushes",
-            "tree", "pine", "deadtree",
-            "water", "hill",
-            "tent", "hut", "castle", "dock", "boat",
+            "grass", "pebbles", "flower",
+            "tree_full", "tree_pine", "tree_bare",
+            "waves", "boulders",
+            "cave", "house", "castlle", "cart", "ship",
         ],
     },
     {
@@ -163,27 +163,27 @@ SECTIONS: List[dict] = [
         "rows": [(592, 16), (608, 5)],
         "names": [
             # Row 1
-            "torch", "lantern", "bomb", "pickaxe",
-            "rope", "flask", "coin", "chest_closed",
-            "chest_open", "mortar", "key_small", "key",
-            "lock", "book", "compass", "scroll",
+            "torch", "lantern", "shovel", "pickaxe",
+            "rope", "bomb", "chest_ready", "chest_used",
+            "urn", "broken", "key_a", "key_b",
+            "bag", "coins", "nugget", "crystal",
             # Row 2
-            "clock", "poison", "bone", "shell", "mask",
+            "gem", "corpse", "bone", "shell", "fossil",
         ],
     },
     {
-        "key": "food_drink",
+        "key_b": "food_drink",
         "prefix": "food",
         "title": "Food & Drink",
         "rows": [(656, 16), (672, 6)],
         "names": [
             # Row 1
-            "meat", "bowl", "shrimp", "fish",
-            "melon", "pie", "bread", "cake",
-            "apple", "pumpkin", "cheese", "herb",
-            "flower", "mushroom", "pepper", "cupcake",
+            "drumstick", "steak", "kebab", "fish",
+            "eyeball", "bread", "egg", "cheese",
+            "fruit", "vegetable", "root", "leaf",
+            "herb", "mushroom", "candy", "cupcake",
             # Row 2
-            "mug", "jug", "teapot", "bottle", "sack", "roll",
+            "beer", "pot", "trophy", "vial", "bottle", "jug",
         ],
     },
     {
@@ -193,14 +193,14 @@ SECTIONS: List[dict] = [
         "rows": [(720, 16), (736, 11)],
         "names": [
             # Row 1
-            "dagger", "sword", "axe", "greataxe",
-            "spear", "mace", "hammer", "shield_small",
-            "shield", "xweapons", "bow", "helmet",
-            "hat", "boot", "gauntlet", "belt",
+            "dagger", "sword", "axe", "spear",
+            "pole", "club", "hammer", "shield_a",
+            "shield_b", "bow", "arrows", "helm",
+            "hood", "hat", "gloves", "bracers",
             # Row 2
-            "pants", "breeches", "belt_buckle",
-            "cloak", "tunic", "vest", "robe",
-            "amulet", "horned_helm", "crown", "glasses",
+            "boots", "pants", "belt",
+            "tunic", "chainmail", "plate", "cloak",
+            "ring", "necklace", "crown", "glasses",
         ],
     },
     {
@@ -209,10 +209,10 @@ SECTIONS: List[dict] = [
         "title": "Magick",
         "rows": [(784, 15)],
         "names": [
-            "wand", "wand_orb", "wand_skull", "orb",
-            "ankh", "effigy", "scroll", "scroll_open",
-            "runestone", "book", "mirror", "vortex",
-            "portal", "hand", "sun",
+            "staff", "wand", "rod", "orb",
+            "ankh", "skull", "letter", "scroll",
+            "book", "altar", "cauldron", "emanation",
+            "totem", "divine", "arcane",
         ],
     },
     {
@@ -220,7 +220,7 @@ SECTIONS: List[dict] = [
         "prefix": "music",
         "title": "Music",
         "rows": [(832, 6)],
-        "names": ["lute", "harp", "panpipe", "horn", "flute", "singer"],
+        "names": ["lute", "harp", "pipes", "bell", "xylophone", "drum"],
     },
     {
         "key": "symbols",
@@ -229,12 +229,12 @@ SECTIONS: List[dict] = [
         "rows": [(880, 16), (896, 7)],
         "names": [
             # Row 1
-            "at", "arrow_up", "arrow_ne", "plus", "x", "heart",
-            "star", "target", "moon", "eye", "warning", "note",
-            "fire", "sparkle", "drop", "lightning",
+            "at", "up", "up_right", "plus", "ex", "heart",
+            "star", "sun", "moon", "target", "warning", "music",
+            "fire", "ice", "water", "lightning",
             # Row 2
-            "spiral", "potion", "zzz", "skull", "swords",
-            "shield", "hourglass",
+            "confusion", "poison", "sleep", "dead", "attack",
+            "defend", "wait",
         ],
     },
 ]

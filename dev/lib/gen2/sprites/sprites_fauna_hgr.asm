@@ -22,9 +22,9 @@
 ; linked). The format is implicit in which .o the project
 ; pulls in.
 ; ============================================================================
-.export fauna_dog_pat, fauna_rabbit_pat, fauna_spider_pat, fauna_octopus_pat, fauna_cat_pat
-.export fauna_snake_pat, fauna_bat_pat, fauna_kitten_pat, fauna_bear_pat, fauna_snail_pat
-.export fauna_lion_pat, fauna_tiger_pat, fauna_horse_pat
+.export fauna_rat_pat, fauna_bat_pat, fauna_centipede_pat, fauna_spider_pat, fauna_scorpion_pat
+.export fauna_snail_pat, fauna_snake_pat, fauna_wolf_pat, fauna_lion_pat, fauna_bear_pat
+.export fauna_drake_pat, fauna_dragon_pat, fauna_horse_pat
 .export fauna_hgr_data
 
 ; Constants like FAUNA_HGR_COUNT live in the sister
@@ -36,74 +36,74 @@
 .segment "CODE"
 
 fauna_hgr_data:
-; slot 01/13 of "Fauna" row -- dog
-fauna_dog_pat:
+; slot 01/13 of "Fauna" row -- rat  (was: dog)
+fauna_rat_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 00..03
         .byte $18, $0C, $00, $18, $0C, $00, $70, $03, $00, $6A, $06, $00  ; rows 04..07
         .byte $7C, $0F, $01, $00, $4E, $00, $60, $5F, $00, $70, $5F, $00  ; rows 08..11
         .byte $68, $5F, $00, $60, $5F, $00, $60, $5F, $00, $50, $37, $00  ; rows 12..15
-; slot 02/13 of "Fauna" row -- rabbit
-fauna_rabbit_pat:
+; slot 02/13 of "Fauna" row -- bat  (was: rabbit)
+fauna_bat_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $08, $20, $00  ; rows 00..03
         .byte $24, $48, $00, $66, $4C, $01, $66, $4C, $01, $6E, $6C, $01  ; rows 04..07
         .byte $7E, $7F, $01, $3E, $7B, $01, $6E, $6F, $01, $4A, $24, $01  ; rows 08..11
         .byte $02, $00, $01, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 03/13 of "Fauna" row -- spider
-fauna_spider_pat:
+; slot 03/13 of "Fauna" row -- centipede  (was: spider)
+fauna_centipede_pat:
         .byte $00, $00, $00, $78, $04, $00, $78, $13, $00, $70, $0F, $00  ; rows 00..03
         .byte $48, $5F, $00, $20, $3E, $00, $00, $7F, $00, $74, $3F, $00  ; rows 04..07
         .byte $78, $5F, $00, $78, $03, $00, $78, $09, $00, $74, $27, $00  ; rows 08..11
         .byte $60, $1F, $00, $10, $2B, $00, $40, $3E, $00, $00, $00, $00  ; rows 12..15
-; slot 04/13 of "Fauna" row -- octopus
-fauna_octopus_pat:
+; slot 04/13 of "Fauna" row -- spider  (was: octopus)
+fauna_spider_pat:
         .byte $00, $00, $00, $48, $27, $00, $68, $2F, $00, $64, $4F, $00  ; rows 00..03
         .byte $64, $4F, $00, $48, $27, $00, $16, $53, $01, $7A, $3F, $01  ; rows 04..07
         .byte $30, $1B, $00, $5C, $77, $00, $12, $13, $01, $4A, $24, $01  ; rows 08..11
         .byte $48, $24, $00, $08, $20, $00, $10, $10, $00, $10, $10, $00  ; rows 12..15
-; slot 05/13 of "Fauna" row -- cat
-fauna_cat_pat:
+; slot 05/13 of "Fauna" row -- scorpion  (was: cat)
+fauna_scorpion_pat:
         .byte $00, $00, $00, $70, $00, $00, $78, $01, $00, $68, $01, $00  ; rows 00..03
         .byte $08, $04, $00, $10, $03, $00, $00, $08, $00, $40, $07, $00  ; rows 04..07
         .byte $10, $10, $00, $60, $0F, $00, $60, $0F, $00, $3C, $7B, $00  ; rows 08..11
         .byte $5E, $77, $01, $1A, $30, $01, $12, $10, $01, $14, $50, $00  ; rows 12..15
-; slot 06/13 of "Fauna" row -- snake
-fauna_snake_pat:
+; slot 06/13 of "Fauna" row -- snail  (was: snake)
+fauna_snail_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 00..03
         .byte $40, $3F, $00, $60, $7F, $00, $60, $7F, $00, $70, $44, $01  ; rows 04..07
         .byte $36, $3B, $01, $36, $2B, $01, $54, $2C, $01, $44, $4E, $01  ; rows 08..11
         .byte $38, $7C, $01, $78, $7D, $00, $44, $03, $00, $2A, $7E, $00  ; rows 12..15
-; slot 07/13 of "Fauna" row -- bat
-fauna_bat_pat:
+; slot 07/13 of "Fauna" row -- snake  (was: bat)
+fauna_snake_pat:
         .byte $00, $00, $00, $00, $02, $00, $70, $03, $00, $1C, $00, $00  ; rows 00..03
         .byte $7E, $7F, $00, $7E, $7F, $01, $78, $7F, $01, $00, $7C, $01  ; rows 04..07
         .byte $00, $7F, $01, $60, $7F, $00, $50, $17, $00, $70, $1F, $00  ; rows 08..11
         .byte $50, $14, $00, $10, $10, $00, $20, $08, $00, $40, $07, $00  ; rows 12..15
-; slot 08/13 of "Fauna" row -- kitten
-fauna_kitten_pat:
+; slot 08/13 of "Fauna" row -- wolf  (was: kitten)
+fauna_wolf_pat:
         .byte $00, $00, $00, $60, $40, $01, $20, $21, $01, $60, $7F, $01  ; rows 00..03
         .byte $40, $7F, $00, $44, $6D, $00, $46, $7F, $00, $06, $1E, $00  ; rows 04..07
         .byte $76, $52, $00, $7E, $61, $00, $7C, $7F, $00, $7C, $7F, $00  ; rows 08..11
         .byte $1C, $63, $01, $0C, $01, $01, $04, $01, $00, $04, $01, $00  ; rows 12..15
-; slot 09/13 of "Fauna" row -- bear
-fauna_bear_pat:
+; slot 09/13 of "Fauna" row -- lion  (was: bear)
+fauna_lion_pat:
         .byte $00, $00, $00, $60, $40, $01, $20, $3F, $01, $60, $7F, $01  ; rows 00..03
         .byte $44, $5E, $00, $42, $7F, $00, $72, $61, $00, $3A, $33, $00  ; rows 04..07
         .byte $7A, $4C, $00, $7C, $5E, $00, $7C, $61, $00, $7C, $77, $00  ; rows 08..11
         .byte $6C, $71, $00, $6C, $70, $00, $64, $78, $00, $64, $28, $01  ; rows 12..15
-; slot 10/13 of "Fauna" row -- snail
-fauna_snail_pat:
+; slot 10/13 of "Fauna" row -- bear  (was: snail)
+fauna_bear_pat:
         .byte $00, $00, $00, $58, $5F, $01, $68, $3F, $01, $70, $7F, $00  ; rows 00..03
         .byte $78, $7F, $01, $38, $6F, $01, $78, $7F, $01, $74, $70, $00  ; rows 04..07
         .byte $6E, $39, $01, $1E, $4F, $01, $3E, $60, $01, $7E, $70, $01  ; rows 08..11
         .byte $7E, $7F, $01, $7E, $7B, $00, $6E, $79, $00, $6C, $29, $01  ; rows 12..15
-; slot 11/13 of "Fauna" row -- lion
-fauna_lion_pat:
+; slot 11/13 of "Fauna" row -- drake  (was: lion)
+fauna_drake_pat:
         .byte $00, $00, $00, $00, $0B, $00, $60, $1F, $00, $70, $3E, $00  ; rows 00..03
         .byte $78, $3F, $00, $78, $33, $00, $58, $03, $00, $18, $17, $00  ; rows 04..07
         .byte $38, $12, $02, $78, $0C, $01, $78, $01, $01, $78, $7F, $01  ; rows 08..11
         .byte $70, $07, $00, $68, $7B, $00, $5C, $2B, $01, $12, $28, $01  ; rows 12..15
-; slot 12/13 of "Fauna" row -- tiger
-fauna_tiger_pat:
+; slot 12/13 of "Fauna" row -- dragon  (was: tiger)
+fauna_dragon_pat:
         .byte $00, $00, $00, $3A, $4B, $00, $6C, $7F, $00, $70, $7E, $00  ; rows 00..03
         .byte $78, $57, $00, $78, $03, $00, $5C, $23, $00, $1C, $2F, $00  ; rows 04..07
         .byte $3C, $22, $02, $7C, $1C, $01, $7C, $01, $01, $7C, $7F, $01  ; rows 08..11

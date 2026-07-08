@@ -13,30 +13,30 @@
 ; + slot*32 (asm Mode-1 init_vdp_g1: R6=$07 -> $3800; C lib SCREEN1/SCREEN2
 ; tables: R6=$03 -> $1800 — on those layouts $3800 is the NAME table!).
 ; ============================================================================
-.export troll_grunt_pat, troll_warrior_pat, troll_chief_pat, troll_brute_pat
+.export troll_goblin_pat, troll_hobgoblin_pat, troll_cyclops_pat, troll_orc_pat
 
 .segment "CODE"
 
-; slot 01/4 of "Trollkind" row -- grunt
-troll_grunt_pat:
+; slot 01/4 of "Trollkind" row -- goblin  (was: grunt)
+troll_goblin_pat:
         .byte $00, $00, $00, $00, $00, $77, $3D, $0F
         .byte $07, $08, $1F, $37, $27, $36, $32, $02
         .byte $00, $00, $00, $00, $00, $EE, $BC, $F0
         .byte $E0, $10, $F8, $EC, $E4, $6C, $4C, $40
-; slot 02/4 of "Trollkind" row -- warrior
-troll_warrior_pat:
+; slot 02/4 of "Trollkind" row -- hobgoblin  (was: warrior)
+troll_hobgoblin_pat:
         .byte $00, $00, $00, $37, $1F, $0B, $1E, $3C
         .byte $7C, $77, $78, $6F, $4F, $6F, $6C, $04
         .byte $00, $00, $00, $EC, $F8, $D0, $78, $3C
         .byte $BE, $EE, $1E, $F6, $F2, $F6, $36, $20
-; slot 03/4 of "Trollkind" row -- chief
-troll_chief_pat:
+; slot 03/4 of "Trollkind" row -- cyclops  (was: chief)
+troll_cyclops_pat:
         .byte $00, $01, $01, $07, $0F, $0C, $1E, $3F
         .byte $7C, $77, $78, $6F, $4F, $6F, $6C, $04
         .byte $00, $00, $80, $E0, $F0, $30, $78, $FC
         .byte $3E, $EE, $1E, $F6, $F2, $F6, $36, $20
-; slot 04/4 of "Trollkind" row -- brute
-troll_brute_pat:
+; slot 04/4 of "Trollkind" row -- orc  (was: brute)
+troll_orc_pat:
         .byte $00, $08, $13, $1F, $0F, $05, $1F, $38
         .byte $7B, $77, $78, $6F, $4F, $6F, $6C, $04
         .byte $00, $10, $C8, $F8, $F0, $A0, $F8, $5C

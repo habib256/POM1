@@ -400,7 +400,7 @@ sides of a row; that error is the guard, not a bug. Pick per card / per need:
 | `draw_bubble` | [`tms9918/bubble.asm`](tms9918/bubble.asm) **vs** [`gen2/gen2_bubble.asm`](gen2/gen2_bubble.asm) | per card |
 | `text_blit_glyph` | [`tms9918/text_bitmap.asm`](tms9918/text_bitmap.asm) **vs** [`gen2/gen2_text_bitmap.asm`](gen2/gen2_text_bitmap.asm) (same `A`/`pix_x`/`pix_y`/`pen_color` contract) | per card |
 | the whole `rt_*` seam (`rt_hgr`, `rt_hcolor`, `rt_plot`, `rt_line`, `rt_gr`, `rt_color`, `rt_loresplot`, `rt_hlin/vlin`, `rt_text`, `rt_home` + `rt_*` ZP) | [`basicrt/basicrt_tms.s`](basicrt/basicrt_tms.s) **vs** [`basicrt/basicrt_gen2.s`](basicrt/basicrt_gen2.s) | BASIC-compiler runtime backend: per target card |
-| every sprite label (`creat_wolf_pat`, …) | `tms9918/sprites_*.asm` **vs** [`gen2/sprites/`](gen2/sprites/)`*_hgr.asm` — same names, **different data** (TMS native 32 B/sprite vs HGR 16×3 B rows) | per card; the format is implicit in which `.o` you pull |
+| every sprite label (`creat_jelly_pat`, …) | `tms9918/sprites_*.asm` **vs** [`gen2/sprites/`](gen2/sprites/)`*_hgr.asm` — same names, **different data** (TMS native 32 B/sprite vs HGR 16×3 B rows) | per card; the format is implicit in which `.o` you pull |
 | `prng_lo`/`prng_hi` (ZP state; Model A) | [`m6502/prng8.asm`](m6502/prng8.asm) **and** [`m6502/prng16.asm`](m6502/prng16.asm) | shared **by design** (`.ifndef`-guarded, no link error): including both compiles, but the two generators stir ONE state pair — use one |
 
 ## Validation

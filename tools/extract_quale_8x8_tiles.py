@@ -72,29 +72,34 @@ QUADRANTS = {
 PALETTE: dict[int, tuple[str | None, str]] = {
     # --- Group 0 (chars 0..7): stone (gray on black) ---
     0:  (None,                     "empty"),       # all-zero quadrants (background)
-    4:  ("bldg_brick_wall_pat",    "wall"),        # full 16x16 brick
+    4:  ("bldg_brick_a_pat",    "wall"),        # full 16x16 brick
 
     # --- Group 1 (chars 8..15): portals (yellow on black) ---
-    8:  ("bldg_stairs_down_pat",   "stairs_down"),  # was mis-labelled "house"
-    12: ("bldg_door_wood_pat",     "door"),         # plank+iron-band wooden door
+    8:  ("bldg_stairs_down_pat",   "stairs_down"),
+    12: ("bldg_door_closed_pat",     "door"),         # plank+iron-band wooden door
 
     # --- Group 2 (chars 16..23): stairs-up + trap (lt-yellow on black) ---
-    # TILE_STAIRS_UP renders a cobblestone block (bldg_cobble3_pat) so the
+    # TILE_STAIRS_UP renders a cobblestone block (bldg_stone_c_pat) so the
     # cell reads "the way up just collapsed" — Berlin-Interpretation
     # one-way descent. The TILE_STAIRS_UP equate keeps its semantic name
     # (the collision rule still treats the cell as a hard wall in
     # check_collision); only the visual changes.
-    16: ("bldg_cobble3_pat",       "stairs_up"),
+    16: ("bldg_stone_c_pat",       "stairs_up"),
     # TILE_TRAP_PIT renders Quale's pit graphic. Lt-yellow outline reads
     # as "danger zone" against the gray walls. Stepping on it costs HP
     # (see trigger_pit + main_loop hook in TMS_Rogue.asm); the pit stays
     # visible afterwards so a second visit costs HP again — players
     # learn to remember pit positions across the FOV-wipe.
-    20: ("trap_pit_pat",           "trap_pit"),
+    20: ("trap_trap_used_pat",           "trap_pit"),
 
     # --- Group 3 (chars 24..31): items (cyan on black) ---
-    24: ("expl_coin_pat",          "gold"),
-    28: ("expl_flask_pat",         "potion"),
+    # Re-cast juillet 2026 after the community-name audit: under the old
+    # (wrong) labels the picker had chosen "coin" and "flask", which the
+    # audit revealed to be a CLOSED CHEST and a BOMB. Gold now uses the
+    # true coin pile (Item_Coins) and potion the true stoppered vial
+    # (Item_Vial).
+    24: ("expl_coins_pat",         "gold"),
+    28: ("food_vial_pat",          "potion"),
 
     # --- Groups 4..15 (chars 32..127): ASCII-aligned font, white on black.
     # Driven by FONT_PALETTE below — glyph at char N renders ASCII char

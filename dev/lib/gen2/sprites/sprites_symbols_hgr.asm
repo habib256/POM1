@@ -22,11 +22,11 @@
 ; linked). The format is implicit in which .o the project
 ; pulls in.
 ; ============================================================================
-.export sym_at_pat, sym_arrow_up_pat, sym_arrow_ne_pat, sym_plus_pat, sym_x_pat
-.export sym_heart_pat, sym_star_pat, sym_target_pat, sym_moon_pat, sym_eye_pat
-.export sym_warning_pat, sym_note_pat, sym_fire_pat, sym_sparkle_pat, sym_drop_pat
-.export sym_lightning_pat, sym_spiral_pat, sym_potion_pat, sym_zzz_pat, sym_skull_pat
-.export sym_swords_pat, sym_shield_pat, sym_hourglass_pat
+.export sym_at_pat, sym_up_pat, sym_up_right_pat, sym_plus_pat, sym_ex_pat
+.export sym_heart_pat, sym_star_pat, sym_sun_pat, sym_moon_pat, sym_target_pat
+.export sym_warning_pat, sym_music_pat, sym_fire_pat, sym_ice_pat, sym_water_pat
+.export sym_lightning_pat, sym_confusion_pat, sym_poison_pat, sym_sleep_pat, sym_dead_pat
+.export sym_attack_pat, sym_defend_pat, sym_wait_pat
 .export symbols_hgr_data
 
 ; Constants like SYMBOLS_HGR_COUNT live in the sister
@@ -44,14 +44,14 @@ sym_at_pat:
         .byte $0C, $60, $00, $46, $4B, $01, $66, $4C, $01, $66, $4C, $01  ; rows 04..07
         .byte $66, $4C, $01, $66, $4C, $01, $46, $7B, $00, $0C, $00, $00  ; rows 08..11
         .byte $18, $30, $00, $60, $0F, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 02/23 of "Symbols" row -- arrow_up
-sym_arrow_up_pat:
+; slot 02/23 of "Symbols" row -- up  (was: arrow_up)
+sym_up_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $03, $00, $40, $07, $00  ; rows 00..03
         .byte $60, $0F, $00, $70, $1F, $00, $78, $3F, $00, $7C, $7F, $00  ; rows 04..07
         .byte $40, $07, $00, $40, $07, $00, $40, $07, $00, $40, $07, $00  ; rows 08..11
         .byte $40, $07, $00, $40, $07, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 03/23 of "Symbols" row -- arrow_ne
-sym_arrow_ne_pat:
+; slot 03/23 of "Symbols" row -- up_right  (was: arrow_ne)
+sym_up_right_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $70, $3F, $00  ; rows 00..03
         .byte $60, $3F, $00, $40, $3F, $00, $00, $3F, $00, $40, $3F, $00  ; rows 04..07
         .byte $60, $3F, $00, $70, $3B, $00, $78, $31, $00, $7C, $20, $00  ; rows 08..11
@@ -62,8 +62,8 @@ sym_plus_pat:
         .byte $40, $07, $00, $40, $07, $00, $78, $3F, $00, $78, $3F, $00  ; rows 04..07
         .byte $78, $3F, $00, $78, $3F, $00, $40, $07, $00, $40, $07, $00  ; rows 08..11
         .byte $40, $07, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 05/23 of "Symbols" row -- x
-sym_x_pat:
+; slot 05/23 of "Symbols" row -- ex  (was: x)
+sym_ex_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $18, $30, $00  ; rows 00..03
         .byte $38, $38, $00, $70, $1C, $00, $60, $0F, $00, $40, $07, $00  ; rows 04..07
         .byte $40, $07, $00, $60, $0F, $00, $70, $1C, $00, $38, $38, $00  ; rows 08..11
@@ -80,8 +80,8 @@ sym_star_pat:
         .byte $40, $07, $00, $7E, $7F, $01, $7C, $7F, $00, $78, $3F, $00  ; rows 04..07
         .byte $70, $1F, $00, $78, $3F, $00, $78, $3F, $00, $7C, $7C, $00  ; rows 08..11
         .byte $1C, $70, $00, $06, $40, $01, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 08/23 of "Symbols" row -- target
-sym_target_pat:
+; slot 08/23 of "Symbols" row -- sun  (was: target)
+sym_sun_pat:
         .byte $00, $00, $00, $00, $03, $00, $0C, $60, $00, $64, $4F, $00  ; rows 00..03
         .byte $70, $1F, $00, $78, $3F, $00, $78, $3F, $00, $7A, $3F, $01  ; rows 04..07
         .byte $7A, $3F, $01, $78, $3F, $00, $78, $3F, $00, $70, $1F, $00  ; rows 08..11
@@ -92,8 +92,8 @@ sym_moon_pat:
         .byte $40, $1F, $00, $00, $1F, $00, $00, $3E, $00, $00, $3E, $00  ; rows 04..07
         .byte $00, $3E, $00, $00, $3E, $00, $00, $1F, $00, $40, $1F, $00  ; rows 08..11
         .byte $78, $0F, $00, $70, $03, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 10/23 of "Symbols" row -- eye
-sym_eye_pat:
+; slot 10/23 of "Symbols" row -- target  (was: eye)
+sym_target_pat:
         .byte $00, $00, $00, $40, $07, $00, $70, $1F, $00, $78, $3F, $00  ; rows 00..03
         .byte $3C, $78, $00, $1C, $70, $00, $0E, $63, $01, $4E, $67, $01  ; rows 04..07
         .byte $4E, $67, $01, $0E, $63, $01, $1C, $70, $00, $3C, $78, $00  ; rows 08..11
@@ -104,8 +104,8 @@ sym_warning_pat:
         .byte $60, $0F, $00, $60, $0C, $00, $70, $1C, $00, $70, $1C, $00  ; rows 04..07
         .byte $78, $3C, $00, $78, $3C, $00, $7C, $7F, $00, $7C, $7C, $00  ; rows 08..11
         .byte $7E, $7C, $01, $7E, $7F, $01, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 12/23 of "Symbols" row -- note
-sym_note_pat:
+; slot 12/23 of "Symbols" row -- music  (was: note)
+sym_music_pat:
         .byte $00, $00, $00, $00, $30, $00, $00, $3C, $00, $00, $3F, $00  ; rows 00..03
         .byte $60, $3F, $00, $60, $27, $00, $60, $21, $00, $20, $20, $00  ; rows 04..07
         .byte $20, $2C, $00, $20, $3C, $00, $2C, $3C, $00, $3C, $18, $00  ; rows 08..11
@@ -116,14 +116,14 @@ sym_fire_pat:
         .byte $4C, $7F, $00, $64, $7F, $00, $70, $7F, $01, $7C, $7F, $01  ; rows 04..07
         .byte $3E, $76, $01, $4E, $58, $01, $16, $60, $01, $0E, $40, $01  ; rows 08..11
         .byte $0C, $40, $00, $18, $30, $00, $60, $0F, $00, $00, $00, $00  ; rows 12..15
-; slot 14/23 of "Symbols" row -- sparkle
-sym_sparkle_pat:
+; slot 14/23 of "Symbols" row -- ice  (was: sparkle)
+sym_ice_pat:
         .byte $00, $00, $00, $00, $00, $00, $08, $0C, $00, $2A, $0C, $00  ; rows 00..03
         .byte $1C, $00, $00, $2A, $20, $00, $08, $28, $01, $00, $70, $00  ; rows 04..07
         .byte $00, $28, $01, $00, $20, $00, $00, $01, $00, $20, $05, $00  ; rows 08..11
         .byte $40, $03, $00, $20, $05, $00, $00, $01, $00, $00, $00, $00  ; rows 12..15
-; slot 15/23 of "Symbols" row -- drop
-sym_drop_pat:
+; slot 15/23 of "Symbols" row -- water  (was: drop)
+sym_water_pat:
         .byte $00, $00, $00, $00, $03, $00, $40, $04, $00, $40, $04, $00  ; rows 00..03
         .byte $60, $09, $00, $60, $09, $00, $70, $13, $00, $70, $13, $00  ; rows 04..07
         .byte $78, $23, $00, $78, $23, $00, $68, $21, $00, $08, $20, $00  ; rows 08..11
@@ -134,44 +134,44 @@ sym_lightning_pat:
         .byte $60, $0F, $00, $60, $07, $00, $70, $03, $00, $70, $3F, $00  ; rows 04..07
         .byte $78, $1F, $00, $00, $0F, $00, $00, $07, $00, $40, $03, $00  ; rows 08..11
         .byte $40, $01, $00, $60, $00, $00, $20, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 17/23 of "Symbols" row -- spiral
-sym_spiral_pat:
+; slot 17/23 of "Symbols" row -- confusion  (was: spiral)
+sym_confusion_pat:
         .byte $00, $00, $00, $40, $07, $00, $70, $1F, $00, $78, $3F, $00  ; rows 00..03
         .byte $3C, $78, $00, $1C, $70, $00, $0E, $63, $01, $4E, $64, $01  ; rows 04..07
         .byte $4E, $66, $01, $4E, $71, $01, $0C, $7F, $00, $1C, $3E, $00  ; rows 08..11
         .byte $38, $00, $00, $70, $00, $00, $40, $0B, $00, $00, $00, $00  ; rows 12..15
-; slot 18/23 of "Symbols" row -- potion
-sym_potion_pat:
+; slot 18/23 of "Symbols" row -- poison  (was: potion)
+sym_poison_pat:
         .byte $00, $00, $00, $00, $3E, $00, $00, $7F, $00, $40, $7F, $01  ; rows 00..03
         .byte $40, $7F, $01, $40, $3E, $01, $40, $00, $01, $1C, $41, $00  ; rows 04..07
         .byte $3E, $3E, $00, $2E, $00, $00, $22, $00, $00, $1C, $06, $00  ; rows 08..11
         .byte $00, $0F, $00, $00, $09, $00, $00, $06, $00, $00, $00, $00  ; rows 12..15
-; slot 19/23 of "Symbols" row -- zzz
-sym_zzz_pat:
+; slot 19/23 of "Symbols" row -- sleep  (was: zzz)
+sym_sleep_pat:
         .byte $00, $00, $00, $00, $7F, $01, $00, $7F, $01, $00, $70, $00  ; rows 00..03
         .byte $00, $38, $00, $3E, $1C, $00, $10, $0E, $00, $08, $7F, $01  ; rows 04..07
         .byte $04, $7F, $01, $3E, $00, $00, $00, $00, $00, $40, $07, $00  ; rows 08..11
         .byte $00, $02, $00, $00, $01, $00, $40, $07, $00, $00, $00, $00  ; rows 12..15
-; slot 20/23 of "Symbols" row -- skull
-sym_skull_pat:
+; slot 20/23 of "Symbols" row -- dead  (was: skull)
+sym_dead_pat:
         .byte $00, $00, $00, $60, $0F, $00, $70, $1F, $00, $78, $3F, $00  ; rows 00..03
         .byte $78, $3F, $00, $18, $33, $00, $08, $23, $00, $08, $23, $00  ; rows 04..07
         .byte $70, $1C, $00, $40, $07, $00, $50, $15, $00, $10, $10, $00  ; rows 08..11
         .byte $30, $1B, $00, $60, $0F, $00, $40, $07, $00, $00, $00, $00  ; rows 12..15
-; slot 21/23 of "Symbols" row -- swords
-sym_swords_pat:
+; slot 21/23 of "Symbols" row -- attack  (was: swords)
+sym_attack_pat:
         .byte $00, $00, $00, $0E, $60, $01, $1E, $70, $01, $3E, $78, $01  ; rows 00..03
         .byte $7C, $7C, $00, $38, $3E, $00, $10, $1F, $00, $40, $0F, $00  ; rows 04..07
         .byte $60, $07, $00, $70, $13, $00, $7C, $79, $00, $7C, $7C, $00  ; rows 08..11
         .byte $38, $38, $00, $34, $58, $00, $02, $00, $01, $00, $00, $00  ; rows 12..15
-; slot 22/23 of "Symbols" row -- shield
-sym_shield_pat:
+; slot 22/23 of "Symbols" row -- defend  (was: shield)
+sym_defend_pat:
         .byte $00, $00, $00, $78, $3F, $00, $04, $40, $00, $74, $41, $00  ; rows 00..03
         .byte $74, $41, $00, $74, $41, $00, $74, $41, $00, $74, $41, $00  ; rows 04..07
         .byte $74, $41, $00, $74, $41, $00, $68, $21, $00, $50, $11, $00  ; rows 08..11
         .byte $20, $09, $00, $40, $04, $00, $00, $03, $00, $00, $00, $00  ; rows 12..15
-; slot 23/23 of "Symbols" row -- hourglass
-sym_hourglass_pat:
+; slot 23/23 of "Symbols" row -- wait  (was: hourglass)
+sym_wait_pat:
         .byte $00, $00, $00, $78, $3F, $00, $78, $3F, $00, $10, $10, $00  ; rows 00..03
         .byte $10, $10, $00, $10, $10, $00, $20, $08, $00, $40, $04, $00  ; rows 04..07
         .byte $40, $04, $00, $20, $08, $00, $10, $13, $00, $50, $17, $00  ; rows 08..11

@@ -100,8 +100,8 @@
 ;
 ; sprites_emotes.asm  -- 12 SCROLL-O-SPRITES expression patterns (16x16,
 ; 32 B each). Always linked: shape_table references these via .word.
-.import   normal_pat, happy_pat, super_pat, sad_pat, upset_pat, angry_pat
-.import   grumpy_pat, perv_pat, sick_pat, sleep_pat, pirate_pat, shades_pat
+.import   serious_pat, happy_pat, excited_pat, sad_pat, hurt_pat, angry_pat
+.import   upset_pat, smug_pat, sick_pat, sleeping_pat, yarr_pat, nerd_pat
 .import   bird1_pat, bird2_pat, heart_pat
 ;
 ; sprite_helpers.asm -- apply_sprite_size + heading_to_octant.
@@ -4721,40 +4721,40 @@ shape_table:
         ;     Pattern data lives further down (after the BOAT block).
         .byte "NORMAL"
         .byte 32
-        .word normal_pat
+        .word serious_pat
         .byte "HAPPY "
         .byte 32
         .word happy_pat
         .byte "SUPER "
         .byte 32
-        .word super_pat
+        .word excited_pat
         .byte "SAD   "
         .byte 32
         .word sad_pat
         .byte "UPSET "
         .byte 32
-        .word upset_pat
+        .word hurt_pat
         .byte "ANGRY "
         .byte 32
         .word angry_pat
         .byte "GRUMPY"
         .byte 32
-        .word grumpy_pat
+        .word upset_pat
         .byte "PERV  "
         .byte 32
-        .word perv_pat
+        .word smug_pat
         .byte "SICK  "
         .byte 32
         .word sick_pat
         .byte "SLEEP "
         .byte 32
-        .word sleep_pat
+        .word sleeping_pat
         .byte "PIRATE"
         .byte 32
-        .word pirate_pat
+        .word yarr_pat
         .byte "SHADES"
         .byte 32
-        .word shades_pat
+        .word nerd_pat
         .byte $FF
 
 ; ----- bird1_pat / bird2_pat / heart_pat now live alongside the emote

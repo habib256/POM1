@@ -53,19 +53,19 @@ TILES = [
     # tile_id, sprite_label,            name,         fg, bg, role
     # TILE_EMPTY (id 0) intentionally omitted — char 0 is all-zero by
     # default, no sprite to display.
-    (4,  "bldg_brick_wall_pat",         "WALL",       14, 1,
+    (4,  "bldg_brick_a_pat",         "WALL",       14, 1,
      "stone wall (everything outside dug area)"),
     (8,  "bldg_stairs_down_pat",        "STAIRS_DOWN", 10, 1,
      "stairs down — descent path; advances depth"),
-    (12, "bldg_door_wood_pat",          "DOOR",       10, 1,
+    (12, "bldg_door_closed_pat",          "DOOR",       10, 1,
      "wooden door — passable for player + monsters"),
-    (16, "bldg_cobble3_pat",            "STAIRS_UP",  11, 1,
+    (16, "bldg_stone_c_pat",            "STAIRS_UP",  11, 1,
      "rubble — 'the way up just collapsed' (one-way descent)"),
     (20, "expl_torch_pat",              "TORCH",      11, 1,
      "torch — DEFINED in tileset, NOT USED in code yet"),
-    (24, "expl_coin_pat",               "GOLD",        7, 1,
+    (24, "expl_chest_ready_pat",               "GOLD",        7, 1,
      "gold — NOT USED yet (item pool is food-only for now)"),
-    (28, "expl_flask_pat",              "POTION",      7, 1,
+    (28, "expl_bomb_pat",              "POTION",      7, 1,
      "potion — NOT USED yet (item pool is food-only for now)"),
 ]
 
@@ -79,15 +79,15 @@ TILES = [
 #   slot 16 ($3880) : food meat (ITEM_TYPE 1, food drop)
 HW_SPRITES = [
     # (slot, sprite_label, display_name, fg_idx, bg_idx, role)
-    (0,  "char_paladin2_pat",  "PLAYER",   5,  1,
+    (0,  "char_guard_pat",  "PLAYER",   5,  1,
      "lt-blue — flashes red (col 8) when hit by a monster"),
-    (4,  "undead_undead_pat",  "UNDEAD",   15, 1,
+    (4,  "undead_zombie_pat",  "UNDEAD",   15, 1,
      "MON_TYPE 1 — 1 HP, 1 dmg; weakest undead (Quale's 'skull' artwork)"),
     (8,  "undead_ghost_pat",   "GHOST",    14, 1,
      "MON_TYPE 2 — 2 HP, 1 dmg; mid-tier"),
-    (12, "undead_death_pat",   "DEATH",    10, 1,
+    (12, "undead_reaper_pat",   "DEATH",    10, 1,
      "MON_TYPE 4 — 3 HP, 2 dmg; strongest undead, gated to depth 4 (Quale's 'mummy' artwork)"),
-    (16, "food_meat_pat",      "FOOD",     11, 1,
+    (16, "food_drumstick_pat",      "FOOD",     11, 1,
      "drumstick dropped by dead monster (50% rate) — heals FOOD_HEAL=2 HP"),
     (20, "undead_skeleton_pat", "SKELETON", 7, 1,
      "MON_TYPE 3 — 2 HP, 2 dmg; warrior tier, unlocks at depth 3 (Quale's 'crossbones' artwork)"),
@@ -142,7 +142,7 @@ def load_all_sprites() -> dict[str, list[int]]:
     merged: dict[str, list[int]] = {}
     for asm in sorted(LIB_TMS.glob("sprites_*.asm")):
         merged.update(parse_byte_blocks(asm, 32))
-    # Player sprite (char_adventurer_pat) is inlined in TMS_Rogue.asm.
+    # Player sprite (char_normal_f_pat) is inlined in TMS_Rogue.asm.
     merged.update(parse_byte_blocks(PROJECT / "TMS_Rogue.asm", 32))
     return merged
 

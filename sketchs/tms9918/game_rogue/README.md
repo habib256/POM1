@@ -49,11 +49,11 @@ Ships as `roms/codetank/Codetank_GAME2.rom` — load via POM1's
   torch). Each category has a single sub-type that matches its on-screen
   sprite — a Quale outfit / magick / food / exploration pictogram:
   - **SWORD** (weapon, ATK +2 for `WEAPON_DURATION` = 20 turns) — `outfit_sword_pat`
-  - **TUNIC** (armor, DEF +1 for `ARMOR_DURATION` = 30 turns) — `outfit_tunic_pat`
+  - **TUNIC** (armor, DEF +1 for `ARMOR_DURATION` = 30 turns) — `outfit_chainmail_pat`
   - **AMULET** (ring, +1 HP every `RING_REGEN_PERIOD` = 5 turns,
-    expires after `RING_DURATION` = 15 turns) — `outfit_amulet_pat`
-  - **POTION** (heal +5 HP, capped at `hp_max`) — `food_bottle_pat`
-  - **SCROLL** (full-map reveal) — `magic_scroll_pat`
+    expires after `RING_DURATION` = 15 turns) — `outfit_ring_pat`
+  - **POTION** (heal +5 HP, capped at `hp_max`) — `food_vial_pat`
+  - **SCROLL** (full-map reveal) — `magic_letter_pat`
   - **RATION** (food, +`FOOD_HEAL` = 3 HP) — meat sprite
   - **DAGGER** (thrown, dmg 2, `THROW_RANGE` = 8) — `outfit_dagger_pat`
   - **TORCH** (FOV doubles from `FOV_RADIUS` = 3 to `TORCH_RADIUS` = 7

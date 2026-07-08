@@ -46,9 +46,12 @@
         ; Graphics II pattern table by draw_sprite16_x2/_x4, NOT as hardware
         ; sprites. Layout: 32 bytes = left column rows 0..15, right column
         ; rows 0..15; bit 7 = leftmost (same bit order as the bitmap).
-        .import creat_goblin_pat   ; GOBLIN    (sprites_creatures.asm 08/8)
-        .import troll_warrior_pat  ; ORC       (sprites_trollkind.asm 02/4)
-        .import char_wizard_pat    ; DARK MAGE (sprites_characters.asm 15/33)
+        ; Re-cast juillet 2026 after the community-name audit (the old picks,
+        ; made under the pre-audit labels, were actually a Golem, a Hobgoblin
+        ; and a FEMALE ARCHER): now the archetypes wear their true faces.
+        .import troll_goblin_pat        ; GOBLIN    (sprites_trollkind.asm 01/4)
+        .import troll_orc_pat           ; ORC       (sprites_trollkind.asm 04/4)
+        .import char_necromancer_m_pat  ; DARK MAGE (sprites_characters.asm 31/33)
 .include "apple1.inc"
 
 ; ---- TMS9918 MMIO (VDP_DATA / VDP_CTRL + WAIT_VBLANK macro) ----
@@ -3096,9 +3099,9 @@ quadbits:
 
 ; archetype -> SCROLL-O-SPRITES pattern (0=goblin 1=orc 2=dark mage)
 mob_sprites_lo:
-        .byte <creat_goblin_pat, <troll_warrior_pat, <char_wizard_pat
+        .byte <troll_goblin_pat, <troll_orc_pat, <char_necromancer_m_pat
 mob_sprites_hi:
-        .byte >creat_goblin_pat, >troll_warrior_pat, >char_wizard_pat
+        .byte >troll_goblin_pat, >troll_orc_pat, >char_necromancer_m_pat
 
 ; =============================================
 ; DATA TABLES

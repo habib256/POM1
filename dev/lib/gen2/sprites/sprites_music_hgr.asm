@@ -22,8 +22,8 @@
 ; linked). The format is implicit in which .o the project
 ; pulls in.
 ; ============================================================================
-.export music_lute_pat, music_harp_pat, music_panpipe_pat, music_horn_pat, music_flute_pat
-.export music_singer_pat
+.export music_lute_pat, music_harp_pat, music_pipes_pat, music_bell_pat, music_xylophone_pat
+.export music_drum_pat
 .export music_hgr_data
 
 ; Constants like MUSIC_HGR_COUNT live in the sister
@@ -47,26 +47,26 @@ music_harp_pat:
         .byte $48, $06, $00, $48, $3C, $00, $48, $42, $00, $48, $4A, $00  ; rows 04..07
         .byte $48, $6A, $00, $48, $3A, $00, $48, $3A, $00, $48, $1E, $00  ; rows 08..11
         .byte $48, $1E, $00, $48, $0F, $00, $7C, $0F, $00, $00, $00, $00  ; rows 12..15
-; slot 03/6 of "Music" row -- panpipe
-music_panpipe_pat:
+; slot 03/6 of "Music" row -- pipes  (was: panpipe)
+music_pipes_pat:
         .byte $00, $00, $00, $00, $00, $00, $30, $15, $00, $70, $3F, $00  ; rows 00..03
         .byte $00, $00, $00, $30, $15, $00, $30, $05, $00, $30, $05, $00  ; rows 04..07
         .byte $30, $01, $00, $30, $01, $00, $30, $01, $00, $30, $00, $00  ; rows 08..11
         .byte $30, $00, $00, $30, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 04/6 of "Music" row -- horn
-music_horn_pat:
+; slot 04/6 of "Music" row -- bell  (was: horn)
+music_bell_pat:
         .byte $00, $00, $00, $00, $40, $01, $00, $60, $01, $00, $40, $00  ; rows 00..03
         .byte $00, $0E, $00, $40, $1F, $00, $78, $1F, $00, $44, $1F, $00  ; rows 04..07
         .byte $04, $0F, $00, $24, $0E, $00, $64, $04, $00, $08, $04, $00  ; rows 08..11
         .byte $10, $04, $00, $60, $03, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 05/6 of "Music" row -- flute
-music_flute_pat:
+; slot 05/6 of "Music" row -- xylophone  (was: flute)
+music_xylophone_pat:
         .byte $00, $00, $00, $02, $00, $01, $04, $40, $00, $08, $20, $00  ; rows 00..03
         .byte $10, $10, $00, $66, $4C, $01, $66, $4C, $01, $06, $40, $01  ; rows 04..07
         .byte $36, $5B, $01, $36, $1B, $00, $36, $43, $01, $36, $18, $00  ; rows 08..11
         .byte $06, $03, $00, $30, $00, $00, $06, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 06/6 of "Music" row -- singer
-music_singer_pat:
+; slot 06/6 of "Music" row -- drum  (was: singer)
+music_drum_pat:
         .byte $00, $00, $00, $08, $20, $00, $10, $10, $00, $60, $0F, $00  ; rows 00..03
         .byte $50, $17, $00, $38, $3B, $00, $78, $3F, $00, $70, $1F, $00  ; rows 04..07
         .byte $68, $2F, $00, $18, $30, $00, $78, $3F, $00, $78, $3F, $00  ; rows 08..11

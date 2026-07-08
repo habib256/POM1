@@ -12,13 +12,13 @@
 
 INC       := -I ../../../dev/lib/apple1 -I ../../../dev/lib/tms9918
 LOAD_CFG  := ../../../dev/codetank/bank_cfgs/apple1_maze3d_codetank_bank.cfg
-EXTRA_ASM := ../../../dev/lib/tms9918/tms9918_pad.asm ../../../dev/lib/tms9918/sprites_creatures.asm ../../../dev/lib/tms9918/sprites_trollkind.asm ../../../dev/lib/tms9918/sprites_characters.asm
+EXTRA_ASM := ../../../dev/lib/tms9918/tms9918_pad.asm ../../../dev/lib/tms9918/sprites_trollkind.asm ../../../dev/lib/tms9918/sprites_characters.asm
 
 .PHONY: all clean test
 all:
 	ca65 $(INC) -o TMS_Maze3D.o TMS_Maze3D.asm
 	for m in $(EXTRA_ASM); do ca65 $(INC) -o $$(basename $${m%.asm}).o $$m; done
-	ld65 -C $(LOAD_CFG) -m TMS_Maze3D.map TMS_Maze3D.o tms9918_pad.o sprites_creatures.o sprites_trollkind.o sprites_characters.o -o TMS_Maze3D.bin
+	ld65 -C $(LOAD_CFG) -m TMS_Maze3D.map TMS_Maze3D.o tms9918_pad.o sprites_trollkind.o sprites_characters.o -o TMS_Maze3D.bin
 	@echo "[Maze3D] built TMS_Maze3D.bin ($$(stat -c%s TMS_Maze3D.bin 2>/dev/null || wc -c < TMS_Maze3D.bin) B @ \$$4000)"
 
 clean:

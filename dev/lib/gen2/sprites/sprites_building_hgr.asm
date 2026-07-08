@@ -22,11 +22,11 @@
 ; linked). The format is implicit in which .o the project
 ; pulls in.
 ; ============================================================================
-.export bldg_brick_wall_pat, bldg_brick_wall2_pat, bldg_brick_wall3_pat, bldg_cobble_pat, bldg_cobble2_pat
-.export bldg_cobble3_pat, bldg_window_pat, bldg_window_grate_pat, bldg_door_locked_pat, bldg_door_pat
-.export bldg_stairs_down_pat, bldg_stairs_up_pat, bldg_door_wood_pat, bldg_pillar_pat, bldg_rubble_pat
-.export bldg_dome_pat, bldg_tent_pat, bldg_signpost_pat, bldg_stool_pat, bldg_bench_pat
-.export bldg_shelf_pat, bldg_bridge_pat, bldg_arch_pat
+.export bldg_brick_a_pat, bldg_brick_b_pat, bldg_brick_c_pat, bldg_stone_a_pat, bldg_stone_b_pat
+.export bldg_stone_c_pat, bldg_panel_ready_pat, bldg_panel_used_pat, bldg_block_pat, bldg_slot_pat
+.export bldg_stairs_down_pat, bldg_stairs_up_pat, bldg_door_closed_pat, bldg_door_open_pat, bldg_pyre_pat
+.export bldg_wheel_pat, bldg_tombstone_pat, bldg_sign_pat, bldg_stool_pat, bldg_cupboard_pat
+.export bldg_bookcase_pat, bldg_table_pat, bldg_bed_pat
 .export building_hgr_data
 
 ; Constants like BUILDING_HGR_COUNT live in the sister
@@ -38,62 +38,62 @@
 .segment "CODE"
 
 building_hgr_data:
-; slot 01/23 of "Building" row -- brick_wall
-bldg_brick_wall_pat:
+; slot 01/23 of "Building" row -- brick_a  (was: brick_wall)
+bldg_brick_a_pat:
         .byte $7B, $77, $03, $7B, $77, $03, $7B, $77, $03, $7B, $77, $03  ; rows 00..03
         .byte $7B, $77, $03, $00, $00, $00, $3F, $7F, $02, $3F, $7F, $02  ; rows 04..07
         .byte $3F, $7F, $02, $3F, $7F, $02, $3F, $7F, $02, $3F, $7F, $02  ; rows 08..11
         .byte $3F, $7F, $02, $00, $00, $00, $7B, $77, $03, $7B, $77, $03  ; rows 12..15
-; slot 02/23 of "Building" row -- brick_wall2
-bldg_brick_wall2_pat:
+; slot 02/23 of "Building" row -- brick_b  (was: brick_wall2)
+bldg_brick_b_pat:
         .byte $7B, $77, $03, $7B, $77, $03, $7B, $77, $03, $7B, $77, $03  ; rows 00..03
         .byte $7B, $77, $03, $00, $00, $00, $3B, $7F, $02, $3B, $7F, $02  ; rows 04..07
         .byte $3B, $7F, $02, $03, $00, $02, $3B, $77, $02, $3B, $77, $02  ; rows 08..11
         .byte $3B, $77, $02, $00, $00, $00, $7B, $77, $03, $7B, $77, $03  ; rows 12..15
-; slot 03/23 of "Building" row -- brick_wall3
-bldg_brick_wall3_pat:
+; slot 03/23 of "Building" row -- brick_c  (was: brick_wall3)
+bldg_brick_c_pat:
         .byte $7B, $77, $03, $7B, $77, $03, $7B, $77, $03, $7B, $77, $03  ; rows 00..03
         .byte $7B, $77, $03, $00, $00, $00, $3F, $00, $02, $3F, $7E, $02  ; rows 04..07
         .byte $3F, $7E, $02, $3F, $7E, $02, $3F, $7E, $02, $3F, $7E, $02  ; rows 08..11
         .byte $3F, $7E, $02, $00, $00, $00, $7B, $77, $03, $7B, $77, $03  ; rows 12..15
-; slot 04/23 of "Building" row -- cobble
-bldg_cobble_pat:
+; slot 04/23 of "Building" row -- stone_a  (was: cobble)
+bldg_stone_a_pat:
         .byte $13, $7B, $02, $01, $33, $02, $00, $00, $00, $30, $06, $00  ; rows 00..03
         .byte $39, $66, $00, $18, $60, $00, $00, $07, $00, $41, $0F, $02  ; rows 04..07
         .byte $53, $2F, $02, $43, $0F, $00, $00, $07, $00, $18, $30, $00  ; rows 08..11
         .byte $3D, $36, $00, $3C, $06, $00, $18, $30, $00, $03, $78, $00  ; rows 12..15
-; slot 05/23 of "Building" row -- cobble2
-bldg_cobble2_pat:
+; slot 05/23 of "Building" row -- stone_b  (was: cobble2)
+bldg_stone_b_pat:
         .byte $13, $7B, $02, $01, $33, $02, $38, $00, $00, $7C, $30, $00  ; rows 00..03
         .byte $7D, $78, $00, $7C, $78, $00, $38, $30, $00, $61, $07, $02  ; rows 04..07
         .byte $73, $0F, $02, $7B, $0F, $00, $78, $6F, $00, $78, $6F, $01  ; rows 08..11
         .byte $79, $4F, $01, $78, $07, $00, $70, $33, $00, $03, $78, $00  ; rows 12..15
-; slot 06/23 of "Building" row -- cobble3
-bldg_cobble3_pat:
+; slot 06/23 of "Building" row -- stone_c  (was: cobble3)
+bldg_stone_c_pat:
         .byte $7B, $79, $02, $7D, $7B, $02, $7E, $7F, $00, $7E, $37, $00  ; rows 00..03
         .byte $7E, $47, $01, $78, $43, $01, $77, $39, $00, $07, $7C, $02  ; rows 04..07
         .byte $7B, $7D, $02, $7C, $7B, $00, $7E, $37, $00, $7E, $0F, $03  ; rows 08..11
         .byte $7E, $4F, $03, $7C, $4F, $01, $78, $37, $00, $03, $78, $00  ; rows 12..15
-; slot 07/23 of "Building" row -- window
-bldg_window_pat:
+; slot 07/23 of "Building" row -- panel_ready  (was: window)
+bldg_panel_ready_pat:
         .byte $7F, $7F, $03, $01, $00, $02, $7D, $7F, $02, $7D, $7F, $02  ; rows 00..03
         .byte $0D, $60, $02, $0D, $60, $02, $4D, $6F, $02, $4D, $6F, $02  ; rows 04..07
         .byte $4D, $6F, $02, $4D, $6F, $02, $4D, $6F, $02, $0D, $60, $02  ; rows 08..11
         .byte $7D, $7F, $02, $7D, $7F, $02, $01, $00, $02, $7F, $7F, $03  ; rows 12..15
-; slot 08/23 of "Building" row -- window_grate
-bldg_window_grate_pat:
+; slot 08/23 of "Building" row -- panel_used  (was: window_grate)
+bldg_panel_used_pat:
         .byte $7F, $7F, $03, $01, $00, $02, $7D, $7F, $02, $05, $40, $02  ; rows 00..03
         .byte $05, $40, $02, $45, $4A, $02, $25, $55, $02, $45, $4A, $02  ; rows 04..07
         .byte $25, $55, $02, $45, $4A, $02, $25, $55, $02, $45, $4A, $02  ; rows 08..11
         .byte $05, $40, $02, $7D, $7F, $02, $01, $00, $02, $7F, $7F, $03  ; rows 12..15
-; slot 09/23 of "Building" row -- door_locked
-bldg_door_locked_pat:
+; slot 09/23 of "Building" row -- block  (was: door_locked)
+bldg_block_pat:
         .byte $7F, $7F, $03, $01, $00, $02, $7D, $7F, $02, $79, $3F, $02  ; rows 00..03
         .byte $71, $1F, $02, $61, $0F, $02, $41, $07, $02, $01, $03, $02  ; rows 04..07
         .byte $01, $03, $02, $41, $04, $02, $21, $08, $02, $11, $10, $02  ; rows 08..11
         .byte $09, $20, $02, $05, $40, $02, $01, $00, $02, $7F, $7F, $03  ; rows 12..15
-; slot 10/23 of "Building" row -- door
-bldg_door_pat:
+; slot 10/23 of "Building" row -- slot  (was: door)
+bldg_slot_pat:
         .byte $7F, $7F, $03, $01, $00, $02, $7D, $7F, $02, $1D, $70, $02  ; rows 00..03
         .byte $5D, $73, $02, $5D, $72, $02, $5D, $72, $02, $5D, $72, $02  ; rows 04..07
         .byte $5D, $72, $02, $5D, $72, $02, $5D, $73, $02, $1D, $70, $02  ; rows 08..11
@@ -110,38 +110,38 @@ bldg_stairs_up_pat:
         .byte $40, $77, $01, $40, $77, $01, $5E, $77, $01, $5E, $77, $01  ; rows 04..07
         .byte $5E, $07, $01, $5E, $07, $01, $1E, $00, $01, $1E, $00, $01  ; rows 08..11
         .byte $02, $00, $01, $02, $00, $01, $7E, $7F, $01, $00, $00, $00  ; rows 12..15
-; slot 13/23 of "Building" row -- wooden door (was mis-labelled "battlement"
-bldg_door_wood_pat:
+; slot 13/23 of "Building" row -- door_closed  (was: door_wood)
+bldg_door_closed_pat:
         .byte $00, $00, $00, $50, $17, $00, $5C, $77, $00, $5E, $77, $01  ; rows 00..03
         .byte $5E, $77, $01, $5E, $77, $01, $5E, $77, $01, $5E, $77, $01  ; rows 04..07
         .byte $72, $7F, $01, $0C, $00, $00, $52, $77, $01, $5E, $77, $01  ; rows 08..11
         .byte $5E, $77, $01, $00, $00, $00, $7E, $7F, $01, $00, $00, $00  ; rows 12..15
-; slot 14/23 of "Building" row -- pillar
-bldg_pillar_pat:
+; slot 14/23 of "Building" row -- door_open  (was: pillar)
+bldg_door_open_pat:
         .byte $00, $00, $00, $00, $60, $00, $00, $70, $01, $00, $70, $01  ; rows 00..03
         .byte $00, $70, $01, $00, $60, $01, $00, $50, $01, $00, $30, $01  ; rows 04..07
         .byte $00, $70, $00, $00, $70, $01, $00, $60, $01, $00, $50, $01  ; rows 08..11
         .byte $00, $20, $01, $00, $40, $00, $00, $00, $01, $00, $00, $00  ; rows 12..15
-; slot 15/23 of "Building" row -- rubble
-bldg_rubble_pat:
+; slot 15/23 of "Building" row -- pyre  (was: rubble)
+bldg_pyre_pat:
         .byte $00, $00, $00, $10, $04, $00, $40, $0C, $00, $40, $09, $00  ; rows 00..03
         .byte $60, $03, $00, $60, $0F, $00, $30, $1D, $00, $70, $2A, $00  ; rows 04..07
         .byte $18, $20, $00, $18, $30, $00, $74, $5F, $00, $04, $40, $00  ; rows 08..11
         .byte $7C, $7F, $00, $78, $3F, $00, $04, $40, $00, $78, $3F, $00  ; rows 12..15
-; slot 16/23 of "Building" row -- dome
-bldg_dome_pat:
+; slot 16/23 of "Building" row -- wheel  (was: dome)
+bldg_wheel_pat:
         .byte $00, $00, $00, $70, $1F, $00, $08, $20, $00, $04, $43, $00  ; rows 00..03
         .byte $42, $04, $01, $43, $07, $03, $03, $03, $03, $03, $00, $03  ; rows 04..07
         .byte $07, $40, $03, $0D, $60, $02, $7B, $3F, $03, $76, $5F, $01  ; rows 08..11
         .byte $0C, $60, $00, $78, $3F, $00, $70, $1F, $00, $00, $00, $00  ; rows 12..15
-; slot 17/23 of "Building" row -- tent
-bldg_tent_pat:
+; slot 17/23 of "Building" row -- tombstone  (was: tent)
+bldg_tombstone_pat:
         .byte $00, $00, $00, $00, $00, $00, $60, $0F, $00, $70, $1F, $00  ; rows 00..03
         .byte $78, $3F, $00, $38, $38, $00, $78, $3F, $00, $18, $30, $00  ; rows 04..07
         .byte $78, $3F, $00, $78, $3F, $00, $78, $3F, $00, $78, $3F, $00  ; rows 08..11
         .byte $58, $3D, $00, $68, $2C, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 18/23 of "Building" row -- signpost
-bldg_signpost_pat:
+; slot 18/23 of "Building" row -- sign  (was: signpost)
+bldg_sign_pat:
         .byte $00, $00, $00, $00, $03, $00, $7E, $7F, $01, $7E, $7F, $01  ; rows 00..03
         .byte $06, $40, $01, $7E, $7F, $01, $0E, $60, $01, $7E, $7F, $01  ; rows 04..07
         .byte $7E, $7F, $01, $7E, $7F, $01, $00, $00, $00, $00, $03, $00  ; rows 08..11
@@ -152,26 +152,26 @@ bldg_stool_pat:
         .byte $00, $00, $00, $60, $0F, $00, $70, $1F, $00, $70, $1F, $00  ; rows 04..07
         .byte $60, $0F, $00, $00, $00, $00, $60, $0C, $00, $30, $18, $00  ; rows 08..11
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 20/23 of "Building" row -- bench
-bldg_bench_pat:
+; slot 20/23 of "Building" row -- cupboard  (was: bench)
+bldg_cupboard_pat:
         .byte $00, $00, $00, $00, $00, $00, $7E, $7F, $01, $7E, $7F, $01  ; rows 00..03
         .byte $7E, $7F, $01, $7E, $7F, $01, $7E, $7F, $01, $7E, $7F, $01  ; rows 04..07
         .byte $00, $00, $00, $7E, $7F, $01, $3A, $75, $01, $7A, $7D, $01  ; rows 08..11
         .byte $7A, $7D, $01, $02, $00, $01, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 21/23 of "Building" row -- shelf
-bldg_shelf_pat:
+; slot 21/23 of "Building" row -- bookcase  (was: shelf)
+bldg_bookcase_pat:
         .byte $00, $00, $00, $7E, $7F, $01, $7E, $7F, $01, $7E, $7F, $01  ; rows 00..03
         .byte $02, $00, $01, $2A, $00, $01, $2A, $03, $01, $7E, $7F, $01  ; rows 04..07
         .byte $02, $00, $01, $5A, $3A, $01, $5A, $3A, $01, $7E, $7F, $01  ; rows 08..11
         .byte $02, $00, $01, $7A, $2A, $01, $7A, $2A, $01, $7E, $7F, $01  ; rows 12..15
-; slot 22/23 of "Building" row -- bridge
-bldg_bridge_pat:
+; slot 22/23 of "Building" row -- table  (was: bridge)
+bldg_table_pat:
         .byte $00, $00, $00, $7C, $7F, $00, $7E, $7F, $01, $7E, $7F, $01  ; rows 00..03
         .byte $7E, $7F, $01, $7E, $7F, $01, $7E, $7F, $01, $7E, $7F, $01  ; rows 04..07
         .byte $7C, $7F, $00, $02, $00, $01, $7C, $7F, $00, $00, $00, $00  ; rows 08..11
         .byte $0C, $60, $00, $0C, $60, $00, $0C, $60, $00, $00, $00, $00  ; rows 12..15
-; slot 23/23 of "Building" row -- arch
-bldg_arch_pat:
+; slot 23/23 of "Building" row -- bed  (was: arch)
+bldg_bed_pat:
         .byte $00, $00, $00, $60, $0F, $00, $6C, $6F, $00, $6C, $6F, $00  ; rows 00..03
         .byte $04, $40, $00, $78, $3F, $00, $7C, $7F, $00, $7C, $7F, $00  ; rows 04..07
         .byte $7C, $7F, $00, $7C, $7F, $00, $00, $00, $00, $7C, $7F, $00  ; rows 08..11

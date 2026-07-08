@@ -13,8 +13,8 @@
 ; + slot*32 (asm Mode-1 init_vdp_g1: R6=$07 -> $3800; C lib SCREEN1/SCREEN2
 ; tables: R6=$03 -> $1800 — on those layouts $3800 is the NAME table!).
 ; ============================================================================
-.export music_lute_pat, music_harp_pat, music_panpipe_pat, music_horn_pat, music_flute_pat
-.export music_singer_pat
+.export music_lute_pat, music_harp_pat, music_pipes_pat, music_bell_pat, music_xylophone_pat
+.export music_drum_pat
 
 .segment "CODE"
 
@@ -30,26 +30,26 @@ music_harp_pat:
         .byte $12, $12, $12, $12, $12, $13, $3F, $00
         .byte $00, $00, $00, $80, $C0, $78, $84, $A4
         .byte $AC, $B8, $B8, $F0, $F0, $E0, $E0, $00
-; slot 03/6 of "Music" row -- panpipe
-music_panpipe_pat:
+; slot 03/6 of "Music" row -- pipes  (was: panpipe)
+music_pipes_pat:
         .byte $00, $00, $0D, $0F, $00, $0D, $0D, $0D
         .byte $0D, $0D, $0D, $0C, $0C, $0C, $00, $00
         .byte $00, $00, $50, $F8, $00, $50, $40, $40
         .byte $00, $00, $00, $00, $00, $00, $00, $00
-; slot 04/6 of "Music" row -- horn
-music_horn_pat:
+; slot 04/6 of "Music" row -- bell  (was: horn)
+music_bell_pat:
         .byte $00, $00, $00, $00, $00, $03, $1F, $23
         .byte $21, $24, $26, $10, $08, $07, $00, $00
         .byte $00, $06, $0E, $04, $E0, $F0, $F0, $F0
         .byte $E0, $E0, $40, $40, $40, $80, $00, $00
-; slot 05/6 of "Music" row -- flute
-music_flute_pat:
+; slot 05/6 of "Music" row -- xylophone  (was: flute)
+music_xylophone_pat:
         .byte $00, $40, $20, $10, $08, $66, $66, $60
         .byte $6D, $6D, $6D, $6C, $61, $0C, $60, $00
         .byte $00, $02, $04, $08, $10, $66, $66, $06
         .byte $B6, $B0, $86, $30, $80, $00, $00, $00
-; slot 06/6 of "Music" row -- singer
-music_singer_pat:
+; slot 06/6 of "Music" row -- drum  (was: singer)
+music_drum_pat:
         .byte $00, $10, $08, $07, $0B, $1D, $1F, $0F
         .byte $17, $18, $1F, $1F, $0F, $07, $00, $00
         .byte $00, $08, $10, $E0, $D0, $B8, $F8, $F0

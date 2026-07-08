@@ -22,8 +22,8 @@
 ; linked). The format is implicit in which .o the project
 ; pulls in.
 ; ============================================================================
-.export undead_undead_pat, undead_skull_small_pat, undead_skeleton_pat, undead_crossbones_big_pat, undead_death_pat
-.export undead_ghost_pat, undead_wraith_pat, undead_shroud_pat
+.export undead_zombie_pat, undead_hand_pat, undead_skeleton_pat, undead_diehard_pat, undead_reaper_pat
+.export undead_ghost_pat, undead_skull_pat, undead_stalker_pat
 .export unliving_hgr_data
 
 ; Constants like UNLIVING_HGR_COUNT live in the sister
@@ -35,14 +35,14 @@
 .segment "CODE"
 
 unliving_hgr_data:
-; slot 01/8 of "The Unliving" row -- skull (renamed UNDEAD: this is the
-undead_undead_pat:
+; slot 01/8 of "The Unliving" row -- zombie  (was: undead)
+undead_zombie_pat:
         .byte $00, $00, $00, $00, $00, $01, $68, $0F, $00, $70, $1F, $00  ; rows 00..03
         .byte $10, $1F, $00, $10, $17, $00, $70, $1F, $00, $74, $1A, $00  ; rows 04..07
         .byte $30, $18, $00, $20, $08, $01, $1C, $30, $00, $6A, $57, $00  ; rows 08..11
         .byte $62, $4F, $00, $60, $0F, $00, $60, $0C, $00, $40, $14, $00  ; rows 12..15
-; slot 02/8 of "The Unliving" row -- skull_small
-undead_skull_small_pat:
+; slot 02/8 of "The Unliving" row -- hand  (was: skull_small)
+undead_hand_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 00..03
         .byte $00, $30, $00, $00, $30, $00, $00, $10, $00, $00, $00, $00  ; rows 04..07
         .byte $00, $3C, $00, $00, $1C, $00, $00, $1E, $00, $58, $3F, $00  ; rows 08..11
@@ -53,14 +53,14 @@ undead_skeleton_pat:
         .byte $70, $1F, $00, $10, $13, $00, $10, $13, $00, $70, $1C, $00  ; rows 04..07
         .byte $40, $07, $00, $40, $05, $00, $18, $30, $00, $64, $4F, $00  ; rows 08..11
         .byte $0C, $63, $00, $4C, $67, $00, $20, $08, $00, $20, $08, $00  ; rows 12..15
-; slot 04/8 of "The Unliving" row -- crossbones_big
-undead_crossbones_big_pat:
+; slot 04/8 of "The Unliving" row -- diehard  (was: crossbones_big)
+undead_diehard_pat:
         .byte $00, $00, $00, $40, $07, $00, $60, $0F, $00, $6C, $6F, $00  ; rows 00..03
         .byte $6E, $6F, $01, $02, $00, $01, $16, $53, $01, $74, $5C, $00  ; rows 04..07
         .byte $40, $07, $00, $5C, $75, $00, $1E, $70, $01, $60, $0F, $00  ; rows 08..11
         .byte $0C, $63, $00, $4C, $67, $00, $20, $08, $00, $20, $08, $00  ; rows 12..15
-; slot 05/8 of "The Unliving" row -- mummy (renamed DEATH: roguelike
-undead_death_pat:
+; slot 05/8 of "The Unliving" row -- reaper  (was: death)
+undead_reaper_pat:
         .byte $00, $00, $00, $46, $1F, $00, $6E, $0F, $00, $72, $1F, $00  ; rows 00..03
         .byte $12, $10, $00, $0A, $23, $00, $0A, $23, $00, $6A, $2C, $00  ; rows 04..07
         .byte $4A, $27, $00, $4A, $25, $00, $1E, $10, $00, $7C, $3F, $00  ; rows 08..11
@@ -71,14 +71,14 @@ undead_ghost_pat:
         .byte $58, $3B, $00, $7A, $37, $01, $3E, $7D, $01, $3E, $78, $01  ; rows 04..07
         .byte $3C, $78, $00, $78, $3A, $00, $78, $3F, $00, $78, $3F, $00  ; rows 08..11
         .byte $70, $3F, $01, $40, $7F, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 07/8 of "The Unliving" row -- wraith
-undead_wraith_pat:
+; slot 07/8 of "The Unliving" row -- skull  (was: wraith)
+undead_skull_pat:
         .byte $00, $00, $00, $04, $00, $00, $0E, $00, $00, $64, $1F, $00  ; rows 00..03
         .byte $70, $3F, $00, $38, $70, $00, $18, $60, $00, $38, $66, $00  ; rows 04..07
         .byte $38, $66, $00, $58, $70, $00, $18, $3E, $00, $70, $1F, $00  ; rows 08..11
         .byte $60, $43, $00, $00, $00, $00, $08, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 08/8 of "The Unliving" row -- shroud
-undead_shroud_pat:
+; slot 08/8 of "The Unliving" row -- stalker  (was: shroud)
+undead_stalker_pat:
         .byte $00, $00, $00, $40, $1F, $00, $60, $0F, $00, $70, $1F, $00  ; rows 00..03
         .byte $10, $10, $00, $08, $20, $00, $28, $28, $00, $08, $20, $00  ; rows 04..07
         .byte $08, $20, $00, $00, $00, $00, $0C, $30, $00, $6A, $57, $00  ; rows 08..11

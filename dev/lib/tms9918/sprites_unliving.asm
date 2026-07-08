@@ -13,22 +13,22 @@
 ; + slot*32 (asm Mode-1 init_vdp_g1: R6=$07 -> $3800; C lib SCREEN1/SCREEN2
 ; tables: R6=$03 -> $1800 — on those layouts $3800 is the NAME table!).
 ; ============================================================================
-.export undead_undead_pat, undead_skull_small_pat, undead_skeleton_pat, undead_crossbones_big_pat, undead_death_pat
-.export undead_ghost_pat, undead_wraith_pat, undead_shroud_pat
+.export undead_zombie_pat, undead_hand_pat, undead_skeleton_pat, undead_diehard_pat, undead_reaper_pat
+.export undead_ghost_pat, undead_skull_pat, undead_stalker_pat
 
 .segment "CODE"
 
-; slot 01/8 of "The Unliving" row -- skull (renamed UNDEAD: this is the
+; slot 01/8 of "The Unliving" row -- zombie  (was: undead)
 ; canonical "weakest undead" sprite for roguelike consumers; the literal
 ; Quale label was "skull" but the rogue project treats it as the generic
 ; first-tier undead).
-undead_undead_pat:
+undead_zombie_pat:
         .byte $00, $00, $17, $0F, $09, $09, $0F, $2E
         .byte $0C, $04, $38, $57, $47, $07, $06, $02
         .byte $00, $02, $E0, $F0, $F0, $D0, $F0, $B0
         .byte $30, $22, $18, $D4, $E4, $E0, $60, $50
-; slot 02/8 of "The Unliving" row -- skull_small
-undead_skull_small_pat:
+; slot 02/8 of "The Unliving" row -- hand  (was: skull_small)
+undead_hand_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00
         .byte $00, $00, $00, $1B, $27, $04, $08, $08
         .byte $00, $00, $00, $00, $18, $18, $10, $00
@@ -41,16 +41,16 @@ undead_skeleton_pat:
         .byte $03, $03, $18, $27, $31, $33, $04, $04
         .byte $00, $00, $E0, $F0, $F0, $90, $90, $70
         .byte $C0, $40, $18, $E4, $8C, $CC, $20, $20
-; slot 04/8 of "The Unliving" row -- crossbones_big
-undead_crossbones_big_pat:
+; slot 04/8 of "The Unliving" row -- diehard  (was: crossbones_big)
+undead_diehard_pat:
         .byte $00, $03, $07, $37, $77, $40, $69, $2E
         .byte $03, $3B, $78, $07, $31, $33, $04, $04
         .byte $00, $C0, $E0, $EC, $EE, $02, $96, $74
         .byte $C0, $5C, $1E, $E0, $8C, $CC, $20, $20
-; slot 05/8 of "The Unliving" row -- mummy (renamed DEATH: roguelike
+; slot 05/8 of "The Unliving" row -- reaper  (was: death)
 ; consumers use this wrapped/bandaged figure as the strongest tier
 ; "death" undead).
-undead_death_pat:
+undead_reaper_pat:
         .byte $00, $63, $77, $4F, $48, $51, $51, $56
         .byte $53, $53, $78, $3F, $5F, $47, $47, $4C
         .byte $00, $F0, $E0, $F0, $10, $88, $88, $68
@@ -61,14 +61,14 @@ undead_ghost_pat:
         .byte $3C, $1E, $1F, $1F, $0F, $03, $00, $00
         .byte $00, $E0, $F0, $F8, $B8, $DA, $7E, $3E
         .byte $3C, $B8, $F8, $F8, $FA, $FC, $00, $00
-; slot 07/8 of "The Unliving" row -- wraith
-undead_wraith_pat:
+; slot 07/8 of "The Unliving" row -- skull  (was: wraith)
+undead_skull_pat:
         .byte $00, $20, $70, $27, $0F, $1C, $18, $1C
         .byte $1C, $1A, $18, $0F, $07, $00, $10, $00
         .byte $00, $00, $00, $F0, $F8, $1C, $0C, $CC
         .byte $CC, $1C, $F8, $F0, $84, $00, $00, $00
-; slot 08/8 of "The Unliving" row -- shroud
-undead_shroud_pat:
+; slot 08/8 of "The Unliving" row -- stalker  (was: shroud)
+undead_stalker_pat:
         .byte $00, $03, $07, $0F, $08, $10, $14, $10
         .byte $10, $00, $30, $57, $4F, $0F, $07, $0C
         .byte $00, $F0, $E0, $F0, $10, $08, $28, $08

@@ -6,7 +6,10 @@
  *
  * sprite_animals — TMS9918 sprites (CodeTank preset 9, Wozmon 4000R).
  *
- * Four fixed Fauna silhouettes (dog, octopus, bat, lion),
+ * Four fixed Fauna silhouettes (wolf, bat, lion, dragon —
+ * re-cast juillet 2026 after the sprite-name audit: the old picks,
+ * chosen under wrong labels, were actually a rat, a spider, a snake
+ * and a drake),
  * 16x16 with no magnification (1 screen pixel = 1 sprite pixel).
  * dev/lib/tms9918/sprites_fauna.asm — SCROLL-O-SPRITES "Fauna", CC-BY Quale.
  */
@@ -17,10 +20,10 @@
 
 #define FAUNA_PAT_BYTES 32U
 
-extern const unsigned char fauna_dog_pat[];
-extern const unsigned char fauna_octopus_pat[];
+extern const unsigned char fauna_wolf_pat[];
 extern const unsigned char fauna_bat_pat[];
 extern const unsigned char fauna_lion_pat[];
+extern const unsigned char fauna_dragon_pat[];
 
 typedef const unsigned char *fauna_ptr_t;
 
@@ -71,14 +74,14 @@ void main(void) {
      * run display-ON after init, paced only by cc65 codegen luck). They
      * live at $1800+ (R6=$03), just past the $0000-$17FF pattern table
      * that screen2_init_bitmap clears, so they survive the init below. */
-    upload_fauna_slot(0U, fauna_dog_pat);
-    upload_fauna_slot(1U, fauna_octopus_pat);
-    upload_fauna_slot(2U, fauna_bat_pat);
-    upload_fauna_slot(3U, fauna_lion_pat);
+    upload_fauna_slot(0U, fauna_wolf_pat);
+    upload_fauna_slot(1U, fauna_bat_pat);
+    upload_fauna_slot(2U, fauna_lion_pat);
+    upload_fauna_slot(3U, fauna_dragon_pat);
 
     screen2_init_bitmap(FG_BG(COLOR_DARK_GREEN, COLOR_BLACK));
 
-    screen2_puts((const char *)"Fauna  dog oct bat lion", 1U, 1U, FG_BG(COLOR_WHITE, COLOR_DARK_GREEN));
+    screen2_puts((const char *)"Fauna wolf bat lion dragon", 1U, 1U, FG_BG(COLOR_WHITE, COLOR_DARK_GREEN));
 
     /* Native 16x16: no magnification (REG1 MAG bit = 0). */
     tms_set_sprite_double_size(1U);

@@ -22,7 +22,7 @@
 ; linked). The format is implicit in which .o the project
 ; pulls in.
 ; ============================================================================
-.export troll_grunt_pat, troll_warrior_pat, troll_chief_pat, troll_brute_pat
+.export troll_goblin_pat, troll_hobgoblin_pat, troll_cyclops_pat, troll_orc_pat
 .export trollkind_hgr_data
 
 ; Constants like TROLLKIND_HGR_COUNT live in the sister
@@ -34,26 +34,26 @@
 .segment "CODE"
 
 trollkind_hgr_data:
-; slot 01/4 of "Trollkind" row -- grunt
-troll_grunt_pat:
+; slot 01/4 of "Trollkind" row -- goblin  (was: grunt)
+troll_goblin_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 00..03
         .byte $00, $00, $00, $6E, $6F, $01, $3C, $7B, $00, $70, $1F, $00  ; rows 04..07
         .byte $60, $0F, $00, $10, $10, $00, $78, $3F, $00, $6C, $6F, $00  ; rows 08..11
         .byte $64, $4F, $00, $6C, $6C, $00, $4C, $64, $00, $40, $04, $00  ; rows 12..15
-; slot 02/4 of "Trollkind" row -- warrior
-troll_warrior_pat:
+; slot 02/4 of "Trollkind" row -- hobgoblin  (was: warrior)
+troll_hobgoblin_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $6C, $6F, $00  ; rows 00..03
         .byte $78, $3F, $00, $50, $17, $00, $78, $3C, $00, $3C, $78, $00  ; rows 04..07
         .byte $3E, $7A, $01, $6E, $6F, $01, $1E, $70, $01, $76, $5F, $01  ; rows 08..11
         .byte $72, $1F, $01, $76, $5F, $01, $36, $58, $01, $20, $08, $00  ; rows 12..15
-; slot 03/4 of "Trollkind" row -- chief
-troll_chief_pat:
+; slot 03/4 of "Trollkind" row -- cyclops  (was: chief)
+troll_cyclops_pat:
         .byte $00, $00, $00, $00, $01, $00, $00, $03, $00, $60, $0F, $00  ; rows 00..03
         .byte $70, $1F, $00, $30, $18, $00, $78, $3C, $00, $7C, $7F, $00  ; rows 04..07
         .byte $3E, $78, $01, $6E, $6F, $01, $1E, $70, $01, $76, $5F, $01  ; rows 08..11
         .byte $72, $1F, $01, $76, $5F, $01, $36, $58, $01, $20, $08, $00  ; rows 12..15
-; slot 04/4 of "Trollkind" row -- brute
-troll_brute_pat:
+; slot 04/4 of "Trollkind" row -- orc  (was: brute)
+troll_orc_pat:
         .byte $00, $00, $00, $10, $10, $00, $48, $27, $00, $78, $3F, $00  ; rows 00..03
         .byte $70, $1F, $00, $20, $0B, $00, $78, $3F, $00, $1C, $74, $00  ; rows 04..07
         .byte $5E, $71, $01, $6E, $6F, $01, $1E, $70, $01, $76, $5F, $01  ; rows 08..11

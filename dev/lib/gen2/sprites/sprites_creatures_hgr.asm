@@ -22,8 +22,8 @@
 ; linked). The format is implicit in which .o the project
 ; pulls in.
 ; ============================================================================
-.export creat_wolf_pat, creat_dragon_pat, creat_cyclops_pat, creat_blob_pat, creat_wisp_pat
-.export creat_rat_pat, creat_floater_pat, creat_goblin_pat
+.export creat_jelly_pat, creat_kraken_pat, creat_gazer_pat, creat_imp_pat, creat_ifrit_pat
+.export creat_mimic_pat, creat_automaton_pat, creat_golem_pat
 .export creatures_hgr_data
 
 ; Constants like CREATURES_HGR_COUNT live in the sister
@@ -35,50 +35,50 @@
 .segment "CODE"
 
 creatures_hgr_data:
-; slot 01/8 of "Creatures" row -- wolf
-creat_wolf_pat:
+; slot 01/8 of "Creatures" row -- jelly  (was: wolf)
+creat_jelly_pat:
         .byte $00, $00, $00, $00, $10, $00, $00, $40, $01, $00, $40, $01  ; rows 00..03
         .byte $70, $1F, $00, $78, $23, $00, $7C, $47, $00, $7C, $47, $00  ; rows 04..07
         .byte $74, $43, $00, $04, $48, $00, $64, $40, $00, $34, $40, $00  ; rows 08..11
         .byte $04, $52, $00, $04, $40, $00, $7C, $40, $00, $1E, $16, $01  ; rows 12..15
-; slot 02/8 of "Creatures" row -- dragon
-creat_dragon_pat:
+; slot 02/8 of "Creatures" row -- kraken  (was: dragon)
+creat_kraken_pat:
         .byte $00, $00, $00, $04, $10, $00, $08, $08, $00, $08, $0C, $01  ; rows 00..03
         .byte $04, $40, $00, $06, $4F, $00, $46, $1F, $01, $66, $07, $01  ; rows 04..07
         .byte $66, $7B, $00, $4E, $7D, $01, $02, $1E, $01, $3C, $2F, $01  ; rows 08..11
         .byte $7E, $6E, $00, $72, $05, $00, $6A, $19, $01, $6C, $76, $00  ; rows 12..15
-; slot 03/8 of "Creatures" row -- cyclops
-creat_cyclops_pat:
+; slot 03/8 of "Creatures" row -- gazer  (was: cyclops)
+creat_gazer_pat:
         .byte $00, $00, $00, $60, $0F, $00, $78, $3F, $00, $7C, $7F, $00  ; rows 00..03
         .byte $1C, $7C, $00, $4E, $79, $01, $2E, $7A, $01, $2E, $7A, $01  ; rows 04..07
         .byte $2E, $7A, $01, $4E, $79, $01, $1E, $7C, $01, $7C, $7F, $00  ; rows 08..11
         .byte $3C, $46, $00, $18, $00, $01, $46, $66, $00, $36, $77, $01  ; rows 12..15
-; slot 04/8 of "Creatures" row -- blob
-creat_blob_pat:
+; slot 04/8 of "Creatures" row -- imp  (was: blob)
+creat_imp_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 00..03
         .byte $40, $1F, $00, $60, $2F, $00, $70, $1F, $00, $30, $18, $00  ; rows 04..07
         .byte $50, $14, $00, $10, $10, $00, $28, $28, $00, $5C, $77, $00  ; rows 08..11
         .byte $3C, $78, $00, $76, $5F, $01, $30, $18, $00, $10, $10, $00  ; rows 12..15
-; slot 05/8 of "Creatures" row -- wisp
-creat_wisp_pat:
+; slot 05/8 of "Creatures" row -- ifrit  (was: wisp)
+creat_ifrit_pat:
         .byte $00, $00, $00, $40, $10, $00, $60, $04, $00, $20, $06, $00  ; rows 00..03
         .byte $00, $0F, $00, $60, $0F, $00, $70, $1A, $00, $28, $1D, $00  ; rows 04..07
         .byte $08, $30, $00, $28, $34, $00, $08, $30, $00, $10, $10, $00  ; rows 08..11
         .byte $2C, $68, $00, $6A, $27, $01, $42, $0F, $01, $00, $10, $00  ; rows 12..15
-; slot 06/8 of "Creatures" row -- rat
-creat_rat_pat:
+; slot 06/8 of "Creatures" row -- mimic  (was: rat)
+creat_mimic_pat:
         .byte $00, $00, $00, $00, $00, $00, $60, $75, $00, $20, $40, $01  ; rows 00..03
         .byte $00, $40, $01, $10, $44, $01, $00, $40, $01, $4E, $5B, $00  ; rows 04..07
         .byte $7E, $5B, $00, $7E, $6B, $00, $7E, $7B, $00, $7E, $7B, $00  ; rows 08..11
         .byte $7E, $7B, $00, $00, $00, $00, $10, $10, $00, $18, $30, $00  ; rows 12..15
-; slot 07/8 of "Creatures" row -- floater
-creat_floater_pat:
+; slot 07/8 of "Creatures" row -- automaton  (was: floater)
+creat_automaton_pat:
         .byte $00, $00, $00, $00, $02, $00, $00, $00, $00, $60, $0F, $00  ; rows 00..03
         .byte $70, $5F, $01, $50, $57, $01, $70, $1F, $01, $10, $10, $01  ; rows 04..07
         .byte $0C, $60, $00, $72, $1F, $00, $72, $1F, $00, $76, $1F, $00  ; rows 08..11
         .byte $76, $1F, $00, $00, $00, $00, $20, $10, $00, $30, $38, $00  ; rows 12..15
-; slot 08/8 of "Creatures" row -- goblin
-creat_goblin_pat:
+; slot 08/8 of "Creatures" row -- golem  (was: goblin)
+creat_golem_pat:
         .byte $00, $00, $00, $60, $0F, $00, $60, $0F, $00, $60, $0F, $00  ; rows 00..03
         .byte $00, $03, $00, $6E, $6F, $01, $6E, $6C, $01, $6E, $6F, $01  ; rows 04..07
         .byte $6E, $6F, $01, $66, $4F, $01, $12, $10, $01, $76, $5F, $01  ; rows 08..11

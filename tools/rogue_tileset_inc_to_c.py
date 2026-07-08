@@ -63,7 +63,7 @@ def main() -> int:
     lines.append("")
     lines.extend(
         [
-            "/* char_paladin2_pat — TMS_Rogue.asm sprite_pats slot 0 */",
+            "/* char_guard_pat — TMS_Rogue.asm sprite_pats slot 0 */",
             "const unsigned char rogue_player_pat[32] = {",
             "    0x01U, 0x07U, 0x0FU, 0x0FU, 0x09U, 0x08U, 0x0EU, 0x02U,",
             "    0x7AU, 0x68U, 0x6BU, 0x6BU, 0x69U, 0x6AU, 0x34U, 0x00U,",

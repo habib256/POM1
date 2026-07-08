@@ -22,9 +22,9 @@
 ; linked). The format is implicit in which .o the project
 ; pulls in.
 ; ============================================================================
-.export world_grass_pat, world_pebbles_pat, world_bushes_pat, world_tree_pat, world_pine_pat
-.export world_deadtree_pat, world_water_pat, world_hill_pat, world_tent_pat, world_hut_pat
-.export world_castle_pat, world_dock_pat, world_boat_pat
+.export world_grass_pat, world_pebbles_pat, world_flower_pat, world_tree_full_pat, world_tree_pine_pat
+.export world_tree_bare_pat, world_waves_pat, world_boulders_pat, world_cave_pat, world_house_pat
+.export world_castlle_pat, world_cart_pat, world_ship_pat
 .export overworld_hgr_data
 
 ; Constants like OVERWORLD_HGR_COUNT live in the sister
@@ -48,68 +48,68 @@ world_pebbles_pat:
         .byte $00, $00, $00, $00, $06, $00, $40, $0E, $00, $00, $0C, $00  ; rows 04..07
         .byte $10, $00, $00, $40, $09, $00, $40, $01, $00, $00, $00, $00  ; rows 08..11
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 03/13 of "Overworld" row -- bushes
-world_bushes_pat:
+; slot 03/13 of "Overworld" row -- flower  (was: bushes)
+world_flower_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 00..03
         .byte $00, $00, $00, $00, $03, $00, $20, $0B, $00, $60, $0C, $00  ; rows 04..07
         .byte $40, $04, $00, $00, $03, $00, $00, $00, $00, $00, $00, $00  ; rows 08..11
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 04/13 of "Overworld" row -- tree
-world_tree_pat:
+; slot 04/13 of "Overworld" row -- tree_full  (was: tree)
+world_tree_full_pat:
         .byte $00, $00, $00, $40, $07, $00, $70, $1F, $00, $78, $3F, $00  ; rows 00..03
         .byte $7C, $7F, $00, $7C, $7F, $00, $7E, $7F, $01, $7E, $7F, $01  ; rows 04..07
         .byte $3E, $78, $01, $5C, $74, $00, $30, $1B, $00, $00, $03, $00  ; rows 08..11
         .byte $00, $03, $00, $00, $03, $00, $40, $07, $00, $00, $00, $00  ; rows 12..15
-; slot 05/13 of "Overworld" row -- pine
-world_pine_pat:
+; slot 05/13 of "Overworld" row -- tree_pine  (was: pine)
+world_tree_pine_pat:
         .byte $00, $00, $00, $00, $03, $00, $40, $07, $00, $60, $0F, $00  ; rows 00..03
         .byte $00, $00, $00, $60, $0F, $00, $70, $1F, $00, $78, $3F, $00  ; rows 04..07
         .byte $00, $00, $00, $70, $1F, $00, $78, $3F, $00, $7C, $7F, $00  ; rows 08..11
         .byte $00, $00, $00, $00, $03, $00, $00, $03, $00, $00, $00, $00  ; rows 12..15
-; slot 06/13 of "Overworld" row -- deadtree
-world_deadtree_pat:
+; slot 06/13 of "Overworld" row -- tree_bare  (was: deadtree)
+world_tree_bare_pat:
         .byte $00, $00, $00, $00, $00, $00, $50, $14, $00, $20, $08, $00  ; rows 00..03
         .byte $38, $38, $00, $20, $08, $00, $40, $04, $00, $5E, $74, $01  ; rows 04..07
         .byte $64, $4F, $00, $40, $07, $00, $00, $03, $00, $00, $03, $00  ; rows 08..11
         .byte $00, $03, $00, $00, $03, $00, $40, $07, $00, $00, $00, $00  ; rows 12..15
-; slot 07/13 of "Overworld" row -- water
-world_water_pat:
+; slot 07/13 of "Overworld" row -- waves  (was: water)
+world_waves_pat:
         .byte $00, $00, $00, $00, $00, $00, $30, $66, $00, $4C, $19, $00  ; rows 00..03
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $30, $66, $00  ; rows 04..07
         .byte $4C, $19, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 08..11
         .byte $30, $66, $00, $4C, $19, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 08/13 of "Overworld" row -- hill
-world_hill_pat:
+; slot 08/13 of "Overworld" row -- boulders  (was: hill)
+world_boulders_pat:
         .byte $00, $00, $00, $60, $0F, $00, $70, $1F, $00, $70, $3F, $00  ; rows 00..03
         .byte $78, $3F, $00, $78, $00, $00, $38, $3F, $00, $58, $7F, $00  ; rows 04..07
         .byte $40, $7F, $00, $58, $7F, $01, $3C, $7F, $01, $7E, $7E, $01  ; rows 08..11
         .byte $7E, $1E, $01, $7E, $6E, $00, $7E, $70, $01, $00, $00, $00  ; rows 12..15
-; slot 09/13 of "Overworld" row -- tent
-world_tent_pat:
+; slot 09/13 of "Overworld" row -- cave  (was: tent)
+world_cave_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $40, $07, $00  ; rows 00..03
         .byte $60, $0F, $00, $70, $1F, $00, $70, $1F, $00, $78, $3F, $00  ; rows 04..07
         .byte $78, $3C, $00, $38, $38, $00, $38, $38, $00, $38, $38, $00  ; rows 08..11
         .byte $38, $3B, $00, $40, $07, $00, $60, $0F, $00, $00, $00, $00  ; rows 12..15
-; slot 10/13 of "Overworld" row -- hut
-world_hut_pat:
+; slot 10/13 of "Overworld" row -- house  (was: hut)
+world_house_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $13, $00  ; rows 00..03
         .byte $40, $14, $00, $20, $1B, $00, $50, $17, $00, $68, $2F, $00  ; rows 04..07
         .byte $74, $5F, $00, $78, $3F, $00, $48, $24, $00, $48, $24, $00  ; rows 08..11
         .byte $38, $3B, $00, $40, $07, $00, $60, $0F, $00, $00, $00, $00  ; rows 12..15
-; slot 11/13 of "Overworld" row -- castle
-world_castle_pat:
+; slot 11/13 of "Overworld" row -- castlle  (was: castle)
+world_castlle_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $34, $5B, $00  ; rows 00..03
         .byte $7C, $7F, $00, $7C, $7F, $00, $00, $00, $00, $78, $3F, $00  ; rows 04..07
         .byte $68, $2F, $00, $68, $2C, $00, $38, $38, $00, $38, $38, $00  ; rows 08..11
         .byte $38, $3B, $00, $40, $07, $00, $60, $0F, $00, $00, $00, $00  ; rows 12..15
-; slot 12/13 of "Overworld" row -- dock
-world_dock_pat:
+; slot 12/13 of "Overworld" row -- cart  (was: dock)
+world_cart_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $7E, $7F, $01  ; rows 00..03
         .byte $00, $00, $01, $10, $00, $01, $10, $00, $01, $00, $00, $01  ; rows 04..07
         .byte $7E, $7F, $01, $70, $71, $01, $70, $6E, $01, $70, $71, $01  ; rows 08..11
         .byte $00, $15, $00, $00, $11, $00, $00, $0E, $00, $00, $00, $00  ; rows 12..15
-; slot 13/13 of "Overworld" row -- boat
-world_boat_pat:
+; slot 13/13 of "Overworld" row -- ship  (was: boat)
+world_ship_pat:
         .byte $00, $00, $00, $40, $02, $00, $00, $03, $00, $40, $03, $00  ; rows 00..03
         .byte $60, $03, $00, $6C, $0B, $00, $66, $13, $00, $62, $21, $00  ; rows 04..07
         .byte $62, $40, $01, $22, $60, $00, $06, $71, $00, $7E, $3E, $00  ; rows 08..11

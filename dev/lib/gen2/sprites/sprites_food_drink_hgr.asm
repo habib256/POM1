@@ -22,11 +22,11 @@
 ; linked). The format is implicit in which .o the project
 ; pulls in.
 ; ============================================================================
-.export food_meat_pat, food_bowl_pat, food_shrimp_pat, food_fish_pat, food_melon_pat
-.export food_pie_pat, food_bread_pat, food_cake_pat, food_apple_pat, food_pumpkin_pat
-.export food_cheese_pat, food_herb_pat, food_flower_pat, food_mushroom_pat, food_pepper_pat
-.export food_cupcake_pat, food_mug_pat, food_jug_pat, food_teapot_pat, food_bottle_pat
-.export food_sack_pat, food_roll_pat
+.export food_drumstick_pat, food_steak_pat, food_kebab_pat, food_fish_pat, food_eyeball_pat
+.export food_bread_pat, food_egg_pat, food_cheese_pat, food_fruit_pat, food_vegetable_pat
+.export food_root_pat, food_leaf_pat, food_herb_pat, food_mushroom_pat, food_candy_pat
+.export food_cupcake_pat, food_beer_pat, food_pot_pat, food_trophy_pat, food_vial_pat
+.export food_bottle_pat, food_jug_pat
 .export food_drink_hgr_data
 
 ; Constants like FOOD_DRINK_HGR_COUNT live in the sister
@@ -38,20 +38,20 @@
 .segment "CODE"
 
 food_drink_hgr_data:
-; slot 01/22 of "Food & Drink" row -- meat
-food_meat_pat:
+; slot 01/22 of "Food & Drink" row -- drumstick  (was: meat)
+food_drumstick_pat:
         .byte $00, $00, $00, $00, $30, $00, $00, $70, $01, $00, $70, $01  ; rows 00..03
         .byte $00, $18, $00, $00, $0C, $00, $40, $07, $00, $70, $0D, $00  ; rows 04..07
         .byte $5C, $01, $00, $7A, $04, $00, $7E, $04, $00, $36, $02, $00  ; rows 08..11
         .byte $1E, $02, $00, $0C, $01, $00, $78, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 02/22 of "Food & Drink" row -- bowl
-food_bowl_pat:
+; slot 02/22 of "Food & Drink" row -- steak  (was: bowl)
+food_steak_pat:
         .byte $00, $00, $00, $3C, $00, $00, $42, $01, $00, $02, $06, $00  ; rows 00..03
         .byte $02, $18, $00, $02, $20, $00, $62, $41, $00, $22, $02, $01  ; rows 04..07
         .byte $42, $03, $01, $02, $00, $01, $06, $40, $01, $7E, $7F, $01  ; rows 08..11
         .byte $7E, $7F, $01, $7C, $7F, $00, $78, $3F, $00, $00, $00, $00  ; rows 12..15
-; slot 03/22 of "Food & Drink" row -- shrimp
-food_shrimp_pat:
+; slot 03/22 of "Food & Drink" row -- kebab  (was: shrimp)
+food_kebab_pat:
         .byte $00, $00, $00, $00, $00, $01, $00, $5C, $00, $00, $3E, $00  ; rows 00..03
         .byte $00, $70, $00, $40, $63, $00, $60, $67, $00, $00, $2E, $00  ; rows 04..07
         .byte $38, $0C, $00, $7C, $0C, $00, $62, $05, $00, $42, $01, $00  ; rows 08..11
@@ -62,56 +62,56 @@ food_fish_pat:
         .byte $60, $6C, $00, $30, $5F, $01, $50, $1F, $00, $68, $0F, $00  ; rows 04..07
         .byte $7C, $0F, $00, $7C, $0F, $00, $3E, $07, $00, $7E, $07, $00  ; rows 08..11
         .byte $62, $1B, $00, $66, $0D, $00, $3C, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 05/22 of "Food & Drink" row -- melon
-food_melon_pat:
+; slot 05/22 of "Food & Drink" row -- eyeball  (was: melon)
+food_eyeball_pat:
         .byte $00, $00, $00, $00, $00, $00, $40, $07, $00, $70, $1F, $00  ; rows 00..03
         .byte $18, $3E, $00, $68, $3C, $00, $6C, $7C, $00, $0C, $5C, $00  ; rows 04..07
         .byte $1C, $2E, $00, $7C, $7F, $00, $78, $3B, $00, $78, $27, $00  ; rows 08..11
         .byte $70, $5F, $00, $40, $45, $00, $00, $20, $00, $00, $00, $00  ; rows 12..15
-; slot 06/22 of "Food & Drink" row -- pie
-food_pie_pat:
+; slot 06/22 of "Food & Drink" row -- bread  (was: pie)
+food_bread_pat:
         .byte $00, $00, $00, $40, $07, $00, $40, $0D, $00, $60, $0F, $00  ; rows 00..03
         .byte $70, $3F, $00, $78, $7E, $00, $74, $77, $01, $3E, $7F, $01  ; rows 04..07
         .byte $7A, $0F, $01, $72, $07, $01, $64, $72, $00, $48, $09, $00  ; rows 08..11
         .byte $10, $04, $00, $20, $02, $00, $40, $01, $00, $00, $00, $00  ; rows 12..15
-; slot 07/22 of "Food & Drink" row -- bread
-food_bread_pat:
+; slot 07/22 of "Food & Drink" row -- egg  (was: bread)
+food_egg_pat:
         .byte $00, $00, $00, $00, $00, $00, $40, $07, $00, $60, $0F, $00  ; rows 00..03
         .byte $70, $1F, $00, $40, $1F, $00, $38, $39, $00, $78, $3E, $00  ; rows 04..07
         .byte $78, $3E, $00, $78, $3D, $00, $78, $3D, $00, $78, $3F, $00  ; rows 08..11
         .byte $70, $1F, $00, $60, $0F, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 08/22 of "Food & Drink" row -- cake
-food_cake_pat:
+; slot 08/22 of "Food & Drink" row -- cheese  (was: cake)
+food_cheese_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $60, $01, $00  ; rows 00..03
         .byte $70, $06, $00, $78, $1F, $00, $7C, $7F, $00, $6C, $78, $00  ; rows 04..07
         .byte $7C, $78, $00, $7C, $38, $00, $64, $3F, $00, $64, $7F, $00  ; rows 08..11
         .byte $7C, $67, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 09/22 of "Food & Drink" row -- apple
-food_apple_pat:
+; slot 09/22 of "Food & Drink" row -- fruit  (was: apple)
+food_fruit_pat:
         .byte $00, $00, $00, $00, $00, $00, $60, $00, $00, $60, $01, $00  ; rows 00..03
         .byte $40, $01, $00, $30, $1F, $00, $78, $3C, $00, $18, $30, $00  ; rows 04..07
         .byte $78, $3F, $00, $78, $3F, $00, $78, $3F, $00, $70, $1F, $00  ; rows 08..11
         .byte $70, $1F, $00, $60, $0F, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 10/22 of "Food & Drink" row -- pumpkin
-food_pumpkin_pat:
+; slot 10/22 of "Food & Drink" row -- vegetable  (was: pumpkin)
+food_vegetable_pat:
         .byte $00, $00, $00, $00, $06, $00, $00, $03, $00, $00, $03, $00  ; rows 00..03
         .byte $30, $18, $00, $5C, $77, $00, $6E, $6F, $01, $6E, $6F, $01  ; rows 04..07
         .byte $6E, $6F, $01, $6E, $6F, $01, $6E, $6F, $01, $6C, $6F, $00  ; rows 08..11
         .byte $60, $0F, $00, $40, $07, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 11/22 of "Food & Drink" row -- cheese
-food_cheese_pat:
+; slot 11/22 of "Food & Drink" row -- root  (was: cheese)
+food_root_pat:
         .byte $00, $00, $00, $40, $38, $00, $58, $1D, $00, $1C, $2D, $00  ; rows 00..03
         .byte $3C, $60, $00, $7C, $7F, $00, $74, $7B, $00, $7C, $6F, $00  ; rows 04..07
         .byte $78, $3F, $00, $70, $1E, $00, $40, $07, $00, $00, $03, $00  ; rows 08..11
         .byte $40, $05, $00, $40, $0A, $00, $00, $02, $00, $00, $00, $00  ; rows 12..15
-; slot 12/22 of "Food & Drink" row -- herb
-food_herb_pat:
+; slot 12/22 of "Food & Drink" row -- leaf  (was: herb)
+food_leaf_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $01, $00, $6E, $00  ; rows 00..03
         .byte $40, $37, $00, $60, $3B, $00, $70, $3D, $00, $70, $1E, $00  ; rows 04..07
         .byte $78, $1F, $00, $78, $0F, $00, $7C, $07, $00, $7C, $01, $00  ; rows 08..11
         .byte $3E, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 13/22 of "Food & Drink" row -- flower
-food_flower_pat:
+; slot 13/22 of "Food & Drink" row -- herb  (was: flower)
+food_herb_pat:
         .byte $00, $00, $00, $00, $07, $00, $40, $0F, $00, $58, $6F, $00  ; rows 00..03
         .byte $38, $70, $00, $30, $30, $00, $40, $0F, $00, $00, $07, $00  ; rows 04..07
         .byte $00, $00, $00, $00, $01, $00, $0C, $01, $00, $5C, $00, $00  ; rows 08..11
@@ -122,8 +122,8 @@ food_mushroom_pat:
         .byte $78, $3F, $00, $7C, $3F, $00, $1C, $30, $00, $0C, $33, $00  ; rows 04..07
         .byte $58, $1B, $00, $40, $03, $00, $40, $03, $00, $60, $03, $00  ; rows 08..11
         .byte $60, $03, $00, $40, $01, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 15/22 of "Food & Drink" row -- pepper
-food_pepper_pat:
+; slot 15/22 of "Food & Drink" row -- candy  (was: pepper)
+food_candy_pat:
         .byte $00, $00, $00, $00, $18, $00, $00, $38, $00, $00, $7B, $00  ; rows 00..03
         .byte $40, $77, $00, $60, $0F, $00, $70, $1F, $00, $78, $17, $00  ; rows 04..07
         .byte $68, $13, $00, $48, $11, $00, $00, $08, $00, $0E, $04, $00  ; rows 08..11
@@ -134,38 +134,38 @@ food_cupcake_pat:
         .byte $70, $1F, $00, $38, $2B, $00, $6C, $7C, $00, $7C, $6F, $00  ; rows 04..07
         .byte $38, $3B, $00, $74, $5F, $00, $08, $20, $00, $38, $25, $00  ; rows 08..11
         .byte $38, $25, $00, $30, $15, $00, $60, $0F, $00, $00, $00, $00  ; rows 12..15
-; slot 17/22 of "Food & Drink" row -- mug
-food_mug_pat:
+; slot 17/22 of "Food & Drink" row -- beer  (was: mug)
+food_beer_pat:
         .byte $00, $00, $00, $02, $00, $00, $60, $1F, $00, $70, $3F, $00  ; rows 00..03
         .byte $78, $3F, $01, $78, $3F, $00, $78, $7F, $00, $70, $5F, $01  ; rows 04..07
         .byte $08, $23, $01, $38, $24, $01, $38, $25, $01, $38, $65, $00  ; rows 08..11
         .byte $38, $25, $00, $36, $10, $00, $6C, $0F, $00, $00, $00, $00  ; rows 12..15
-; slot 18/22 of "Food & Drink" row -- jug
-food_jug_pat:
+; slot 18/22 of "Food & Drink" row -- pot  (was: jug)
+food_pot_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $60, $0F, $00  ; rows 00..03
         .byte $30, $18, $00, $30, $18, $00, $78, $3F, $00, $6C, $6F, $00  ; rows 04..07
         .byte $1C, $70, $00, $7C, $7F, $00, $7C, $7F, $00, $78, $3F, $00  ; rows 08..11
         .byte $74, $5F, $00, $08, $20, $00, $70, $1F, $00, $00, $00, $00  ; rows 12..15
-; slot 19/22 of "Food & Drink" row -- teapot
-food_teapot_pat:
+; slot 19/22 of "Food & Drink" row -- trophy  (was: teapot)
+food_trophy_pat:
         .byte $00, $00, $00, $40, $07, $00, $60, $0C, $00, $60, $0F, $00  ; rows 00..03
         .byte $5C, $77, $00, $3E, $78, $01, $72, $1F, $01, $72, $1F, $01  ; rows 04..07
         .byte $76, $5F, $01, $7C, $7F, $00, $78, $3F, $00, $70, $1F, $00  ; rows 08..11
         .byte $40, $07, $00, $20, $08, $00, $40, $07, $00, $00, $00, $00  ; rows 12..15
-; slot 20/22 of "Food & Drink" row -- bottle
-food_bottle_pat:
+; slot 20/22 of "Food & Drink" row -- vial  (was: bottle)
+food_vial_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 00..03
         .byte $40, $07, $00, $60, $0C, $00, $60, $0F, $00, $40, $07, $00  ; rows 04..07
         .byte $20, $08, $00, $70, $10, $00, $70, $10, $00, $70, $10, $00  ; rows 08..11
         .byte $70, $10, $00, $20, $08, $00, $40, $07, $00, $00, $00, $00  ; rows 12..15
-; slot 21/22 of "Food & Drink" row -- sack
-food_sack_pat:
+; slot 21/22 of "Food & Drink" row -- bottle  (was: sack)
+food_bottle_pat:
         .byte $00, $00, $00, $00, $00, $00, $40, $07, $00, $60, $0C, $00  ; rows 00..03
         .byte $60, $0F, $00, $40, $07, $00, $20, $08, $00, $70, $10, $00  ; rows 04..07
         .byte $38, $20, $00, $3C, $40, $00, $1C, $40, $00, $1C, $40, $00  ; rows 08..11
         .byte $0C, $40, $00, $18, $30, $00, $60, $0F, $00, $00, $00, $00  ; rows 12..15
-; slot 22/22 of "Food & Drink" row -- roll
-food_roll_pat:
+; slot 22/22 of "Food & Drink" row -- jug  (was: roll)
+food_jug_pat:
         .byte $00, $00, $00, $40, $07, $00, $60, $0C, $00, $60, $0F, $00  ; rows 00..03
         .byte $58, $37, $00, $04, $40, $00, $1C, $40, $00, $7C, $40, $00  ; rows 04..07
         .byte $7C, $41, $00, $7C, $41, $00, $7C, $41, $00, $7C, $41, $00  ; rows 08..11

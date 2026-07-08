@@ -5,7 +5,7 @@ so the same SCROLL-O-SPRITES bank can be linked into either a TMS9918 or a
 GEN2 HGR project with identical ergonomics.
 
 Convention. Both libraries export the same per-sprite label set (e.g.
-`fauna_dog_pat`, `sym_at_pat`). The PAYLOAD differs because the two video
+`fauna_rat_pat`, `sym_at_pat`). The PAYLOAD differs because the two video
 chips speak completely different bitmap formats:
 
     TMS9918 sprite mode (32 B/sprite):
@@ -46,7 +46,7 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 TMS_DIR = REPO / "dev" / "lib" / "tms9918"
 HGR_DIR = REPO / "dev" / "lib" / "gen2" / "sprites"
 
-# TMS peut préfixer les labels « C/cc65 » par _ (ex. _fauna_dog_pat).
+# TMS peut préfixer les labels « C/cc65 » par _ (ex. _fauna_rat_pat).
 LABEL_RE = re.compile(r"^(_?[a-z][a-z0-9_]*):\s*$")
 BYTE_RE = re.compile(r"\.byte\s+(.*)")
 COMMENT_RE = re.compile(r"^;\s*slot\s+(\d+)/\d+\s+of\s+\"([^\"]+)\"\s+row\s+--\s+(.+)$")

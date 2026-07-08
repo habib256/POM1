@@ -22,11 +22,11 @@
 ; linked). The format is implicit in which .o the project
 ; pulls in.
 ; ============================================================================
-.export outfit_dagger_pat, outfit_sword_pat, outfit_axe_pat, outfit_greataxe_pat, outfit_spear_pat
-.export outfit_mace_pat, outfit_hammer_pat, outfit_shield_small_pat, outfit_shield_pat, outfit_xweapons_pat
-.export outfit_bow_pat, outfit_helmet_pat, outfit_hat_pat, outfit_boot_pat, outfit_gauntlet_pat
-.export outfit_belt_pat, outfit_pants_pat, outfit_breeches_pat, outfit_belt_buckle_pat, outfit_cloak_pat
-.export outfit_tunic_pat, outfit_vest_pat, outfit_robe_pat, outfit_amulet_pat, outfit_horned_helm_pat
+.export outfit_dagger_pat, outfit_sword_pat, outfit_axe_pat, outfit_spear_pat, outfit_pole_pat
+.export outfit_club_pat, outfit_hammer_pat, outfit_shield_a_pat, outfit_shield_b_pat, outfit_bow_pat
+.export outfit_arrows_pat, outfit_helm_pat, outfit_hood_pat, outfit_hat_pat, outfit_gloves_pat
+.export outfit_bracers_pat, outfit_boots_pat, outfit_pants_pat, outfit_belt_pat, outfit_tunic_pat
+.export outfit_chainmail_pat, outfit_plate_pat, outfit_cloak_pat, outfit_ring_pat, outfit_necklace_pat
 .export outfit_crown_pat, outfit_glasses_pat
 .export outfit_hgr_data
 
@@ -57,20 +57,20 @@ outfit_axe_pat:
         .byte $00, $44, $00, $00, $42, $01, $00, $62, $01, $40, $72, $00  ; rows 04..07
         .byte $60, $3A, $00, $30, $1E, $00, $18, $0E, $00, $0C, $06, $00  ; rows 08..11
         .byte $06, $00, $00, $06, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 04/27 of "Outfit" row -- greataxe
-outfit_greataxe_pat:
+; slot 04/27 of "Outfit" row -- spear  (was: greataxe)
+outfit_spear_pat:
         .byte $00, $00, $00, $00, $7F, $01, $00, $3F, $01, $00, $1E, $01  ; rows 00..03
         .byte $00, $0C, $01, $00, $08, $01, $00, $12, $01, $00, $27, $01  ; rows 04..07
         .byte $40, $43, $01, $60, $01, $00, $70, $00, $00, $38, $00, $00  ; rows 08..11
         .byte $1C, $00, $00, $0E, $00, $00, $06, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 05/27 of "Outfit" row -- spear
-outfit_spear_pat:
+; slot 05/27 of "Outfit" row -- pole  (was: spear)
+outfit_pole_pat:
         .byte $00, $00, $00, $00, $40, $01, $00, $60, $01, $00, $70, $00  ; rows 00..03
         .byte $00, $38, $00, $00, $18, $00, $00, $02, $00, $00, $07, $00  ; rows 04..07
         .byte $40, $03, $00, $40, $01, $00, $10, $00, $00, $38, $00, $00  ; rows 08..11
         .byte $1C, $00, $00, $0E, $00, $00, $06, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 06/27 of "Outfit" row -- mace
-outfit_mace_pat:
+; slot 06/27 of "Outfit" row -- club  (was: mace)
+outfit_club_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $3E, $00, $00, $7F, $00  ; rows 00..03
         .byte $00, $7F, $00, $40, $4F, $00, $40, $47, $00, $60, $63, $00  ; rows 04..07
         .byte $60, $39, $00, $70, $0F, $00, $70, $03, $00, $78, $00, $00  ; rows 08..11
@@ -81,110 +81,110 @@ outfit_hammer_pat:
         .byte $20, $20, $00, $20, $70, $00, $40, $78, $01, $00, $7D, $01  ; rows 04..07
         .byte $00, $7E, $00, $60, $3C, $00, $70, $18, $00, $38, $00, $00  ; rows 08..11
         .byte $1C, $00, $00, $0E, $00, $00, $06, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 08/27 of "Outfit" row -- shield_small
-outfit_shield_small_pat:
+; slot 08/27 of "Outfit" row -- shield_a  (was: shield_small)
+outfit_shield_a_pat:
         .byte $00, $00, $00, $00, $00, $00, $70, $1F, $00, $78, $3F, $00  ; rows 00..03
         .byte $7C, $4F, $00, $7C, $47, $00, $7C, $40, $00, $3C, $43, $00  ; rows 04..07
         .byte $3C, $43, $00, $3C, $40, $00, $1C, $40, $00, $0C, $40, $00  ; rows 08..11
         .byte $08, $20, $00, $70, $1F, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 09/27 of "Outfit" row -- shield
-outfit_shield_pat:
+; slot 09/27 of "Outfit" row -- shield_b  (was: shield)
+outfit_shield_b_pat:
         .byte $00, $00, $00, $0C, $60, $00, $3C, $78, $00, $7C, $4F, $00  ; rows 00..03
         .byte $7C, $41, $00, $7C, $41, $00, $7C, $41, $00, $3C, $43, $00  ; rows 04..07
         .byte $3C, $43, $00, $7C, $40, $00, $7C, $41, $00, $7C, $41, $00  ; rows 08..11
         .byte $7C, $41, $00, $78, $31, $00, $60, $0F, $00, $00, $00, $00  ; rows 12..15
-; slot 10/27 of "Outfit" row -- xweapons
-outfit_xweapons_pat:
+; slot 10/27 of "Outfit" row -- bow  (was: xweapons)
+outfit_bow_pat:
         .byte $00, $00, $00, $06, $40, $01, $7E, $03, $01, $40, $27, $00  ; rows 00..03
         .byte $04, $17, $00, $08, $0A, $00, $10, $34, $00, $20, $7A, $00  ; rows 04..07
         .byte $00, $71, $00, $40, $60, $00, $20, $42, $00, $10, $44, $00  ; rows 08..11
         .byte $00, $48, $00, $00, $50, $01, $00, $40, $01, $00, $00, $00  ; rows 12..15
-; slot 11/27 of "Outfit" row -- bow
-outfit_bow_pat:
+; slot 11/27 of "Outfit" row -- arrows  (was: bow)
+outfit_arrows_pat:
         .byte $00, $00, $00, $00, $58, $01, $00, $10, $01, $00, $24, $00  ; rows 00..03
         .byte $00, $52, $01, $00, $09, $01, $40, $24, $00, $20, $12, $00  ; rows 04..07
         .byte $18, $09, $00, $6C, $04, $00, $76, $02, $00, $38, $01, $00  ; rows 08..11
         .byte $50, $01, $00, $60, $00, $00, $20, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 12/27 of "Outfit" row -- helmet
-outfit_helmet_pat:
+; slot 12/27 of "Outfit" row -- helm  (was: helmet)
+outfit_helm_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $60, $0F, $00  ; rows 00..03
         .byte $70, $1F, $00, $78, $3F, $00, $78, $3F, $00, $78, $3F, $00  ; rows 04..07
         .byte $00, $03, $00, $08, $23, $00, $08, $20, $00, $18, $30, $00  ; rows 08..11
         .byte $30, $18, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 13/27 of "Outfit" row -- hat
-outfit_hat_pat:
+; slot 13/27 of "Outfit" row -- hood  (was: hat)
+outfit_hood_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $70, $1F, $00  ; rows 00..03
         .byte $78, $3F, $00, $78, $3F, $00, $78, $3F, $00, $78, $3F, $00  ; rows 04..07
         .byte $08, $20, $00, $08, $20, $00, $78, $3C, $00, $78, $3C, $00  ; rows 08..11
         .byte $3C, $78, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 14/27 of "Outfit" row -- boot
-outfit_boot_pat:
+; slot 14/27 of "Outfit" row -- hat  (was: boot)
+outfit_hat_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $30, $00  ; rows 00..03
         .byte $00, $5C, $00, $00, $5E, $00, $00, $1F, $00, $40, $1F, $00  ; rows 04..07
         .byte $60, $1F, $00, $70, $1F, $00, $60, $03, $00, $1E, $3C, $00  ; rows 08..11
         .byte $60, $43, $01, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 15/27 of "Outfit" row -- gauntlet
-outfit_gauntlet_pat:
+; slot 15/27 of "Outfit" row -- gloves  (was: gauntlet)
+outfit_gloves_pat:
         .byte $00, $00, $00, $00, $28, $00, $00, $28, $01, $00, $28, $01  ; rows 00..03
         .byte $28, $7A, $01, $2A, $7E, $01, $2A, $04, $01, $3E, $79, $00  ; rows 04..07
         .byte $7E, $7D, $01, $42, $7C, $01, $3C, $04, $01, $7E, $78, $00  ; rows 08..11
         .byte $7E, $00, $00, $42, $00, $00, $3C, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 16/27 of "Outfit" row -- belt
-outfit_belt_pat:
+; slot 16/27 of "Outfit" row -- bracers  (was: belt)
+outfit_bracers_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $68, $00, $00, $5C, $01  ; rows 00..03
         .byte $00, $6C, $01, $34, $5C, $01, $6E, $6C, $01, $76, $5C, $01  ; rows 04..07
         .byte $6E, $04, $01, $76, $04, $01, $6E, $78, $00, $42, $00, $00  ; rows 08..11
         .byte $42, $00, $00, $3C, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 17/27 of "Outfit" row -- pants
-outfit_pants_pat:
+; slot 17/27 of "Outfit" row -- boots  (was: pants)
+outfit_boots_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $7C, $7C, $00  ; rows 00..03
         .byte $7C, $7C, $00, $00, $00, $00, $78, $3C, $00, $78, $3C, $00  ; rows 04..07
         .byte $60, $0C, $00, $5C, $74, $00, $7E, $7C, $01, $7E, $7C, $01  ; rows 08..11
         .byte $3E, $78, $01, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 18/27 of "Outfit" row -- breeches
-outfit_breeches_pat:
+; slot 18/27 of "Outfit" row -- pants  (was: breeches)
+outfit_pants_pat:
         .byte $00, $00, $00, $00, $00, $00, $3C, $7B, $00, $00, $00, $00  ; rows 00..03
         .byte $74, $5F, $00, $74, $5F, $00, $78, $3F, $00, $3C, $78, $00  ; rows 04..07
         .byte $3C, $78, $00, $3C, $78, $00, $3C, $78, $00, $3C, $78, $00  ; rows 08..11
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 19/27 of "Outfit" row -- belt_buckle
-outfit_belt_buckle_pat:
+; slot 19/27 of "Outfit" row -- belt  (was: belt_buckle)
+outfit_belt_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 00..03
         .byte $00, $00, $00, $7C, $7F, $00, $02, $00, $01, $5E, $77, $01  ; rows 04..07
         .byte $5E, $74, $01, $5E, $75, $01, $5C, $74, $00, $40, $07, $00  ; rows 08..11
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 20/27 of "Outfit" row -- cloak
-outfit_cloak_pat:
+; slot 20/27 of "Outfit" row -- tunic  (was: cloak)
+outfit_tunic_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $30, $18, $00  ; rows 00..03
         .byte $58, $37, $00, $1C, $70, $00, $3E, $78, $01, $7E, $7C, $01  ; rows 04..07
         .byte $7E, $7C, $01, $70, $1C, $00, $60, $0F, $00, $10, $10, $00  ; rows 08..11
         .byte $78, $3C, $00, $38, $38, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 21/27 of "Outfit" row -- tunic
-outfit_tunic_pat:
+; slot 21/27 of "Outfit" row -- chainmail  (was: tunic)
+outfit_chainmail_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $3C, $78, $00  ; rows 00..03
         .byte $3C, $7B, $00, $3C, $78, $00, $38, $38, $00, $70, $1C, $00  ; rows 04..07
         .byte $08, $23, $00, $78, $3F, $00, $78, $3F, $00, $00, $00, $00  ; rows 08..11
         .byte $70, $1F, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 22/27 of "Outfit" row -- vest
-outfit_vest_pat:
+; slot 22/27 of "Outfit" row -- plate  (was: vest)
+outfit_plate_pat:
         .byte $00, $00, $00, $00, $00, $00, $40, $07, $00, $20, $08, $00  ; rows 00..03
         .byte $3C, $78, $00, $5C, $74, $00, $3C, $7B, $00, $7C, $7C, $00  ; rows 04..07
         .byte $7C, $7F, $00, $78, $3C, $00, $00, $03, $00, $78, $3F, $00  ; rows 08..11
         .byte $70, $1F, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 23/27 of "Outfit" row -- robe
-outfit_robe_pat:
+; slot 23/27 of "Outfit" row -- cloak  (was: robe)
+outfit_cloak_pat:
         .byte $00, $00, $00, $40, $1F, $00, $60, $0F, $00, $70, $1F, $00  ; rows 00..03
         .byte $10, $10, $00, $08, $20, $00, $08, $20, $00, $08, $20, $00  ; rows 04..07
         .byte $10, $10, $00, $20, $08, $00, $38, $3B, $00, $3C, $78, $00  ; rows 08..11
         .byte $3C, $78, $00, $1C, $70, $00, $0C, $60, $00, $00, $00, $00  ; rows 12..15
-; slot 24/27 of "Outfit" row -- amulet
-outfit_amulet_pat:
+; slot 24/27 of "Outfit" row -- ring  (was: amulet)
+outfit_ring_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $70, $0E, $00  ; rows 00..03
         .byte $78, $1E, $00, $78, $3E, $00, $38, $63, $00, $40, $41, $00  ; rows 04..07
         .byte $78, $40, $00, $38, $40, $00, $38, $40, $00, $30, $20, $00  ; rows 08..11
         .byte $60, $10, $00, $40, $0F, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 25/27 of "Outfit" row -- horned_helm
-outfit_horned_helm_pat:
+; slot 25/27 of "Outfit" row -- necklace  (was: horned_helm)
+outfit_necklace_pat:
         .byte $00, $00, $00, $00, $00, $00, $18, $30, $00, $64, $4F, $00  ; rows 00..03
         .byte $04, $40, $00, $04, $40, $00, $0C, $60, $00, $58, $37, $00  ; rows 04..07
         .byte $60, $09, $00, $70, $13, $00, $70, $13, $00, $70, $13, $00  ; rows 08..11

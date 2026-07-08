@@ -22,11 +22,11 @@
 ; linked). The format is implicit in which .o the project
 ; pulls in.
 ; ============================================================================
-.export expl_torch_pat, expl_lantern_pat, expl_bomb_pat, expl_pickaxe_pat, expl_rope_pat
-.export expl_flask_pat, expl_coin_pat, expl_chest_closed_pat, expl_chest_open_pat, expl_mortar_pat
-.export expl_key_small_pat, expl_key_pat, expl_lock_pat, expl_book_pat, expl_compass_pat
-.export expl_scroll_pat, expl_clock_pat, expl_poison_pat, expl_bone_pat, expl_shell_pat
-.export expl_mask_pat
+.export expl_torch_pat, expl_lantern_pat, expl_shovel_pat, expl_pickaxe_pat, expl_rope_pat
+.export expl_bomb_pat, expl_chest_ready_pat, expl_chest_used_pat, expl_urn_pat, expl_broken_pat
+.export expl_key_a_pat, expl_key_b_pat, expl_bag_pat, expl_coins_pat, expl_nugget_pat
+.export expl_crystal_pat, expl_gem_pat, expl_corpse_pat, expl_bone_pat, expl_shell_pat
+.export expl_fossil_pat
 .export exploration_hgr_data
 
 ; Constants like EXPLORATION_HGR_COUNT live in the sister
@@ -50,8 +50,8 @@ expl_lantern_pat:
         .byte $30, $18, $00, $74, $5F, $00, $60, $0F, $00, $00, $00, $00  ; rows 04..07
         .byte $66, $4F, $01, $60, $0F, $00, $60, $0F, $00, $54, $57, $00  ; rows 08..11
         .byte $30, $18, $00, $60, $0F, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 03/21 of "Exploration" row -- bomb
-expl_bomb_pat:
+; slot 03/21 of "Exploration" row -- shovel  (was: bomb)
+expl_shovel_pat:
         .byte $00, $00, $00, $00, $30, $00, $00, $50, $00, $00, $10, $01  ; rows 00..03
         .byte $00, $78, $01, $00, $1C, $00, $00, $0E, $00, $10, $07, $00  ; rows 04..07
         .byte $38, $03, $00, $3C, $00, $00, $7E, $01, $00, $7E, $03, $00  ; rows 08..11
@@ -68,80 +68,80 @@ expl_rope_pat:
         .byte $04, $21, $00, $04, $12, $00, $04, $1E, $00, $04, $06, $00  ; rows 04..07
         .byte $44, $1E, $00, $24, $00, $00, $24, $12, $00, $24, $21, $00  ; rows 08..11
         .byte $18, $21, $00, $00, $21, $00, $00, $1E, $00, $00, $00, $00  ; rows 12..15
-; slot 06/21 of "Exploration" row -- flask
-expl_flask_pat:
+; slot 06/21 of "Exploration" row -- bomb  (was: flask)
+expl_bomb_pat:
         .byte $00, $00, $00, $00, $18, $00, $00, $24, $00, $00, $23, $00  ; rows 00..03
         .byte $00, $24, $00, $70, $23, $00, $78, $44, $00, $7C, $09, $00  ; rows 04..07
         .byte $7C, $09, $00, $74, $08, $00, $04, $08, $00, $04, $08, $00  ; rows 08..11
         .byte $08, $04, $00, $70, $03, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 07/21 of "Exploration" row -- coin
-expl_coin_pat:
+; slot 07/21 of "Exploration" row -- chest_ready  (was: coin)
+expl_chest_ready_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 00..03
         .byte $7C, $37, $00, $7E, $7B, $00, $4E, $7B, $00, $10, $00, $00  ; rows 04..07
         .byte $5E, $7B, $00, $4E, $7B, $00, $7E, $7B, $00, $7E, $7B, $00  ; rows 08..11
         .byte $7E, $7B, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 08/21 of "Exploration" row -- chest_closed
-expl_chest_closed_pat:
+; slot 08/21 of "Exploration" row -- chest_used  (was: chest_closed)
+expl_chest_used_pat:
         .byte $00, $00, $00, $00, $00, $00, $60, $75, $00, $20, $40, $01  ; rows 00..03
         .byte $20, $40, $01, $20, $40, $01, $20, $40, $01, $4E, $7B, $00  ; rows 04..07
         .byte $7E, $7B, $00, $7E, $7B, $00, $7E, $7B, $00, $7E, $7B, $00  ; rows 08..11
         .byte $7E, $7B, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 09/21 of "Exploration" row -- chest_open
-expl_chest_open_pat:
+; slot 09/21 of "Exploration" row -- urn  (was: chest_open)
+expl_urn_pat:
         .byte $00, $00, $00, $60, $0F, $00, $10, $10, $00, $10, $13, $00  ; rows 00..03
         .byte $18, $30, $00, $6C, $6F, $00, $1E, $70, $01, $7E, $7F, $01  ; rows 04..07
         .byte $7C, $7F, $00, $7A, $3F, $01, $62, $0F, $01, $14, $50, $00  ; rows 08..11
         .byte $3C, $7B, $00, $78, $3F, $00, $60, $0F, $00, $00, $00, $00  ; rows 12..15
-; slot 10/21 of "Exploration" row -- mortar
-expl_mortar_pat:
+; slot 10/21 of "Exploration" row -- broken  (was: mortar)
+expl_broken_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $40, $03, $00  ; rows 00..03
         .byte $00, $1D, $00, $24, $1E, $00, $0E, $40, $01, $60, $40, $01  ; rows 04..07
         .byte $68, $62, $01, $02, $70, $01, $0E, $72, $01, $1E, $6F, $00  ; rows 08..11
         .byte $1C, $1F, $00, $58, $3F, $00, $40, $0F, $00, $00, $00, $00  ; rows 12..15
-; slot 11/21 of "Exploration" row -- key_small
-expl_key_small_pat:
+; slot 11/21 of "Exploration" row -- key_a  (was: key_small)
+expl_key_a_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 00..03
         .byte $38, $00, $00, $7C, $00, $00, $44, $00, $00, $44, $7F, $00  ; rows 04..07
         .byte $44, $7F, $00, $44, $70, $00, $7C, $50, $00, $38, $00, $00  ; rows 08..11
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 12/21 of "Exploration" row -- key
-expl_key_pat:
+; slot 12/21 of "Exploration" row -- key_b  (was: key)
+expl_key_b_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 00..03
         .byte $60, $00, $00, $10, $01, $00, $1C, $01, $00, $72, $7F, $00  ; rows 04..07
         .byte $72, $7F, $00, $1C, $71, $00, $10, $51, $00, $60, $00, $00  ; rows 08..11
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 13/21 of "Exploration" row -- lock
-expl_lock_pat:
+; slot 13/21 of "Exploration" row -- bag  (was: lock)
+expl_bag_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 00..03
         .byte $60, $07, $00, $30, $0C, $00, $10, $0E, $00, $60, $07, $00  ; rows 04..07
         .byte $10, $08, $00, $58, $1E, $00, $5C, $3E, $00, $1C, $3F, $00  ; rows 08..11
         .byte $7C, $3F, $00, $7C, $1F, $00, $78, $07, $00, $00, $00, $00  ; rows 12..15
-; slot 14/21 of "Exploration" row -- book
-expl_book_pat:
+; slot 14/21 of "Exploration" row -- coins  (was: book)
+expl_coins_pat:
         .byte $00, $00, $00, $00, $00, $00, $70, $03, $00, $78, $07, $00  ; rows 00..03
         .byte $78, $03, $00, $70, $7D, $00, $08, $7E, $01, $70, $7E, $01  ; rows 04..07
         .byte $00, $7C, $00, $00, $02, $01, $00, $7C, $00, $7C, $02, $01  ; rows 08..11
         .byte $7E, $7D, $00, $7E, $01, $00, $7C, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 15/21 of "Exploration" row -- compass
-expl_compass_pat:
+; slot 15/21 of "Exploration" row -- nugget  (was: compass)
+expl_nugget_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $60, $0F, $00  ; rows 00..03
         .byte $70, $17, $00, $78, $2F, $00, $78, $2D, $00, $38, $27, $00  ; rows 04..07
         .byte $18, $27, $00, $78, $23, $00, $68, $24, $00, $10, $10, $00  ; rows 08..11
         .byte $60, $0F, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 16/21 of "Exploration" row -- scroll
-expl_scroll_pat:
+; slot 16/21 of "Exploration" row -- crystal  (was: scroll)
+expl_crystal_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $3F, $00  ; rows 00..03
         .byte $40, $3E, $00, $20, $2F, $00, $50, $27, $00, $68, $23, $00  ; rows 04..07
         .byte $68, $21, $00, $68, $10, $00, $08, $08, $00, $08, $04, $00  ; rows 08..11
         .byte $78, $03, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 17/21 of "Exploration" row -- clock
-expl_clock_pat:
+; slot 17/21 of "Exploration" row -- gem  (was: clock)
+expl_gem_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $60, $0F, $00  ; rows 00..03
         .byte $50, $13, $00, $68, $27, $00, $68, $27, $00, $68, $27, $00  ; rows 04..07
         .byte $68, $27, $00, $48, $23, $00, $08, $20, $00, $10, $10, $00  ; rows 08..11
         .byte $60, $0F, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 18/21 of "Exploration" row -- poison
-expl_poison_pat:
+; slot 18/21 of "Exploration" row -- corpse  (was: poison)
+expl_corpse_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $1F, $00, $40, $3F, $00  ; rows 00..03
         .byte $00, $33, $00, $00, $33, $00, $40, $1E, $00, $40, $03, $00  ; rows 04..07
         .byte $18, $30, $00, $60, $0C, $00, $00, $03, $00, $60, $0C, $00  ; rows 08..11
@@ -158,8 +158,8 @@ expl_shell_pat:
         .byte $7C, $0F, $00, $7C, $0C, $00, $3C, $0D, $00, $3C, $17, $00  ; rows 04..07
         .byte $3C, $38, $00, $7C, $3F, $00, $7C, $3F, $00, $78, $3F, $00  ; rows 08..11
         .byte $60, $1F, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 21/21 of "Exploration" row -- mask
-expl_mask_pat:
+; slot 21/21 of "Exploration" row -- fossil  (was: mask)
+expl_fossil_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $78, $03, $00  ; rows 00..03
         .byte $0C, $1F, $00, $0C, $22, $00, $1C, $26, $00, $78, $3F, $00  ; rows 04..07
         .byte $44, $2A, $00, $1C, $00, $00, $3C, $15, $00, $7C, $3F, $00  ; rows 08..11

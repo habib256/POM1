@@ -22,9 +22,9 @@
 ; linked). The format is implicit in which .o the project
 ; pulls in.
 ; ============================================================================
-.export normal_pat, happy_pat, super_pat, sad_pat, upset_pat
-.export angry_pat, grumpy_pat, perv_pat, sick_pat, sleep_pat
-.export pirate_pat, shades_pat, bird1_pat, bird2_pat
+.export serious_pat, happy_pat, excited_pat, sad_pat, hurt_pat
+.export angry_pat, upset_pat, smug_pat, sick_pat, sleeping_pat
+.export yarr_pat, nerd_pat, bird1_pat, bird2_pat
 .export emotes_hgr_data
 
 ; Constants like EMOTES_HGR_COUNT live in the sister
@@ -36,7 +36,7 @@
 .segment "CODE"
 
 emotes_hgr_data:
-normal_pat:
+serious_pat:
         .byte $00, $00, $00, $00, $00, $00, $78, $3F, $00, $7C, $7F, $00  ; rows 00..03
         .byte $7E, $7F, $01, $7E, $7F, $01, $46, $0F, $01, $6E, $5F, $01  ; rows 04..07
         .byte $6E, $5F, $01, $7E, $7F, $01, $3E, $60, $01, $7E, $7F, $01  ; rows 08..11
@@ -46,7 +46,7 @@ happy_pat:
         .byte $7E, $7F, $01, $7E, $7F, $01, $46, $0F, $01, $6E, $5F, $01  ; rows 04..07
         .byte $6E, $5F, $01, $7E, $7F, $01, $3E, $6F, $01, $7E, $70, $01  ; rows 08..11
         .byte $7C, $7F, $00, $78, $3F, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-super_pat:
+excited_pat:
         .byte $00, $00, $00, $00, $00, $00, $78, $3F, $00, $7C, $7F, $00  ; rows 00..03
         .byte $7E, $7F, $01, $7E, $7F, $01, $6E, $3F, $01, $6E, $3F, $01  ; rows 04..07
         .byte $6E, $3F, $01, $7E, $7F, $01, $3E, $60, $01, $3E, $60, $01  ; rows 08..11
@@ -56,7 +56,7 @@ sad_pat:
         .byte $7E, $7F, $01, $7E, $7F, $01, $4E, $4F, $01, $66, $1F, $01  ; rows 04..07
         .byte $6E, $5F, $01, $7E, $7F, $01, $7E, $70, $01, $3E, $6F, $01  ; rows 08..11
         .byte $7C, $7F, $00, $78, $3F, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-upset_pat:
+hurt_pat:
         .byte $00, $00, $00, $00, $00, $00, $78, $3F, $00, $7C, $7F, $00  ; rows 00..03
         .byte $7E, $7F, $01, $7E, $7F, $01, $66, $1F, $01, $4E, $4F, $01  ; rows 04..07
         .byte $66, $1F, $01, $7E, $7F, $01, $7E, $70, $01, $3E, $60, $01  ; rows 08..11
@@ -66,12 +66,12 @@ angry_pat:
         .byte $7E, $7F, $01, $7E, $7F, $01, $66, $1F, $01, $4E, $4F, $01  ; rows 04..07
         .byte $6E, $5F, $01, $7E, $7F, $01, $7E, $70, $01, $3E, $6F, $01  ; rows 08..11
         .byte $7C, $7F, $00, $78, $3F, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-grumpy_pat:
+upset_pat:
         .byte $00, $00, $00, $00, $00, $00, $78, $3F, $00, $7C, $7F, $00  ; rows 00..03
         .byte $7E, $7F, $01, $7E, $7F, $01, $66, $1F, $01, $4E, $4F, $01  ; rows 04..07
         .byte $6E, $5F, $01, $7E, $7F, $01, $7E, $60, $01, $3E, $60, $01  ; rows 08..11
         .byte $3C, $70, $00, $78, $3F, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-perv_pat:
+smug_pat:
         .byte $00, $00, $00, $00, $00, $00, $78, $3F, $00, $7C, $7F, $00  ; rows 00..03
         .byte $7E, $7F, $01, $7E, $7F, $01, $7E, $7F, $01, $46, $0F, $01  ; rows 04..07
         .byte $76, $6F, $01, $7E, $7F, $01, $7E, $7E, $01, $7E, $79, $01  ; rows 08..11
@@ -81,17 +81,17 @@ sick_pat:
         .byte $7E, $7F, $01, $7E, $7F, $01, $7E, $7F, $01, $5E, $6F, $01  ; rows 04..07
         .byte $7E, $7F, $01, $7E, $76, $01, $7E, $70, $01, $7E, $76, $01  ; rows 08..11
         .byte $3C, $6F, $00, $78, $3F, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-sleep_pat:
+sleeping_pat:
         .byte $00, $00, $00, $00, $00, $00, $78, $3F, $00, $7C, $7F, $00  ; rows 00..03
         .byte $7E, $7F, $01, $7E, $7F, $01, $7E, $7F, $01, $5E, $3F, $01  ; rows 04..07
         .byte $66, $4F, $01, $7E, $7F, $01, $7E, $79, $01, $7E, $7F, $01  ; rows 08..11
         .byte $7C, $7F, $00, $78, $3F, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-pirate_pat:
+yarr_pat:
         .byte $00, $00, $00, $00, $00, $00, $70, $3F, $00, $4C, $7F, $00  ; rows 00..03
         .byte $3E, $7E, $01, $7E, $79, $00, $66, $07, $01, $4E, $07, $01  ; rows 04..07
         .byte $6E, $0F, $01, $7E, $7F, $01, $3E, $60, $01, $7E, $7F, $01  ; rows 08..11
         .byte $7C, $7F, $00, $78, $3F, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-shades_pat:
+nerd_pat:
         .byte $00, $00, $00, $00, $00, $00, $78, $3F, $00, $7C, $7F, $00  ; rows 00..03
         .byte $7E, $7F, $01, $7E, $7F, $01, $00, $00, $00, $76, $76, $00  ; rows 04..07
         .byte $76, $76, $00, $0E, $0F, $01, $7E, $79, $01, $7E, $7F, $01  ; rows 08..11

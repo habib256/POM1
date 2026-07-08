@@ -22,9 +22,9 @@
 ; linked). The format is implicit in which .o the project
 ; pulls in.
 ; ============================================================================
-.export magic_wand_pat, magic_wand_orb_pat, magic_wand_skull_pat, magic_orb_pat, magic_ankh_pat
-.export magic_effigy_pat, magic_scroll_pat, magic_scroll_open_pat, magic_runestone_pat, magic_book_pat
-.export magic_mirror_pat, magic_vortex_pat, magic_portal_pat, magic_hand_pat, magic_sun_pat
+.export magic_staff_pat, magic_wand_pat, magic_rod_pat, magic_orb_pat, magic_ankh_pat
+.export magic_skull_pat, magic_letter_pat, magic_scroll_pat, magic_book_pat, magic_altar_pat
+.export magic_cauldron_pat, magic_emanation_pat, magic_totem_pat, magic_divine_pat, magic_arcane_pat
 .export magick_hgr_data
 
 ; Constants like MAGICK_HGR_COUNT live in the sister
@@ -36,20 +36,20 @@
 .segment "CODE"
 
 magick_hgr_data:
-; slot 01/15 of "Magick" row -- wand
-magic_wand_pat:
+; slot 01/15 of "Magick" row -- staff  (was: wand)
+magic_staff_pat:
         .byte $00, $00, $00, $00, $20, $00, $00, $01, $00, $00, $3C, $00  ; rows 00..03
         .byte $00, $7E, $00, $20, $46, $00, $00, $5B, $00, $00, $6B, $00  ; rows 04..07
         .byte $40, $3B, $00, $60, $01, $01, $70, $00, $00, $38, $08, $00  ; rows 08..11
         .byte $1C, $00, $00, $0E, $00, $00, $06, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 02/15 of "Magick" row -- wand_orb
-magic_wand_orb_pat:
+; slot 02/15 of "Magick" row -- wand  (was: wand_orb)
+magic_wand_pat:
         .byte $00, $00, $00, $00, $10, $00, $00, $01, $00, $00, $3C, $00  ; rows 00..03
         .byte $00, $2E, $01, $20, $26, $00, $00, $22, $00, $40, $1E, $00  ; rows 04..07
         .byte $40, $40, $00, $60, $03, $00, $70, $08, $00, $38, $00, $00  ; rows 08..11
         .byte $1C, $00, $00, $0E, $00, $00, $06, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 03/15 of "Magick" row -- wand_skull
-magic_wand_skull_pat:
+; slot 03/15 of "Magick" row -- rod  (was: wand_skull)
+magic_rod_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $3E, $00, $00, $7F, $00  ; rows 00..03
         .byte $00, $33, $00, $00, $33, $00, $00, $5E, $00, $00, $79, $00  ; rows 04..07
         .byte $40, $2B, $00, $60, $01, $00, $70, $00, $00, $38, $00, $00  ; rows 08..11
@@ -66,62 +66,62 @@ magic_ankh_pat:
         .byte $60, $0C, $00, $60, $0F, $00, $40, $07, $00, $7C, $7F, $00  ; rows 04..07
         .byte $7C, $7F, $00, $40, $07, $00, $5C, $77, $00, $40, $07, $00  ; rows 08..11
         .byte $40, $07, $00, $00, $00, $00, $40, $07, $00, $00, $00, $00  ; rows 12..15
-; slot 06/15 of "Magick" row -- effigy
-magic_effigy_pat:
+; slot 06/15 of "Magick" row -- skull  (was: effigy)
+magic_skull_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $70, $0D, $00  ; rows 00..03
         .byte $68, $1F, $00, $7C, $3F, $00, $7C, $2F, $00, $30, $1C, $00  ; rows 04..07
         .byte $30, $38, $00, $30, $38, $00, $4C, $1F, $00, $4C, $07, $00  ; rows 08..11
         .byte $78, $01, $00, $38, $01, $00, $00, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 07/15 of "Magick" row -- scroll
-magic_scroll_pat:
+; slot 07/15 of "Magick" row -- letter  (was: scroll)
+magic_letter_pat:
         .byte $00, $00, $00, $60, $7F, $00, $10, $7F, $01, $50, $7F, $01  ; rows 00..03
         .byte $10, $00, $00, $70, $3F, $00, $10, $20, $00, $70, $3F, $00  ; rows 04..07
         .byte $30, $30, $00, $70, $3F, $00, $10, $20, $00, $70, $3F, $00  ; rows 08..11
         .byte $36, $30, $00, $72, $3F, $00, $7C, $1F, $00, $00, $00, $00  ; rows 12..15
-; slot 08/15 of "Magick" row -- scroll_open
-magic_scroll_open_pat:
+; slot 08/15 of "Magick" row -- scroll  (was: scroll_open)
+magic_scroll_pat:
         .byte $00, $00, $00, $74, $5F, $00, $6E, $3F, $01, $68, $3F, $01  ; rows 00..03
         .byte $04, $00, $00, $00, $00, $00, $08, $10, $00, $78, $1F, $00  ; rows 04..07
         .byte $08, $10, $00, $78, $1F, $00, $00, $00, $00, $74, $5F, $00  ; rows 08..11
         .byte $6E, $3F, $01, $68, $3F, $01, $04, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 09/15 of "Magick" row -- runestone
-magic_runestone_pat:
+; slot 09/15 of "Magick" row -- book  (was: runestone)
+magic_book_pat:
         .byte $00, $00, $00, $00, $18, $00, $00, $1E, $00, $40, $1F, $00  ; rows 00..03
         .byte $70, $19, $00, $38, $18, $00, $18, $1C, $00, $18, $5F, $00  ; rows 04..07
         .byte $78, $5F, $00, $78, $47, $00, $78, $41, $00, $38, $40, $00  ; rows 08..11
         .byte $68, $5F, $00, $68, $5F, $00, $70, $7F, $00, $00, $00, $00  ; rows 12..15
-; slot 10/15 of "Magick" row -- book
-magic_book_pat:
+; slot 10/15 of "Magick" row -- altar  (was: book)
+magic_altar_pat:
         .byte $00, $00, $00, $7E, $7F, $01, $02, $00, $01, $7A, $7F, $01  ; rows 00..03
         .byte $7A, $7F, $01, $7A, $7F, $01, $7A, $7F, $01, $7A, $7F, $01  ; rows 04..07
         .byte $7E, $7F, $01, $00, $00, $00, $7E, $7F, $01, $00, $00, $00  ; rows 08..11
         .byte $64, $4C, $00, $7C, $7F, $00, $7E, $7F, $01, $00, $00, $00  ; rows 12..15
-; slot 11/15 of "Magick" row -- mirror
-magic_mirror_pat:
+; slot 11/15 of "Magick" row -- cauldron  (was: mirror)
+magic_cauldron_pat:
         .byte $00, $00, $00, $60, $0F, $00, $18, $30, $00, $04, $40, $00  ; rows 00..03
         .byte $62, $04, $01, $02, $10, $01, $02, $03, $01, $04, $40, $00  ; rows 04..07
         .byte $1A, $30, $01, $62, $0F, $01, $06, $40, $01, $1E, $70, $01  ; rows 08..11
         .byte $7E, $7F, $01, $7C, $7F, $00, $72, $1F, $01, $00, $03, $00  ; rows 12..15
-; slot 12/15 of "Magick" row -- vortex
-magic_vortex_pat:
+; slot 12/15 of "Magick" row -- emanation  (was: vortex)
+magic_emanation_pat:
         .byte $00, $00, $00, $02, $02, $01, $04, $40, $00, $40, $0F, $00  ; rows 00..03
         .byte $20, $10, $00, $10, $20, $00, $08, $0F, $00, $4A, $10, $00  ; rows 04..07
         .byte $48, $24, $01, $08, $23, $00, $08, $20, $00, $10, $10, $00  ; rows 08..11
         .byte $60, $0F, $00, $04, $40, $00, $02, $01, $01, $00, $00, $00  ; rows 12..15
-; slot 13/15 of "Magick" row -- portal
-magic_portal_pat:
+; slot 13/15 of "Magick" row -- totem  (was: portal)
+magic_totem_pat:
         .byte $00, $00, $00, $00, $20, $00, $08, $20, $00, $7E, $7F, $00  ; rows 00..03
         .byte $08, $20, $00, $28, $28, $00, $48, $24, $00, $08, $22, $00  ; rows 04..07
         .byte $08, $21, $00, $48, $24, $00, $28, $28, $00, $08, $20, $00  ; rows 08..11
         .byte $7C, $7F, $01, $08, $20, $00, $08, $00, $00, $00, $00, $00  ; rows 12..15
-; slot 14/15 of "Magick" row -- hand
-magic_hand_pat:
+; slot 14/15 of "Magick" row -- divine  (was: hand)
+magic_divine_pat:
         .byte $00, $00, $00, $02, $00, $01, $04, $45, $00, $20, $05, $00  ; rows 00..03
         .byte $20, $05, $00, $20, $15, $00, $20, $15, $00, $26, $55, $01  ; rows 04..07
         .byte $60, $1F, $00, $64, $18, $00, $68, $1A, $00, $70, $18, $00  ; rows 08..11
         .byte $60, $1F, $00, $44, $4F, $00, $02, $00, $01, $00, $00, $00  ; rows 12..15
-; slot 15/15 of "Magick" row -- sun
-magic_sun_pat:
+; slot 15/15 of "Magick" row -- arcane  (was: sun)
+magic_arcane_pat:
         .byte $00, $00, $00, $40, $07, $00, $30, $1C, $00, $08, $22, $00  ; rows 00..03
         .byte $04, $41, $00, $04, $41, $00, $02, $41, $01, $02, $22, $01  ; rows 04..07
         .byte $02, $1C, $01, $62, $00, $01, $64, $40, $00, $04, $40, $00  ; rows 08..11

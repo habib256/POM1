@@ -44,18 +44,18 @@ N_CELLS = 12
 # Reading the sprites left-to-right (names from the sprite designer's eye --
 # corrected by the user 2026-05-01):
 EXPRESSIONS = [
-    ("NORMAL", "normal_pat", "neutral / default expression"),
+    ("NORMAL", "serious_pat", "neutral / default expression"),
     ("HAPPY",  "happy_pat",  "happy"),
-    ("SUPER",  "super_pat",  "super happy, big open mouth"),
+    ("SUPER",  "excited_pat",  "super happy, big open mouth"),
     ("SAD",    "sad_pat",    "sad / frown"),
-    ("UPSET",  "upset_pat",  "upset / disappointed"),
+    ("UPSET",  "hurt_pat",  "upset / disappointed"),
     ("ANGRY",  "angry_pat",  "angry, frowning brows"),
-    ("GRUMPY", "grumpy_pat", "grumpy, tongue out"),
-    ("PERV",   "perv_pat",   "pervy / lewd"),
+    ("GRUMPY", "upset_pat", "grumpy, tongue out"),
+    ("PERV",   "smug_pat",   "pervy / lewd"),
     ("SICK",   "sick_pat",   "queasy / about to throw up (X eyes)"),
-    ("SLEEP",  "sleep_pat",  "asleep"),
-    ("PIRATE", "pirate_pat", "pirate (one eye shut)"),
-    ("SHADES", "shades_pat", "wearing shades / sunglasses"),
+    ("SLEEP",  "sleeping_pat",  "asleep"),
+    ("PIRATE", "yarr_pat", "pirate (one eye shut)"),
+    ("SHADES", "nerd_pat", "wearing shades / sunglasses"),
 ]
 
 

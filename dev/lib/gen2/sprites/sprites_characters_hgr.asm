@@ -22,13 +22,13 @@
 ; linked). The format is implicit in which .o the project
 ; pulls in.
 ; ============================================================================
-.export char_villager_pat, char_villager2_pat, char_worker_pat, char_traveler_pat, char_knight_pat
-.export char_warrior_pat, char_archer_pat, char_king_pat, char_youth_pat, char_imp_pat
-.export char_child_pat, char_stout_pat, char_priest_pat, char_adventurer_pat, char_wizard_pat
-.export char_knight2_pat, char_cleric_pat, char_paladin_pat, char_grim_pat, char_hooded_pat
-.export char_woman_pat, char_kitten_pat, char_cat_big_pat, char_monk_pat, char_dwarf_pat
-.export char_skull_pat, char_princess_pat, char_skeleton_pat, char_paladin2_pat, char_robed_pat
-.export char_priest2_pat, char_squire_pat, char_death_pat
+.export char_normal_m_pat, char_archer_m_pat, char_knight_m_pat, char_priest_m_pat, char_thief_m_pat
+.export char_wizard_m_pat, char_monk_m_pat, char_ruler_m_pat, char_child_m_pat, char_dog_pat
+.export char_lunatic_m_pat, char_wrestler_m_pat, char_phantom_m_pat, char_normal_f_pat, char_archer_f_pat
+.export char_knight_f_pat, char_priest_f_pat, char_thief_f_pat, char_wizard_f_pat, char_monk_f_pat
+.export char_ruler_f_pat, char_child_f_pat, char_cat_pat, char_lunatic_f_pat, char_wrestler_f_pat
+.export char_phantom_f_pat, char_elder_m_pat, char_pirate_m_pat, char_guard_pat, char_cultist_pat
+.export char_necromancer_m_pat, char_assassin_pat, char_mermaid_f_pat
 .export characters_hgr_data
 
 ; Constants like CHARACTERS_HGR_COUNT live in the sister
@@ -40,200 +40,200 @@
 .segment "CODE"
 
 characters_hgr_data:
-; slot 01/33 of "Characters" row -- villager
-char_villager_pat:
+; slot 01/33 of "Characters" row -- normal_m  (was: villager)
+char_normal_m_pat:
         .byte $00, $00, $00, $60, $0F, $00, $70, $1F, $00, $70, $1F, $00  ; rows 00..03
         .byte $50, $17, $00, $70, $1F, $00, $30, $18, $00, $70, $1F, $00  ; rows 04..07
         .byte $60, $0F, $00, $10, $10, $00, $78, $3F, $00, $6C, $6F, $00  ; rows 08..11
         .byte $6C, $6F, $00, $60, $0C, $00, $20, $08, $00, $00, $00, $00  ; rows 12..15
-; slot 02/33 of "Characters" row -- villager2
-char_villager2_pat:
+; slot 02/33 of "Characters" row -- archer_m  (was: villager2)
+char_archer_m_pat:
         .byte $00, $00, $00, $60, $0F, $00, $70, $1F, $00, $70, $1F, $00  ; rows 00..03
         .byte $50, $57, $00, $70, $1F, $01, $30, $18, $01, $71, $1F, $01  ; rows 04..07
         .byte $61, $4F, $01, $12, $70, $01, $7A, $3F, $00, $6C, $0F, $01  ; rows 08..11
         .byte $6C, $0F, $01, $60, $0C, $01, $28, $48, $00, $00, $00, $00  ; rows 12..15
-; slot 03/33 of "Characters" row -- worker
-char_worker_pat:
+; slot 03/33 of "Characters" row -- knight_m  (was: worker)
+char_knight_m_pat:
         .byte $00, $00, $00, $60, $0F, $00, $70, $1F, $01, $70, $1F, $01  ; rows 00..03
         .byte $50, $17, $01, $70, $1F, $01, $30, $18, $01, $70, $1F, $01  ; rows 04..07
         .byte $40, $4F, $03, $1E, $30, $00, $56, $7F, $01, $56, $0F, $01  ; rows 08..11
         .byte $56, $0F, $00, $6C, $0C, $00, $20, $08, $00, $00, $00, $00  ; rows 12..15
-; slot 04/33 of "Characters" row -- traveler
-char_traveler_pat:
+; slot 04/33 of "Characters" row -- priest_m  (was: traveler)
+char_priest_m_pat:
         .byte $00, $00, $01, $60, $4F, $03, $70, $1F, $01, $70, $1F, $01  ; rows 00..03
         .byte $50, $17, $01, $70, $1F, $01, $30, $18, $01, $70, $1F, $01  ; rows 04..07
         .byte $60, $4F, $01, $10, $70, $01, $78, $7F, $01, $6C, $0D, $00  ; rows 08..11
         .byte $6C, $08, $01, $60, $0D, $01, $70, $1F, $01, $00, $00, $00  ; rows 12..15
-; slot 05/33 of "Characters" row -- knight
-char_knight_pat:
+; slot 05/33 of "Characters" row -- thief_m  (was: knight)
+char_thief_m_pat:
         .byte $70, $07, $00, $60, $0F, $00, $70, $1F, $00, $10, $10, $00  ; rows 00..03
         .byte $28, $2B, $00, $68, $2F, $00, $48, $27, $00, $10, $10, $00  ; rows 04..07
         .byte $60, $0F, $00, $10, $10, $02, $78, $3F, $03, $6C, $2F, $01  ; rows 08..11
         .byte $6C, $6F, $00, $60, $0C, $00, $20, $08, $00, $00, $00, $00  ; rows 12..15
-; slot 06/33 of "Characters" row -- warrior
-char_warrior_pat:
+; slot 06/33 of "Characters" row -- wizard_m  (was: warrior)
+char_wizard_m_pat:
         .byte $00, $60, $00, $60, $0F, $02, $70, $1F, $00, $70, $1F, $01  ; rows 00..03
         .byte $50, $57, $02, $70, $1F, $01, $30, $18, $01, $70, $1F, $01  ; rows 04..07
         .byte $60, $4F, $01, $10, $70, $01, $78, $7C, $01, $6C, $0F, $00  ; rows 08..11
         .byte $6C, $0C, $00, $60, $0C, $00, $30, $18, $00, $00, $00, $00  ; rows 12..15
-; slot 07/33 of "Characters" row -- archer
-char_archer_pat:
+; slot 07/33 of "Characters" row -- monk_m  (was: archer)
+char_monk_m_pat:
         .byte $00, $00, $00, $60, $0F, $00, $70, $1F, $00, $70, $1F, $01  ; rows 00..03
         .byte $50, $17, $01, $70, $1F, $01, $30, $18, $01, $70, $1F, $01  ; rows 04..07
         .byte $60, $4F, $01, $10, $70, $01, $78, $7C, $01, $6C, $0F, $00  ; rows 08..11
         .byte $0C, $10, $01, $60, $0F, $01, $70, $1F, $01, $00, $00, $00  ; rows 12..15
-; slot 08/33 of "Characters" row -- king
-char_king_pat:
+; slot 08/33 of "Characters" row -- ruler_m  (was: king)
+char_ruler_m_pat:
         .byte $38, $3B, $00, $70, $1F, $00, $00, $00, $00, $70, $1F, $00  ; rows 00..03
         .byte $58, $37, $00, $78, $3F, $00, $78, $3C, $00, $74, $5F, $00  ; rows 04..07
         .byte $60, $0F, $00, $5C, $77, $00, $38, $3B, $00, $6C, $6C, $00  ; rows 08..11
         .byte $6C, $6C, $00, $60, $0C, $00, $30, $18, $00, $00, $00, $00  ; rows 12..15
-; slot 09/33 of "Characters" row -- youth
-char_youth_pat:
+; slot 09/33 of "Characters" row -- child_m  (was: youth)
+char_child_m_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; rows 00..03
         .byte $40, $07, $00, $60, $0F, $00, $20, $0B, $00, $60, $0F, $00  ; rows 04..07
         .byte $60, $0C, $00, $40, $17, $00, $20, $18, $00, $70, $0F, $00  ; rows 08..11
         .byte $50, $07, $00, $40, $07, $00, $40, $04, $00, $00, $00, $00  ; rows 12..15
-; slot 10/33 of "Characters" row -- imp
-char_imp_pat:
+; slot 10/33 of "Characters" row -- dog  (was: imp)
+char_dog_pat:
         .byte $00, $00, $00, $00, $00, $00, $10, $00, $00, $30, $60, $01  ; rows 00..03
         .byte $70, $7F, $00, $60, $3F, $00, $20, $2F, $00, $60, $3F, $00  ; rows 04..07
         .byte $64, $31, $00, $54, $1B, $00, $38, $00, $00, $78, $0F, $00  ; rows 08..11
         .byte $78, $0F, $00, $18, $09, $00, $08, $09, $00, $00, $00, $00  ; rows 12..15
-; slot 11/33 of "Characters" row -- child
-char_child_pat:
+; slot 11/33 of "Characters" row -- lunatic_m  (was: child)
+char_lunatic_m_pat:
         .byte $00, $00, $00, $60, $0F, $00, $70, $1F, $00, $70, $17, $00  ; rows 00..03
         .byte $50, $1F, $00, $70, $00, $00, $30, $06, $00, $3C, $61, $00  ; rows 04..07
         .byte $6C, $6F, $00, $18, $30, $00, $70, $1F, $00, $60, $0F, $00  ; rows 08..11
         .byte $70, $0F, $00, $38, $0C, $00, $00, $04, $00, $00, $00, $00  ; rows 12..15
-; slot 12/33 of "Characters" row -- stout
-char_stout_pat:
+; slot 12/33 of "Characters" row -- wrestler_m  (was: stout)
+char_wrestler_m_pat:
         .byte $00, $00, $00, $60, $0F, $00, $70, $1F, $00, $70, $1F, $00  ; rows 00..03
         .byte $30, $1B, $00, $70, $1F, $00, $70, $1C, $00, $68, $2F, $00  ; rows 04..07
         .byte $1C, $70, $00, $7E, $7F, $01, $76, $5F, $01, $08, $23, $00  ; rows 08..11
         .byte $78, $3F, $00, $78, $3F, $00, $30, $18, $00, $00, $00, $00  ; rows 12..15
-; slot 13/33 of "Characters" row -- priest
-char_priest_pat:
+; slot 13/33 of "Characters" row -- phantom_m  (was: priest)
+char_phantom_m_pat:
         .byte $60, $0F, $00, $10, $10, $00, $08, $20, $00, $08, $20, $00  ; rows 00..03
         .byte $28, $28, $00, $08, $20, $00, $08, $20, $00, $08, $20, $00  ; rows 04..07
         .byte $18, $30, $00, $68, $2F, $00, $04, $40, $00, $12, $10, $01  ; rows 08..11
         .byte $12, $10, $01, $1E, $73, $01, $50, $17, $00, $00, $00, $00  ; rows 12..15
-; slot 14/33 of "Characters" row -- adventurer
-char_adventurer_pat:
+; slot 14/33 of "Characters" row -- normal_f  (was: adventurer)
+char_normal_f_pat:
         .byte $00, $00, $00, $60, $0F, $00, $70, $1F, $00, $78, $3F, $00  ; rows 00..03
         .byte $58, $37, $00, $78, $3F, $00, $7A, $3C, $01, $6C, $6F, $00  ; rows 04..07
         .byte $40, $07, $00, $30, $18, $00, $78, $3F, $00, $6C, $6F, $00  ; rows 08..11
         .byte $60, $0F, $00, $60, $0C, $00, $40, $04, $00, $00, $00, $00  ; rows 12..15
-; slot 15/33 of "Characters" row -- wizard
-char_wizard_pat:
+; slot 15/33 of "Characters" row -- archer_f  (was: wizard)
+char_archer_f_pat:
         .byte $00, $00, $00, $60, $0F, $00, $70, $1F, $00, $78, $1F, $00  ; rows 00..03
         .byte $58, $57, $00, $78, $1F, $01, $7A, $1C, $01, $6D, $0F, $01  ; rows 04..07
         .byte $41, $47, $01, $22, $78, $00, $72, $1F, $01, $7C, $0F, $01  ; rows 08..11
         .byte $6C, $0F, $01, $60, $0C, $01, $48, $44, $00, $00, $00, $00  ; rows 12..15
-; slot 16/33 of "Characters" row -- knight2
-char_knight2_pat:
+; slot 16/33 of "Characters" row -- knight_f  (was: knight2)
+char_knight_f_pat:
         .byte $00, $00, $00, $60, $0F, $00, $70, $1F, $01, $78, $3F, $01  ; rows 00..03
         .byte $58, $37, $01, $78, $3F, $01, $7A, $3C, $01, $6C, $2F, $01  ; rows 04..07
         .byte $40, $47, $03, $1E, $38, $00, $56, $7F, $01, $56, $0F, $01  ; rows 08..11
         .byte $56, $0F, $00, $6C, $0C, $00, $40, $04, $00, $00, $00, $00  ; rows 12..15
-; slot 17/33 of "Characters" row -- cleric
-char_cleric_pat:
+; slot 17/33 of "Characters" row -- priest_f  (was: cleric)
+char_priest_f_pat:
         .byte $00, $00, $01, $60, $4F, $03, $70, $1F, $01, $78, $3F, $01  ; rows 00..03
         .byte $58, $37, $01, $78, $3F, $01, $7A, $3C, $01, $6C, $2F, $01  ; rows 04..07
         .byte $40, $47, $01, $30, $78, $01, $78, $3F, $00, $6C, $0D, $01  ; rows 08..11
         .byte $60, $08, $01, $60, $0D, $01, $70, $1F, $01, $00, $00, $00  ; rows 12..15
-; slot 18/33 of "Characters" row -- paladin
-char_paladin_pat:
+; slot 18/33 of "Characters" row -- thief_f  (was: paladin)
+char_thief_f_pat:
         .byte $70, $07, $00, $60, $0F, $00, $70, $1F, $00, $10, $10, $00  ; rows 00..03
         .byte $28, $2B, $00, $68, $2F, $00, $48, $27, $00, $10, $10, $00  ; rows 04..07
         .byte $60, $0F, $00, $10, $10, $02, $78, $3F, $03, $6C, $2F, $01  ; rows 08..11
         .byte $60, $6F, $00, $60, $0C, $00, $40, $04, $00, $00, $00, $00  ; rows 12..15
-; slot 19/33 of "Characters" row -- grim
-char_grim_pat:
+; slot 19/33 of "Characters" row -- wizard_f  (was: grim)
+char_wizard_f_pat:
         .byte $00, $60, $00, $60, $0F, $02, $70, $1F, $00, $78, $3F, $01  ; rows 00..03
         .byte $58, $57, $02, $78, $3F, $01, $7A, $3C, $01, $6C, $2F, $01  ; rows 04..07
         .byte $40, $47, $01, $30, $78, $01, $78, $3C, $00, $6C, $0F, $00  ; rows 08..11
         .byte $60, $0C, $00, $60, $0C, $00, $30, $18, $00, $00, $00, $00  ; rows 12..15
-; slot 20/33 of "Characters" row -- hooded
-char_hooded_pat:
+; slot 20/33 of "Characters" row -- monk_f  (was: hooded)
+char_monk_f_pat:
         .byte $00, $00, $00, $60, $0F, $00, $70, $1F, $00, $78, $3F, $01  ; rows 00..03
         .byte $58, $37, $01, $78, $3F, $01, $7A, $3C, $01, $6C, $2F, $01  ; rows 04..07
         .byte $40, $47, $01, $30, $78, $01, $78, $3C, $00, $6C, $0F, $01  ; rows 08..11
         .byte $00, $10, $01, $60, $0F, $01, $70, $1F, $01, $00, $00, $00  ; rows 12..15
-; slot 21/33 of "Characters" row -- woman
-char_woman_pat:
+; slot 21/33 of "Characters" row -- ruler_f  (was: woman)
+char_ruler_f_pat:
         .byte $28, $2B, $00, $70, $1F, $00, $00, $00, $00, $78, $3F, $00  ; rows 00..03
         .byte $58, $37, $00, $7C, $7F, $00, $7C, $7C, $00, $6C, $6F, $00  ; rows 04..07
         .byte $4C, $67, $00, $32, $18, $01, $38, $38, $00, $6C, $6F, $00  ; rows 08..11
         .byte $60, $0F, $00, $60, $0F, $00, $70, $1F, $00, $00, $00, $00  ; rows 12..15
-; slot 22/33 of "Characters" row -- kitten
-char_kitten_pat:
+; slot 22/33 of "Characters" row -- child_f  (was: kitten)
+char_child_f_pat:
         .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $30, $18, $00  ; rows 00..03
         .byte $48, $27, $00, $60, $0F, $00, $20, $0B, $00, $60, $0F, $00  ; rows 04..07
         .byte $60, $0C, $00, $40, $17, $00, $20, $08, $00, $50, $07, $00  ; rows 08..11
         .byte $40, $07, $00, $40, $07, $00, $60, $0F, $00, $00, $00, $00  ; rows 12..15
-; slot 23/33 of "Characters" row -- cat_big
-char_cat_big_pat:
+; slot 23/33 of "Characters" row -- cat  (was: cat_big)
+char_cat_pat:
         .byte $00, $00, $00, $00, $00, $00, $20, $20, $00, $60, $30, $00  ; rows 00..03
         .byte $60, $3F, $00, $64, $3F, $00, $28, $2F, $00, $68, $3B, $00  ; rows 04..07
         .byte $68, $35, $00, $58, $1F, $00, $38, $00, $00, $78, $0F, $00  ; rows 08..11
         .byte $78, $0F, $00, $18, $09, $00, $08, $09, $00, $00, $00, $00  ; rows 12..15
-; slot 24/33 of "Characters" row -- monk
-char_monk_pat:
+; slot 24/33 of "Characters" row -- lunatic_f  (was: monk)
+char_lunatic_f_pat:
         .byte $00, $00, $00, $60, $0F, $00, $70, $1F, $00, $78, $37, $00  ; rows 00..03
         .byte $58, $3F, $00, $78, $39, $01, $7A, $78, $00, $6C, $0C, $00  ; rows 04..07
         .byte $40, $67, $00, $30, $38, $00, $78, $1F, $00, $6C, $0F, $00  ; rows 08..11
         .byte $60, $0F, $00, $60, $0C, $00, $40, $04, $00, $00, $00, $00  ; rows 12..15
-; slot 25/33 of "Characters" row -- dwarf
-char_dwarf_pat:
+; slot 25/33 of "Characters" row -- wrestler_f  (was: dwarf)
+char_wrestler_f_pat:
         .byte $00, $00, $00, $60, $0F, $00, $70, $1F, $00, $78, $3F, $00  ; rows 00..03
         .byte $3A, $3B, $01, $7C, $7F, $00, $70, $1C, $00, $68, $2F, $00  ; rows 04..07
         .byte $1C, $70, $00, $7E, $7F, $01, $76, $5F, $01, $08, $23, $00  ; rows 08..11
         .byte $78, $3F, $00, $78, $3F, $00, $30, $18, $00, $00, $00, $00  ; rows 12..15
-; slot 26/33 of "Characters" row -- skull
-char_skull_pat:
+; slot 26/33 of "Characters" row -- phantom_f  (was: skull)
+char_phantom_f_pat:
         .byte $60, $0F, $00, $10, $10, $00, $08, $20, $00, $04, $40, $00  ; rows 00..03
         .byte $24, $48, $00, $07, $40, $03, $05, $40, $02, $12, $10, $01  ; rows 04..07
         .byte $3C, $78, $00, $48, $27, $00, $04, $40, $00, $12, $10, $01  ; rows 08..11
         .byte $1E, $70, $01, $10, $13, $00, $20, $0B, $00, $00, $00, $00  ; rows 12..15
-; slot 27/33 of "Characters" row -- princess
-char_princess_pat:
+; slot 27/33 of "Characters" row -- elder_m  (was: princess)
+char_elder_m_pat:
         .byte $00, $00, $00, $00, $00, $00, $60, $0F, $00, $70, $1F, $00  ; rows 00..03
         .byte $70, $1F, $00, $70, $1F, $00, $10, $13, $00, $70, $1F, $00  ; rows 04..07
         .byte $68, $2C, $00, $6C, $6F, $00, $5E, $77, $00, $56, $77, $00  ; rows 08..11
         .byte $22, $6B, $00, $62, $0A, $00, $32, $18, $00, $00, $00, $00  ; rows 12..15
-; slot 28/33 of "Characters" row -- skeleton
-char_skeleton_pat:
+; slot 28/33 of "Characters" row -- pirate_m  (was: skeleton)
+char_pirate_m_pat:
         .byte $00, $00, $00, $60, $0F, $00, $10, $1F, $00, $70, $0C, $00  ; rows 00..03
         .byte $50, $13, $00, $70, $13, $00, $30, $1C, $00, $70, $1F, $00  ; rows 04..07
         .byte $60, $0F, $00, $18, $30, $00, $7C, $7F, $00, $6C, $6F, $00  ; rows 08..11
         .byte $6C, $6F, $00, $60, $0C, $00, $20, $08, $00, $00, $00, $00  ; rows 12..15
-; slot 29/33 of "Characters" row -- paladin variant (mis-labelled "mage"
-char_paladin2_pat:
+; slot 29/33 of "Characters" row -- guard  (was: paladin2)
+char_guard_pat:
         .byte $00, $03, $01, $60, $4F, $03, $70, $1F, $00, $70, $1F, $01  ; rows 00..03
         .byte $10, $13, $01, $10, $10, $01, $70, $1C, $01, $40, $1C, $01  ; rows 04..07
         .byte $5E, $4C, $01, $16, $50, $01, $56, $37, $00, $56, $0F, $01  ; rows 08..11
         .byte $16, $03, $01, $56, $0C, $01, $2C, $08, $01, $00, $00, $00  ; rows 12..15
-; slot 30/33 of "Characters" row -- robed
-char_robed_pat:
+; slot 30/33 of "Characters" row -- cultist  (was: robed)
+char_cultist_pat:
         .byte $40, $1F, $00, $60, $2F, $00, $70, $1F, $00, $10, $10, $00  ; rows 00..03
         .byte $08, $20, $00, $48, $27, $00, $68, $2C, $00, $50, $17, $00  ; rows 04..07
         .byte $20, $08, $00, $38, $38, $00, $64, $4C, $00, $5C, $74, $00  ; rows 08..11
         .byte $54, $54, $00, $40, $04, $00, $30, $18, $00, $00, $00, $00  ; rows 12..15
-; slot 31/33 of "Characters" row -- priest2
-char_priest2_pat:
+; slot 31/33 of "Characters" row -- necromancer_m  (was: priest2)
+char_necromancer_m_pat:
         .byte $06, $3F, $00, $44, $7F, $00, $64, $4F, $00, $72, $1F, $01  ; rows 00..03
         .byte $12, $10, $00, $0A, $20, $00, $4A, $27, $00, $6A, $2C, $00  ; rows 04..07
         .byte $66, $0F, $00, $5E, $17, $00, $5E, $37, $00, $20, $6B, $00  ; rows 08..11
         .byte $62, $6A, $00, $62, $0D, $00, $72, $1F, $00, $00, $00, $00  ; rows 12..15
-; slot 32/33 of "Characters" row -- squire
-char_squire_pat:
+; slot 32/33 of "Characters" row -- assassin  (was: squire)
+char_assassin_pat:
         .byte $40, $1F, $00, $60, $0F, $00, $70, $1F, $00, $10, $10, $00  ; rows 00..03
         .byte $08, $20, $00, $48, $27, $00, $68, $2C, $00, $50, $17, $00  ; rows 04..07
         .byte $20, $08, $00, $50, $17, $02, $78, $3F, $03, $6C, $2F, $01  ; rows 08..11
         .byte $6C, $6F, $00, $60, $0C, $00, $20, $08, $00, $00, $00, $00  ; rows 12..15
-; slot 33/33 of "Characters" row -- death
-char_death_pat:
+; slot 33/33 of "Characters" row -- mermaid_f  (was: death)
+char_mermaid_f_pat:
         .byte $00, $00, $00, $60, $0F, $00, $70, $1F, $00, $78, $3F, $00  ; rows 00..03
         .byte $58, $37, $00, $7C, $3F, $00, $7C, $3C, $00, $6C, $2F, $00  ; rows 04..07
         .byte $4C, $17, $00, $32, $18, $00, $78, $4F, $00, $6C, $47, $01  ; rows 08..11

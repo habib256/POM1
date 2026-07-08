@@ -13,11 +13,11 @@
 ; + slot*32 (asm Mode-1 init_vdp_g1: R6=$07 -> $3800; C lib SCREEN1/SCREEN2
 ; tables: R6=$03 -> $1800 — on those layouts $3800 is the NAME table!).
 ; ============================================================================
-.export sym_at_pat, sym_arrow_up_pat, sym_arrow_ne_pat, sym_plus_pat, sym_x_pat
-.export sym_heart_pat, sym_star_pat, sym_target_pat, sym_moon_pat, sym_eye_pat
-.export sym_warning_pat, sym_note_pat, sym_fire_pat, sym_sparkle_pat, sym_drop_pat
-.export sym_lightning_pat, sym_spiral_pat, sym_potion_pat, sym_zzz_pat, sym_skull_pat
-.export sym_swords_pat, sym_shield_pat, sym_hourglass_pat
+.export sym_at_pat, sym_up_pat, sym_up_right_pat, sym_plus_pat, sym_ex_pat
+.export sym_heart_pat, sym_star_pat, sym_sun_pat, sym_moon_pat, sym_target_pat
+.export sym_warning_pat, sym_music_pat, sym_fire_pat, sym_ice_pat, sym_water_pat
+.export sym_lightning_pat, sym_confusion_pat, sym_poison_pat, sym_sleep_pat, sym_dead_pat
+.export sym_attack_pat, sym_defend_pat, sym_wait_pat
 
 .segment "CODE"
 
@@ -27,14 +27,14 @@ sym_at_pat:
         .byte $66, $66, $63, $30, $18, $07, $00, $00
         .byte $00, $00, $E0, $18, $0C, $A6, $66, $66
         .byte $66, $66, $BC, $00, $18, $E0, $00, $00
-; slot 02/23 of "Symbols" row -- arrow_up
-sym_arrow_up_pat:
+; slot 02/23 of "Symbols" row -- up  (was: arrow_up)
+sym_up_pat:
         .byte $00, $00, $01, $03, $07, $0F, $1F, $3F
         .byte $03, $03, $03, $03, $03, $03, $00, $00
         .byte $00, $00, $80, $C0, $E0, $F0, $F8, $FC
         .byte $C0, $C0, $C0, $C0, $C0, $C0, $00, $00
-; slot 03/23 of "Symbols" row -- arrow_ne
-sym_arrow_ne_pat:
+; slot 03/23 of "Symbols" row -- up_right  (was: arrow_ne)
+sym_up_right_pat:
         .byte $00, $00, $00, $0F, $07, $03, $01, $03
         .byte $07, $0F, $1F, $3E, $1C, $08, $00, $00
         .byte $00, $00, $00, $F8, $F8, $F8, $F8, $F8
@@ -45,8 +45,8 @@ sym_plus_pat:
         .byte $1F, $1F, $03, $03, $03, $00, $00, $00
         .byte $00, $00, $00, $C0, $C0, $C0, $F8, $F8
         .byte $F8, $F8, $C0, $C0, $C0, $00, $00, $00
-; slot 05/23 of "Symbols" row -- x
-sym_x_pat:
+; slot 05/23 of "Symbols" row -- ex  (was: x)
+sym_ex_pat:
         .byte $00, $00, $00, $18, $1C, $0E, $07, $03
         .byte $03, $07, $0E, $1C, $18, $00, $00, $00
         .byte $00, $00, $00, $18, $38, $70, $E0, $C0
@@ -63,8 +63,8 @@ sym_star_pat:
         .byte $0F, $1F, $1F, $3E, $38, $60, $00, $00
         .byte $00, $80, $80, $C0, $C0, $FE, $FC, $F8
         .byte $F0, $F8, $F8, $7C, $1C, $06, $00, $00
-; slot 08/23 of "Symbols" row -- target
-sym_target_pat:
+; slot 08/23 of "Symbols" row -- sun  (was: target)
+sym_sun_pat:
         .byte $00, $01, $30, $27, $0F, $1F, $1F, $5F
         .byte $5F, $1F, $1F, $0F, $27, $30, $01, $00
         .byte $00, $80, $0C, $E4, $F0, $F8, $F8, $FA
@@ -75,8 +75,8 @@ sym_moon_pat:
         .byte $00, $00, $01, $03, $1F, $0F, $00, $00
         .byte $00, $00, $80, $E0, $F0, $F0, $F8, $F8
         .byte $F8, $F8, $F0, $F0, $E0, $80, $00, $00
-; slot 10/23 of "Symbols" row -- eye
-sym_eye_pat:
+; slot 10/23 of "Symbols" row -- target  (was: eye)
+sym_target_pat:
         .byte $00, $03, $0F, $1F, $3C, $38, $71, $73
         .byte $73, $71, $38, $3C, $1F, $0F, $03, $00
         .byte $00, $C0, $F0, $F8, $3C, $1C, $8E, $CE
@@ -87,8 +87,8 @@ sym_warning_pat:
         .byte $1E, $1E, $3F, $3E, $7E, $7F, $00, $00
         .byte $00, $80, $C0, $C0, $E0, $60, $70, $70
         .byte $78, $78, $FC, $7C, $7E, $FE, $00, $00
-; slot 12/23 of "Symbols" row -- note
-sym_note_pat:
+; slot 12/23 of "Symbols" row -- music  (was: note)
+sym_music_pat:
         .byte $00, $00, $00, $01, $07, $07, $07, $04
         .byte $04, $04, $34, $3C, $3C, $18, $00, $00
         .byte $00, $18, $78, $F8, $F8, $C8, $08, $08
@@ -99,14 +99,14 @@ sym_fire_pat:
         .byte $7C, $72, $68, $70, $30, $18, $07, $00
         .byte $00, $00, $90, $D8, $FC, $FC, $FE, $FE
         .byte $DE, $36, $0E, $06, $04, $18, $E0, $00
-; slot 14/23 of "Symbols" row -- sparkle
-sym_sparkle_pat:
+; slot 14/23 of "Symbols" row -- ice  (was: sparkle)
+sym_ice_pat:
         .byte $00, $00, $10, $54, $38, $54, $10, $00
         .byte $00, $00, $01, $05, $03, $05, $01, $00
         .byte $00, $00, $60, $60, $00, $08, $2A, $1C
         .byte $2A, $08, $00, $40, $80, $40, $00, $00
-; slot 15/23 of "Symbols" row -- drop
-sym_drop_pat:
+; slot 15/23 of "Symbols" row -- water  (was: drop)
+sym_water_pat:
         .byte $00, $01, $02, $02, $07, $07, $0F, $0F
         .byte $1F, $1F, $17, $10, $10, $08, $07, $00
         .byte $00, $80, $40, $40, $20, $20, $90, $90
@@ -117,44 +117,44 @@ sym_lightning_pat:
         .byte $1F, $01, $01, $03, $03, $06, $04, $00
         .byte $00, $00, $F8, $F0, $E0, $C0, $80, $F8
         .byte $F0, $E0, $C0, $80, $00, $00, $00, $00
-; slot 17/23 of "Symbols" row -- spiral
-sym_spiral_pat:
+; slot 17/23 of "Symbols" row -- confusion  (was: spiral)
+sym_confusion_pat:
         .byte $00, $03, $0F, $1F, $3C, $38, $71, $72
         .byte $72, $73, $31, $38, $1C, $0E, $03, $00
         .byte $00, $C0, $F0, $F8, $3C, $1C, $8E, $4E
         .byte $CE, $1E, $FC, $F8, $00, $00, $A0, $00
-; slot 18/23 of "Symbols" row -- potion
-sym_potion_pat:
+; slot 18/23 of "Symbols" row -- poison  (was: potion)
+sym_poison_pat:
         .byte $00, $00, $01, $03, $03, $02, $02, $39
         .byte $7C, $74, $44, $38, $01, $01, $00, $00
         .byte $00, $F8, $FC, $FE, $FE, $FA, $02, $04
         .byte $F8, $00, $00, $C0, $E0, $20, $C0, $00
-; slot 19/23 of "Symbols" row -- zzz
-sym_zzz_pat:
+; slot 19/23 of "Symbols" row -- sleep  (was: zzz)
+sym_sleep_pat:
         .byte $00, $01, $01, $00, $00, $7C, $08, $11
         .byte $21, $7C, $00, $03, $00, $01, $03, $00
         .byte $00, $FE, $FE, $1C, $38, $70, $E0, $FE
         .byte $FE, $00, $00, $C0, $80, $00, $C0, $00
-; slot 20/23 of "Symbols" row -- skull
-sym_skull_pat:
+; slot 20/23 of "Symbols" row -- dead  (was: skull)
+sym_dead_pat:
         .byte $00, $07, $0F, $1F, $1F, $19, $11, $11
         .byte $0E, $03, $0B, $08, $0D, $07, $03, $00
         .byte $00, $E0, $F0, $F8, $F8, $98, $88, $88
         .byte $70, $C0, $50, $10, $B0, $E0, $C0, $00
-; slot 21/23 of "Symbols" row -- swords
-sym_swords_pat:
+; slot 21/23 of "Symbols" row -- attack  (was: swords)
+sym_attack_pat:
         .byte $00, $70, $78, $7C, $3E, $1C, $09, $03
         .byte $07, $0F, $3F, $3E, $1C, $2C, $40, $00
         .byte $00, $0E, $1E, $3E, $7C, $F8, $F0, $E0
         .byte $C0, $90, $3C, $7C, $38, $34, $02, $00
-; slot 22/23 of "Symbols" row -- shield
-sym_shield_pat:
+; slot 22/23 of "Symbols" row -- defend  (was: shield)
+sym_defend_pat:
         .byte $00, $1F, $20, $2F, $2F, $2F, $2F, $2F
         .byte $2F, $2F, $17, $0B, $05, $02, $01, $00
         .byte $00, $F8, $04, $04, $04, $04, $04, $04
         .byte $04, $04, $08, $10, $20, $40, $80, $00
-; slot 23/23 of "Symbols" row -- hourglass
-sym_hourglass_pat:
+; slot 23/23 of "Symbols" row -- wait  (was: hourglass)
+sym_wait_pat:
         .byte $00, $1F, $1F, $08, $08, $08, $04, $02
         .byte $02, $04, $09, $0B, $0F, $1F, $1F, $00
         .byte $00, $F8, $F8, $10, $10, $10, $20, $40
