@@ -1,0 +1,26 @@
+Codetank_ROGUEDIAG.rom — TMS9918 diagnostic probe (WAIT_VBLANK isolation)
+=========================================================================
+Purpose: find out why TMS_Rogue is BLACK on the real P-LAB Apple-1 while it
+runs fine in the POM1 emulator.
+
+Same 28c256 / 4000R format as the other CodeTank carts. The probe is written
+into BOTH 16 KB halves, so the board jumper does NOT matter — burn it, set
+either jumper, and boot with:  4000R
+
+What it does: runs Rogue's EXACT video init (lib init_vdp_g1 — 8 Graphics-I
+registers + 16 KB VRAM wipe + sprite disable, display ON) then paints the WHOLE
+screen with a solid white block and loops forever. Crucially it uses NO
+WAIT_VBLANK anywhere (Rogue's draw code opens every screen with a WAIT_VBLANK
+poll of the frame-flag; that poll is our prime suspect for the hang/black).
+
+READ THE RESULT:
+  * Screen turns SOLID WHITE  -> init + display-enable are healthy on your
+                                 silicon. The Rogue black-screen is the
+                                 WAIT_VBLANK / frame-flag poll. We fix Rogue by
+                                 removing the init-time WAIT_VBLANKs (and making
+                                 the per-turn one hang-proof).
+  * Screen stays BLACK        -> the problem is upstream (display never enables,
+                                 or the upper cartridge bank on your board). We
+                                 bisect higher up — it is NOT WAIT_VBLANK.
+
+Either outcome pins it. A short phone-video of the boot is perfect. Thanks!

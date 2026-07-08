@@ -168,6 +168,9 @@ mob_slot1:  .res 1
 mob_slot2:  .res 1
 mob_sz:     .res 1     ; current monster magnify 1/2/4
 mob_cur:    .res 1     ; current monster index (for archetype colour)
+mob_step:   .res 1     ; row pitch (monster width px = sz*16)
+mob_spy:    .res 1     ; shared sp_y for the whole row (same height)
+mob_curx:   .res 1     ; running x while laying out the row
 last_mob_depth: .res 1 ; depth coloured last frame (0=none) -> reset target
 ; --- colour-table fill (color_rect) ---
 cr_x:       .res 1     ; rect origin/size (pixels, multiples of 8)
@@ -208,6 +211,12 @@ p_atk:      .res 1
 p_def:      .res 1
 p_lvl:      .res 1
 p_xp:       .res 1     ; $29
+p_gold:     .res 1     ; loot collected from slain monsters (0..255)
+xp_next:    .res 1     ; total-XP threshold for the next level-up
+
+; --- Event message shown at the top of the 3D view ---
+msg_lo:     .res 1     ; pointer to the current message string (ZP indirect)
+msg_hi:     .res 1
 
 ; --- Game state ---
 gstate:     .res 1     ; $2A
@@ -368,6 +377,12 @@ new_game:
         STA p_xp
         STA view_mode
         STA last_mob_depth      ; fresh maze: nothing coloured yet
+        STA p_gold              ; no loot yet
+        LDA #10
+        STA xp_next             ; first level-up at 10 total XP
+        LDA #<str_msg_welcome
+        LDX #>str_msg_welcome
+        JSR set_msg
         JSR fill_color_white    ; wipe the title screen's colours
         LDA #1
         STA hud_dirty           ; first 3D frame must build the HUD
@@ -1010,12 +1025,14 @@ init_sat:
 ; text/colour persist; draw_hud_3d only rewrites it when dirty). ~5120 B
 ; instead of 6144 -> a shorter blanked redraw.
 clear_viewport:
-        LDX #20
-        .byte $2C              ; BIT abs: swallow the next LDX #24
+        LDX #20                ; rows 0..19 only; HUD zone spared
+        JMP clear_common       ; (NOT a `.byte $2C` BIT-abs skip -- that read
+                               ; $18A2 and tripped a strict-OOR warning)
 clear_bitmap:
         LDX #24                ; full 6144 B (map / combat / menus). The old
                                ; "skip-HUD is unsafe" note held only while
                                ; frame_by[0]=191; the viewport now ends at 159.
+clear_common:
         LDA #$00
         STA VDP_CTRL
         JSR     tms9918_pad12   ; +18c silicon-strict (back-to-back CTRL store)
@@ -1471,6 +1488,61 @@ print_str_ax:
         STX str_hi
         JMP write_str
 
+; set_msg: A=lo, X=hi -> current event message pointer (shown on row 23).
+set_msg:
+        STA msg_lo
+        STX msg_hi
+        RTS
+
+; draw_str_centered: print the NUL-terminated string at (A=lo, X=hi) centered
+; on char row Y. Clobbers A/X/Y, str_lo/hi, tmp. Used for the top-centre
+; direction word and the row-23 message.
+draw_str_centered:
+        STA str_lo
+        STX str_hi
+        STY tmp                 ; target row
+        LDY #0
+@len:   LDA (str_lo),Y
+        BEQ @lend
+        INY
+        BNE @len
+@lend:  TYA                     ; A = length
+        LSR                     ; length/2
+        STA tmp2
+        LDA #16                 ; 32/2 = centre column
+        SEC
+        SBC tmp2
+        STA ch_cx
+        LDA tmp
+        STA ch_cy
+        LDA str_lo
+        LDX str_hi
+        JMP print_str_ax
+
+; draw_direction: the compass heading spelled out (NORTH/EAST/SOUTH/WEST),
+; centred on row 1 at the top, tinted cyan. Redrawn every 3D frame (it
+; lives in the cleared viewport).
+draw_direction:
+        LDX p_face
+        LDA dir_word_lo,X
+        PHA
+        LDA dir_word_hi,X
+        TAX                     ; X = hi
+        PLA                     ; A = lo
+        LDY #1                  ; row 1
+        JSR draw_str_centered
+        LDA #48                 ; tint the centre band cyan (avoids the
+        STA cr_x                ; ceiling diagonals at the row's edges)
+        LDA #8                  ; row 1 -> y=8
+        STA cr_y
+        LDA #160
+        STA cr_w
+        LDA #8
+        STA cr_h
+        LDA #$71                ; cyan
+        STA cr_col
+        JMP color_rect
+
 ; =============================================
 ; show_title: title screen on bitmap
 ; =============================================
@@ -1913,7 +1985,9 @@ render_3d:
         STA rd_depth
         JSR draw_front_wall
 @closed:
-        ; HUD: HP, ATK, level, facing
+        ; compass heading spelled out, top-centre
+        JSR draw_direction
+        ; HUD: HP, ATK, DEF, LVL, XP, GOLD + event message
         JSR draw_hud_3d
         ; monsters visible in the corridor ahead (up to 3, on the floor)
         JSR draw_mob_indicator
@@ -2626,32 +2700,56 @@ count_mobs_rd:
 ; Size: depth 1 front = x4, its flankers x1; depth 2 front x2 / flankers
 ; x1; depth 3 all x1. Each monster's tiles are then coloured by archetype.
 draw_mob_cluster:
-        LDA mob_depth
-        SEC
-        SBC #1
-        STA tmp
-        ASL
-        CLC
-        ADC tmp
-        STA mob_base            ; (depth-1)*3
+        ; --- pick ONE size for the whole cell: a lone monster gets the
+        ; imposing base size (depth 1 = x4); 2-3 monsters all share the
+        ; smaller "row" size so they line up SAME SIZE, SAME HEIGHT. ---
+        LDX mob_depth           ; 1..3
         LDA mob_cnt
+        CMP #2
+        BCC @single
+        LDA multi_sz-1,X        ; 2+ monsters
+        JMP @havesz
+@single:
+        LDA base_sz-1,X         ; lone monster
+@havesz:
+        STA mob_sz              ; 1 / 2 / 4
+        ASL
+        ASL
+        ASL
+        ASL
+        STA mob_step            ; monster width in px = sz*16
+        ; common feet line -> shared sp_y (same height for all)
+        LDA feet_y-1,X
+        SEC
+        SBC mob_step
+        STA mob_spy
+        ; start_x = 128 - cnt*(sz*8), i.e. centre the whole row
+        LDA mob_step
+        LSR
+        STA tmp                 ; sz*8
+        LDX mob_cnt
+        LDA #0
+@w:     CLC
+        ADC tmp
+        DEX
+        BNE @w                  ; A = cnt*sz*8
+        STA tmp
+        LDA #128
+        SEC
+        SBC tmp
+        STA mob_curx            ; x of the leftmost monster
+        LDA #0
         STA mob_slot_i
-@dl:    DEC mob_slot_i          ; slots cnt-1 .. 0
-        LDY mob_slot_i
+@dl:    LDY mob_slot_i
         LDA mob_slot0,Y
-        STA mob_cur             ; remember index for colouring
+        STA mob_cur             ; index (for colouring)
         TAX
         JSR mob_sprite_ptr      ; sp_ptr := sprite of that mob's type
-        LDA mob_base
-        CLC
-        ADC mob_slot_i
-        TAY
-        LDA cluster_x,Y
+        LDA mob_curx
         STA sp_x
-        LDA cluster_y,Y
+        LDA mob_spy
         STA sp_y
-        LDA cluster_sz,Y
-        STA mob_sz              ; 1 / 2 / 4
+        LDA mob_sz
         CMP #4
         BNE @not4
         JSR draw_sprite16_x4
@@ -2663,7 +2761,13 @@ draw_mob_cluster:
 @s1:    JSR draw_sprite16_x1
 @colour:
         JSR color_current_mob   ; tint this monster's tiles by archetype
+        LDA mob_curx
+        CLC
+        ADC mob_step            ; next monster, same row
+        STA mob_curx
+        INC mob_slot_i
         LDA mob_slot_i
+        CMP mob_cnt
         BNE @dl
         RTS
 
@@ -2782,33 +2886,20 @@ fill_color_white:
         BNE @cl
         RTS
 
-; Cluster layout, indexed (depth-1)*3 + slot. All multiples of 8 (blit +
-; colour are tile-aligned). slot 0 = big centred front monster (feet on
-; the cell floor); slots 1/2 = smaller, barely offset, sitting HIGHER so
-; their heads show above the front's shoulders:
-;   depth 1: front x4 feet y=128 (floor 114..134); flankers x1 at y=48,
-;            just above the front (top y=64) so never erased.
-;   depth 2: front x2 feet y=112; flankers x1 at y=72.
-;   depth 3: all x1, a tight row (narrow far cell x 96..159).
-cluster_x:
-        .byte  96,  88, 152      ; depth 1
-        .byte 112,  96, 152      ; depth 2
-        .byte 120, 104, 136      ; depth 3
-cluster_y:
-        .byte  64,  48,  48      ; depth 1
-        .byte  80,  72,  72      ; depth 2
-        .byte  80,  72,  72      ; depth 3
-cluster_sz:
-        .byte   4,   1,   1      ; depth 1: big front, small flankers
-        .byte   2,   1,   1      ; depth 2
-        .byte   1,   1,   1      ; depth 3
+; Per-depth monster sizing (indexed depth 1..3 via base_sz-1,X):
+;   base_sz  = a LONE monster (imposing: adjacent = x4).
+;   multi_sz = 2-3 monsters, all this size so they share size + height.
+;   feet_y   = the floor line the monsters stand on (same for the whole row).
+base_sz:  .byte 4, 2, 1
+multi_sz: .byte 2, 1, 1
+feet_y:   .byte 128, 112, 96
 
 ; Colour-reset boxes (pixel x,y,w,h — mult of 8) covering each depth's
-; whole cluster, so one color_rect repaints it white next frame.
-reset_x: .byte  88,  96, 104
-reset_y: .byte  48,  72,  72
-reset_w: .byte  88,  80,  56
-reset_h: .byte  88,  48,  48
+; whole cluster (lone x4 OR a centred row of 3), repainted white next frame.
+reset_x: .byte  80,  96,  96
+reset_y: .byte  64,  80,  72
+reset_w: .byte  96,  80,  80
+reset_h: .byte  64,  48,  40
 
 ; Archetype colours (TMS9918 fg<<4 | bg=black): goblin=light green,
 ; orc=light red, dark mage=magenta.
@@ -3162,22 +3253,58 @@ run_combat:
         ; mob killed
         LDA #MOB_DEAD
         STA mob_type,X
-        ; gain XP
+        ; --- loot: gold += (type+1)*2 + 1d4 (tougher foes drop more) ---
+        LDX cur_mob
+        LDA mob_type,X
+        CLC
+        ADC #1
+        ASL                     ; (type+1)*2
+        STA tmp
+        JSR random
+        AND #$03
+        CLC
+        ADC tmp
+        CLC
+        ADC p_gold
+        STA p_gold              ; (8-bit; a full clear tops out well under 255)
+        ; --- XP is a running TOTAL now (it only ever climbs, so a kill
+        ; always visibly rewards). Level up each time it crosses xp_next. ---
         LDA p_xp
         CLC
         ADC #4
         STA p_xp
-        CMP #10
-        BCC @nolvl
-        SEC
-        SBC #10
-        STA p_xp
+        LDA #0
+        STA tmp2                ; leveled-up flag
+@lvlchk:
+        LDA p_xp
+        CMP xp_next
+        BCC @lvldone
         INC p_lvl
         INC p_atk
         LDA p_lvl
         AND #$01
-        BNE @nolvl
+        BNE @nodef
         INC p_def
+@nodef:
+        LDA xp_next
+        CLC
+        ADC #10                 ; next threshold
+        STA xp_next
+        LDA #1
+        STA tmp2
+        JMP @lvlchk
+@lvldone:
+        ; message: LEVEL UP! takes priority, else MONSTER SLAIN!
+        LDA tmp2
+        BEQ @slainmsg
+        LDA #<str_msg_levelup
+        LDX #>str_msg_levelup
+        JSR set_msg
+        JMP @nolvl
+@slainmsg:
+        LDA #<str_msg_slain
+        LDX #>str_msg_slain
+        JSR set_msg
 @nolvl:
         ; A cell can hold up to 3 monsters ("the original idea"): if
         ; another is still standing on the player's cell, fight it too —
@@ -3665,7 +3792,21 @@ str_hud_atk:  .byte "ATK",0
 str_hud_lvl:  .byte "LVL",0
 str_hud_def:  .byte "DEF",0
 str_hud_xp:   .byte "XP",0
-str_hud_dir:  .byte "DIR",0
+str_hud_gold: .byte "GOLD",0
+
+; Compass direction spelled out, shown top-centre in colour. Indexed by
+; p_face (0=N 1=E 2=S 3=W) via dir_word_lo/hi.
+str_dir_n:    .byte "NORTH",0
+str_dir_e:    .byte "EAST",0
+str_dir_s:    .byte "SOUTH",0
+str_dir_w:    .byte "WEST",0
+dir_word_lo:  .byte <str_dir_n, <str_dir_e, <str_dir_s, <str_dir_w
+dir_word_hi:  .byte >str_dir_n, >str_dir_e, >str_dir_s, >str_dir_w
+
+; Event messages (row 23, bottom).
+str_msg_welcome: .byte "FIND THE EXIT  -E-",0
+str_msg_slain:   .byte "MONSTER SLAIN!",0
+str_msg_levelup: .byte "LEVEL UP!",0
 
 str_combat_title:   .byte "COMBAT!",0
 str_mob_hp:   .byte "HP",0
