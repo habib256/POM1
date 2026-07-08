@@ -77,10 +77,17 @@
     }
 
     // Compile + link a C program (the Bench's C targets): cc65 each .c -> .s,
-    // ca65 each .s (+ each hand-written .s) -> .o, ld65 all .o + none.lib + cfg.
+    // ca65 each .s (+ each hand-written .s) -> .o, then ar65 the RUNTIME .o
+    // into rt.lib and ld65 user .o + rt.lib + none.lib + cfg. ld65 dead-strips
+    // only modules pulled from a .lib — direct objects are always linked whole
+    // — so archiving the runtime is what lets a sketch pay only for the
+    // families it calls (same link model as the desktop path).
     //   source   : the editor text (the main .c)
-    //   opts.cSources  : [{path,name}] extra .c to compile (lib runtime, /dev)
-    //   opts.asmSources: [{path,name}] hand-written .s to assemble (/dev)
+    //   opts.cSources  : [{path,name}] runtime .c to compile (/dev) — archived
+    //   opts.asmSources: [{path,name}] runtime .s to assemble (/dev) — archived
+    //   opts.userAsm   : [{path,name}] user-side .s (a sketch's EXTRA_ASM) —
+    //                    linked as DIRECT objects, never archived, so they
+    //                    survive even when no symbol references them
     //   opts.incDirs   : -I dirs (project headers), under /dev
     //   opts.cfg       : ld65 linker config (/dev)
     //   opts.runtimeLib: the -t none runtime (default /cc65/lib/none.lib)
@@ -93,7 +100,8 @@
       const asminc = gather(['/cc65/asminc']);           // ca65 .macpack files
       const sysInc = gather(['/cc65/include']);          // cc65 system headers
       let log = '';
-      const objs = {};
+      const userObjs = {};   // main.c + userAsm — always linked whole
+      const rtObjs = {};     // runtime cSources + asmSources — archived
 
       async function compileC(name, data) {
         const argv = ['-t', 'none', '-O'];
@@ -112,29 +120,53 @@
         return { code: r.code, o: r.files[oName], oName, log: r.stderr };
       }
 
-      // user source + extra .c: compile then assemble
-      const cList = [{ name: opts.srcName || 'main.c', data: source }]
-        .concat((opts.cSources || []).map(s => ({ name: s.name, data: readFile(s.path) })));
-      for (const c of cList) {
-        const cr = await compileC(c.name, c.data);
-        if (cr.code !== 0 || !cr.s) return { code: cr.code || 1, bin: null, log: log + '[cc65 ' + c.name + ']\n' + cr.log };
-        if (cr.log) log += '[cc65 ' + c.name + ']\n' + cr.log + '\n';
-        const ar = await assembleS(c.name.replace(/\.c$/, '.s'), cr.s);
-        if (ar.code !== 0 || !ar.o) return { code: ar.code || 1, bin: null, log: log + '[ca65 ' + c.name + ']\n' + ar.log };
-        objs[ar.oName] = ar.o;
+      // one .c or .s -> .o, into the given object set
+      async function buildInto(objSet, name, data, isC) {
+        if (isC) {
+          const cr = await compileC(name, data);
+          if (cr.code !== 0 || !cr.s) return '[cc65 ' + name + ']\n' + cr.log;
+          if (cr.log) log += '[cc65 ' + name + ']\n' + cr.log + '\n';
+          name = name.replace(/\.c$/, '.s');
+          data = cr.s;
+        }
+        const ar = await assembleS(name, data);
+        if (ar.code !== 0 || !ar.o) return '[ca65 ' + name + ']\n' + ar.log;
+        objSet[ar.oName] = ar.o;
+        return null;
       }
-      // hand-written .s sources
+
+      // user side: the editor's main.c + the sketch's own asm modules
+      let err = await buildInto(userObjs, opts.srcName || 'main.c', source, true);
+      if (err) return { code: 1, bin: null, log: log + err };
+      for (const a of (opts.userAsm || [])) {
+        err = await buildInto(userObjs, a.name, readFile(a.path), false);
+        if (err) return { code: 1, bin: null, log: log + err };
+      }
+      // runtime side: every spec module, then archived
+      for (const c of (opts.cSources || [])) {
+        err = await buildInto(rtObjs, c.name, readFile(c.path), true);
+        if (err) return { code: 1, bin: null, log: log + err };
+      }
       for (const a of (opts.asmSources || [])) {
-        const ar = await assembleS(a.name, readFile(a.path));
-        if (ar.code !== 0 || !ar.o) return { code: ar.code || 1, bin: null, log: log + '[ca65 ' + a.name + ']\n' + ar.log };
-        objs[ar.oName] = ar.o;
+        err = await buildInto(rtObjs, a.name, readFile(a.path), false);
+        if (err) return { code: 1, bin: null, log: log + err };
       }
-      // link
+      const rtNames = Object.keys(rtObjs);
+      let rtLib = null;
+      if (rtNames.length) {
+        const arv = await CC65.runTool(getFactory, 'ar65', ['a', '/rt.lib'].concat(rtNames), rtObjs, ['/rt.lib']);
+        if (arv.code !== 0 || !arv.files['/rt.lib'])
+          return { code: arv.code || 1, bin: null, log: log + '[ar65]\n' + (arv.stderr || '') };
+        rtLib = arv.files['/rt.lib'];
+      }
+      // link: user objects first, then the runtime archive resolves their imports
       const cfgName = opts.cfg.slice(opts.cfg.lastIndexOf('/') + 1);
       const inF = Object.assign(
         { ['/' + cfgName]: readFile(opts.cfg), '/none.lib': readFile(opts.runtimeLib || '/cc65/lib/none.lib') },
-        objs);
-      const argv = ['-C', '/' + cfgName].concat(Object.keys(objs)).concat(['/none.lib', '-o', '/out.bin']);
+        userObjs);
+      let argv = ['-C', '/' + cfgName].concat(Object.keys(userObjs));
+      if (rtLib) { inF['/rt.lib'] = rtLib; argv = argv.concat(['/rt.lib']); }
+      argv = argv.concat(['/none.lib', '-o', '/out.bin']);
       const l = await CC65.runTool(getFactory, 'ld65', argv, inF, ['/out.bin']);
       log += (l.stderr ? '[ld65]\n' + l.stderr + '\n' : '') + (l.code === 0 ? '[ok] compiled + linked (web cc65 C)\n' : '');
       return { code: l.code, bin: l.files['/out.bin'], log };

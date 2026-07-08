@@ -30,7 +30,13 @@ GEN2C_CORE_SRCS    := $(GEN2C)/gen2_init.c $(GEN2C)/gen2_blit.s
 # Drawing families — pick the ones your program actually calls.
 GEN2C_PIXEL_SRCS   := $(GEN2C)/gen2_pixel.c     # gen2_hgr_plot/unplot
 GEN2C_RECT_SRCS    := $(GEN2C)/gen2_rect.c      # fill_rect / fill_pixrect / clear_pixrect / colorize
-GEN2C_TEXT_SRCS    := $(GEN2C)/gen2_text.c      # puts / puts_color / putu / putu_field / puti / putx / puts8 / putu8 + BBFont
+# TEXT = two modules: gen2_text.c (glyph core: puts / puts_color / puts8 +
+# BBFont) + gen2_text_num.c (putu / putu_field / puti / putx / putu8). Split so
+# an ARCHIVE link (rt.lib — the DevBench, or a Makefile linking a .lib) drops
+# the formatters + their pulls (gen2_rect via putu_field's erase, gfx_num_hex
+# via putx, cc65 soft multiply) from a string-only program. Direct-object
+# consumers of this variable link both — exactly the bytes they linked before.
+GEN2C_TEXT_SRCS    := $(GEN2C)/gen2_text.c $(GEN2C)/gen2_text_num.c
 GEN2C_SPRITES_SRCS := $(GEN2C)/gen2_sprites.c   # hgr_blit / hgr_blit7
 GEN2C_X2_SRCS      := $(GEN2C)/gen2_hgr_x2.s    # gen2_hgr_inflate_x2 — hand-asm (the .c miscompiles under -Oirs; .c kept as host-only ref)
 GEN2C_X2BLIT_SRCS  := $(GEN2C)/gen2_hgr_blit_x2.c # gen2_hgr_blit_x2 (au-vol; needs X2 + CORE, owns a 256 B buffer)
@@ -55,7 +61,7 @@ GEN2C_ALL_SRCS := $(GEN2C_CORE_SRCS) \
                   $(GEN2C_GEOM_SRCS) \
                   $(GEN2C_LORES_SRCS)
 
-# Include paths. GEN2C_GEOM_SRCS *and* GEN2C_TEXT_SRCS call gfx_* (gen2_text.c
-# uses gfx_hexstr for putx), so the consumer must also link gfx-gen2.lib
-# (built by `make -C dev/lib/gfx gen2`) when it includes either.
+# Include paths. GEN2C_GEOM_SRCS *and* GEN2C_TEXT_SRCS call gfx_*
+# (gen2_text_num.c uses gfx_hexstr for putx), so the consumer must also link
+# gfx-gen2.lib (built by `make -C dev/lib/gfx gen2`) when it includes either.
 GEN2C_INCS := -I $(GEN2C)

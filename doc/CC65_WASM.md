@@ -116,10 +116,15 @@ for a Wozmon-hex upload.
    `asminc/` (ca65's `.macpack` files — cc65's generated `.s` does `.macpack
    longbranch`), `include/`, and `lib/none.lib` into `build-wasm/cc65/`; CMake
    preloads them at `/cc65`. `buildC` (in `cc65_bench.js`) runs cc65 per `.c` →
-   ca65 per `.s` (seeding `asminc`) → ld65 + `none.lib`; `Pom1BenchHost::build()`
-   feeds it the per-target file spec (the C-gen2 target rides the gfx layer too,
-   matching the desktop command). **Verified byte-identical to native cc65 2.19**
-   for plain-C (399 B) and the multi-file GEN2-C+gfx target (9557 B).
+   ca65 per `.s` (seeding `asminc`) → **`ar65 a rt.lib` over the runtime `.o`** →
+   ld65 `user.o (+userAsm) rt.lib none.lib`; `Pom1BenchHost::build()` feeds it
+   the per-target file spec (the C-gen2 target rides the gfx layer too, matching
+   the desktop command). The archive is what lets ld65 dead-strip unused runtime
+   families (direct objects always link whole); the spec's `userAsm` modules
+   (a sketch's `EXTRA_ASM`) stay direct objects so they survive unreferenced —
+   see doc/DEVBENCH.md "Link model". **Verified byte-identical to native cc65
+   2.19** for plain-C (399 B) and the multi-file GEN2-C+gfx target (9557 B)
+   (pre-archive figures; the archive path links strictly less).
 
 5. **Verify in a browser.** Build (`tools/build_cc65_wasm.sh --out build-wasm/cc65`,
    then `emcmake cmake .. && emmake make`), open `POM1.html`, pick an asm target in

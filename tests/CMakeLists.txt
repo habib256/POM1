@@ -1543,6 +1543,20 @@ if(Python3_FOUND)
              WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(gfx_regress_gen2_testcard PROPERTIES
                          TIMEOUT 60 SKIP_RETURN_CODE 77)
+
+    # ── size_report_smoke — tools/size_report.py + the DevBench archive link ──
+    # Rebuilds the gen2c runtime archive from dev/bench/gen2c.json (pins the
+    # spec: every listed source must exist and compile), links a text-only
+    # program against it with a verbose map, then asserts dead-strip (unused
+    # families absent), positive RAM headroom (raw + minus the C-stack window),
+    # a --why chain rooted at the user object, and the --min-headroom CI gate.
+    # Skips (77) without cl65 + ar65 (PATH or POM1_CC65_DIR).
+    add_test(NAME size_report_smoke
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/test_size_report.py"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(size_report_smoke PROPERTIES
+                         TIMEOUT 120 SKIP_RETURN_CODE 77)
 endif()
 
 

@@ -86,15 +86,43 @@ Schema (all paths in MEMFS-style `/dev/…` form):
   "defines": ["POM1_GFX_TMS"],
   "incDirs": ["/dev/lib/tms9918c", "/dev/lib/gfx", "/dev/lib/telemetry"],
   "cSources":   [ { "path": "/dev/lib/tms9918c/apple1.c", "name": "apple1.c" }, … ],
-  "asmSources": [ { "path": "/dev/lib/tms9918c/apple1_asm.s", "name": "apple1_asm.s" }, … ]
+  "asmSources": [ { "path": "/dev/lib/tms9918c/apple1_asm.s", "name": "apple1_asm.s" }, … ],
+  "userAsm":    [ ]
 }
 ```
 
-- **Desktop** derives the full `cl65` command line from the parsed spec
-  (`benchCSpecCl65Cmd`), mapping `/dev/…` onto the resolved `dev/` tree.
+**Link model — runtime archive, not force-link.** ld65 dead-strips ONLY modules
+pulled from a `.lib` archive; objects named directly on the link line are always
+linked whole. Both builders therefore compile the spec's `cSources` +
+`asmSources` to per-module `.o`, archive them with `ar65` into a per-target
+runtime `.lib`, and link `user.o + <rt>.lib` — a sketch pays only for the
+families it actually calls (a text-only GEN2 program dropped from ~13 KB to
+~6 KB when this landed, and the gen2c spec could finally include the
+`gen2_sprengine`/`gen2_sprmask` families, free when unused). `userAsm` is the
+opposite contract: user-side modules linked as **direct objects**, never
+archived, so fixed-segment data or IRQ stubs survive with no symbol referencing
+them.
+
+To see what a binary pays, link with `-vm -m prog.map` and run
+**`tools/size_report.py prog.map --cfg <linker.cfg>`** — per-region headroom
+(raw **and** minus the C-stack window, which sits inside RAM on the GEN2 cfg),
+a per-module byte table, `--why <module>` ("why is this in my binary" — the
+shortest reference chain from your code), and `--min-headroom RAM:256` as a CI
+gate (exit 2 below the bound; ld65 itself only fails on a hard overflow).
+Pinned by ctest `size_report_smoke`.
+
+- **Desktop** compiles/refreshes the runtime `.o`+`.lib` in a per-process cache
+  (`<tmp>/pom1_bench_<pid>/rtlib_<target>`, `benchEnsureRtLib`), mtime-keyed on
+  each source and on every `.h`/`.inc` in the spec's `incDirs` — live edits to
+  lib sources still apply on the next Run, an unchanged runtime costs only
+  `stat()` calls. A stamp file (tools + flags + module list) wipes the cache
+  when the spec changes. If `ar65` is missing it falls back to the historical
+  single-`cl65` force-link command (`benchCSpecCl65Cmd`) — bigger binary, same
+  behaviour.
 - **WASM** forwards the raw JSON text to `window.POM1cc65.buildC` (the specs are
-  MEMFS-preloaded with the rest of `dev/`); per-sketch `EXTRA_ASM` modules are
-  folded into `asmSources` before hand-off.
+  MEMFS-preloaded with the rest of `dev/`), which runs the same model in-browser
+  (`cc65`/`ca65` per module → `ar65 a rt.lib` → `ld65 user.o rt.lib none.lib`);
+  per-sketch `EXTRA_ASM` modules are folded into `userAsm` before hand-off.
 - **Fallback:** if `dev/bench/<target>.json` is missing or unparsable (old
   bundle layouts), a byte-identical compiled-in copy (`kBenchCSpec*` in
   `Pom1BenchHost.cpp`) is used and a one-line notice goes to stderr — packaged

@@ -103,11 +103,15 @@ through a zero-page block (`#pragma zpsym`), so no cc65 stack juggling.
 
 ### Per-family split (ld65 dead-strip)
 
-The runtime is split into 7 small `.c` modules (`gen2_init.c`, `gen2_pixel.c`,
-`gen2_rect.c`, `gen2_text.c`, `gen2_sprites.c`, `gen2_geom.c`, `gen2_lores.c`)
-plus a private `gen2_internal.h`. cc65's ld65 strips at the `.o`-file
-granularity, not per function — splitting per family lets a text-only demo skip
-the pixel + sprite + lores code. `gen2c.mk` exposes the matching `GEN2C_*_SRCS`
+The runtime is split into small per-family `.c` modules (`gen2_init.c`,
+`gen2_pixel.c`, `gen2_rect.c`, `gen2_text.c` + `gen2_text_num.c`,
+`gen2_sprites.c`, `gen2_geom.c`, `gen2_lores.c`) plus a private
+`gen2_internal.h`. cc65's ld65 strips at the `.o`-file granularity, not per
+function — splitting per family lets a text-only demo skip the pixel + sprite +
+lores code. TEXT is itself two modules (glyph core vs number formatters): a
+string-only program linked from an archive also drops `putu/putx/…` and what
+they pull (`gen2_rect` via `putu_field`'s erase, `gfx_num_hex`, cc65 soft
+multiply) — the split was sized with `tools/size_report.py --why`. `gen2c.mk` exposes the matching `GEN2C_*_SRCS`
 variables so a project picks only what it calls. The new `sketchs/gen2/_template_gen2c/`
 shows a ~6 KB program using only CORE + TEXT + RECT — about 5 KB smaller than
 the same demo with `GEN2C_ALL_SRCS`.

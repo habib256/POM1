@@ -1036,14 +1036,27 @@ static std::string jsonQuoted(const std::string& s)
 // source of truth is dev/bench/<target>.json — loaded at build time, so a
 // runtime-lib change needs no emulator rebuild. The kBenchCSpec* literals
 // below are byte-identical compiled-in fallbacks for bundles that predate
-// dev/bench/. Desktop derives the cl65 command line from the parsed spec;
-// WASM forwards the raw JSON text to window.POM1cc65.buildC. Rationale kept
-// from the old hardcoded lists:
-//   - ld65 dead-strips unused .o files, so every runtime family is linked
-//     (any sketch may call anything; a Bench binary is throwaway).
+// dev/bench/. Desktop derives the build commands from the parsed spec;
+// WASM forwards the raw JSON text to window.POM1cc65.buildC.
+//
+// LINK MODEL (archive, not force-link). ld65 dead-strips ONLY modules pulled
+// from a .lib archive — objects named directly on the link line are always
+// linked whole (the old single-cl65-command path force-linked the entire
+// ~20 KB gen2c runtime into every Bench binary; that's why gen2_sprengine /
+// gen2_sprmask used to be left OUT of this spec). Both builders therefore
+// compile the spec's cSources+asmSources to per-module .o, archive them with
+// ar65 into a per-target runtime .lib, and link  user.o + <rt>.lib  so a
+// sketch pays only for the families it calls. Desktop caches the .o/.lib in
+// benchScratchDir()/rtlib_<target> keyed on source/header mtimes, so live
+// edits to lib sources still apply on the next Run; if ar65 is missing it
+// falls back to the historical force-link command. The optional "userAsm"
+// list is the opposite contract: user-side modules (a sketch's EXTRA_ASM)
+// linked as DIRECT objects, never archived — they must survive even when no
+// symbol references them.
 //   - gen2c is split into per-family modules (init/pixel/rect/text/sprites/
-//     hgr_blit_x2/preshift/geom/lores) + the hot-path asm gen2_blit.s and the
-//     hand-asm gen2_hgr_x2.s (x2 inflate; its .c miscompiles under -Oirs).
+//     hgr_blit_x2/preshift/sprmask/sprengine/geom/lores) + the hot-path asm
+//     gen2_blit.s and the hand-asm gen2_hgr_x2.s (x2 inflate; its .c
+//     miscompiles under -Oirs).
 //   - the shared apple1c text base rides along with GEN2 so C programs can
 //     also print to the WOZ terminal / read the keyboard.
 //   - the card-neutral gfx layer (dev/lib/gfx) is compiled FROM SOURCE so
@@ -1075,9 +1088,11 @@ static const char* kBenchCSpecGen2c = R"json({
     { "path": "/dev/lib/gen2c/gen2_pixel.c", "name": "gen2_pixel.c" },
     { "path": "/dev/lib/gen2c/gen2_rect.c", "name": "gen2_rect.c" },
     { "path": "/dev/lib/gen2c/gen2_text.c", "name": "gen2_text.c" },
+    { "path": "/dev/lib/gen2c/gen2_text_num.c", "name": "gen2_text_num.c" },
     { "path": "/dev/lib/gen2c/gen2_sprites.c", "name": "gen2_sprites.c" },
     { "path": "/dev/lib/gen2c/gen2_hgr_blit_x2.c", "name": "gen2_hgr_blit_x2.c" },
     { "path": "/dev/lib/gen2c/gen2_preshift.c", "name": "gen2_preshift.c" },
+    { "path": "/dev/lib/gen2c/gen2_sprengine.c", "name": "gen2_sprengine.c" },
     { "path": "/dev/lib/gen2c/gen2_geom.c", "name": "gen2_geom.c" },
     { "path": "/dev/lib/gen2c/gen2_lores.c", "name": "gen2_lores.c" },
     { "path": "/dev/lib/apple1c/apple1io.c", "name": "apple1io.c" },
@@ -1095,6 +1110,7 @@ static const char* kBenchCSpecGen2c = R"json({
   "asmSources": [
     { "path": "/dev/lib/gen2c/gen2_blit.s", "name": "gen2_blit.s" },
     { "path": "/dev/lib/gen2c/gen2_hgr_x2.s", "name": "gen2_hgr_x2.s" },
+    { "path": "/dev/lib/gen2c/gen2_sprmask.s", "name": "gen2_sprmask.s" },
     { "path": "/dev/lib/apple1c/apple1io_asm.s", "name": "apple1io_asm.s" }
   ]
 }
@@ -1147,8 +1163,10 @@ struct BenchCSpec {
     std::vector<std::string> defines;       // -D symbols
     std::vector<std::string> incDirs;       // -I dirs, "/dev/..." form
     struct Src { std::string path, name; };
-    std::vector<Src> cSources;              // runtime .c modules
-    std::vector<Src> asmSources;            // hand-written .s modules
+    std::vector<Src> cSources;              // runtime .c modules (archived, dead-stripped)
+    std::vector<Src> asmSources;            // hand-written runtime .s modules (archived too)
+    std::vector<Src> userAsm;               // user-side .s modules (a sketch's EXTRA_ASM):
+                                            // linked as DIRECT objects, never archived
 };
 
 // [{"path":...,"name":...},...] extraction — same tolerant hand-rolled style as
@@ -1187,6 +1205,7 @@ static BenchCSpec benchCSpecParse(const std::string& text)
     s.incDirs    = sketchJsonStringArray(text, "incDirs");
     s.cSources   = benchJsonObjArray(text, "cSources");
     s.asmSources = benchJsonObjArray(text, "asmSources");
+    s.userAsm    = benchJsonObjArray(text, "userAsm");
     s.ok = !s.cfg.empty() && !(s.cSources.empty() && s.asmSources.empty());
     return s;
 }
@@ -1233,6 +1252,7 @@ static std::string benchCSpecSerialize(const BenchCSpec& s)
     strArray("incDirs", s.incDirs);
     srcArray("cSources", s.cSources);
     srcArray("asmSources", s.asmSources);
+    if (!s.userAsm.empty()) srcArray("userAsm", s.userAsm);
     o << "}";
     return o.str();
 }
@@ -1279,6 +1299,148 @@ static std::string benchCSpecCl65Cmd(const BenchCSpec& spec, const std::string& 
             cmd += " " + bench::shellQuote(benchDevAbs(devRoot, spec.asmSources[i].path));
     }
     cmd += extraObjs + " -o " + bench::shellQuote(outBin);
+    return cmd;
+}
+
+// ── Runtime archive (the dead-strip link path) ─────────────────────────────
+// Compile the spec's runtime modules to per-module .o and archive them with
+// ar65 into <scratch>/rtlib_<target>/<target>_rt.lib. ld65 pulls only the
+// members a program references out of a .lib, so the final link pays per
+// family actually called instead of force-linking the whole runtime. The
+// cache is mtime-keyed: a module recompiles when its source — or any
+// .h/.inc in the spec's incDirs — is newer than its .o, so live edits to lib
+// sources still apply on the next Run while the common case (unchanged
+// runtime) costs stat() calls instead of ~25 compiles. A stamp file (tools +
+// flags + module list) wipes the cache when the spec itself changes.
+struct BenchRtLib {
+    bool ok = false;
+    bool hardError = false;   // a module failed to COMPILE — surface it, don't fall back
+    std::string libPath;      // absolute archive path (valid when ok)
+    std::string console;      // accumulated tool output (compile errors land here)
+};
+
+static BenchRtLib benchEnsureRtLib(const BenchCSpec& spec, const std::string& devRoot,
+                                   const std::string& cl65, const std::string& ar65,
+                                   const std::string& target)
+{
+    namespace fs = std::filesystem;
+    BenchRtLib r;
+    std::error_code ec;
+    const fs::path cacheDir = benchScratchDir(ec) / ("rtlib_" + target);
+    std::error_code mkec;
+    fs::create_directories(cacheDir, mkec);
+    if (mkec) { r.console = "cannot create " + cacheDir.string() + "\n"; return r; }
+
+    // Per-module compile flags (no -C: compile only; -Oirs is inert for .s).
+    std::string flags = " -t none -Oirs -c";
+    for (const std::string& d : spec.defines) flags += " -D" + d;
+    std::string incFlags;
+    for (const std::string& inc : spec.incDirs) {
+        const std::string dir = benchDevAbs(devRoot, inc);
+        if (fs::exists(dir, ec)) incFlags += " -I " + bench::shellQuote(dir);
+    }
+
+    struct Mod { std::string src; fs::path obj; };
+    std::vector<Mod> mods;
+    auto addMods = [&](const std::vector<BenchCSpec::Src>& list) {
+        for (const auto& s : list) {
+            Mod m;
+            m.src = benchDevAbs(devRoot, s.path);
+            std::string base = fs::path(s.name.empty() ? s.path : s.name).filename().string();
+            const size_t dot = base.find_last_of('.');
+            if (dot != std::string::npos) base.resize(dot);
+            m.obj = cacheDir / (base + ".o");
+            mods.push_back(std::move(m));
+        }
+    };
+    addMods(spec.cSources);
+    addMods(spec.asmSources);
+
+    // Stamp: tools + flags + the module list. Any change wipes the cache.
+    std::string stamp = cl65 + "|" + ar65 + "|" + flags + "|" + incFlags + "|";
+    for (const auto& m : mods) stamp += m.src + ";";
+    const fs::path stampFile = cacheDir / "flags.stamp";
+    {
+        std::string old;
+        std::ifstream in(stampFile, std::ios::binary);
+        if (in) old.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        if (old != stamp) {
+            for (const auto& e : fs::directory_iterator(cacheDir, ec)) fs::remove(e.path(), ec);
+            std::ofstream(stampFile, std::ios::binary) << stamp;
+        }
+    }
+
+    // Newest header/.inc mtime across the incDirs (flat scan — headers sit flat
+    // in each lib dir): an edited gen2.h must recompile every module.
+    fs::file_time_type newestHdr = fs::file_time_type::min();
+    for (const std::string& inc : spec.incDirs) {
+        const std::string dir = benchDevAbs(devRoot, inc);
+        for (const auto& e : fs::directory_iterator(dir, ec)) {
+            const std::string ext = e.path().extension().string();
+            if (ext != ".h" && ext != ".inc") continue;
+            std::error_code tec;
+            const auto t = fs::last_write_time(e.path(), tec);
+            if (!tec && t > newestHdr) newestHdr = t;
+        }
+    }
+
+    const fs::path lib = cacheDir / (target + "_rt.lib");
+    bool rearchive = !fs::exists(lib, ec);
+    for (const auto& m : mods) {
+        std::error_code sec;
+        const auto srcT = fs::last_write_time(m.src, sec);
+        if (sec) { r.console = "runtime source missing: " + m.src + "\n"; return r; }
+        std::error_code oec;
+        const auto objT = fs::last_write_time(m.obj, oec);
+        if (!oec && objT >= srcT && objT >= newestHdr) continue;    // up to date
+        const std::string cmd = bench::shellQuote(cl65) + flags + incFlags +
+            " -o " + bench::shellQuote(m.obj.string()) + " " + bench::shellQuote(m.src);
+        std::string out;
+        if (bench::runCapture(cmd, out) != 0) {
+            fs::remove(m.obj, ec);
+            r.hardError = true;
+            r.console += "[cl65 -c " + fs::path(m.src).filename().string() + "]\n" + out;
+            return r;
+        }
+        if (!out.empty())
+            r.console += "[cl65 -c " + fs::path(m.src).filename().string() + "]\n" + out;
+        rearchive = true;
+    }
+
+    if (rearchive) {
+        fs::remove(lib, ec);   // ar65 a appends; never accumulate stale members
+        std::string cmd = bench::shellQuote(ar65) + " a " + bench::shellQuote(lib.string());
+        for (const auto& m : mods) cmd += " " + bench::shellQuote(m.obj.string());
+        std::string out;
+        if (bench::runCapture(cmd, out) != 0) {
+            fs::remove(lib, ec);
+            r.console += "[ar65]\n" + out;
+            return r;
+        }
+    }
+    r.ok = true;
+    r.libPath = lib.string();
+    return r;
+}
+
+// Final link for the archive path: user source + direct user objects + the
+// runtime archive (AFTER the objects, so ld65 resolves their imports from it).
+static std::string benchCSpecLinkCmd(const BenchCSpec& spec, const std::string& devRoot,
+                                     const std::string& cl65, const std::string& cfgAbs,
+                                     const std::string& srcC, const std::string& extraObjs,
+                                     const std::string& rtLib, const std::string& outBin)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    std::string cmd = bench::shellQuote(cl65) + " -t none -Oirs";
+    for (const std::string& d : spec.defines) cmd += " -D" + d;
+    cmd += " -C " + bench::shellQuote(cfgAbs);
+    for (const std::string& inc : spec.incDirs) {
+        const std::string dir = benchDevAbs(devRoot, inc);
+        if (fs::exists(dir, ec)) cmd += " -I " + bench::shellQuote(dir);
+    }
+    cmd += " " + bench::shellQuote(srcC) + extraObjs + " " + bench::shellQuote(rtLib) +
+           " -o " + bench::shellQuote(outBin);
     return cmd;
 }
 #endif
@@ -1562,6 +1724,7 @@ void Pom1BenchHost::probe() const
     ca65_ = bench::whichExe("ca65", cc65Dirs);
     ld65_ = bench::whichExe("ld65", cc65Dirs);
     cl65_ = bench::whichExe("cl65", cc65Dirs);
+    ar65_ = bench::whichExe("ar65", cc65Dirs);
     toolchainOk_ = !ca65_.empty() && !ld65_.empty();
     ensureCc65Home(!ca65_.empty() ? ca65_ : cl65_);
 
@@ -2900,13 +3063,16 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             wPlain ? kBenchCSpecApple1c : wGen2 ? kBenchCSpecGen2c : kBenchCSpecTms9918c);
         std::string spec = bspec.rawJson;
         if (!wPlain && !wGen2) {
-            // TMS9918: fold the sketch's EXTRA_ASM modules into asmSources.
+            // TMS9918: fold the sketch's EXTRA_ASM modules into userAsm — NOT
+            // asmSources. asmSources are archived and dead-stripped; a sketch's
+            // own modules must link as direct objects so they survive even when
+            // no symbol references them (fixed-segment data, IRQ stubs, …).
             const AsmProjectCtx proj = probeSketchProject(activeSourcePath_);
             bool added = false;
             for (const std::string& ea : proj.extraAsm) {
                 const std::string wp = benchAbsToWasmDev(ea);
                 if (wp.empty()) continue;
-                bspec.asmSources.push_back({wp, std::filesystem::path(ea).filename().string()});
+                bspec.userAsm.push_back({wp, std::filesystem::path(ea).filename().string()});
                 added = true;
             }
             if (added) spec = benchCSpecSerialize(bspec);
@@ -3098,12 +3264,53 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 extraObjs += " " + bench::shellQuote(eo.string());
             }
         }
+        // Spec-declared user-side modules ("userAsm"): assembled and linked as
+        // DIRECT objects like EXTRA_ASM — never archived, so they survive even
+        // when no symbol references them (fixed-segment data, IRQ stubs, …).
+        int un = 0;
+        for (const auto& ua : spec.userAsm) {
+            const fs::path uo = dir / ("pom1_bench_u" + std::to_string(un++) + ".o");
+            sweep.add(uo);
+            std::string uout;
+            const std::string uca = bench::shellQuote(ca65_) + " " + libFlags_ +
+                bench::shellQuote(benchDevAbs(devRoot_, ua.path)) + " -o " + bench::shellQuote(uo.string());
+            if (bench::runCapture(uca, uout) != 0) {
+                parseErrorMarkers(uout, r.errors);
+                r.console = std::string("$ cl65 -t none [") + tag + "]\n$ ca65 [" +
+                    fs::path(ua.path).filename().string() + "]\n" + uout + humanizeCc65(uout);
+                r.status = "ca65 failed (userAsm, see Build output)"; return r;
+            }
+            extraObjs += " " + bench::shellQuote(uo.string());
+        }
         logMeta.cfgPath = cfgAbs;
-        const std::string cmd = benchCSpecCl65Cmd(spec, devRoot_, cl65_, cfgAbs,
-                                                  srcC.string(), extraObjs, binB.string());
+        // Archive-based link (dead-strip; see the LINK MODEL comment above the
+        // specs). A runtime-module COMPILE error is surfaced like any build
+        // error — the user may be live-editing a lib source. Infrastructure
+        // failures (no ar65, unwritable cache) fall back to the historical
+        // single-command force-link so the Bench still builds, just bigger.
+        std::string cmd;
+        if (!ar65_.empty()) {
+            const BenchRtLib rt = benchEnsureRtLib(spec, devRoot_, cl65_, ar65_,
+                gen2c ? "gen2c" : plainc ? "apple1c" : "tms9918c");
+            if (rt.hardError) {
+                parseErrorMarkers(rt.console, r.errors);
+                r.console = std::string("$ cl65 -t none [") + tag + "]\n" + rt.console + humanizeCc65(rt.console);
+                r.status = "cl65 failed (runtime lib, see Build output)"; return r;
+            }
+            if (rt.ok) {
+                if (!rt.console.empty()) r.console += rt.console;
+                cmd = benchCSpecLinkCmd(spec, devRoot_, cl65_, cfgAbs,
+                                        srcC.string(), extraObjs, rt.libPath, binB.string());
+            } else if (!rt.console.empty()) {
+                r.console += "[rtlib] " + rt.console + "[rtlib] falling back to force-link\n";
+            }
+        }
+        if (cmd.empty())
+            cmd = benchCSpecCl65Cmd(spec, devRoot_, cl65_, cfgAbs,
+                                    srcC.string(), extraObjs, binB.string());
         std::string out;
         const int rc = bench::runCapture(cmd, out);
-        r.console = std::string("$ cl65 -t none [") + tag + "]\n" + out;
+        r.console += std::string("$ cl65 -t none [") + tag + "]\n" + out;
         if (rc != 0) { parseErrorMarkers(out, r.errors); r.console += humanizeCc65(out); r.status = "cl65 failed (see Build output)"; return r; }
         r.console += std::string("[ok] compiled + linked (") + tag + ")\n";
         entry = (gen2c || plainc) ? parseCfgLoadAddr(cfgAbs) : 0x4000;
