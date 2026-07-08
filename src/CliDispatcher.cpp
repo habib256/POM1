@@ -420,6 +420,10 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
             plan.vramNoiseOnReset = true;
             continue;
         }
+        if (arg == "--tms-frameflag-hostile") {
+            plan.tmsFrameFlagHostile = true;
+            continue;
+        }
         if (arg == "--ram-poison") {
             if (!needArg(i, "--ram-poison")) return std::nullopt;
             plan.ramPoisonByte =

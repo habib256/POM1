@@ -2129,6 +2129,31 @@ void MainWindow_ImGui::renderSiliconStrictWindow()
                 "up here — exactly as on real silicon.");
         }
 
+        ImGui::SeparatorText("Hostile frame-flag (stress test)");
+        bool hostileFlag = tmsFrameFlagHostileEnabled;
+        if (ImGui::Checkbox("Frame-flag F never registers (worst-case silicon)##ffhostile",
+                            &hostileFlag)) {
+            tmsFrameFlagHostileEnabled = hostileFlag;
+            emulation->setTmsFrameFlagHostile(hostileFlag);
+            setStatusMessage(hostileFlag
+                ? "Hostile frame-flag ON — unbounded WAIT_VBLANK polls now hang (as on Claudio's chip)"
+                : "Hostile frame-flag OFF — F registers every frame (POM1 default)", 3.5f);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Worst-case TMS9918/9928/9929 revision: the status frame flag F\n"
+                "(bit 7) NEVER registers to the CPU. A program that spins on it\n"
+                "with an UNBOUNDED poll (BIT $CC01 / BPL) then freezes -> black\n"
+                "screen, no way back. This reproduces the exact bug that kept\n"
+                "TMS_Rogue black on Claudio's Replica-1 while POM1 (which sets F\n"
+                "every frame) rendered it fine. A bounded WAIT_VBLANK_SAFE (lib)\n"
+                "or a program that paints before waiting survives.\n\n"
+                "Independent of the master switch (NOT part of baseline Silicon\n"
+                "Strict) — it is a stress test to audit vblank-wait robustness,\n"
+                "not real cold-boot behaviour. Takes effect immediately.\n"
+                "CLI: --tms-frameflag-hostile.");
+        }
+
         ImGui::SeparatorText("Live drop diagnostics");
         const auto diag = emulation->getTms9918DropDiagnostics();
         ImGui::Text("Total drops:      %llu", (unsigned long long)diag.total);

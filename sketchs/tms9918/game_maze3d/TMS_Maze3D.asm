@@ -171,6 +171,15 @@ mob_cur:    .res 1     ; current monster index (for archetype colour)
 mob_step:   .res 1     ; row pitch (monster width px = sz*16)
 mob_spy:    .res 1     ; shared sp_y for the whole row (same height)
 mob_curx:   .res 1     ; running x while laying out the row
+
+; --- double-size text (title "MAZE 3D") ---
+x2_src:     .res 1     ; source glyph row (0 or 4)
+x2_nib:     .res 1     ; 0=high nibble (left tile), 1=low (right tile)
+x2_cx:      .res 1     ; dest cell col/row
+x2_cy:      .res 1
+x2_row:     .res 1     ; loop cursors
+x2_cnt:     .res 1
+x2_byte:    .res 1     ; doubled byte (written twice = vertical double)
 last_mob_depth: .res 1 ; depth coloured last frame (0=none) -> reset target
 ; --- colour-table fill (color_rect) ---
 cr_x:       .res 1     ; rect origin/size (pixels, multiples of 8)
@@ -380,9 +389,9 @@ new_game:
         STA p_gold              ; no loot yet
         LDA #10
         STA xp_next             ; first level-up at 10 total XP
-        LDA #<str_msg_welcome
-        LDX #>str_msg_welcome
-        JSR set_msg
+        LDA #MSG_IDLE           ; narrator sets the epic tone
+        LDX #MSG_POOL
+        JSR msg_rand
         JSR fill_color_white    ; wipe the title screen's colours
         LDA #1
         STA hud_dirty           ; first 3D frame must build the HUD
@@ -457,8 +466,7 @@ play_input:
         SBC #1
         AND #$03
         STA p_face
-        LDA #1
-        STA hud_dirty           ; DIR changed -> rebuild the HUD line
+        JSR hush_narrator       ; turning in place silences the narrator
         RTS
 @n3:    CMP #KEY_RIGHT
         BNE @n4
@@ -468,18 +476,20 @@ play_input:
         ADC #1
         AND #$03
         STA p_face
-        LDA #1
-        STA hud_dirty           ; DIR changed
+        JSR hush_narrator
         RTS
 @n4:    CMP #KEY_FWD
         BNE @n5
-        ; forward
+        ; forward. Fresh narrator patter as we advance (a fight, if it is
+        ; triggered, overrides it with a WIN/PERIL line afterwards).
+        JSR narrate_step
         LDA p_face
         JSR try_move
         RTS
 @n5:    CMP #KEY_BACK
         BNE @n6
         ; backward = move opposite of facing
+        JSR narrate_step
         LDA p_face
         CLC
         ADC #2
@@ -1465,6 +1475,129 @@ write_char:
         RTS
 
 ; =============================================
+; draw_str_x2: print the NUL-terminated string (str_lo/hi) at DOUBLE size
+; starting at cell (ch_cx, ch_cy). Each glyph becomes 16x16 (a 2x2 cell
+; block); the cursor advances 2 cells per character. Used for the big
+; "MAZE 3D" title. ch_cy is preserved; ch_cx is advanced.
+; =============================================
+draw_str_x2:
+@lp:    LDY #0
+        LDA (str_lo),Y
+        BEQ @done
+        STA ch_code
+        JSR draw_x2char
+        LDA ch_cx
+        CLC
+        ADC #2
+        STA ch_cx
+        INC str_lo
+        BNE @lp
+        INC str_hi
+        JMP @lp
+@done:  RTS
+
+; draw_x2char: draw ch_code's glyph doubled (16x16) with top-left at cell
+; (ch_cx, ch_cy). Four dest tiles: top rows from source rows 0..3, bottom
+; from 4..7; left tile = high nibble doubled, right = low nibble (dblnib).
+draw_x2char:
+        LDA ch_code
+        SEC
+        SBC #$20
+        STA tmp
+        LDA #0
+        STA tmp2
+        ASL tmp
+        ROL tmp2
+        ASL tmp
+        ROL tmp2
+        ASL tmp
+        ROL tmp2                ; (code-$20)*8
+        LDA tmp
+        CLC
+        ADC #<font_base
+        STA ptr_lo
+        LDA tmp2
+        ADC #>font_base
+        STA ptr_hi
+        ; TL
+        LDA #0
+        STA x2_src
+        STA x2_nib
+        LDA ch_cx
+        STA x2_cx
+        LDA ch_cy
+        STA x2_cy
+        JSR x2_tile
+        ; TR
+        LDA #0
+        STA x2_src
+        LDA #1
+        STA x2_nib
+        INC x2_cx
+        JSR x2_tile
+        ; BL
+        LDA #4
+        STA x2_src
+        LDA #0
+        STA x2_nib
+        LDA ch_cx
+        STA x2_cx
+        LDA ch_cy
+        CLC
+        ADC #1
+        STA x2_cy
+        JSR x2_tile
+        ; BR
+        LDA #4
+        STA x2_src
+        LDA #1
+        STA x2_nib
+        INC x2_cx
+        JSR x2_tile
+        RTS
+
+; x2_tile: stream one 8x8 dest tile at cell (x2_cx, x2_cy) that doubles
+; source glyph rows x2_src..x2_src+3, taking the high (x2_nib=0) or low
+; (x2_nib=1) nibble of each and doubling it horizontally (dblnib), each
+; row written twice for the vertical double.
+x2_tile:
+        LDA x2_cx
+        ASL
+        ASL
+        ASL
+        STA pix_addr_lo         ; tile addr: lo = cx*8, hi = cy
+        LDA x2_cy
+        STA pix_addr_hi
+        JSR vdp_set_write
+        JSR     tms9918_pad12
+        LDA x2_src
+        STA x2_row
+        LDA #4
+        STA x2_cnt
+@r:     LDY x2_row
+        LDA (ptr_lo),Y
+        LDX x2_nib
+        BEQ @hi
+        AND #$0F
+        JMP @dbl
+@hi:    LSR
+        LSR
+        LSR
+        LSR
+@dbl:   TAX
+        LDA dblnib,X
+        STA x2_byte
+        STA VDP_DATA
+        JSR     tms9918_pad12
+        LDA x2_byte
+        STA VDP_DATA
+        JSR     tms9918_pad12
+        INC x2_row
+        DEC x2_cnt
+        BNE @r
+        RTS
+
+; =============================================
 ; write_str: print zero-terminated string at cell (ch_cx, ch_cy)
 ; ptr in str_lo / str_hi.  write_char clobbers tmp/tmp2, so we
 ; preserve the loop index in ch_idx (a dedicated scratch byte).
@@ -1492,6 +1625,54 @@ print_str_ax:
 set_msg:
         STA msg_lo
         STX msg_hi
+        RTS
+
+; Narrator pools (index into msg_ptr_lo/hi): base + count.
+MSG_IDLE  = 0          ; exploring (32)
+MSG_WIN   = 32         ; a kill, some loot (32)
+MSG_PERIL = 64         ; low HP, a nasty bite (32)
+MSG_POOL  = 32         ; lines per pool (msg_rand count)
+
+; msg_rand: A = pool base index, X = pool count. Picks a random line from
+; the pool and points the narrator (msg_lo/hi) at it. Clobbers A/X/Y, tmp.
+msg_rand:
+        STA tmp                 ; base
+        STX tmp2                ; count
+        JSR random
+@mod:   CMP tmp2                ; A mod count (count is small)
+        BCC @have
+        SEC
+        SBC tmp2
+        JMP @mod
+@have:  CLC
+        ADC tmp                 ; base + (rand mod count)
+        TAX
+        LDA msg_ptr_lo,X
+        STA msg_lo
+        LDA msg_ptr_hi,X
+        STA msg_hi
+        RTS
+
+; narrate_step: a fresh IDLE line as the hero advances, and mark the HUD
+; dirty so row 23 is rebuilt (a plain move otherwise leaves it untouched).
+narrate_step:
+        LDA #MSG_IDLE
+        LDX #MSG_POOL
+        JSR msg_rand
+        LDA #1
+        STA hud_dirty
+        RTS
+
+; hush_narrator: blank row 23 (turning in place says nothing) and mark the
+; HUD dirty so the DIR change + the now-empty message are redrawn. The
+; narrator speaks again on the next actual step (narrate_step).
+hush_narrator:
+        LDA #<str_empty
+        STA msg_lo
+        LDA #>str_empty
+        STA msg_hi
+        LDA #1
+        STA hud_dirty
         RTS
 
 ; draw_str_centered: print the NUL-terminated string at (A=lo, X=hi) centered
@@ -1573,14 +1754,17 @@ show_title:
         STA fl_x0
         JSR vline
 
-        ; "MAZE 3D" (row 3, col 12)
-        LDA #12
+        ; "MAZE 3D" at DOUBLE size (16x16 glyphs). 7 chars * 2 = 14 cells
+        ; wide -> centred at col 9, rows 3-4 (inside the banner box 2-5).
+        LDA #9
         STA ch_cx
         LDA #3
         STA ch_cy
         LDA #<str_title1
-        LDX #>str_title1
-        JSR print_str_ax
+        STA str_lo
+        LDA #>str_title1
+        STA str_hi
+        JSR draw_str_x2
         ; subtitle (rows 7, 9)
         LDA #9
         STA ch_cx
@@ -1631,16 +1815,21 @@ show_title:
         LDA #<str_press_any
         LDX #>str_press_any
         JSR print_str_ax
+        ; author signature (row 23)
+        LDA #<str_title_author
+        LDX #>str_title_author
+        LDY #23
+        JSR draw_str_centered
 
         ; --- colours ---
-        ; MAZE 3D -> yellow
-        LDA #96
+        ; MAZE 3D (doubled: col 9..22, rows 3-4) -> yellow
+        LDA #72
         STA cr_x
         LDA #24
         STA cr_y
-        LDA #56
+        LDA #112
         STA cr_w
-        LDA #8
+        LDA #16
         STA cr_h
         LDA #$B1
         STA cr_col
@@ -1715,6 +1904,18 @@ show_title:
         LDA #8
         STA cr_h
         LDA #$D1
+        STA cr_col
+        JSR color_rect
+        ; author (row 23) -> light green
+        LDA #0
+        STA cr_x
+        LDA #184
+        STA cr_y
+        LDA #248
+        STA cr_w
+        LDA #8
+        STA cr_h
+        LDA #$31
         STA cr_col
         JSR color_rect
 
@@ -1914,7 +2115,7 @@ show_lose:
 ; =============================================
 render_3d:
         ; Sync to VBlank before the full 3D-scene rebuild burst.
-        WAIT_VBLANK
+        WAIT_VBLANK_SAFE
         ; Blank the display for the whole redraw so the player never sees
         ; the frame being drawn -- it reappears complete when we unblank.
         JSR vdp_display_off
@@ -2569,27 +2770,30 @@ draw_hud_3d:
         LDA p_xp
         JSR write_decimal_2d
 
+        ; GOLD (facing now lives spelled-out at the top, so the HUD slot
+        ; that held DIR shows the loot total instead).
         LDA #21
         STA ch_cx
         LDA #22
         STA ch_cy
-        LDA #<str_hud_dir
-        LDX #>str_hud_dir
+        LDA #<str_hud_gold
+        LDX #>str_hud_gold
         JSR print_str_ax
-        LDA #25
+        LDA #26
         STA ch_cx
         LDA #22
         STA ch_cy
-        LDA p_face
-        TAX
-        LDA face_chars,X
-        STA ch_code
-        JSR write_char
+        LDA p_gold
+        JSR write_decimal_2d
 
-        ; Colour the two HUD text rows: vitals (row 21) green,
-        ; progression (row 22) cyan. Done every frame -- cheap (2 rows),
-        ; and keeps the tint after a combat/map excursion wiped it. The
-        ; monster colour region (rows 6..16) never reaches down here.
+        ; Event message, centred on row 23 (yellow).
+        LDA msg_lo
+        LDX msg_hi
+        LDY #23
+        JSR draw_str_centered
+
+        ; Colour the HUD rows: vitals (21) green, progression (22) cyan,
+        ; message (23) yellow.
         LDA #8
         STA cr_x
         LDA #168                ; row 21 (HP / ATK / DEF)
@@ -2603,13 +2807,24 @@ draw_hud_3d:
         JSR color_rect
         LDA #8
         STA cr_x
-        LDA #176                ; row 22 (LVL / XP / DIR)
+        LDA #176                ; row 22 (LVL / XP / GOLD)
         STA cr_y
         LDA #216
         STA cr_w
         LDA #8
         STA cr_h
         LDA #$71                ; cyan
+        STA cr_col
+        JSR color_rect
+        LDA #0
+        STA cr_x
+        LDA #184                ; row 23 (message)
+        STA cr_y
+        LDA #248
+        STA cr_w
+        LDA #8
+        STA cr_h
+        LDA #$B1                ; yellow
         STA cr_col
         JSR color_rect
         RTS
@@ -2896,10 +3111,14 @@ feet_y:   .byte 128, 112, 96
 
 ; Colour-reset boxes (pixel x,y,w,h — mult of 8) covering each depth's
 ; whole cluster (lone x4 OR a centred row of 3), repainted white next frame.
+; depth-1 box starts at y=48 (not 64) so it also covers the x4 COMBAT
+; portrait region (96,48..111): after a kill, returning to 3D, color_reset_last
+; then wipes the portrait's tint too -- otherwise it bled onto the corridor
+; lines in rows 6-7 (the "colour stays on the maze" bug).
 reset_x: .byte  80,  96,  96
-reset_y: .byte  64,  80,  72
+reset_y: .byte  48,  80,  72
 reset_w: .byte  96,  80,  80
-reset_h: .byte  64,  48,  40
+reset_h: .byte  80,  48,  40
 
 ; Archetype colours (TMS9918 fg<<4 | bg=black): goblin=light green,
 ; orc=light red, dark mage=magenta.
@@ -2968,7 +3187,7 @@ write_decimal_2d:
 ; =============================================
 render_map:
         ; Sync to VBlank before the top-down map rebuild burst.
-        WAIT_VBLANK
+        WAIT_VBLANK_SAFE
         JSR vdp_display_off     ; hide the redraw
         JSR clear_bitmap
         LDA #4
@@ -3281,6 +3500,17 @@ run_combat:
         BCC @lvldone
         INC p_lvl
         INC p_atk
+        ; level-up HEAL: +8 HP (capped at 30). Turns combat into a real
+        ; risk/reward loop -- fighting weaker foes to level up lets you
+        ; recover HP and take on the dangerous ones, instead of the
+        ; "avoid everything and rush the exit" degenerate strategy.
+        LDA p_hp
+        CLC
+        ADC #8
+        CMP #31
+        BCC @hpok
+        LDA #30
+@hpok:  STA p_hp
         LDA p_lvl
         AND #$01
         BNE @nodef
@@ -3294,17 +3524,20 @@ run_combat:
         STA tmp2
         JMP @lvlchk
 @lvldone:
-        ; message: LEVEL UP! takes priority, else MONSTER SLAIN!
-        LDA tmp2
-        BEQ @slainmsg
-        LDA #<str_msg_levelup
-        LDX #>str_msg_levelup
-        JSR set_msg
+        ; narrator: if the fight left you battered, an ominous PERIL line;
+        ; otherwise a triumphant WIN line. (The LVL bump + heal already
+        ; signal the level-up on the HUD.)
+        LDA p_hp
+        CMP #7
+        BCS @winmsg
+        LDA #MSG_PERIL
+        LDX #MSG_POOL
+        JSR msg_rand
         JMP @nolvl
-@slainmsg:
-        LDA #<str_msg_slain
-        LDX #>str_msg_slain
-        JSR set_msg
+@winmsg:
+        LDA #MSG_WIN
+        LDX #MSG_POOL
+        JSR msg_rand
 @nolvl:
         ; A cell can hold up to 3 monsters ("the original idea"): if
         ; another is still standing on the player's cell, fight it too —
@@ -3373,7 +3606,7 @@ draw_combat_screen:
         ; tint below.
         JSR color_reset_last
         ; Sync to VBlank before the combat-scene rebuild burst.
-        WAIT_VBLANK
+        WAIT_VBLANK_SAFE
         JSR vdp_display_off     ; hide the redraw
         JSR clear_bitmap
         ; Title bar
@@ -3760,6 +3993,7 @@ str_title3:   .byte "DUNGEON CRAWLER",0
 str_title4:   .byte "FOR P-LAB TMS9918 + APPLE 1",0
 str_title_hint:.byte "IN GAME: H=HELP",0
 str_press_any:.byte "PRESS ANY KEY...",0
+str_title_author:.byte "BY VERHILLE ARNAUD  2026",0
 
 str_help_h1:  .byte "HOW TO PLAY",0
 ; 31 chars max: printed at ch_cx=1 on the 32-column grid — the old l2 was
@@ -3803,10 +4037,136 @@ str_dir_w:    .byte "WEST",0
 dir_word_lo:  .byte <str_dir_n, <str_dir_e, <str_dir_s, <str_dir_w
 dir_word_hi:  .byte >str_dir_n, >str_dir_e, >str_dir_s, >str_dir_w
 
-; Event messages (row 23, bottom).
-str_msg_welcome: .byte "FIND THE EXIT  -E-",0
-str_msg_slain:   .byte "MONSTER SLAIN!",0
-str_msg_levelup: .byte "LEVEL UP!",0
+; ---------------------------------------------------------------------------
+; The NARRATOR -- a grandiloquent little fairy who over-hypes your every deed
+; on row 23. 96 lines in 3 pools; msg_rand picks one at random. Turning in
+; place clears it (str_empty); it returns on the next step.
+; Pools: MSG_IDLE (exploring) | MSG_WIN (kill/loot) | MSG_PERIL (low/hurt).
+; ---------------------------------------------------------------------------
+str_empty: .byte 0
+ph_idle0: .byte "THE SHADOWS WHISPER YOUR NAME",0
+ph_idle1: .byte "THE DUNGEON HOLDS ITS BREATH",0
+ph_idle2: .byte "THE DARK AWAITS YOUR FATE",0
+ph_idle3: .byte "STEP BY STEP, A LEGEND GROWS",0
+ph_idle4: .byte "DEEPER! THE LEGEND DESCENDS",0
+ph_idle5: .byte "DEEPER STILL, MORE HEROIC",0
+ph_idle6: .byte "THE ABYSS OPENS ITS ARMS!",0
+ph_idle7: .byte "ANOTHER STEP TOWARD GLORY",0
+ph_idle8: .byte "BATS FLEE AT YOUR APPROACH",0
+ph_idle9: .byte "EVEN THE WALLS ADMIRE YOU",0
+ph_idle10: .byte "DESTINY SMELLS FAINTLY DAMP",0
+ph_idle11: .byte "YOUR BOOTS ECHO LIKE THUNDER",0
+ph_idle12: .byte "THE MAP FEARS YOUR FOOTSTEPS",0
+ph_idle13: .byte "ONWARD, O RADIANT ONE!",0
+ph_idle14: .byte "SUCH POISE! SUCH DIRECTION!",0
+ph_idle15: .byte "A HERO WALKS. SLOWLY. BUT YES",0
+ph_idle16: .byte "THE GLOOM PARTS FOR YOU",0
+ph_idle17: .byte "LEGENDS ARE MADE OF WALKING",0
+ph_idle18: .byte "MIND THE MOSS, GREAT ONE",0
+ph_idle19: .byte "THE EXIT DREADS YOUR ARRIVAL",0
+ph_idle20: .byte "DUST SETTLES IN YOUR HONOUR",0
+ph_idle21: .byte "YOUR SHADOW LOOKS HEROIC TOO",0
+ph_idle22: .byte "COBWEBS PART IN REVERENCE",0
+ph_idle23: .byte "THE SILENCE APPLAUDS YOU",0
+ph_idle24: .byte "A DRAFT! AN OMEN! OR A GAP",0
+ph_idle25: .byte "YOU STRIDE WITH PURPOSE-ISH",0
+ph_idle26: .byte "THE STONES REMEMBER GIANTS",0
+ph_idle27: .byte "FORWARD, INTO SLIGHT DANGER!",0
+ph_idle28: .byte "THE TORCHES ENVY YOUR GLOW",0
+ph_idle29: .byte "EACH STEP, A VERSE UNWRITTEN",0
+ph_idle30: .byte "THE MAZE TREMBLES POLITELY",0
+ph_idle31: .byte "DOOM HUMS A CHEERFUL TUNE",0
+ph_win0: .byte "A FOE PERISHES. GLORY!",0
+ph_win1: .byte "THE BARDS WILL SING OF THIS",0
+ph_win2: .byte "SLAIN! THE HALL ACCLAIMS YOU",0
+ph_win3: .byte "ONE LESS FOR THE LEGEND",0
+ph_win4: .byte "TREASURE WORTHY OF YOUR QUEST",0
+ph_win5: .byte "LOOT FIT FOR THE CHOSEN",0
+ph_win6: .byte "YOUR GLORY GROWS HEAVIER",0
+ph_win7: .byte "TAKEN, WITH FLAIR INTACT",0
+ph_win8: .byte "IT NEVER STOOD A CHANCE",0
+ph_win9: .byte "SPLAT! MOST MAJESTIC, THAT",0
+ph_win10: .byte "ANOTHER STAT FOR THE EPICS",0
+ph_win11: .byte "THE CROWD OF ONE GOES WILD",0
+ph_win12: .byte "SMOTE! A FINE WORD, NOW",0
+ph_win13: .byte "GORGEOUS AND DEADLY. RUDE.",0
+ph_win14: .byte "IT REGRETS EVERYTHING NOW",0
+ph_win15: .byte "CLEAN KILL. POETS WEEP.",0
+ph_win16: .byte "VANQUISHED WITH GOOD POSTURE",0
+ph_win17: .byte "GOLD! SHINY! MINE! ...YOURS",0
+ph_win18: .byte "COINS FOR THE HERO FUND",0
+ph_win19: .byte "PILLAGE BECOMES YOU",0
+ph_win20: .byte "THAT WILL BUFF THE LEGEND",0
+ph_win21: .byte "A TROPHY FOR THE MANTLE",0
+ph_win22: .byte "THE ABYSS COUGHS UP LOOT",0
+ph_win23: .byte "RICHER, AND STILL HANDSOME",0
+ph_win24: .byte "DISPATCHED. NEXT VICTIM?",0
+ph_win25: .byte "HEROIC. ALSO MILDLY MESSY.",0
+ph_win26: .byte "THE MONSTER FILED A COMPLAINT",0
+ph_win27: .byte "ONE SWING, ONE SONNET",0
+ph_win28: .byte "BEHOLD, THE SPOILS OF FATE",0
+ph_win29: .byte "VICTORY TASTES LIKE DUST. YAY",0
+ph_win30: .byte "ANOTHER BEAST, A NEW BALLAD",0
+ph_win31: .byte "IT WILL NOT BE MISSED",0
+ph_peril0: .byte "YOUR BREATH FAILS, ALAS",0
+ph_peril1: .byte "DEATH LURKS... STAY NOBLE",0
+ph_peril2: .byte "ONE STEP FROM AN EPIC END!",0
+ph_peril3: .byte "HOLD ON, FALTERING LEGEND",0
+ph_peril4: .byte "OUCH! YET YOU STAY SUBLIME",0
+ph_peril5: .byte "A BITE UNWORTHY OF YOU",0
+ph_peril6: .byte "PAIN FORGES THE HEROES",0
+ph_peril7: .byte "YOU STAGGER, MAJESTIC",0
+ph_peril8: .byte "MAYBE... RUN? HEROICALLY?",0
+ph_peril9: .byte "THAT ONE STUNG THE LEGEND",0
+ph_peril10: .byte "BLEEDING, BUT FASHIONABLY",0
+ph_peril11: .byte "THE END NEARS. POSTURE!",0
+ph_peril12: .byte "PERHAPS A HEALER? A PRAYER?",0
+ph_peril13: .byte "STILL PRETTY. LESS ALIVE.",0
+ph_peril14: .byte "YOUR EPILOGUE LOOMS CLOSE",0
+ph_peril15: .byte "DIGNITY OVER LONGEVITY!",0
+ph_peril16: .byte "WOUNDED, YET PHOTOGENIC",0
+ph_peril17: .byte "THE GRAVE CLEARS ITS THROAT",0
+ph_peril18: .byte "TEETERING ON GLORY'S EDGE",0
+ph_peril19: .byte "I'D FLEE. GENTLY. JUST SAYING",0
+ph_peril20: .byte "ONE MORE HIT ENDS THE SAGA",0
+ph_peril21: .byte "COURAGE! ALSO, BANDAGES!",0
+ph_peril22: .byte "THE REAPER TAPS HIS WATCH",0
+ph_peril23: .byte "FADING, BUT WITH FLOURISH",0
+ph_peril24: .byte "A NOBLE SHADE YOU WILL MAKE",0
+ph_peril25: .byte "HP LOW, EGO INTACT",0
+ph_peril26: .byte "DEATH IS SO INCONVENIENT",0
+ph_peril27: .byte "CLING ON, O SPLENDID ONE",0
+ph_peril28: .byte "THE TOMB WARMS UP FOR YOU",0
+ph_peril29: .byte "ALMOST A MARTYR. ALMOST.",0
+ph_peril30: .byte "GASP! DRAMATIC, YET DIRE",0
+ph_peril31: .byte "SURVIVE, FOR THE FANS!",0
+msg_ptr_lo:
+        .byte <ph_idle0,<ph_idle1,<ph_idle2,<ph_idle3,<ph_idle4,<ph_idle5,<ph_idle6,<ph_idle7
+        .byte <ph_idle8,<ph_idle9,<ph_idle10,<ph_idle11,<ph_idle12,<ph_idle13,<ph_idle14,<ph_idle15
+        .byte <ph_idle16,<ph_idle17,<ph_idle18,<ph_idle19,<ph_idle20,<ph_idle21,<ph_idle22,<ph_idle23
+        .byte <ph_idle24,<ph_idle25,<ph_idle26,<ph_idle27,<ph_idle28,<ph_idle29,<ph_idle30,<ph_idle31
+        .byte <ph_win0,<ph_win1,<ph_win2,<ph_win3,<ph_win4,<ph_win5,<ph_win6,<ph_win7
+        .byte <ph_win8,<ph_win9,<ph_win10,<ph_win11,<ph_win12,<ph_win13,<ph_win14,<ph_win15
+        .byte <ph_win16,<ph_win17,<ph_win18,<ph_win19,<ph_win20,<ph_win21,<ph_win22,<ph_win23
+        .byte <ph_win24,<ph_win25,<ph_win26,<ph_win27,<ph_win28,<ph_win29,<ph_win30,<ph_win31
+        .byte <ph_peril0,<ph_peril1,<ph_peril2,<ph_peril3,<ph_peril4,<ph_peril5,<ph_peril6,<ph_peril7
+        .byte <ph_peril8,<ph_peril9,<ph_peril10,<ph_peril11,<ph_peril12,<ph_peril13,<ph_peril14,<ph_peril15
+        .byte <ph_peril16,<ph_peril17,<ph_peril18,<ph_peril19,<ph_peril20,<ph_peril21,<ph_peril22,<ph_peril23
+        .byte <ph_peril24,<ph_peril25,<ph_peril26,<ph_peril27,<ph_peril28,<ph_peril29,<ph_peril30,<ph_peril31
+msg_ptr_hi:
+        .byte >ph_idle0,>ph_idle1,>ph_idle2,>ph_idle3,>ph_idle4,>ph_idle5,>ph_idle6,>ph_idle7
+        .byte >ph_idle8,>ph_idle9,>ph_idle10,>ph_idle11,>ph_idle12,>ph_idle13,>ph_idle14,>ph_idle15
+        .byte >ph_idle16,>ph_idle17,>ph_idle18,>ph_idle19,>ph_idle20,>ph_idle21,>ph_idle22,>ph_idle23
+        .byte >ph_idle24,>ph_idle25,>ph_idle26,>ph_idle27,>ph_idle28,>ph_idle29,>ph_idle30,>ph_idle31
+        .byte >ph_win0,>ph_win1,>ph_win2,>ph_win3,>ph_win4,>ph_win5,>ph_win6,>ph_win7
+        .byte >ph_win8,>ph_win9,>ph_win10,>ph_win11,>ph_win12,>ph_win13,>ph_win14,>ph_win15
+        .byte >ph_win16,>ph_win17,>ph_win18,>ph_win19,>ph_win20,>ph_win21,>ph_win22,>ph_win23
+        .byte >ph_win24,>ph_win25,>ph_win26,>ph_win27,>ph_win28,>ph_win29,>ph_win30,>ph_win31
+        .byte >ph_peril0,>ph_peril1,>ph_peril2,>ph_peril3,>ph_peril4,>ph_peril5,>ph_peril6,>ph_peril7
+        .byte >ph_peril8,>ph_peril9,>ph_peril10,>ph_peril11,>ph_peril12,>ph_peril13,>ph_peril14,>ph_peril15
+        .byte >ph_peril16,>ph_peril17,>ph_peril18,>ph_peril19,>ph_peril20,>ph_peril21,>ph_peril22,>ph_peril23
+        .byte >ph_peril24,>ph_peril25,>ph_peril26,>ph_peril27,>ph_peril28,>ph_peril29,>ph_peril30,>ph_peril31
+
 
 str_combat_title:   .byte "COMBAT!",0
 str_mob_hp:   .byte "HP",0

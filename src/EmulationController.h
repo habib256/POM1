@@ -277,6 +277,8 @@ public:
     // POM1 behaviour (MSX1 bistable VRAM, zero-init RAM) is preserved.
     void setVramNoiseOnReset(bool enabled);
     bool isVramNoiseOnReset() const;
+    void setTmsFrameFlagHostile(bool enabled);
+    bool isTmsFrameFlagHostile() const;
     void setSystemRamNoiseOnReset(bool enabled);
     bool isSystemRamNoiseOnReset() const;
     // Read-before-write trap (--ram-poison / --ram-trap): deterministic sentinel

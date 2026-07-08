@@ -445,6 +445,10 @@ private:
     bool vramNoiseOnResetEnabled = false;
     bool systemRamNoiseOnResetEnabled = false;
     bool dramRefreshEnabled = false;
+    // Stress-test toggle (Silicon Strict Inspector → TMS9918): the frame flag
+    // never registers, so unbounded WAIT_VBLANK polls hang. NOT armed by the
+    // master switch. Mirrors TMS9918::frameFlagHostile / --tms-frameflag-hostile.
+    bool tmsFrameFlagHostileEnabled = false;
     // UI mirror of Memory::isGen2RandomPowerOn(). Defaulted from !fantasyPreset
     // in applyMachineConfig (matches siliconStrictMode), surfaced as a single
     // "Random power-on state" checkbox in the Silicon Strict Inspector's GEN2

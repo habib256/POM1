@@ -541,6 +541,11 @@ static int runHeadless(pom1::CliPlan& plan)
         pom1::log().info("TMS9918", "VRAM power-on noise ON (--vram-noise): "
                                     "silicon-faithful cold-boot VRAM");
     }
+    if (plan.tmsFrameFlagHostile) {
+        emu.setTmsFrameFlagHostile(true);
+        pom1::log().info("TMS9918", "Hostile frame-flag ON (--tms-frameflag-hostile): "
+                                    "F never registers — unbounded WAIT_VBLANK polls hang");
+    }
     if (plan.ramPoisonByte) {
         emu.setRamPoison(true, *plan.ramPoisonByte);
         needPowerOnReset = true;

@@ -116,6 +116,55 @@ VDP_CTRL = $CC01        ; VDP register / address port (write twice = setup)
 .endmacro
 
 ; ---------------------------------------------------------------------------
+; WAIT_VBLANK_SAFE — hang-proof frame-flag sync (drop-in for WAIT_VBLANK).
+;
+; The plain WAIT_VBLANK above spins on `BPL` until the status frame flag F
+; (bit 7) sets — an UNBOUNDED loop. On some real TMS9918/9928/9929 revisions F
+; is occasionally missed for a frame, or a status read landing on the F-set
+; edge clears it while returning the old (not-set) value (chip-dependent,
+; documented on MSX.org). If F never registers, the naked spin hangs FOREVER —
+; display ON + unpainted name table = a frozen BLACK screen with no way back.
+; This is what black-screened TMS_Rogue on Claudio's Replica-1 while POM1 (which
+; sets F deterministically) rendered it fine; reproduce it with POM1's
+; `--tms-frameflag-hostile`. See doc/TMS9918_TRANSFER_WINDOWS.md.
+;
+; This variant bounds the poll to ~65536 iterations (~0.4 s @1.02 MHz) then
+; gives up and paints anyway — worst case one torn frame instead of a freeze.
+; It is behaviourally IDENTICAL when F arrives (exits immediately on BMI), so it
+; passes the burn gate unchanged; it only differs when F never comes. On the
+; Apple-1's 1.02 MHz 6502 a VRAM write can never be dropped (9c inner gap =
+; 8.8 us > the chip's 8.1 us worst-case window), so the sync is pure
+; tear-avoidance — safe to time out. Preserves A/X/Y (flags clobbered, exactly
+; like WAIT_VBLANK). Uses @-prefixed CHEAP-LOCAL labels (like WAIT_VBLANK's
+; @vbl_wait) so it does NOT reset the caller's cheap-local scope — a `.local`
+; (normal) label would silently orphan any surrounding `@foo` label. Expand at
+; most once per enclosing (non-cheap) label; every call site here obeys that.
+; ---------------------------------------------------------------------------
+.macro WAIT_VBLANK_SAFE
+        PHA
+        TXA
+        PHA
+        TYA
+        PHA
+        BIT     VDP_CTRL        ; drain stale F flag
+        LDX     #0
+        LDY     #0
+@vw_safe:
+        BIT     VDP_CTRL        ; poll status
+        BMI     @vd_safe        ; F=1 -> VBlank reached, done
+        INX
+        BNE     @vw_safe
+        INY
+        BNE     @vw_safe        ; ~65536 polls elapsed -> give up (no hang)
+@vd_safe:
+        PLA
+        TAY
+        PLA
+        TAX
+        PLA
+.endmacro
+
+; ---------------------------------------------------------------------------
 ; IRQ caveat — control-port pair atomicity.
 ;
 ; The P-LAB card wires /INT -> /IRQ (trace verified). If a program enables

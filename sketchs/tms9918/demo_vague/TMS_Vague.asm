@@ -205,7 +205,7 @@ main_loop:
         JSR compute_wave_y
         JSR compute_tile_buf
 
-        WAIT_VBLANK
+        WAIT_VBLANK_SAFE
 
         ; ESC?
         LDA KBDCR

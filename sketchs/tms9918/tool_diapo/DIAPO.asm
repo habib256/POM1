@@ -305,7 +305,7 @@ wait_4s:
         BNE     @w
         RTS
 wait_frame:
-        WAIT_VBLANK
+        WAIT_VBLANK_SAFE
         RTS
 
 ; read + discard MCU response bytes up to and including a NUL

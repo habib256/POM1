@@ -102,6 +102,22 @@ public:
     void setVramNoiseOnReset(bool enabled) { vramNoiseOnReset = enabled; }
     bool isVramNoiseOnReset() const { return vramNoiseOnReset; }
 
+    // "Hostile frame-flag" model — worst-case TMS9918/9928/9929 silicon where
+    // the status-register frame flag (F, bit 7) NEVER registers to the CPU.
+    // Real chips occasionally miss F for a frame, and a status read landing
+    // exactly on the F-set edge clears it while returning the old (not-set)
+    // value (documented, chip-revision-dependent — MSX.org). A program that
+    // spins on F with an UNBOUNDED poll (`BIT $CC01 / BPL`) then freezes: this
+    // is why TMS_Rogue was black on Claudio's Replica-1 yet fine in POM1 (which
+    // sets F deterministically every frame). Turning this ON makes any naked
+    // WAIT_VBLANK hang and any bounded/timed one survive — a stress test for
+    // vblank-wait robustness. NOT bundled into siliconStrictMode by default: the
+    // shipped Snake/Galaga still use the lib's unbounded WAIT_VBLANK and would
+    // hang the burn gate (a latent risk of their own, but out of scope here).
+    // Opt-in via --tms-frameflag-hostile. Default OFF.
+    void setFrameFlagHostile(bool enabled) { frameFlagHostile = enabled; }
+    bool isFrameFlagHostile() const { return frameFlagHostile; }
+
     // Cumulative count of VDP writes (data + control port) dropped because
     // siliconStrictMode was on and `canAcceptAccess()` rejected the byte.
     // Exposed in the status bar next to the STRICT/FANTASY tag so users can
@@ -509,6 +525,9 @@ private:
     // See setVramNoiseOnReset(). Default OFF — preserves the MSX1 bistable
     // power-on pattern that the test suite + recorded snapshots expect.
     bool vramNoiseOnReset   = false;
+    // See setFrameFlagHostile(). Default OFF. Suppresses the F-flag set at
+    // VBlank entry so an unbounded status poll never sees it.
+    bool frameFlagHostile   = false;
     // The P-LAB card wires /INT → 6502 /IRQ (trace verified on real hardware
     // by Parmigiani); canonical software still polls $CC01 instead of using it.
     // Default = true (stock P-LAB wiring). Set false via setIrqStrapped() to

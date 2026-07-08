@@ -377,7 +377,7 @@ init_vdp:
 ; =============================================
 render_all:
         ; Sync to VBlank before the full-playfield rebuild burst.
-        WAIT_VBLANK
+        WAIT_VBLANK_SAFE
         LDA #$00
         STA draw_row
 @rowlp:

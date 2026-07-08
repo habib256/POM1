@@ -528,7 +528,7 @@ render:
         ; can't all fit in one ~4554c VBlank window — pacing means the
         ; first rows land in retrace and the rest cascade through
         ; silicon-strict slot-table arbitration).
-        WAIT_VBLANK
+        WAIT_VBLANK_SAFE
         ; Set VDP write address = $1800 (name table base)
         LDA #$00
         STA VDP_CTRL

@@ -355,6 +355,9 @@ public:
     // Kept here so the EmulationController facade only ever talks to Memory.
     void setVramNoiseOnReset(bool enabled);
     bool isVramNoiseOnReset() const;
+    // Forward to TMS9918::setFrameFlagHostile (worst-case F-flag silicon).
+    void setTmsFrameFlagHostile(bool enabled);
+    bool isTmsFrameFlagHostile() const;
 
     // GEN2 HGR Graphic Card — power-on fidelity. The release card has four
     // independent cold-boot uncertainties, each individually toggleable so a

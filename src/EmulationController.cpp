@@ -848,6 +848,18 @@ bool EmulationController::isVramNoiseOnReset() const
     return memory->isVramNoiseOnReset();
 }
 
+void EmulationController::setTmsFrameFlagHostile(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setTmsFrameFlagHostile(enabled);
+}
+
+bool EmulationController::isTmsFrameFlagHostile() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isTmsFrameFlagHostile();
+}
+
 void EmulationController::setRamPoison(bool enabled, uint8_t value)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

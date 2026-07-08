@@ -672,7 +672,11 @@ void TMS9918::advanceCycles(int cycles)
         if ((regs[1] & 0x40) && lastScanlineProcessed < kScreenHeight) {
             scanSpritesForStatus(vram.data(), regs.data(), siliconStrictMode, statusReg);
         }
-        statusReg |= 0x80;
+        // Hostile-silicon model: the frame flag never registers to the CPU, so
+        // an unbounded `BIT $CC01 / BPL` poll hangs (see setFrameFlagHostile).
+        // 5S/collision bits above still update — only F (bit 7) is withheld.
+        if (!frameFlagHostile)
+            statusReg |= 0x80;
     }
 
     // Frame counter rollover at the END of VBlank (== start of next active

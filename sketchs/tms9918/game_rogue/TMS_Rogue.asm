@@ -23,7 +23,7 @@
         .import tms9918_pad18  ; silicon-strict pad18-v4 (helper from tms9918_pad.asm)
         .import vdp_display_off ; lib helper — blank display for burst windows
 .include "apple1.inc"
-.include "tms9918.inc"
+.include "tms9918.inc"       ; provides WAIT_VBLANK + WAIT_VBLANK_SAFE (hang-proof)
 
 ; --- Lib (tms9918m1.asm) ---
 .import init_vdp_g1, clear_name_table, vdp_set_write, name_at_rc
@@ -3749,7 +3749,7 @@ apply_step:
 ; ----------------------------------------------------------------------------
 render_map:
         ; Sync to VBlank before the full map rebuild burst.
-        WAIT_VBLANK
+        WAIT_VBLANK_SAFE
         LDA     #$00
         STA     vdp_lo
         LDA     #$18
@@ -4274,7 +4274,7 @@ place_all_sprites:
         ; for a turn-based game. The macro drains the stale F flag from
         ; the previous frame then spins until F sets at the start of the
         ; next VBlank.
-        WAIT_VBLANK
+        WAIT_VBLANK_SAFE
         ; Cushion across the BIT/BPL → STA VDP_CTRL boundary (matches the
         ; Galaga render_sprites pattern — the auto-patcher can't see
         ; cross-macro flow into STA VDP_CTRL).
@@ -5301,7 +5301,7 @@ win_screen:
 ; ----------------------------------------------------------------------------
 paint_scores:
         ; Sync to VBlank before the score-screen rebuild burst.
-        WAIT_VBLANK
+        WAIT_VBLANK_SAFE
         ; row 9 col 10 → $192A
         LDA     #<msg_score_depth
         STA     vdp_src_lo
@@ -5508,7 +5508,7 @@ redraw_game:
 ; ----------------------------------------------------------------------------
 show_inventory:
         ; Sync to VBlank before the inventory-screen rebuild burst.
-        WAIT_VBLANK
+        WAIT_VBLANK_SAFE
         ; Rebuild the SAT from scratch — every gameplay sprite (player +
         ; visible monsters + floor items) is gone, replaced by one
         ; pictogram per non-empty bag slot at (col 1, row N) so each
@@ -6333,7 +6333,7 @@ handle_throw:
 ; ----------------------------------------------------------------------------
 show_help:
         ; Sync to VBlank before the help-screen rebuild burst.
-        WAIT_VBLANK
+        WAIT_VBLANK_SAFE
         JSR     disable_sprites
         JSR     clear_name_table
         ; Walk help_table — same 4-byte tuple loop as draw_title (tmp
@@ -6411,8 +6411,11 @@ hlp_tip_win:    .byte "REACH DEPTH 13 TO WIN", $FF
 ; index across the JSR (draw_text leaves zp untouched but clobbers X).
 ; ----------------------------------------------------------------------------
 draw_title:
-        ; Sync to VBlank before the title-screen rebuild burst.
-        WAIT_VBLANK
+        ; NO VBlank sync here — this is the BOOT path (cold-start after 4000R /
+        ; after a death JMP $4000). A hang in the lib WAIT_VBLANK here is exactly
+        ; what black-screens Rogue on the real TMS9918 (F may never register on
+        ; the first frame). The title is static, so painting it un-synced costs
+        ; nothing visible and can never freeze the boot.
         LDX     #0
 @lp:    LDA     title_table+0,X         ; str_lo
         STA     vdp_src_lo
@@ -6454,8 +6457,9 @@ title_table_end:
 ; can be edited independently. tmp survives draw_text.
 ; ----------------------------------------------------------------------------
 draw_briefing:
-        ; Sync to VBlank before the briefing-screen rebuild burst.
-        WAIT_VBLANK
+        ; NO VBlank sync — boot path (runs right after draw_title before the
+        ; first key). Same rationale: a hung frame-flag poll here freezes the
+        ; boot to black on real silicon; a static briefing page needs no sync.
         LDX     #0
 @lp:    LDA     briefing_table+0,X
         STA     vdp_src_lo

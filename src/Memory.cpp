@@ -472,6 +472,16 @@ bool Memory::isVramNoiseOnReset() const
     return tms9918->isVramNoiseOnReset();
 }
 
+void Memory::setTmsFrameFlagHostile(bool enabled)
+{
+    tms9918->setFrameFlagHostile(enabled);
+}
+
+bool Memory::isTmsFrameFlagHostile() const
+{
+    return tms9918->isFrameFlagHostile();
+}
+
 void Memory::setACIEnabled(bool b)
 {
     if (aciEnabled == b) return;

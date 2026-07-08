@@ -222,7 +222,7 @@ play_loop:
         ; Sync to VBlank before the per-tick redraw burst (move_snake's
         ; tail erase + new head paint + draw_hud's score digits all fit
         ; comfortably inside the ~4554c VBlank window).
-        WAIT_VBLANK
+        WAIT_VBLANK_SAFE
         JSR move_snake
         LDA game_over
         BNE @over

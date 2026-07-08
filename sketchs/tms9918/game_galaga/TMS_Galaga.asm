@@ -2593,7 +2593,7 @@ render_sprites:
         ; frame's render (also clears 5S/C — Galaga never reads them, so
         ; collateral is fine). Inner loop spins until F sets at the START
         ; of the next VBlank.
-        WAIT_VBLANK
+        WAIT_VBLANK_SAFE
         ; Cushion across the BIT/BPL → STA VDP_CTRL boundary. The exit
         ; BIT just consumed a VDP read access (counter=4 after), so the
         ; following LDA + STA VDP_CTRL pair lands at gap = 4+2+2+0 = 8c
@@ -3423,7 +3423,7 @@ draw_title_sprites:
         ; scan it mid-rewrite → torn/garbled title aliens on real silicon.
         ; Mirror render_sprites' gate: WAIT_VBLANK then the pad18 cushion
         ; across the exit-BIT → STA VDP_CTRL boundary.
-        WAIT_VBLANK
+        WAIT_VBLANK_SAFE
         JSR     tms9918_pad18   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
         LDA #$00
         STA VDP_CTRL
@@ -3610,7 +3610,7 @@ draw_help_tms:
 draw_help_sprites:
         ; Gate the SAT rebuild to VBlank — same active-display hazard as
         ; draw_title_sprites (help/page-2 screen). Mirror render_sprites.
-        WAIT_VBLANK
+        WAIT_VBLANK_SAFE
         JSR     tms9918_pad18   ; MANUAL caller-gap cushion (12c, was 40c pre-openMSX-port)
         LDA #$00
         STA VDP_CTRL
