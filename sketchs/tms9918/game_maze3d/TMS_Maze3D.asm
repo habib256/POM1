@@ -41,6 +41,14 @@
 ; ---- Apple 1 I/O ----
         .import tms9918_pad12  ; silicon-strict pad12-v3 (helper from tms9918_pad.asm)
         .import vdp_display_off ; R1=$80 blanking idiom (tms9918_pad.asm)
+        ; SCROLL-O-SPRITES 16x16 monster patterns (dev/lib/tms9918/sprites_*.asm,
+        ; linked via the Makefile's EXTRA_ASM) — drawn as BITMAPS into the
+        ; Graphics II pattern table by draw_sprite16_x2/_x4, NOT as hardware
+        ; sprites. Layout: 32 bytes = left column rows 0..15, right column
+        ; rows 0..15; bit 7 = leftmost (same bit order as the bitmap).
+        .import creat_goblin_pat   ; GOBLIN    (sprites_creatures.asm 08/8)
+        .import troll_warrior_pat  ; ORC       (sprites_trollkind.asm 02/4)
+        .import char_wizard_pat    ; DARK MAGE (sprites_characters.asm 15/33)
 .include "apple1.inc"
 
 ; ---- TMS9918 MMIO (VDP_DATA / VDP_CTRL + WAIT_VBLANK macro) ----
@@ -133,6 +141,15 @@ pix_byte:   .res 1     ; $0C  cached byte under cursor
 pix_mask:   .res 1     ; $0D
 pix_addr_lo:.res 1     ; $0E
 pix_addr_hi:.res 1     ; $0F
+
+; --- monster-bitmap blit scratch (draw_sprite16_x2/_x4) ---
+sp_ptr:     .res 2     ; 32-byte SCROLL-O-SPRITES pattern (left col, right col)
+sp_x:       .res 1     ; dest pixel x, MULTIPLE OF 8 (tile-aligned, no shifts)
+sp_y:       .res 1     ; dest pixel y, MULTIPLE OF 8
+sp_tr:      .res 1     ; tile row counter
+sp_tc:      .res 1     ; tile col counter
+sp_i:       .res 1     ; row-in-tile counter
+sp_b:       .res 1     ; current source byte
 
 ; --- line / Bresenham ---
 ln_x0:      .res 1     ; $10
@@ -2284,49 +2301,49 @@ draw_front_wall:
 draw_hud_3d:
         LDA #0
         STA ch_cx
-        LDA #22
+        LDA #20
         STA ch_cy
         LDA #<str_hud_hp
         LDX #>str_hud_hp
         JSR print_str_ax
         LDA #4
         STA ch_cx
-        LDA #22
+        LDA #20
         STA ch_cy
         LDA p_hp
         JSR write_decimal_2d
 
         LDA #8
         STA ch_cx
-        LDA #22
+        LDA #20
         STA ch_cy
         LDA #<str_hud_atk
         LDX #>str_hud_atk
         JSR print_str_ax
         LDA #13
         STA ch_cx
-        LDA #22
+        LDA #20
         STA ch_cy
         LDA p_atk
         JSR write_decimal_2d
 
         LDA #16
         STA ch_cx
-        LDA #22
+        LDA #20
         STA ch_cy
         LDA #<str_hud_lvl
         LDX #>str_hud_lvl
         JSR print_str_ax
         LDA #20
         STA ch_cx
-        LDA #22
+        LDA #20
         STA ch_cy
         LDA p_lvl
         JSR write_decimal_2d
 
         LDA #24
         STA ch_cx
-        LDA #22
+        LDA #20
         STA ch_cy
         LDA p_face
         TAX
@@ -2378,51 +2395,27 @@ draw_mob_indicator:
 @none:  RTS
 
 ; =============================================
-; draw_mob_figure: monster silhouette standing in the corridor one
-; cell ahead — triangle head + eyes on the horizon, '!' above.
+; draw_mob_figure: the monster standing in the corridor one cell ahead —
+; its SCROLL-O-SPRITES image (by archetype) blitted x2 (32x32) centered on
+; the corridor (x 112..143, y 64..95, horizon 80), '!' warning above.
+; Entry: X = mob index (from draw_mob_indicator's scan loop).
 ; =============================================
 draw_mob_figure:
-        ; head triangle (112,108)-(143,108)-(127,80)
+        LDA mob_type,X
+        TAY
+        LDA mob_sprites_lo,Y
+        STA sp_ptr
+        LDA mob_sprites_hi,Y
+        STA sp_ptr+1
         LDA #112
-        STA ln_x0
-        LDA #108
-        STA ln_y0
-        LDA #143
-        STA ln_x1
-        LDA #108
-        STA ln_y1
-        JSR line_xy
-        LDA #112
-        STA ln_x0
-        LDA #108
-        STA ln_y0
-        LDA #127
-        STA ln_x1
-        LDA #80
-        STA ln_y1
-        JSR line_xy
-        LDA #143
-        STA ln_x0
-        LDA #108
-        STA ln_y0
-        LDA #127
-        STA ln_x1
-        LDA #80
-        STA ln_y1
-        JSR line_xy
-        ; eyes
-        LDA #122
-        STA pix_x
-        LDA #98
-        STA pix_y
-        JSR plot_set
-        LDA #133
-        STA pix_x
-        JSR plot_set
-        ; '!' warning above the head
+        STA sp_x
+        LDA #64
+        STA sp_y
+        JSR draw_sprite16_x2
+        ; '!' warning above the monster
         LDA #15
         STA ch_cx
-        LDA #8
+        LDA #7
         STA ch_cy
         LDA #'!'
         STA ch_code
@@ -2472,7 +2465,11 @@ write_decimal_2d:
 
 ; =============================================
 ; render_map - top-down view of the maze with player position
-; Cell size 16x16 px; maze 11x7 -> 176x112; centered with header.
+; Cell size 16x16 px; maze 11x7 -> 176x112. Origin (36,20) — NOT (40,24):
+; with a 36/20 origin the central 8x8 glyph block of cell (c,r) is exactly
+; char cell (5+2c, 3+2r), so the S/E/M/arrow markers sit centered with 4 px
+; of air on every side instead of starting ON the left wall line (the
+; "letters glued to the walls" report, juillet 2026).
 ; =============================================
 render_map:
         ; Sync to VBlank before the top-down map rebuild burst.
@@ -2488,25 +2485,25 @@ render_map:
         JSR print_str_ax
 
         ; outer bounds
-        LDA #(40)
+        LDA #(36)
         STA fl_x0
-        LDA #(40+11*16)         ; 216
+        LDA #(36+11*16)         ; 212
         STA fl_x1
-        LDA #(24)
+        LDA #(20)
         STA fl_y0
         JSR hline
-        LDA #(24+7*16)          ; 136
+        LDA #(20+7*16)          ; 132
         STA fl_y0
         JSR hline
 
-        LDA #40
+        LDA #36
         STA fl_x0
-        LDA #(24)
+        LDA #(20)
         STA fl_y0
-        LDA #(24+7*16)
+        LDA #(20+7*16)
         STA fl_y1
         JSR vline
-        LDA #(40+11*16)
+        LDA #(36+11*16)
         STA fl_x0
         JSR vline
 
@@ -2533,7 +2530,7 @@ render_map:
         LDA rd_cell
         AND #EAST_BIT
         BNE @no_right
-        ; vertical line at x = 40+(col+1)*16, y 24+row*16 .. 24+(row+1)*16
+        ; vertical line at x = 36+(col+1)*16, y 20+row*16 .. 20+(row+1)*16
         LDA rd_col
         CLC
         ADC #1
@@ -2542,7 +2539,7 @@ render_map:
         ASL
         ASL                     ; (col+1)*16
         CLC
-        ADC #40
+        ADC #36
         STA fl_x0
         LDA rd_row
         ASL
@@ -2550,7 +2547,7 @@ render_map:
         ASL
         ASL
         CLC
-        ADC #24
+        ADC #20
         STA fl_y0
         CLC
         ADC #16
@@ -2570,14 +2567,14 @@ render_map:
         LDA grid,X
         AND #NORTH_BIT
         BNE @no_bot
-        ; horizontal line at y = 24+(row+1)*16, x 40+col*16 .. +16
+        ; horizontal line at y = 20+(row+1)*16, x 36+col*16 .. +16
         LDA rd_col
         ASL
         ASL
         ASL
         ASL
         CLC
-        ADC #40
+        ADC #36
         STA fl_x0
         CLC
         ADC #16
@@ -2590,7 +2587,7 @@ render_map:
         ASL
         ASL
         CLC
-        ADC #24
+        ADC #20
         STA fl_y0
         JSR hline
 @no_bot:
@@ -2607,15 +2604,16 @@ render_map:
 @ydone:
 
         ; markers: S at (0,0), E at (NCOLS-1, NROWS-1), live mobs as 'M'
-        LDA #6
+        ; (all markers: char cell (5+2c, 3+2r) = the centered 8x8 block)
+        LDA #5
         STA ch_cx
-        LDA #4
+        LDA #3
         STA ch_cy
         LDA #'S'
         STA ch_code
         JSR write_char
 
-        ; E in bottom-right cell of map: cell col=10, row=6 -> px=40+10*16+4=204, py=24+6*16+4=124
+        ; E in bottom-right cell: (5+2*10, 3+2*6) = (25, 15)
         LDA #25
         STA ch_cx
         LDA #15
@@ -2852,15 +2850,17 @@ draw_combat_screen:
         STA ch_cy
         JSR write_str
 
-        ; Monster HP
-        LDA #5
+        ; Monster HP — value at cx 7..8: cx 11 would put the ones digit in
+        ; cell 12 (x 96..103), exactly under the x4 portrait's first column
+        ; (drawn LATER with pure stores), which wiped the digit.
+        LDA #4
         STA ch_cx
         LDA #6
         STA ch_cy
         LDA #<str_mob_hp
         LDX #>str_mob_hp
         JSR print_str_ax
-        LDA #11
+        LDA #7
         STA ch_cx
         LDA #6
         STA ch_cy
@@ -2906,242 +2906,199 @@ draw_combat_screen:
         LDX #>str_combat_prompt
         JSR print_str_ax
 
-        ; Monster portrait: simple line drawing per type
+        ; Monster portrait: the archetype's SCROLL-O-SPRITES image blitted
+        ; x4 (64x64) at x 96..159, y 48..111 — between the monster HP line
+        ; (row 5) and the player stats line (row 16). Replaces the juillet
+        ; 2026 vector portraits (draw_goblin/draw_orc/draw_mage).
         LDX cur_mob
         LDA mob_type,X
-        BEQ @gob
-        CMP #1
-        BEQ @orc
-        ; mage (default)
-        JSR draw_mage
-        RTS
-@gob:   JSR draw_goblin
-        RTS
-@orc:   JSR draw_orc
-        RTS
-
-; =============================================
-; goblin: small triangle head + ears
-; =============================================
-draw_goblin:
-        ; head triangle
-        LDA #110
-        STA ln_x0
-        LDA #80
-        STA ln_y0
-        LDA #150
-        STA ln_x1
-        LDA #80
-        STA ln_y1
-        JSR line_xy
-        LDA #110
-        STA ln_x0
-        LDA #80
-        STA ln_y0
-        LDA #100
-        STA ln_x1
-        LDA #110
-        STA ln_y1
-        JSR line_xy
-        LDA #150
-        STA ln_x0
-        LDA #80
-        STA ln_y0
-        LDA #160
-        STA ln_x1
-        LDA #110
-        STA ln_y1
-        JSR line_xy
-        LDA #100
-        STA ln_x0
-        LDA #110
-        STA ln_y0
-        LDA #160
-        STA ln_x1
-        LDA #110
-        STA ln_y1
-        JSR line_xy
-        ; eyes
-        LDA #122
-        STA pix_x
-        LDA #92
-        STA pix_y
-        JSR plot_set
-        LDA #138
-        STA pix_x
-        JSR plot_set
-        ; mouth
-        LDA #120
-        STA fl_x0
-        LDA #140
-        STA fl_x1
-        LDA #102
-        STA fl_y0
-        JSR hline
+        TAY
+        LDA mob_sprites_lo,Y
+        STA sp_ptr
+        LDA mob_sprites_hi,Y
+        STA sp_ptr+1
+        LDA #96
+        STA sp_x
+        LDA #48
+        STA sp_y
+        JSR draw_sprite16_x4
         RTS
 
 ; =============================================
-; orc: bigger head with horns
+; Monster-bitmap blit — draw a 32-byte SCROLL-O-SPRITES 16x16 pattern into
+; the Graphics II bitmap, magnified x2 (32x32) or x4 (64x64), as pure
+; byte STORES (no read-modify-write): the box overwrites the background,
+; which doubles as occlusion behind the monster. sp_x/sp_y MUST be
+; multiples of 8 — every output 8x8 tile is then 8 consecutive VRAM bytes
+; (one address setup + an 8-byte stream per tile, vline's batching trick),
+; and no bit shifting is ever needed.
+;
+; In: sp_ptr -> 32-byte pattern (left column rows 0..15, right column
+;     rows 0..15, bit 7 = leftmost); sp_x, sp_y = top-left pixel.
+; Clobbers A/X/Y, sp_*, pix_x/pix_y, tmp (via calc_pix_addr).
 ; =============================================
-draw_orc:
-        ; jaw box
-        LDA #100
-        STA fl_x0
-        LDA #160
-        STA fl_x1
-        LDA #75
-        STA fl_y0
-        JSR hline
-        LDA #115
-        STA fl_y0
-        JSR hline
-        LDA #100
-        STA fl_x0
-        LDA #75
-        STA fl_y0
-        LDA #115
-        STA fl_y1
-        JSR vline
-        LDA #160
-        STA fl_x0
-        JSR vline
-        ; horns
-        LDA #100
-        STA ln_x0
-        LDA #75
-        STA ln_y0
-        LDA #90
-        STA ln_x1
-        LDA #60
-        STA ln_y1
-        JSR line_xy
-        LDA #160
-        STA ln_x0
-        LDA #75
-        STA ln_y0
-        LDA #170
-        STA ln_x1
-        LDA #60
-        STA ln_y1
-        JSR line_xy
-        ; eyes
-        LDA #115
+; x2: output row i (0..31) shows source row i/2; output byte tc (0..3) is
+; dblnib[] of nibble tc of the source row's 16 pixels.
+draw_sprite16_x2:
+        LDA #0
+        STA sp_tr
+@trlp:  LDA #0
+        STA sp_tc
+@tclp:  ; VRAM address of tile (sp_tc, sp_tr)
+        LDA sp_tc
+        ASL
+        ASL
+        ASL
+        CLC
+        ADC sp_x
         STA pix_x
-        LDA #88
+        LDA sp_tr
+        ASL
+        ASL
+        ASL
+        CLC
+        ADC sp_y
         STA pix_y
-        JSR plot_set
-        LDA #145
-        STA pix_x
-        JSR plot_set
-        LDA #116
-        STA pix_x
-        JSR plot_set
-        LDA #146
-        STA pix_x
-        JSR plot_set
-        ; tusks
-        LDA #115
-        STA ln_x0
-        LDA #115
-        STA ln_y0
-        LDA #110
-        STA ln_x1
-        LDA #125
-        STA ln_y1
-        JSR line_xy
-        LDA #145
-        STA ln_x0
-        LDA #115
-        STA ln_y0
-        LDA #150
-        STA ln_x1
-        LDA #125
-        STA ln_y1
-        JSR line_xy
+        JSR calc_pix_addr
+        JSR vdp_set_write
+        JSR tms9918_pad12       ; CTRL -> first DATA store
+        LDA #0
+        STA sp_i
+@rowlp: ; source row = (8*tr + i) / 2 ; source byte = left/right column
+        LDA sp_tr
+        ASL
+        ASL
+        ASL
+        CLC
+        ADC sp_i
+        LSR                     ; /2 -> source row 0..15
+        TAY
+        LDA sp_tc
+        CMP #2
+        BCC @left2
+        TYA
+        CLC
+        ADC #16                 ; right column bytes 16..31
+        TAY
+@left2: LDA (sp_ptr),Y
+        STA sp_b
+        LDA sp_tc
+        AND #1
+        BNE @lo2
+        LDA sp_b                ; even byte col -> high nibble
+        LSR
+        LSR
+        LSR
+        LSR
+        JMP @emit2
+@lo2:   LDA sp_b                ; odd byte col -> low nibble
+        AND #$0F
+@emit2: TAX
+        LDA dblnib,X
+        STA VDP_DATA
+        JSR tms9918_pad12       ; DATA -> DATA (30c stream discipline)
+        INC sp_i
+        LDA sp_i
+        CMP #8
+        BNE @rowlp
+        INC sp_tc
+        LDA sp_tc
+        CMP #4
+        BNE @tclp
+        INC sp_tr
+        LDA sp_tr
+        CMP #4
+        BNE @trlp
         RTS
 
-; =============================================
-; mage: cone (hat) + circle (face)
-; =============================================
-draw_mage:
-        ; hat
-        LDA #95
-        STA ln_x0
-        LDA #95
-        STA ln_y0
-        LDA #165
-        STA ln_x1
-        LDA #95
-        STA ln_y1
-        JSR line_xy
-        LDA #95
-        STA ln_x0
-        LDA #95
-        STA ln_y0
-        LDA #130
-        STA ln_x1
-        LDA #45
-        STA ln_y1
-        JSR line_xy
-        LDA #165
-        STA ln_x0
-        LDA #95
-        STA ln_y0
-        LDA #130
-        STA ln_x1
-        LDA #45
-        STA ln_y1
-        JSR line_xy
-        ; face circle (approx: rectangle with cut corners)
-        LDA #105
-        STA fl_x0
-        LDA #155
-        STA fl_x1
-        LDA #100
-        STA fl_y0
-        JSR hline
-        LDA #130
-        STA fl_y0
-        JSR hline
-        LDA #105
-        STA fl_x0
-        LDA #100
-        STA fl_y0
-        LDA #130
-        STA fl_y1
-        JSR vline
-        LDA #155
-        STA fl_x0
-        JSR vline
-        ; eyes
-        LDA #115
+; x4: output row i (0..63) shows source row i/4; output byte tc (0..7) is
+; quadbits[] of 2-bit group (tc AND 3) of the source row's 16 pixels.
+draw_sprite16_x4:
+        LDA #0
+        STA sp_tr
+@trlp:  LDA #0
+        STA sp_tc
+@tclp:  LDA sp_tc
+        ASL
+        ASL
+        ASL
+        CLC
+        ADC sp_x
         STA pix_x
-        LDA #110
+        LDA sp_tr
+        ASL
+        ASL
+        ASL
+        CLC
+        ADC sp_y
         STA pix_y
-        JSR plot_set
-        LDA #145
-        STA pix_x
-        JSR plot_set
-        ; beard hatching
-        LDA #115
-        STA ln_x0
-        LDA #130
-        STA ln_y0
-        LDA #130
-        STA ln_x1
-        LDA #145
-        STA ln_y1
-        JSR line_xy
-        LDA #145
-        STA ln_x0
-        LDA #130
-        STA ln_y0
-        LDA #130
-        STA ln_x1
-        LDA #145
-        STA ln_y1
-        JSR line_xy
+        JSR calc_pix_addr
+        JSR vdp_set_write
+        JSR tms9918_pad12       ; CTRL -> first DATA store
+        LDA #0
+        STA sp_i
+@rowlp: LDA sp_tr
+        ASL
+        ASL
+        ASL
+        CLC
+        ADC sp_i
+        LSR
+        LSR                     ; /4 -> source row 0..15
+        TAY
+        LDA sp_tc
+        CMP #4
+        BCC @left4
+        TYA
+        CLC
+        ADC #16
+        TAY
+@left4: LDA (sp_ptr),Y
+        STA sp_b
+        ; 2-bit group g = sp_tc AND 3 (0 = bits 7..6 ... 3 = bits 1..0):
+        ; shift the pair down to bits 1..0 with (3-g) double-LSRs.
+        LDA sp_tc
+        AND #3
+        EOR #3
+        TAX                     ; X = 3-g
+        LDA sp_b
+@shr4:  CPX #0
+        BEQ @sh4d
+        LSR
+        LSR
+        DEX
+        JMP @shr4
+@sh4d:  AND #3
+        TAX
+        LDA quadbits,X
+        STA VDP_DATA
+        JSR tms9918_pad12
+        INC sp_i
+        LDA sp_i
+        CMP #8
+        BNE @rowlp
+        INC sp_tc
+        LDA sp_tc
+        CMP #8
+        BNE @tclp
+        INC sp_tr
+        LDA sp_tr
+        CMP #8
+        BNE @trlp
         RTS
+
+; nibble -> byte with every bit doubled (x2 horizontal magnify)
+dblnib: .byte $00,$03,$0C,$0F,$30,$33,$3C,$3F
+        .byte $C0,$C3,$CC,$CF,$F0,$F3,$FC,$FF
+; 2 bits -> byte with every bit quadrupled (x4 horizontal magnify)
+quadbits:
+        .byte $00,$0F,$F0,$FF
+
+; archetype -> SCROLL-O-SPRITES pattern (0=goblin 1=orc 2=dark mage)
+mob_sprites_lo:
+        .byte <creat_goblin_pat, <troll_warrior_pat, <char_wizard_pat
+mob_sprites_hi:
+        .byte >creat_goblin_pat, >troll_warrior_pat, >char_wizard_pat
 
 ; =============================================
 ; DATA TABLES
@@ -3151,16 +3108,19 @@ draw_mage:
 row_offset:
         .byte 0, 11, 22, 33, 44, 55, 66
 
-; depth frame coordinates (5 entries: depth 0..MAX_DEPTH)
+; depth frame coordinates (5 entries: depth 0..MAX_DEPTH).
+; Vertical span 0..159 ONLY: rows 20-23 (y 160..191) are the 4-line text
+; zone under the 3D view (HUD on row 20, rows 21-23 free for messages).
+; Horizon = 79/80.
 ; depth 0 = whole screen, 4 = vanishing
 frame_lx:
         .byte   0,  40,  72,  96, 112
 frame_rx:
         .byte 255, 215, 183, 159, 143
 frame_ty:
-        .byte   0,  30,  54,  72,  84
+        .byte   0,  25,  45,  60,  70
 frame_by:
-        .byte 191, 161, 137, 119, 107
+        .byte 159, 134, 114,  99,  89
 
 ; Monster names
 mob_names_lo:

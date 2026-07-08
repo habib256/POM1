@@ -34,13 +34,13 @@ Guides live in [`sketchs/doc/`](../sketchs/doc/). Source, libraries and build co
 | [`sketchs/doc/Programming_GEN2C.md`](../sketchs/doc/Programming_GEN2C.md) | GEN2 HGR colour graphics in C (`gen2c` runtime). |
 | [`sketchs/doc/Programming_TMS9918.md`](../sketchs/doc/Programming_TMS9918.md) | **TMS9918 vs real silicon** — strict VRAM timing, sprite quirks, full ASM programming guide. *Mandatory before optimising any VRAM loop.* Referenced from ~10 source files. |
 | [`sketchs/doc/Programming_TMS9918C.md`](../sketchs/doc/Programming_TMS9918C.md) | TMS9918 C runtime (`tms9918c`, nippur72 port) — the C-side surface plus the silicon-handling that leaks through. |
-| [`dev/TODO6502.md`](../dev/TODO6502.md) | Open **6502-software** work / `dev/projects` backlog. |
+| [`dev/TODO6502.md`](../dev/TODO6502.md) | Open **6502-software** work / `sketchs` backlog. |
 | [`sketchs/doc/CC65.md`](../sketchs/doc/CC65.md) | cc65 linker configs, `Makefile.common`, emit scripts. |
 | [`dev/lib/README.md`](../dev/lib/README.md) | **6502 library root** — the two integration models (textual `.include` vs separately-compiled `.o`/archive), the **"two tracks per card" decision record** (why asm+C duplication is chosen, not debt), directory map, ZP convention, validation gate. Read before consuming any lib. |
 | `dev/lib/*/README.md` | Per-library docs — `apple1` (equates), `m6502` (math), `tms9918`/`tms9918c`, `gen2`/`gen2c`, `gfx` (shared geometry/numbers), `sid`, `sd`, `gt6144`, `a1io`, `wifi`, `games/*`, `text40`, `apple1c`, `telemetry`. Each asm/C pair names its **source of truth** for shared equates/fonts. |
-| [`dev/lib/Makefile`](../dev/lib/Makefile) | **Library self-validation gate** — `make -C dev/lib check`: asm↔C hardware-equate drift (`tools/check_lib_equates.py`), font-master drift (`tools/build_shared_font.py --check`), `zp.inc` `$00-$07` layout pin, and a compile of every C/asm source **decoupled from its consumers**. Companion to `make -C dev/projects`; both must be green to ship. |
+| [`dev/lib/Makefile`](../dev/lib/Makefile) | **Library self-validation gate** — `make -C dev/lib check`: asm↔C hardware-equate drift (`tools/check_lib_equates.py`), font-master drift (`tools/build_shared_font.py --check`), `zp.inc` `$00-$07` layout pin, and a compile of every C/asm source **decoupled from its consumers**. Companion to `make -C dev/codetank`; both must be green to ship. |
 | `sketchs/<profile>/*/README.md` | Per-sketch notes (starters under `_template*`). |
-| `dev/projects/*/README.md` | Per-program docs for complex multi-file projects under `dev/projects/`. Layout + sidecars → [`doc/SKETCHS.md`](SKETCHS.md). |
+| `sketchs/*/*/README.md` | Per-program docs for complex multi-file projects under `sketchs/`. Layout + sidecars → [`doc/SKETCHS.md`](SKETCHS.md). |
 
 ## Emulator & card reference (`doc/`)
 

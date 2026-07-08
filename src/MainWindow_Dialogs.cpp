@@ -1784,7 +1784,7 @@ namespace {
 
 static const char kSoftwareReferenceCc65Cmd[] =
     "# Assembly (6502 sources live under dev/)\n"
-    "ca65 -I dev/lib/apple1 -o build/program.o dev/projects/myprog/program.s\n"
+    "ca65 -I dev/lib/apple1 -o build/program.o sketchs/apple1/myprog/program.s\n"
     "\n"
     "# Link with an Apple-1 config (configs are under dev/cc65/)\n"
     "ld65 -C dev/cc65/apple1_4k.cfg    -o build/program.bin build/program.o\n"
@@ -1988,7 +1988,7 @@ void MainWindow_ImGui::renderSoftwareReferenceWindow()
             hwKeyValue("dev/cc65/apple1_4k.cfg:", "$0280-$127F (4 KB). Default text-mode / TMS9918 (VRAM off-bus).");
             hwKeyValue("dev/cc65/apple1_gen2.cfg:", "$0280-$1FFF (7552 B). GEN2 HGR programs; reserves $2000-$3FFF.");
             hwKeyValue("dev/cc65/pom1_fantasy.cfg:", "Multiplexing Fantasy preset (POM1-only). Configurable layout.");
-            hwHeading("Sokoban-specific (real Apple-1, dev/projects/{apple1,gen2}/game_sokoban/)");
+            hwHeading("Sokoban-specific (real Apple-1, sketchs/{apple1,gen2}/game_sokoban/)");
             hwKeyValue("apple1_sok_4k.cfg:", "Stock 4K - text variant. LEVELBUF in zero page, STATEGRID in bss at $0F00.");
             hwKeyValue("apple1_sok_hgr.cfg:", "8K + GEN2 HGR. Same discipline but HGR framebuffer reserved.");
             hwHeading("Tips");

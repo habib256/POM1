@@ -9,7 +9,7 @@ Agent-facing playbook for writing **new Apple 1 software** that runs under POM1.
 | [`Programming_C_Quickstart.md`](Programming_C_Quickstart.md) | **Writing in C? Start here.** Cheat sheet: 30-second decision, 3 hello-worlds, function-chooser per library, top-10 pitfalls. |
 | [`Programming_Apple1_ASM.md`](Programming_Apple1_ASM.md) | Detailed ASM reference (6502, cc65, text mode) — drawn from the Sokoban + Connect 4 trilogies. Card-specific guides: [`Programming_GEN2.md`](Programming_GEN2.md) (HGR), [`Programming_TMS9918.md`](Programming_TMS9918.md). |
 | [`Programming_TMS9918.md`](Programming_TMS9918.md) | TMS9918 vs real silicon, strict timing, sprites — **mandatory** before optimising any VRAM loop. |
-| [`TODO6502.md`](../../dev/TODO6502.md) | Backlog of 6502 software / `dev/projects` work. |
+| [`TODO6502.md`](../../dev/TODO6502.md) | Backlog of 6502 software / `sketchs` work. |
 | [`CLI.md`](../../doc/CLI.md) | Full CLI flag table (`CliDispatcher.cpp`). |
 | [`CLAUDE.md`](../../CLAUDE.md) | Emulator architecture (bus mutexes, orchestration, `ctest`). |
 | [`README.md`](../../README.md) | User guide, preset table, software index. |

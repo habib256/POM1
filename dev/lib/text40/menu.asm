@@ -2,7 +2,7 @@
 ; menu.asm -- numbered menu selector with bounds + echo
 ; ============================================================================
 ; Promoted from the inline wait/dispatch loops of the CodeTank menus,
-; which now .include this file (dev/projects/codetank/game1_menu/ +
+; which now .include this file (dev/codetank/game1_menu/ +
 ; demos_menu/ — see the README's Adoption section).
 ;
 ;   menu_select -- block on a digit in [min..max], echo it, return.

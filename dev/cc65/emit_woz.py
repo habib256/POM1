@@ -2,7 +2,7 @@
 """Shared Woz-hex emitter for cc65 6502 projects.
 
 Replaces the ~10 near-identical `emit_<PROJECT>_txt.py` scripts under
-`dev/projects/`. Each project becomes a 5-line caller that imports
+`sketchs/`. Each project becomes a 5-line caller that imports
 `emit_woz` and invokes `emit()` with project-specific parameters.
 
 Usage as a module (typical project script):

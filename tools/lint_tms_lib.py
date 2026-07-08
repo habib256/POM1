@@ -3,7 +3,7 @@
 
 Enforces the repo's verified real-silicon contracts on every ca65 source in
 the TMS9918 scope (dev/lib/tms9918, dev/lib/basicrt/basicrt_tms.s,
-sketchs/tms9918, dev/projects/codetank):
+sketchs/tms9918, dev/codetank):
 
 P1 — VDP DATA-port pacing.
     Real TMS9918A silicon (validated on Claudio Parmigiani's Replica-1) DROPS
@@ -1102,7 +1102,7 @@ def lint_cross_file(linters: list[FileLinter], root: pathlib.Path,
             else:
                 zp_owner[name] = (fl.rel, line, size)
     # Export collisions not in the README registry. Only LIB files
-    # (dev/lib/**) are considered: sketchs/ and dev/projects/ sources are
+    # (dev/lib/**) are considered: sketchs/ and dev/codetank/ sources are
     # standalone link roots — mutually link-exclusive by construction — and
     # their exports (tmp, plot_mode, ...) exist to satisfy lib .importzp's.
     exact, prefixes = parse_collision_registry(root / "dev/lib/README.md")
@@ -1132,7 +1132,7 @@ SCOPE_GLOBS = [
     "dev/lib/tms9918/*.asm",
     "dev/lib/basicrt/basicrt_tms.s",
     "sketchs/tms9918/**/*.asm",
-    "dev/projects/codetank/**/*.asm",
+    "dev/codetank/**/*.asm",
 ]
 
 

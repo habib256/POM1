@@ -2,16 +2,16 @@
 # from one source. Emits the SD-CARD-OS-tagged binaries straight into
 # sdcard/TMS/ (name = raw code, tag "#060300" = type 06 BIN @ exec addr $0300).
 #
-# Paths are relative to this dir (dev/projects/tms9918/tmsload):
-#   ../../../lib   = dev/lib      ../../../cc65 = dev/cc65
-#   ../../../../sdcard = repo sdcard/
+# Paths are relative to this dir (sketchs/tms9918/tool_tmsload):
+#   ../../../dev/lib = dev/lib   ../../../dev/cc65 = dev/cc65
+#   ../../../sdcard = repo sdcard/
 #
 # `#` is a Make comment even in filenames, so build the literal via H.
 H    := \#
-INC  := -I ../../../lib/tms9918
-PAD  := ../../../lib/tms9918/tms9918_pad.asm
-CFG  := ../../../cc65/apple1_tmsutil.cfg
-OUT  := ../../../../sdcard/TMS
+INC  := -I ../../../dev/lib/tms9918
+PAD  := ../../../dev/lib/tms9918/tms9918_pad.asm
+CFG  := ../../../dev/cc65/apple1_tmsutil.cfg
+OUT  := ../../../sdcard/TMS
 
 .PHONY: all clean test
 all:

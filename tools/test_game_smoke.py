@@ -21,7 +21,7 @@ Exit codes:
        program binary is missing / a setup error occurred.
 
 POM1 location: ``--pom1``, else $POM1, else build/POM1 searched upward from CWD
-(so it resolves when run from inside a dev/projects/<name>/ directory).
+(so it resolves when run from inside a sketchs/<card>/<name>/ directory).
 
 Protocol notes: the Terminal Card port is fixed at 6502 (see ``--terminal`` in
 doc/CLI.md); tests run sequentially under ``make`` so they do not contend for
@@ -146,7 +146,7 @@ def main():
     addr = int(args.addr, 0)
     # POM1 locates its data dirs (roms/ holding the WOZ Monitor, fonts/, the
     # seed for the macOS app-support symlinks) relative to its launch CWD. Tests
-    # run from dev/projects/<name>/, where those dirs are unreachable -- the
+    # run from sketchs/<card>/<name>/, where those dirs are unreachable -- the
     # Terminal Card still answers (card init is CPU-independent) but the Monitor
     # ROM never loads, so typed commands do nothing. Launch from the repo root
     # (two levels above build/POM1) when it actually holds roms/, and pass the

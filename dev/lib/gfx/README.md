@@ -194,6 +194,6 @@ Compile-verified 2026-06-16 (cc65 6502, Homebrew):
 Done (2026-06-17): `gen2_hgr_line` / `gen2_hgr_rect` / `gen2_hgr_circle` /
 `gen2_hgr_ellipse` (in `gen2_geom.c`) and `screen2_line` / `screen2_circle` /
 `screen2_ellipse_rect` (in `screen2_geom.c`) now forward to `gfx_*`; the gen2c and
-tms9918c demos link `gfx-<card>.lib` and the `make -C dev/projects` gate is green.
+tms9918c demos link `gfx-<card>.lib` and the `make -C dev/codetank` gate is green.
 When touching the shared geometry, re-run `tools/test_gfx_regress.py` (pixel-identical
 output) and `ctest -R gfx` plus the `gen2_*` / `tms9918_*` smokes.

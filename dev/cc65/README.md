@@ -33,7 +33,7 @@ buffer; the differences are the code window and ZP size.
 a CodeTank menu-bank slot (`$5E00`, `$7100`, …), the 8 KB-jumper lower-half
 window, or a split-bank `file = "%O.lo"`/`"%O.hi"` pair — keep the tweaked
 `.cfg` *in the project directory*, not here. This directory stays the canonical
-set. Examples in-tree: `dev/projects/codetank/bank_cfgs/*.cfg` (per-game bank
+set. Examples in-tree: `dev/codetank/bank_cfgs/*.cfg` (per-game bank
 slots) and `sketchs/gen2/game_sokoban/apple1_sok_hgr.cfg` (the canonical
 split-bank `.lo`/`.hi` layout — note that mixing a split-file region and a
 single-file region in one cfg makes `ld65` emit one binary with an enormous gap,
@@ -90,7 +90,7 @@ satisfy them except that only load ≠ run layouts *need* copydata.
    (`rand8()` auto-seed, `PLOT_MODE_SET == 0`, …) still work unchanged.
 
 In-tree consumer: `sketchs/portable/hello_gfx_text` (TMS variant). The
-CodeTank cartridge ROM builds (`dev/projects/codetank/`) deliberately stay on
+CodeTank cartridge ROM builds (`dev/codetank/`) deliberately stay on
 the classic `codetank_c.cfg` + none.lib pair — they are burn-validated on the
 BSS conventions; migrate them only with a re-validation pass on real hardware.
 

@@ -5,7 +5,7 @@
 *Tutorial: [6502 developer guides index](../../sketchs/doc/README.md) — step-by-step programming guides for every track in this tree.*
 
 Reusable 6502 code shared by the Apple-1 programs POM1 ships (`sketchs/<profile>/`
-DevBench sketches and `dev/projects/<card>/` multi-file builds). The compiled
+DevBench sketches and `sketchs/<card>/` multi-file builds). The compiled
 artefacts land under `software/<dir>/` — that's what POM1 loads; release bundles
 omit `dev/`.
 
@@ -413,5 +413,5 @@ Validates the libraries themselves, **decoupled** from the projects that consume
 them: asm↔C constant drift (`tools/check_lib_equates.py`), shared-font drift
 (`tools/build_shared_font.py --check`), the `zp.inc` `$00-$07` layout pin, and a
 compile of every C/asm source (so a primitive no project links yet still can't
-rot). Companion to `make -C dev/projects` — both must be green to ship. See
+rot). Companion to `make -C dev/codetank` — both must be green to ship. See
 [`Makefile`](Makefile).

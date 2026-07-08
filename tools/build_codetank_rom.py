@@ -86,13 +86,14 @@ BUILD = ROOT / "build" / "codetank"
 ROM_SIZE  = 0x8000   # 32 kB (28c256)
 HALF_SIZE = 0x4000   # 16 kB
 
-DEV               = ROOT / "dev" / "projects"
 SK                = ROOT / "sketchs" / "tms9918"   # mono-source DevBench sketches
 # CodeTank "best-of" cartridge composition layer (launcher menus + per-game
 # ROM bank-layout cfgs) — kept OUT of sketchs/, which holds only standalone
 # DevBench-runnable programs. The games/demos themselves live under SK; the
-# cartridge just packages them at fixed bank offsets.
-CT                = DEV / "codetank"
+# cartridge just packages them at fixed bank offsets. (dev/codetank since
+# juillet 2026 — the old dev/projects tree is gone: cartridge material here,
+# program sources in sketchs/, nothing else.)
+CT                = ROOT / "dev" / "codetank"
 CT_BANK           = CT / "bank_cfgs"
 LIB_APPLE1        = ROOT / "dev" / "lib" / "apple1"
 LIB_M6502         = ROOT / "dev" / "lib" / "m6502"

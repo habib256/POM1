@@ -1,14 +1,14 @@
 # DIAPO -- automatic TMS9918 slideshow (Graphics II) from sdcard/TMS.
-# Drives the microSD MCU directly (sd.asm is .include'd — it has no .export)
+# Drives the microSD MCU directly (dev/lib/sd/sd.asm is .include'd — it has no .export)
 # and links tms9918_pad.asm for the silicon-strict cushion. Emits the
 # SD-CARD-OS-tagged binary into sdcard/TMS/ (tag "#060300" = BIN @ $0300).
 #
 # `#` is a Make comment even in filenames, so build the literal via H.
 H    := \#
-INC  := -I ../../../lib/tms9918 -I ../../../lib/sd
-PAD  := ../../../lib/tms9918/tms9918_pad.asm
-CFG  := ../../../cc65/apple1_tmsutil.cfg
-OUT  := ../../../../sdcard/TMS
+INC  := -I ../../../dev/lib/tms9918 -I ../../../dev/lib/sd
+PAD  := ../../../dev/lib/tms9918/tms9918_pad.asm
+CFG  := ../../../dev/cc65/apple1_tmsutil.cfg
+OUT  := ../../../sdcard/TMS
 
 .PHONY: all clean test
 all:

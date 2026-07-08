@@ -35,7 +35,7 @@ Or build every project at once via the CI gate (it globs `*/*/Makefile`, so all
 demos below are covered):
 
 ```bash
-make -C dev/projects
+make -C dev/codetank
 ```
 
 Outputs (per demo): `software/Apple-1_TMS_CC65/<name>.{bin,txt}` — 16 KB image (`$FF` padding), Wozmon hex + `4000R`.

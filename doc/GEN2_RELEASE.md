@@ -159,7 +159,7 @@ plays, `--save-tape tune.aci` keeps the music as a playable tape.
   the card on load.
 - **Dev loop:**
   ```bash
-  make -C dev/projects/<card>/<name>    # multi-file projects only
+  make -C dev/codetank/<card>/<name>    # multi-file projects only
   # DevBench sketches: open sketchs/<profile>/<name>/ → Verify / Run
   ./build/POM1 --preset 11 --load 'E000:software/Graphic HGR/<P>.txt'
   ```

@@ -33,5 +33,11 @@ jobs:
       - name: Run ctest (Klaus, smoke tests, graphics regression)
         run: ctest --test-dir build --output-on-failure
 
-      - name: Assemble all dev/ 6502 projects
-        run: make -C dev/projects
+      - name: Rebuild CodeTank cartridges (byte-identical gate)
+        run: make -C dev/codetank
+
+      - name: Assemble the standalone tool/game sketches
+        run: |
+          make -C sketchs/tms9918/tool_diapo
+          make -C sketchs/tms9918/tool_tmsload
+          make -C sketchs/tms9918/game_maze3d

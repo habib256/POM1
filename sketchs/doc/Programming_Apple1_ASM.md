@@ -12,7 +12,7 @@ This document summarises everything you need to program the Apple 1 emulated by 
 | [`APPLE1DEV.md`](APPLE1DEV.md) | Agent playbook: presets, deployment, CLI examples, short pitfalls |
 | [`Programming_TMS9918.md`](Programming_TMS9918.md) | Real TMS9918 vs POM1, strict VRAM timing, sprites |
 | [`CLI.md`](../../doc/CLI.md) | Exhaustive list of flags (`--preset`, `--silicon-strict`, …) |
-| [`TODO6502.md`](../../dev/TODO6502.md) | Project backlog (`sketchs/` + `dev/projects/`) |
+| [`TODO6502.md`](../../dev/TODO6502.md) | Project backlog (`sketchs/`) |
 
 **Contents (titles §1–§10)** — toolchain · common hardware · 6502 pitfalls · text mode · graphics cards (stub) · game patterns · zero page · reference implementations · external resources · checklist. Card-specific guides: [`Programming_GEN2.md`](Programming_GEN2.md) (HGR) and [`Programming_TMS9918.md`](Programming_TMS9918.md).
 

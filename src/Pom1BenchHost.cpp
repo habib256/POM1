@@ -780,7 +780,7 @@ uint16_t parseCfgLoadAddr(const std::string& cfgPath)
 }
 
 // ---------------------------------------------------------------------------
-// Project-context build. When the bench editor has a real dev/projects/ file
+// Project-context build. When the bench editor has a real sketchs/ project file
 // open, compile it the way `make` would instead of as a bare sketch: its
 // sibling Makefile's LOAD_CFG, the EXTRA_ASM siblings, the project dir on the
 // ca65 include path (so sibling `.inc` data like tileset_rogue.inc resolve),
@@ -3321,7 +3321,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         const fs::path objO = dir / "pom1_bench.o";
         sweep.add(srcS); sweep.add(objO);
         std::ofstream(srcS, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
-        // If the editor's file is a real sketch or dev/projects/ source (sidecar
+        // If the editor's file is a real sketch or multi-file project source (sidecar
         // .sketch.json or sibling Makefile), build it in context: its own cfg,
         // and the EXTRA_ASM siblings. Empty path / no Makefile -> bare sketch path.
         const AsmProjectCtx proj = probeAsmProject(activeSourcePath_);

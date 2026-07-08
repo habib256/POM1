@@ -133,7 +133,7 @@ non-linear layout — within a group, consecutive scanlines are at
 ```
 
 In your project Makefile (sketch under `sketchs/gen2/<name>/`, or multi-file
-project under `dev/projects/<card>/<name>/`):
+project under `sketchs/<card>/<name>/`):
 
     LIB := -I ../../../lib/apple1 -I ../../../lib/gen2
     LOAD_CFG := ../../../cc65/apple1_gen2.cfg

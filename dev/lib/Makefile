@@ -4,7 +4,7 @@
 #                             compile every library source to .o
 #
 # WHY THIS EXISTS. The libraries here are validated only INDIRECTLY today: a
-# primitive is exercised when some project under dev/projects/ links it, and
+# primitive is exercised when some project under sketchs/ links it, and
 # ld65 dead-strips (per-.o) whatever a project does NOT call. So a freshly added
 # gfx_*/gen2_*/screen2_* helper that no shipping project references yet can rot
 # (stop compiling) without any build going red. This gate compiles every source
@@ -16,7 +16,7 @@
 #   - tools/check_lib_equates.py    asm .inc  <->  C .h/.c hardware addresses
 #   - tools/build_shared_font.py    one font master -> per-card tables
 #
-# Release: `make -C dev/lib check` AND `make -C dev/projects` must both be green.
+# Release: `make -C dev/lib check` AND `make -C dev/codetank` must both be green.
 # Requires cc65 (ca65/cl65) on PATH and python3.
 
 REPO   := $(abspath ../..)
@@ -48,7 +48,7 @@ ASM_SRCS := tms9918/tms9918m1.asm tms9918/tms9918m2.asm m6502/math.asm \
 ASM_INC  := -I tms9918 -I apple1 -I m6502 -I beep -I sid
 
 # --- stray build spill --------------------------------------------------------
-# Consumer builds (dev/projects/) and manual `cl65 -c` sessions drop .o/.lib next
+# Consumer builds (sketchs/) and manual `cl65 -c` sessions drop .o/.lib next
 # to these C-runtime sources. All gitignored (never tracked), but they clutter
 # the tree; `clean` sweeps them. Sources (.s/.c) are NEVER touched — only the
 # .o/.lib artefacts. gfx/ has its own `clean` (delegated below).

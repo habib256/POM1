@@ -8,7 +8,7 @@ Architecture / invariants / gotchas for the **emulator side** of POM1. User walk
 - CLI flags → [`doc/CLI.md`](doc/CLI.md) (impl: `CliDispatcher.cpp`).
 - DevBench / cc65 details → [`doc/DEVBENCH.md`](doc/DEVBENCH.md) + [`doc/CC65_WASM.md`](doc/CC65_WASM.md).
 - GEN2 HGR card → [`doc/GEN2_RELEASE.md`](doc/GEN2_RELEASE.md).
-- 6502 ASM sources for every shipped program → `dev/` (`lib/{apple1,m6502,tms9918,gen2,gen2c,games,…}/`, `projects/<card>/<name>/`, `cc65/`). Compiled artefacts land under `software/<dir>/` — that's what POM1 loads. Official release packages bundle `dev/` (linker cfgs + runtime libs) next to the cc65 toolchain so the in-app DevBench compiles asm/C; a bare source build without cc65 omits both.
+- 6502 ASM sources for every shipped program → `dev/` (`lib/{apple1,m6502,tms9918,gen2,gen2c,games,…}/`, `cc65/`, `codetank/` = cartridge composition ONLY) and `sketchs/<card>/<name>/` (every program source, single- or multi-file). Compiled artefacts land under `software/<dir>/` — that's what POM1 loads. Official release packages bundle `dev/` (linker cfgs + runtime libs) next to the cc65 toolchain so the in-app DevBench compiles asm/C; a bare source build without cc65 omits both.
 
 ## Project Overview
 
@@ -28,7 +28,7 @@ Windows: `setup_pom1.bat` + vcpkg + `cmake --build . --config Release`. `compile
 
 **WASM:** `source emsdk_env.sh && emcmake cmake .. && emmake make && emrun POM1.html`. MEMFS preloads `roms/ pic/ fonts/ software/ sdcard/ cassettes/ cfcard/cfcard.po` (other `.po` are desktop-only, >140 MB). Rebuild after any change under those trees or `build-wasm/shell.html`.
 
-**cc65:** per-project Makefiles call `ca65`+`ld65`, then `python3 emit_*_txt.py` lands `.bin`+Woz-hex `.txt` under `software/<dir>/`. `make -C dev/projects` is the CI gate. Linker configs in `dev/cc65/`. The gen2c runtime is split into per-family C modules (`gen2_init.c`, `gen2_pixel.c`, `gen2_rect.c`, `gen2_text.c` + `gen2_text_num.c` (glyph core vs number formatters — numbers pull rect/hex/soft-mul, strings don't), `gen2_sprites.c`, `gen2_preshift.c`, `gen2_sprengine.c`, `gen2_geom.c`, `gen2_lores.c` — see `dev/lib/gen2c/gen2c.mk`) so ld65 dead-strips per family; hot paths stay in `gen2_blit.s` (+ the masked save-under sprite kernels in `gen2_sprmask.s`), which any project linking those modules must also assemble.
+**cc65:** per-project Makefiles call `ca65`+`ld65`, then `python3 emit_*_txt.py` lands `.bin`+Woz-hex `.txt` under `software/<dir>/`. `make -C dev/codetank` is the CI gate. Linker configs in `dev/cc65/`. The gen2c runtime is split into per-family C modules (`gen2_init.c`, `gen2_pixel.c`, `gen2_rect.c`, `gen2_text.c` + `gen2_text_num.c` (glyph core vs number formatters — numbers pull rect/hex/soft-mul, strings don't), `gen2_sprites.c`, `gen2_preshift.c`, `gen2_sprengine.c`, `gen2_geom.c`, `gen2_lores.c` — see `dev/lib/gen2c/gen2c.mk`) so ld65 dead-strips per family; hot paths stay in `gen2_blit.s` (+ the masked save-under sprite kernels in `gen2_sprmask.s`), which any project linking those modules must also assemble.
 
 ## Architecture
 
@@ -145,7 +145,7 @@ $FF00-$FFFF  Woz Monitor ROM + vectors ($FFFA-$FFFF)
 
 ## Testing
 
-`ctest` from `build/` (native-only, opt-out `-DPOM1_ENABLE_TESTS=OFF`). Inventory in `tests/CMakeLists.txt`; `ctest -N` lists exact names. CMake never invokes `dev/projects/Makefile`; those are developer-only build steps. Tests load whatever artefact lives under `software/`.
+`ctest` from `build/` (native-only, opt-out `-DPOM1_ENABLE_TESTS=OFF`). Inventory in `tests/CMakeLists.txt`; `ctest -N` lists exact names. CMake never invokes `dev/codetank/Makefile`; those are developer-only build steps. Tests load whatever artefact lives under `software/`.
 
 ```bash
 ctest                       # full suite (~5–30 s wall time; Klaus + TMS9918 tests dominate)

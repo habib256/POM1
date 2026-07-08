@@ -11,7 +11,7 @@ separate compilation; see the [library hub](../README.md)), builds on
 scratch in that directory's [`zp.inc`](../apple1/zp.inc) slot pool.
 
 **Status: adopted.** `menu_select` is linked by both shipping CodeTank launcher
-menus (`dev/projects/codetank/game1_menu/` + `demos_menu/` — the ARCADE and
+menus (`dev/codetank/game1_menu/` + `demos_menu/` — the ARCADE and
 DEMOS cartridges); see *Adoption* below for the per-helper history. The snippet
 under *Use* is all it takes to drop one into a new project.
 
@@ -76,7 +76,7 @@ three sources so they can't rot before the first project adopts them.
 ## Adoption
 
 - `menu_select` — **adopted juillet 2026** by the two CodeTank launcher menus
-  (`dev/projects/codetank/game1_menu/codetank_menu.asm` +
+  (`dev/codetank/game1_menu/codetank_menu.asm` +
   `demos_menu/codetank_demos_menu.asm`, shipped in the ARCADE and DEMOS
   cartridges). Their cfgs have no ZEROPAGE segment (tiny ROM stubs), so they
   alias `tmp`/`tmp2` onto $00/$01 with plain equates instead of `zp.inc` —

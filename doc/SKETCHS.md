@@ -40,7 +40,7 @@ Sketches without a sidecar still work: profile from path, language from extensio
 Apple-1 text cfg by default.
 
 **Complex multi-file projects** (several local sources, shared `.inc` files) stay
-under [`dev/projects/`](../dev/projects/) and build via `make -C dev/projects`.
+under [`dev/codetank/`](../dev/codetank/) (cartridge composition ONLY — program sources stay in `sketchs/`) and build via `make -C dev/codetank`.
 
 ---
 

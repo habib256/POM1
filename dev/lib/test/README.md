@@ -4,7 +4,7 @@
 
 Execution-level unit tests for the routines under `dev/lib/`. Unlike the
 top-level suite (which validates libs **indirectly**, only when some
-`dev/projects/` build happens to link them), each driver here loads **one** lib,
+`sketchs/` build happens to link them), each driver here loads **one** lib,
 runs it headless inside POM1, and asserts **real values** read back from a RAM
 "result mailbox" — no golden hashes, no rendering. Registered as the CMake test
 `lib_micro_tests` (skips `77` without cc65 or `build/POM1`).
