@@ -451,8 +451,14 @@ bool flashCodeTankDevRom(const std::string& binPath, const std::string& outPath,
     }
     const size_t off = upperBank ? 0x4000 : 0x0000;
     std::fill_n(rom.begin() + off, 0x4000, 0xFF);
+    // Verify the build actually produced bytes: a missing/empty .bin reads 0
+    // bytes and would otherwise flash a blank-but-"successful" bank. A short
+    // read (< 16 KB) is legitimate — small programs don't fill the half.
     { std::ifstream in(binPath, std::ios::binary);
-      in.read(reinterpret_cast<char*>(rom.data() + off), 0x4000); }
+      if (!in) { err = "cannot read build output " + binPath; return false; }
+      in.read(reinterpret_cast<char*>(rom.data() + off), 0x4000);
+      if (in.gcount() == 0) { err = "build output " + binPath + " is empty"; return false; }
+    }
     std::error_code ec;
     fs::create_directories(fs::path(outPath).parent_path(), ec);
     std::ofstream out(outPath, std::ios::binary | std::ios::trunc);
