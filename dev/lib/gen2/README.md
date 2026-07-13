@@ -66,6 +66,37 @@ Lookup tables for the GEN2 HGR framebuffer (passive RAM-mapped at `$2000-$3FFF`,
 - **`subbyte_fill.asm`** — `subbyte_fill_4`: read-modify-write OR a
   4-pixel × 4-row block at `(gx, scanline_ptr)`. Uses the LUTs from
   `subbyte4.inc`.
+- **`hgr_sprite16.asm`** — `hgr_spr16_x1/_x2/_x4` + `hgr_spr16_color_a`:
+  blit a **TMS9918-format 16×16 pattern** (the SCROLL-O-SPRITES layout of
+  `dev/lib/tms9918/sprites_*.asm`) into HGR at ×1/×2/×4 with optional NTSC
+  artifact colour (`HSPR_WHITE/GREEN/ORANGE/VIOLET/BLUE`). Each output row
+  is built as a pixel **bit-stream** then repacked 7 px/HGR-byte
+  (`sp_pack_row`) — **lossless**: a naive 8-px-byte → 7-px-byte column
+  mapping drops one column per source byte and visibly skews ×2 art
+  (proven on Maze3D's goblin — byte-column mapping is fine for 8-px-grid
+  text/lines, never for sprite art). Owns its ZP (`sp_ptr/sp_x/sp_y` +
+  colour attrs + scratch) and `dblnib`/`quadbits` (+ the shared `rev7_tab`
+  via `rev7.inc`); needs `hgr_scanline.inc`. First consumer:
+  `sketchs/gen2/game_maze3d/`.
+- **`hgr_text8.asm`** — `hgr_putc8` / `hgr_puts8`: byte-aligned 8×8 text with
+  a VDP-style cursor (advance + wrap `ht_wrap`→`ht_left`, next text row) —
+  what lets TMS-ported print loops run unchanged. Font is caller-provided
+  (`ht_font_lo/hi`, 8 B/glyph from `$20`), in either bit order (`ht_rev`:
+  0 = HGR like `bbfont_ascii5f.inc`, 1 = TMS via `rev7_tab`). `hgr_putc8`
+  preserves A/X/Y. Replaces the private emitters of `HGR_Rogue`
+  (`hgr_emit_a`) and `HGR_Maze3D` (`write_char`); `GEN2_Chess`'s `putc_hgr`
+  is the remaining migration candidate. Micro-test: `test/micro/t15`.
+- **`hgr_blit2.asm`** — `hgr_blit2` / `hgr_blit4`: byte-aligned 2-/4-byte-wide
+  rectangle blits of HGR-packed rows with a raster op (`bl_mode`: OR /
+  inverted-box FLASH / STORE) — the cell/tile + soft-entity workhorse of the
+  TMS→GEN2 ports. Never touches X (pool loops keep offsets there). First
+  consumer: `sketchs/gen2/game_rogue/` (tiles, entities, 28×32 boss).
+  Migration candidate: `game_sokoban`'s `draw_tile`. Micro-test:
+  `test/micro/t15`.
+- **`rev7.inc`** — `rev7_tab[256]`: TMS bit order → HGR bit order (input
+  bit 0, the TMS rightmost pixel, is dropped — fine for 8-px-grid glyphs,
+  NOT for sprite art; that's what `hgr_sprite16`'s bit-stream repack is
+  for). Shared, include-guarded, pulled by both modules above.
 - **`sprites/`** — HGR sprite data (`.asm` + `.inc` per category), mirrored from
   the TMS9918 sprite sources by `tools/build_hgr_sprites.py`. See
   [`sprites/README.md`](sprites/).
@@ -87,6 +118,10 @@ provides (real names — `.import` them or `.include` the file, then `JSR`).
 | `hgr_plot.asm` | `plot_pixel` (needs ZP `cur_x/cur_y/ptr_lo/ptr_hi` + both table sets) |
 | `hgr_clear.asm` | `clear_hgr` (zeroes `$2000-$3FFF`; needs ZP `ptr_lo/ptr_hi`) |
 | `hgr_tables.inc` | umbrella — re-exports all of the four above |
+| `hgr_sprite16.asm` | `hgr_spr16_x1/_x2/_x4`, `hgr_spr16_color_a`; equates `HSPR_WHITE/GREEN/ORANGE/VIOLET/BLUE`; tables `dblnib[16]`, `quadbits[4]` (+ `rev7_tab` via `rev7.inc`); public ZP `sp_ptr/sp_x/sp_y/sp_cm_ev/sp_cm_od/sp_cbit` (needs `hgr_scanline.inc`) |
+| `hgr_text8.asm` | `hgr_putc8` (preserves A/X/Y), `hgr_puts8`; public ZP `ht_col/ht_sl/ht_left/ht_wrap/ht_font_lo/ht_font_hi/ht_rev/ht_src_lo/ht_src_hi` + colour attrs `ht_cm_ev/ht_cm_od/ht_cbit` (white $7F/$7F/$00 = pass-through) + page selector `ht_page` ($00/$60) — init all at boot (needs `hgr_scanline.inc`; pulls `rev7.inc`) |
+| `hgr_blit2.asm` | `hgr_blit2`, `hgr_blit4` (modes OR/FLASH/STORE/PALFLIP; never touch X); public ZP `bl_src/bl_col/bl_sl/bl_h/bl_mode/bl_page` (page selector $00/$60, EORed into the scanline hi byte — init at boot; needs `hgr_scanline.inc`) |
+| `rev7.inc` | `rev7_tab[256]` (TMS bit 7-leftmost → HGR bit 0-leftmost, rightmost source pixel dropped; include-guarded) |
 | `subbyte4.inc` | tables `sb4_byte_off`, `sb4_mask1`, `sb4_mask2` (7-phase, 4-px blocks) |
 | `subbyte_fill.asm` | `subbyte_fill_4` (ZP `sb_ptr_lo/sb_ptr_hi`, `tmp`, `tmp2`) |
 | `bbfont_cp437.inc` | `HGR_BBFont` + `HGR_BBFONT_BYTES_PER_GLYPH` (8) / `HGR_BBFONT_GLYPH_COUNT` (256) |

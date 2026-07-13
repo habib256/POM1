@@ -5,12 +5,16 @@
  *   (https://github.com/nippur72/apple1-videocard-lib).
  * Upstream license: unspecified at time of fork (2026-05). Preserve attribution.
  *
- * Almost identical to dev/lib/apple1c/apple1io.c. The intentional differences
- * (preserved to keep upstream attribution + the CodeTank's preferred Wozmon
- * warm-restart):
- *   - WOZMON entry: $FF1F here (silent post-prompt) vs $FF1A in apple1c
- *     (prints "\" + CR before line editor). A future merge would parameterise
- *     this via a single WOZMON_ENTRY macro.
+ * Almost identical to dev/lib/apple1c/apple1io.c -- ON PURPOSE. The DevBench
+ * copies build sources into its scratch directory BY BASENAME (a relative
+ * .include across lib directories breaks in-Bench builds) and this file's
+ * path is pinned by dev/bench/tms9918c.json, src/Pom1BenchHost.cpp and
+ * tools/build_codetank_rom.py, so the duplication stays and is DRIFT-GATED
+ * instead: `make -C dev/lib check` runs tools/check_wozmon_shims.py, which
+ * asserts the shared routines/equates of apple1_asm.s and apple1c's
+ * apple1io_asm.s are instruction-identical. The Wozmon entry itself was
+ * unified on $FF1A (prompt entry) in June 2026; woz_mon_silent() keeps the
+ * $FF1F silent warm restart. Remaining intentional differences:
  *   - PIA defines: KEY_DATA/KEY_CTRL here vs KBD_DATA/KBD_CTRL in apple1c.
  *   - Accessor idiom: PEEK(addr) macro here vs *(volatile unsigned char *)addr
  *     in apple1c (functionally equivalent under cc65).

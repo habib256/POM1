@@ -96,7 +96,7 @@ Open work on the **emulator** only. Shipped work → `[CHANGELOG.md](CHANGELOG.m
 
 ## 🔧 Infra & technical debt
 
-
+- [ ] **Filtrer les artefacts de build hors du bundle WASM** `[S · solid]` — le préload MEMFS embarque `dev/` tel quel : `POM1.data` a shippé `dev/cc65/__pycache__/*.pyc` et une vingtaine de `.o` locaux (`dev/lib/tms9918c/*.o`, `dev/lib/apple1c/*.o`, `crt0_pom1.o`) — du poids mort téléchargé par chaque visiteur. Exclure `*.o` / `__pycache__` / `*.pyc` du glob de préload (CMake WASM), et re-vérifier le manifest de `POM1.data` après rebuild. (Constat du clean-up dev/ 2026-07-12 ; l'arbre local est nettoyé mais les artefacts reviennent à chaque `make -C dev/lib check`.)
 
 ### Refactors architecturaux (audit juillet 2026)
 

@@ -12,7 +12,8 @@ toolchain so the in-app DevBench can rebuild from here.
 |---|---|
 | [`lib/`](lib/README.md) | Shared 6502 libraries — the hub. Per-card asm + cc65-C tracks (`apple1`, `gen2`, `tms9918`, `sid`, …), the card-neutral `gfx/` layer, the cross-library zero-page contract. **Start here.** |
 | [`cc65/`](cc65/README.md) | Linker `.cfg` files, the shared `Makefile.common` fragment, and the Woz-hex emit scripts. The build layer. |
-| `projects/` | Multi-file, multi-target builds that don't fit the one-source DevBench sketch model. CI gate: `make -C dev/codetank`. Currently: [`codetank/`](projects/codetank/README.md) (P-LAB CodeTank cartridge launcher menus). |
+| [`codetank/`](codetank/README.md) | P-LAB CodeTank cartridge composition ONLY (launcher menus + per-game bank cfgs — program sources live under `sketchs/<card>/`). CI gate: `make -C dev/codetank`. |
+| `bench/` | DevBench target specs (`apple1c.json` / `gen2c.json` / `tms9918c.json` — schema in `doc/DEVBENCH.md`). |
 | [`TODO6502.md`](TODO6502.md) | Open work on the 6502-software side (new programs, lib showcases, perf, tooling). |
 
 ## Build flow

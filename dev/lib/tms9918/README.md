@@ -30,6 +30,11 @@ emitted per format by `tools/build_shared_font.py` (`--check` to verify no drift
   separate hand-tuned font). Same on-ROM order/codes, so the games are
   unchanged; rebuild them to refresh the shipped artifacts.
 - **`font_quale.asm`** — Quale's display font (independent, not from the master).
+- **`c64font_tms.inc`** — *generated* by `tools/build_c64font_tms.py` (`--check`
+  wired into `make -C dev/lib check`) from `tms9918c/c64font.c` (the C runtime's
+  C64-style font master): the same 96 glyphs as a ca65 inline fragment, for asm
+  programs that want the C-track look. Consumer: `sketchs/tms9918/applesoft_tms9918`
+  (`tmsgfx.inc`).
 
 ## Mode 1 (`tms9918m1.asm`) — public symbols
 

@@ -78,6 +78,7 @@ ASM_INCLUDE_DIRS = [
     LIB_DIR / "beep",
     LIB_DIR / "sid",
     LIB_DIR / "games" / "rogue",
+    LIB_DIR / "gen2",
 ]
 
 RUN_TIMEOUT_S = 60

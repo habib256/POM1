@@ -25,6 +25,7 @@ buffer; the differences are the code window and ZP size.
 | `apple1_c.cfg` | C (cc65) | `$0300` (`0300R`) | `$0300-$0FFF` + stack to `$1000` | Plain text-mode C on the 8 KB dual-bank machine (RAM `$0000-$0FFF` + `$E000-$EFFF`). Full 256 B ZP, cc65 CONDES/startup segments. |
 | `apple1_gen2.cfg` | asm | `$E000` (`E000R`) | `$E000-$EFFF` (4 KB) | GEN2 HGR, ≤ 4 KB single-bank. Code in the high bank (where Integer BASIC ROM used to sit); GEN2 framebuffer reserved at `$2000-$3FFF`. 36 B ZP (`$00-$23`; Wozmon reserve `$24-$2B` guarded). |
 | `apple1_gen2_c.cfg` | C (cc65) | `$6000` (`6000R`) | `$6000-$BEFF` | GEN2 HGR C, 48 KB machine (preset 11). Code lives **above** the HGR pages (`$2000`/`$4000`) and text/lores (`$0400`/`$0800`). |
+| `apple1_tmsutil.cfg` | asm | `$0300` (`@R` / `300R`) | `$0300-$07FF` (1.25 KB) | Small TMS9918 **microSD utilities** (`tool_tmsload` / `tool_diapo`): loads at the SD CARD OS `@R` jump address (`#060300` filename tag), kept strictly below `$0800` so TMSLOAD's 16 KB copy source (`@L`-dropped at `$0800`) never overlaps the utility. ZP `$0010-$001F` (avoids Wozmon `$24-$2B`). |
 | `codetank.cfg` | asm | `$4000` (`4000R`) | `$4000-$7FFF` (16 KB) | Standalone CodeTank ROM card — code runs in place from the ROM window; only writes need RAM (ZP / `$0280-$0FFF`). RODATA folded into CODE so tables serve straight from ROM. |
 | `codetank_c_data.cfg` | C (cc65) | `$4000` (`4000R`) | `$4000-$7FFF` (16 KB) | Same layout as `../lib/tms9918c/cc65/codetank_c.cfg`, but paired with **`crt0_pom1.s`** (below): C initializers on globals are honoured. New TMS9918 C code should use this pair; the classic pair stays for the burn-validated ROMs. |
 | `pom1_fantasy.cfg` | asm | `$0300` (`300R`) | `$0300-$82FF` (32 KB) | XXL programs on the 64 KB Multiplexing Fantasy presets (10 / 12). **Not real-Apple-1 portable.** Adds a separate `BASIC_RAM` BSS region `$A000-$BFFF` (8 KB, not in the `.bin` — program zeroes it). Requires Applesoft Lite + SD CARD OS + GEN2 unplugged. |
@@ -46,7 +47,8 @@ so split builds need their own cfg + the `emit_dualbank.py` stitcher below).
 | Text-mode asm (also TMS9918) | `apple1_4k.cfg` |
 | Text-mode C | `apple1_c.cfg` |
 | GEN2 HGR asm, fits 4 KB | `apple1_gen2.cfg` |
-| GEN2 HGR asm, needs > 4 KB | project-local split-bank cfg (`.lo`/`.hi`) |
+| GEN2 HGR asm, needs > 4 KB | project-local cfg — single-region `$6000` on the 48 KB machine (the chess model: `game_chess`/`game_rogue`/`game_maze3d`) or dual-bank split `.lo`/`.hi` (`game_sokoban`) |
+| TMS9918 microSD shell utility | `apple1_tmsutil.cfg` |
 | GEN2 HGR C | `apple1_gen2_c.cfg` |
 | CodeTank cartridge ROM | `codetank.cfg` (or a `bank_cfgs/` slot variant) |
 | TMS9918 C, initialized globals honoured | `codetank_c_data.cfg` **+ `crt0_pom1.s` first on the link line** |

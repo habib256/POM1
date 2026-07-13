@@ -68,6 +68,8 @@ equates:
 	@$(PYTHON) $(REPO)/tools/build_c64font_tms.py --check
 	@echo "[lib] sprite-catalogue drift check (TMS masters -> HGR) ..."
 	@$(PYTHON) $(REPO)/tools/build_hgr_sprites.py --check
+	@echo "[lib] wozmon-shim drift check (apple1c <-> tms9918c) ..."
+	@$(PYTHON) $(REPO)/tools/check_wozmon_shims.py
 
 zp-test:
 	@echo "[lib] zp.inc slot-pool layout pin ..."

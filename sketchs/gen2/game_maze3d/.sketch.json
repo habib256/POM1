@@ -1,0 +1,9 @@
+{
+  "profile": "gen2",
+  "language": "asm",
+  "cfg": "sketchs/gen2/game_maze3d/apple1_maze3d_hgr.cfg",
+  "extraAsm": [
+    "dev/lib/tms9918/sprites_trollkind.asm",
+    "dev/lib/tms9918/sprites_characters.asm"
+  ]
+}

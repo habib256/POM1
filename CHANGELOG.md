@@ -10,6 +10,158 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — Rogue ported to the GEN2 HGR card (`sketchs/gen2/game_rogue/`)
+
+- **`HGR_Rogue`** — full port of the TMS9918 roguelike to Uncle Bernie's GEN2
+  HGR card (280×192 bitmap, no name table / hardware sprites). The game logic
+  (dungeon gen, shadowcasting FOV, monster AI, combat, inventory, buffs, pits,
+  depth-13 boss) is carried over verbatim from `TMS_Rogue.asm`; the video
+  layer is rewritten: 14×16 px tiles (2 HGR bytes × 16 rows), soft OR-blitted
+  entities with an inverted-box hurt flash, byte-aligned `bbfont_ascii5f`
+  text behind a TMS-compat layer (`WRT_DATA_*` → `hgr_emit_a` emulating the
+  VDP auto-increment cursor — ~5000 logic lines assemble untouched), and a
+  dirty-tracked repaint (`vis | prev_vis`) so a turn only redraws the cells
+  that changed. Single-region image at `$6000` (chess model, preset 11,
+  `6000R`); map + pools move from the Parmigiani `$E000` high bank to
+  `$0280-$046F`. Assets (8 tiles + 14 sprites + 28×32 boss) are generated
+  from the TMS art by the new `tools/build_rogue_hgr_assets.py`. Artefacts:
+  `software/Graphic HGR/HGR_Rogue.{bin,txt}`.
+
+### Added — HGR_RogueX2: the ×2 colour variant (`sketchs/gen2/game_rogue_x2/`)
+
+- Alternative build of the Rogue port with the whole playfield at **×2 in
+  colour** — 28×32 px cells, coloured tiles/sprites, 56×64 px demon — behind
+  an **8×5-cell dead-zone camera** (the 16×10 map at ×2 exceeds HGR's width;
+  the window scrolls only near its edges so the delta renderer keeps
+  working; a camera move forces the full repaint). Colours are baked into a
+  second generated asset pack (`rogue_assets_hgr_x2.inc`, ×2 section of
+  `tools/build_rogue_hgr_assets.py`): parity masks + palette bit applied at
+  generation over the doubled pixels — pure NTSC colours at zero runtime
+  cost (hero white, undead green, ghost violet, skeleton blue, death/boss
+  orange, stairs green, door orange, pit violet). The 4 bottom HUD rows are
+  byte-identical to the ×1 build (×1 icons kept for HUD + inventory modal);
+  the empty-bag modal and the GAME OVER screen hash-match the ×1 build.
+  Second pass: the camera is **centre-locked** (the hero pins viewport cell
+  (3,2), the world scrolls, off-map border rendered black once per move);
+  **hits flash by palette-bit flip** — new generic `hgr_blit2` mode 3
+  (PALFLIP, EOR #$80 + OR, pinned by t15): orange demon flashes green, blue
+  hero flashes violet; `hgr_text8` gained optional artifact-colour
+  attributes (`ht_cm_*`/`ht_cbit`, white pass-through, glyph bit 7 now
+  always stripped — ×1 games re-pinned hash-identical) used for a
+  colour-coded HUD (DEPTH orange / ATK-DEF blue / HP green / XP violet,
+  white restored for prompts+modals) and a **×2 orange "ROGUE" title
+  banner** (`putc8_x2` doubling the HGR-order bbfont via `dblnib`) over a
+  green title body; sprite palette enriched (hero blue as on TMS, zombie
+  green, skeleton white, sword blue). Third pass: **true double
+  buffering** — turns render to the hidden HGR page and flip; the dirty
+  snapshots are kept per page and swapped at flip (delta formula
+  untouched), the HUD repaints once per page (`hud_again`), the off-map
+  border blanks once per page (`vp_force` countdown), modals/prompts draw
+  on the visible page. The lib blit + text engines gained an `EOR`-based
+  page selector (`bl_page`/`ht_page`, $00/$60 — `$2x EOR $60 = $4x`; ×1
+  games re-pinned hash-identical with selectors at 0).
+  Artefacts: `software/Graphic HGR/HGR_RogueX2.{bin,txt}`.
+
+### Changed — GEN2 HGR ports: repaint elision (2026-07-13)
+
+- **`HGR_Rogue`** — three classes of useless rewrites removed, pixel-parity
+  pinned (the 5 deterministic reference frames hash-identical, boss-fight
+  death screen bit-identical to the pre-optimisation build):
+  (1) the tile dirty set becomes `(vis XOR prev) | ent_prev | ent_now` — FOV
+  ring delta + entity cells from a FOV-gated pre-scan — instead of the whole
+  lit union (~12-18 cells per move instead of ~35; `force_dirty_all` now
+  forces via `ent_prev`, the XOR formula's force channel); (2) `update_hud`
+  caches the 11 displayed values and skips its ~130-glyph + 5-icon repaint
+  when clean (`hud_msg` prompt flag + `hud_force` set by `clear_name_table`
+  keep it correct; it owns the rows-22/23 wipe now); (3) the dagger-flight
+  frames use the dirty repaint (~2 cells) instead of `redraw_game`'s forced
+  full pass — flight pacing restored to ~TMS speed (48-lap delay). Typical
+  quiet turn: ~170k cycles of repaint down to ~35k.
+- **`HGR_Maze3D`** — `vdp_display_off/on` are real again: "off" flips the
+  display to HGR page 2 (zeroed at boot), "on" flips back — every full
+  redraw (3D frame, map, combat, title) happens off-screen, restoring the
+  TMS blank-during-redraw UX for two soft-switch reads. Combat rounds no
+  longer rebuild the whole screen: `run_combat`'s attack and failed-flee
+  paths repaint only the two HP fields in place (`combat_update_hp`, 4
+  digit cells) and loop for the next key — the full `draw_combat_screen`
+  (clear + ×4 portrait + labels, ~140k cycles) fires only on combat entry
+  and next-foe transitions where the name/portrait genuinely change.
+  Reference hashes unchanged.
+
+### Changed — dev/ clean-up sweep (2026-07-12)
+
+- **Wozmon-shim duplication is now drift-gated instead of merged**:
+  `tools/check_wozmon_shims.py` (wired into `make -C dev/lib check`) asserts
+  the shared routines/equates of `apple1c/apple1io_asm.s` and
+  `tms9918c/apple1_asm.s` stay instruction-identical — the historical hazard
+  was the diverging Wozmon entry ($FF1F vs $FF1A, unified June 2026). A
+  physical merge was declined on purpose: the DevBench copies build sources
+  by basename (relative `.include` breaks in-Bench builds) and the tms9918c
+  path is pinned by the bench spec, `Pom1BenchHost.cpp` and
+  `build_codetank_rom.py`. `tms9918c/apple1.c`'s stale header comment
+  (pre-unification) rewritten to document the decision; TODO6502's
+  "single-source the shim" item resolved accordingly.
+- **`dev/cc65/README.md`** documents the previously unlisted
+  `apple1_tmsutil.cfg` ($0300 microSD utilities — `tool_tmsload`/`tool_diapo`)
+  and modernises the "GEN2 HGR asm > 4 KB" advice (single-region $6000 chess
+  model OR dual-bank split). **`dev/lib/tms9918/README.md`** documents the
+  generated `c64font_tms.inc`.
+- Local build artefacts purged from `dev/` (`__pycache__`, stray `.o`) — they
+  are gitignored but were bloating the **WASM MEMFS bundle** (`POM1.data`
+  shipped `.pyc` + ~20 `.o`); a packaging-side exclusion filter is now a
+  TODO.md item. Audit false-positives cleared: `tms9918_text/console`,
+  `sprite_triangle/helpers`, `repeat.asm`, `delay.asm`, `print_num.asm` all
+  have consumers or are deliberate documented lib surface — no source
+  deletions were warranted.
+
+### Added — dev/lib/gen2 byte-aligned HGR building blocks + micro-tests
+
+- The private text/blit copies the GEN2 ports grew are factored into shared
+  lib modules: **`hgr_text8.asm`** (`hgr_putc8`/`hgr_puts8` — 8×8 glyphs,
+  VDP-style cursor wrap, caller font in either bit order, preserves A/X/Y),
+  **`hgr_blit2.asm`** (`hgr_blit2`/`hgr_blit4` — 2-/4-byte-wide rect blits,
+  OR / inverted-FLASH / STORE, X untouched), and **`rev7.inc`** (the shared
+  TMS→HGR bit-order table, split out of `hgr_sprite16.asm`). `HGR_Rogue`
+  (emitter + blit engine) and `HGR_Maze3D` (`write_char`) now consume the
+  modules — migrations verified **pixel-identical** by frame-hash on
+  deterministic paths (Rogue title/boss/help, Maze3D title/combat).
+  Remaining migration candidates (`GEN2_Chess` `putc_hgr`, `game_sokoban`
+  `draw_tile`, `demo_bestiary`'s doubler) are tracked in `dev/TODO6502.md`.
+- New micro-tests **t14** (`hgr_sprite16`: bit-stream repack x1/x2 + WHITE/
+  GREEN artifact-colour attributes against simulator-derived framebuffer
+  bytes) and **t15** (`hgr_text8` both bit orders + cursor wrap + A/X/Y
+  preservation; `hgr_blit2/4` STORE/FLASH) — `tools/test_lib_micro.py` now
+  15/15, gen2 added to its include path.
+- Doc refresh: `dev/README.md` (dead `projects/` row → `codetank/`, `bench/`
+  row added), `dev/TODO6502.md` (2026-07-12 sweep: shipped 4-cart CodeTank
+  item removed, GEN2-port modules noted, convergence items added).
+
+### Added — Maze3D ported to the GEN2 HGR card (`sketchs/gen2/game_maze3d/`)
+
+- **`HGR_Maze3D`** — full port of the Wizardry-style 3D line maze to the GEN2
+  HGR card. The game logic (DFS maze, pseudo-3D wireframe renderer, map view,
+  HUD, narrator, turn-based combat) is carried over verbatim from
+  `TMS_Maze3D.asm`; only the Graphics II bitmap *primitives* were swapped for
+  HGR twins with identical contracts (`calc_pix_addr`/`plot_set`/`hline`/
+  `vline`/`write_char`/`x2_tile`/`draw_sprite16_x1/x2/x4`/clears — colour-table
+  routines become stubs). Pixel mapping: each 8-px TMS byte column lands on one
+  7-px HGR byte column via a 256-entry `rev7_tab` (bit-order flip, rightmost
+  pixel dropped; per-pixel plots clamp x%8==7 onto bit 6 so wall edges
+  survive). Monster patterns link straight from the TMS sprite libs — no asset
+  conversion step. Single-region image at `$6000` (preset 11, `6000R`), state
+  kept at the CodeTank build's `$0E00` segments. The 1-px wireframe edges pick
+  up NTSC artifact colour (green/violet) as a free depth cue, and the monsters
+  keep their TMS archetype tints via artifact colour in the blitter
+  (pixel-parity mask + palette bit): goblin green, orc orange, dark mage violet
+  — title mascot, corridor clusters and the ×4 combat portrait included; the
+  ×2 "MAZE 3D" title renders orange (the HGR red). The sprite pipeline is promoted to a
+  shared lib module — **`dev/lib/gen2/hgr_sprite16.asm`** (`hgr_spr16_x1/_x2/
+  _x4` + `hgr_spr16_color_a`, `HSPR_*` colour codes): TMS-format 16×16
+  patterns, each output row built as a pixel bit-stream and repacked
+  7 px/HGR-byte — lossless, after the first byte-column mapping (one dropped
+  column per source byte) visibly skewed the ×2 goblin. Artefacts:
+  `software/Graphic HGR/HGR_Maze3D.{bin,txt}`.
+
 ### Changed — CodeTank ROM library: four release cartridges (Claudio burn plan)
 
 - **The GAME1-7 line-up is reorganised into 4 named cartridges** so Claudio's
