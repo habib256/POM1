@@ -57,38 +57,55 @@ jobs:
           fi
 
   # ---------------------------------------------------------------- Linux ----
+  # The AppImage is built INSIDE an Ubuntu 18.04 (bionic, glibc 2.27) container
+  # so it links against glibc 2.27 and runs on Linux Mint 19.x and everything
+  # newer. An AppImage never bundles glibc, so its floor == the build image's
+  # glibc; building on ubuntu-latest (2.39) previously stamped GLIBC_2.34 and
+  # broke pre-2.34 systems (Uncle Bernie / Mint 19.x, juillet 2026).
+  #
+  # We drive the container with `docker run` rather than a `container:` key
+  # because GitHub's node20 actions (checkout@v4, upload-artifact@v4) need glibc
+  # >= 2.28 to run — one notch above bionic's 2.27 — so they cannot execute
+  # inside a bionic `container:`. The actions therefore run on the host; the repo
+  # is bind-mounted into the container so the finished AppImage lands back on the
+  # host for upload. Full recipe: packaging/linux/build_in_bionic.sh.
   linux:
     needs: version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install deps (build + cc65 + AppImage tooling)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake g++ libglfw3-dev libgl1-mesa-dev \
-                                  cc65 python3 wget file desktop-file-utils
-
-      - name: Fetch Dear ImGui (pinned)
-        run: git clone --depth 1 --branch "$IMGUI_TAG" https://github.com/ocornut/imgui.git
-
-      - name: Stage cc65 bundle (asm ca65/ld65 + C cl65/cc65)
-        run: tools/build_cc65_bundle.sh --out dist/cc65-bundle
-
-      - name: Build POM1
-        run: |
-          cmake -S . -B build
-          cmake --build build -j"$(nproc)"
-
-      - name: Package AppImage (cc65 bundled, strict)
+      - name: Build POM1 + AppImage in Ubuntu 18.04 (glibc 2.27 floor, cc65 bundled, strict)
         env:
           POM1_VERSION: ${{ needs.version.outputs.pom1_version }}
-          POM1_APPIMAGE_SKIP_BUILD: "1"
-          APPIMAGE_EXTRACT_AND_RUN: "1"   # CI runners have no FUSE
-        run: packaging/linux/build_appimage.sh
+        run: |
+          docker run --rm \
+            -v "$PWD":/work -w /work \
+            -e POM1_VERSION -e POM1_REQUIRE_CC65 -e IMGUI_TAG \
+            ubuntu:18.04 \
+            bash /work/packaging/linux/build_in_bionic.sh
 
       - name: Verify cc65 inside the staged AppDir (asm + C)
         run: tools/verify_cc65_bundle.sh build-appimage/AppDir/usr/share/POM1/cc65
+
+      - name: Verify the AppImage's glibc floor is <= 2.27 (Mint 19 launches)
+        run: |
+          set -euo pipefail
+          # appimagetool emits a 0755 (world-readable/executable) file; it is
+          # root-owned here because the build ran as root in the container, so we
+          # only read/execute it — never chmod (would EPERM as the runner user).
+          APP=$(ls dist/*.AppImage | head -1)
+          "$APP" --appimage-extract >/dev/null
+          BIN=squashfs-root/usr/bin/POM1
+          # Highest GLIBC_x.y version any symbol in the binary requires.
+          MAX=$(objdump -T "$BIN" 2>/dev/null \
+                | grep -oE 'GLIBC_[0-9]+\.[0-9]+' \
+                | sort -V | tail -1)
+          echo "Highest glibc symbol required by POM1: ${MAX:-none}"
+          # 2.27 is the bionic floor; anything higher would break Mint 19.x.
+          test "$(printf '%s\nGLIBC_2.27\n' "$MAX" | sort -V | tail -1)" = "GLIBC_2.27" \
+            || { echo "ERROR: AppImage requires ${MAX} > GLIBC_2.27"; exit 1; }
+          echo "OK: glibc floor is <= 2.27"
 
       - uses: actions/upload-artifact@v4
         with:
