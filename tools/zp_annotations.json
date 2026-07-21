@@ -41,7 +41,6 @@
     "m6502/prng16.asm": "shared with `prng8.asm` **by design** (`.ifndef`-guarded): both stir ONE state pair — use one generator per program",
     "m6502/prng8.asm": "shared with `prng16.asm` **by design** (`.ifndef`-guarded)",
     "sd/sd.asm": "string pointer",
-    "text40/layout.asm": "arrow-key remap",
     "tms9918/bubble.asm": "bubble raster (TMS side of the `draw_bubble` shadow pair)",
     "tms9918/buffer_editor.asm": "reuses `math.asm`'s `arg_*` argument window — not storage; reload per call",
     "tms9918/sprite_helpers.asm": "imports the caller's sprite shadow registers (`spr_*`)",
