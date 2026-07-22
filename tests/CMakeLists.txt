@@ -15,6 +15,17 @@ else()
     add_compile_options(-UNDEBUG)
 endif()
 
+# Tests compiling AudioDevice.cpp (miniaudio, via POM1_TEST_CORE_SOURCES) need
+# libdl + libpthread. The main app gets both transitively from the glfw target;
+# tests don't link glfw. Modern glibc (>= 2.34) folds them into libc so the
+# omission was invisible — bionic's glibc 2.27 (the AppImage release container,
+# run 29919749167) links them as separate libraries. Directory-scoped so every
+# test target defined below picks them up.
+if(UNIX)
+    find_package(Threads REQUIRED)
+    link_libraries(Threads::Threads ${CMAKE_DL_LIBS})
+endif()
+
 # -- Klaus Dormann 6502 functional test ---------------------------------------
 # Downloads the pre-assembled test binary once at configure time, builds a
 # minimal runner that links against POM1's M6502 + Memory + peripheral core,
