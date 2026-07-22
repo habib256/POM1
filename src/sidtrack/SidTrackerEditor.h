@@ -76,6 +76,7 @@ private:
     int      framesLeft_ = 0;
     int      heldNote_   = -1;          // note held on the piano (highlight + note-off)
     int      playingNote_ = -1;         // note currently sounded by song playback (highlight)
+    uint8_t  playingCtrl_ = WAVE_TRI;   // ctrl (waveform) of that note, for a clean gate-off
     bool     pianoDown_  = false;       // mouse held on the piano
     bool     kbdActive_  = false;       // editor is grabbing the PC keyboard this frame
     int      kbdNote_    = -1;          // note currently held via the PC keyboard

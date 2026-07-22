@@ -6,8 +6,8 @@
 // sequence of (chip-relative register, value) writes that play (or release) a
 // note on voice 1, which the host applies to the live SID chip via
 // EmulationController::pokeSidRegisters. No ImGui / GL / emulator dependency —
-// ports verbatim to POM2. Pinned by sid_voice_smoke (freq cross-checked against
-// the shipped dev/lib/sid/sid_notes.inc table).
+// ports verbatim to POM2. Freq cross-checked against the shipped
+// dev/lib/sid/sid_notes.inc table by sid_song_asm_export_smoke.
 
 #ifndef SIDTRACK_SID_VOICE_H
 #define SIDTRACK_SID_VOICE_H

@@ -216,9 +216,9 @@ void SidTrackerEditor::tickPlayback() {
     }
     const Row& r = model_.at(static_cast<std::size_t>(playRow_));
     if (host_) {
-        if (r.note == NOTE_OFF)      { host_->previewNoteOff(waveform_); playingNote_ = -1; }
+        if (r.note == NOTE_OFF)      { host_->previewNoteOff(playingCtrl_); playingNote_ = -1; }
         else if (r.note == NOTE_TIE) { /* hold */ }
-        else                          { host_->previewNoteOn(r.note, r.ctrl, inst_); playingNote_ = r.note; }
+        else                          { host_->previewNoteOn(r.note, r.ctrl, inst_); playingNote_ = r.note; playingCtrl_ = r.ctrl; }
     }
     framesLeft_ = r.frames;
     ++playRow_;
@@ -284,7 +284,12 @@ void SidTrackerEditor::renderPatternGrid() {
             ImGui::TableSetColumnIndex(4);
             if (ImGui::SmallButton("Off")) { r.note = NOTE_OFF; model_.setRow(i, r); }
             ImGui::SameLine();
-            if (ImGui::SmallButton("X"))   { model_.removeRow(i); ImGui::PopID(); break; }
+            if (ImGui::SmallButton("X"))   {
+                model_.removeRow(i);
+                if (selected_ == static_cast<int>(i))      selected_ = -1;   // deleted the selected row
+                else if (selected_ > static_cast<int>(i))  --selected_;      // rows shifted up
+                ImGui::PopID(); break;
+            }
 
             ImGui::PopID();
         }
@@ -545,9 +550,10 @@ void SidTrackerEditor::doExport() {
     }
     const std::string text = formatSongAsm(model_);
     if (FILE* f = std::fopen(path.c_str(), "wb")) {
-        std::fwrite(text.data(), 1, text.size(), f);
-        std::fclose(f);
-        status_ = "Exported " + path;
+        const bool wrote = std::fwrite(text.data(), 1, text.size(), f) == text.size();
+        const bool closed = std::fclose(f) == 0;
+        status_ = (wrote && closed) ? "Exported " + path
+                                    : "Write error (disk full?) — " + path;
     } else {
         status_ = "Could not write " + path;
     }

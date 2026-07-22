@@ -186,9 +186,10 @@ void SfxEditor::doExport() {
     }
     const std::string text = formatSfxAsm(model_);
     if (FILE* f = std::fopen(path.c_str(), "wb")) {
-        std::fwrite(text.data(), 1, text.size(), f);
-        std::fclose(f);
-        status_ = "Exported " + path;
+        const bool wrote = std::fwrite(text.data(), 1, text.size(), f) == text.size();
+        const bool closed = std::fclose(f) == 0;
+        status_ = (wrote && closed) ? "Exported " + path
+                                    : "Write error (disk full?) — " + path;
     } else {
         status_ = "Could not write " + path;
     }
