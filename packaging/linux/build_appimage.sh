@@ -60,7 +60,17 @@ fetch_extract() {
     (cd "${TOOLS}" && "./${outname}.AppImage" --appimage-extract >/dev/null && mv squashfs-root "${outname}.AppDir")
 }
 fetch_extract "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage" linuxdeploy
-fetch_extract "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" appimagetool
+# appimagetool depuis AppImageKit (l'ANCIEN dépôt), PAS le nouveau
+# AppImage/appimagetool. Raison : le nouveau appimagetool embarque un runtime
+# « static-pie » de type ELF ET_DYN et ne sait compresser qu'en zstd.
+# AppImageLauncher (libappimage ancien, encore majoritaire sur Mint/Ubuntu)
+# n'accepte que les runtimes ET_EXEC et rejette l'AppImage en « type -1 »
+# (le lancement direct ./POM1…AppImage marche quand même, mais pas
+# l'intégration double-clic). L'appimagetool d'AppImageKit produit un runtime
+# ET_EXEC + squashfs gzip → reconnu par AppImageLauncher. Le binaire POM1
+# empaqueté est identique (plancher glibc 2.27 inchangé) ; seul le petit runtime
+# d'amorçage change. Vérifié : ET_EXEC, magic AI\x02, monte en gzip, se lance.
+fetch_extract "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" appimagetool
 
 # 3. AppDir from scratch.
 rm -rf "${APPDIR}"

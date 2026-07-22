@@ -58,6 +58,13 @@ _Nothing yet._
 
 - **Linux AppImage now runs on glibc ≥ 2.27 distros** (e.g. Mint 19.x) — the
   release AppImage is built inside an Ubuntu 18.04 container.
+- **Linux AppImage now integrates with AppImageLauncher again** — the packager
+  was fetching the *new* `AppImage/appimagetool`, whose static-pie (ELF
+  `ET_DYN`) runtime AppImageLauncher rejects with "AppImages of type -1 are
+  currently not supported" (direct `./POM1…AppImage` launch was unaffected).
+  Reverted to AppImageKit's `appimagetool`, which emits a classic `ET_EXEC`
+  runtime + gzip squashfs; the packaged POM1 binary is byte-for-byte the same
+  (glibc 2.27 floor unchanged).
 - **Windows: VC++ runtime bundled app-local** so POM1 launches on a bare
   Windows without the redistributable installed.
 - **macOS: ad-hoc codesigning of POM1.app** fixes Gatekeeper refusing the
