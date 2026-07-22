@@ -81,7 +81,7 @@ jobs:
       # PINNED BY DIGEST for reproducibility — this exact frozen toolchain, not a
       # moving tag. After rebuilding via the build-bionic-image workflow, re-pin to
       # the new digest it prints (the `:bionic` tag still moves for convenience).
-      BUILDER_IMAGE: ghcr.io/habib256/pom1-bionic-builder@sha256:5fc8d95672fff07695927d268faff608377b2c175bee61a268ccd5a2f756ed85
+      BUILDER_IMAGE: ghcr.io/habib256/pom1-bionic-builder@sha256:c44b786517f041f779b082b813e84a17b141db3983fc0b28f2c3e4deedeb4cca
     steps:
       - uses: actions/checkout@v4
 
