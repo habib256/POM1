@@ -78,9 +78,10 @@ jobs:
       contents: read
       packages: read          # pull the builder image from GHCR
     env:
-      # Stable tag. For full reproducibility pin the digest the build-bionic-image
-      # workflow prints, e.g. ghcr.io/habib256/pom1-bionic-builder@sha256:<digest>.
-      BUILDER_IMAGE: ghcr.io/${{ github.repository_owner }}/pom1-bionic-builder:bionic
+      # PINNED BY DIGEST for reproducibility — this exact frozen toolchain, not a
+      # moving tag. After rebuilding via the build-bionic-image workflow, re-pin to
+      # the new digest it prints (the `:bionic` tag still moves for convenience).
+      BUILDER_IMAGE: ghcr.io/habib256/pom1-bionic-builder@sha256:5fc8d95672fff07695927d268faff608377b2c175bee61a268ccd5a2f756ed85
     steps:
       - uses: actions/checkout@v4
 
