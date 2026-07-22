@@ -1,0 +1,34 @@
+Codetank_GALAGADIAG.rom — TMS9918 sprite-pipeline bisection probe
+=================================================================
+Purpose: find out why Galaga's player ship (hardware sprite) is missing on
+the real P-LAB Apple-1 while the starfield (name table) renders fine — and
+while POM1 renders everything correctly under every condition it can model.
+
+Same 28c256 / 4000R format as the other CodeTank carts. The probe is written
+into BOTH 16 KB halves, so the board jumper does NOT matter — burn it, set
+either jumper, and boot with:  4000R
+
+It replays Galaga's EXACT video path in 4 steps. The white blocks in the
+top-left corner tell you which step is on screen. Press ANY KEY to advance.
+
+  STEP 1 (1 block)  Galaga's exact register init (16x16 sprites, SAT $1B00,
+                    sprite patterns $3800) + ship pattern upload.
+                    EXPECT: 1 block + a row of dots. No ship yet.
+  STEP 2 (2 blocks) ONE static VBlank-gated SAT write: ship + terminator.
+                    EXPECT: the ship sits motionless, bottom centre.
+  STEP 3 (3 blocks) Galaga's per-frame SAT rebuild (VBlank-gated), forever.
+                    EXPECT: the ship sweeps smoothly left-right.
+  STEP 4 (4 blocks) The same rebuild WITHOUT the VBlank gate.
+                    EXPECT: ship still sweeps (slight flicker is OK).
+                    Any key -> back to STEP 3 (cycle for filming).
+
+READ THE RESULT — report the FIRST step where the ship is absent:
+  * absent from STEP 2 on  -> a single gated SAT write already fails on your
+                              silicon (SAT address / gated-write path).
+  * OK in 2, absent in 3   -> the per-frame rebuild is the killer.
+  * OK in 2+3, absent in 4 -> active-display SAT writes drop harder than the
+                              openMSX model predicts — we widen the pads.
+  * OK everywhere          -> the video pipeline is innocent; we bisect
+                              Galaga's game-logic path next.
+
+A short phone-video of the whole run is perfect. Grazie mille!

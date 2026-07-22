@@ -53,13 +53,19 @@
 ;   $0280-$0BFF  CODE + small data tables (~2.4 KB capacity)
 ;   $0C00-$0CFF  sq_lo[256]   (low byte of i^2, page-aligned, BUILT AT BOOT)
 ;   $0D00-$0DFF  sq_hi[256]   (high byte of i^2, page-aligned, BUILT AT BOOT)
-;   $0E00-$0FFF  free
+;   $0E00-$0EFF  map256[256]  (colour-cycle byte remap, BUILT AT BOOT)
+;   $0F00-$0F0A  zone + colour-cycle state (see map256/zone_idx block below)
 ;
-; Keys: ESC = exit to Wozmon.
+; Keys: ESC = exit to Wozmon (any time).
+;       After a render completes the escape bands COLOUR-CYCLE forever
+;       (Claudio's psychedelic suggestion, 8 July 2026); any other key then
+;       renders the NEXT ZONE of the set (full view -> seahorse valley ->
+;       elephant valley -> period-3 bulb -> wrap). Q8.8 caps useful zoom at
+;       3x (step 1 LSB/pixel), so the detail zones are chunky but distinct.
 ; =============================================
 
         .import init_vdp_g2, disable_sprites
-        .import vdp_set_write
+        .import vdp_set_write, vdp_set_read
         .importzp pix_addr_lo, pix_addr_hi
         .import tms9918_pad18
         .import vdp_display_off, vdp_display_on
@@ -96,6 +102,23 @@ CELL_DY = Y_STEP * 8     ; 24
 ; Square tables (built at boot — see build_sq_table).
 sq_lo := $0C00
 sq_hi := $0D00
+
+; --- multi-zone viewport + end-of-render colour-cycle state (juillet 2026,
+; --- Claudio's 8-July suggestion + POM1 request). Parked in the free $0F00
+; --- page — the tight ZP cfg is full; the abs-addressing cost (~1c per
+; --- 5 000c pixel) is noise.
+map256   := $0E00       ; colour-byte remap table (BUILT AT BOOT)
+zone_idx := $0F00       ; 0..ZONE_COUNT-1, current viewport
+v_x0_lo  := $0F01       ; per-zone X_START (Q8.8, two's complement)
+v_x0_hi  := $0F02
+v_y0_lo  := $0F03       ; per-zone Y_START
+v_y0_hi  := $0F04
+v_xstep  := $0F05       ; per-zone pixel steps (Q8.8 LSBs)
+v_ystep  := $0F06
+v_cdx    := $0F07       ; v_xstep*8 (per-cell increments)
+v_cdy    := $0F08       ; v_ystep*8
+cyc_lo   := $0F09       ; colour-cycle VRAM walk pointer
+cyc_hi   := $0F0A
 
 ; =============================================
 .segment "ZEROPAGE"
@@ -165,27 +188,35 @@ start:
         JSR print_str_ax
 
         JSR build_sq_table        ; sq_lo[256], sq_hi[256] from i^2 recurrence
+        JSR build_cycle_map       ; map256[$0E00] for the end-of-render cycle
         JSR init_vdp_g2           ; Mode II + linear name + colour table
         JSR disable_sprites       ; Y=$D0 sentinel — silicon-strict floor 6c
         JSR clear_pattern_table   ; zero $0000-$17FF (6 KB pattern table)
 
-        ; --- main render loop: cell-by-cell, raster top-to-bottom ---
+        LDA #0
+        STA zone_idx
+
+; --- main render loop: cell-by-cell, raster top-to-bottom. Re-entered on
+; --- every zone switch; the new fractal progressively overwrites the old
+; --- one cell by cell (no clear needed — render_cell writes all 16 bytes).
+render_zone:
+        JSR load_zone             ; zone_idx -> v_x0/v_y0/v_xstep/... ZP vars
         LDA #0
         STA cell_y
 
-        ; Initialise my_cell to Y_START. Will increment by CELL_DY every cell row.
-        LDA #Y_START_LO
+        ; Initialise my_cell to the zone's Y start. Increments by v_cdy per row.
+        LDA v_y0_lo
         STA my_cell_lo
-        LDA #Y_START_HI
+        LDA v_y0_hi
         STA my_cell_hi
 
 @yloop:
         ; Reset cell_x and mx_cell to start of row.
         LDA #0
         STA cell_x
-        LDA #X_START_LO
+        LDA v_x0_lo
         STA mx_cell_lo
-        LDA #X_START_HI
+        LDA v_x0_hi
         STA mx_cell_hi
 
 @xloop:
@@ -195,7 +226,7 @@ start:
         ; Advance to next cell horizontally.
         CLC
         LDA mx_cell_lo
-        ADC #CELL_DX
+        ADC v_cdx
         STA mx_cell_lo
         LDA mx_cell_hi
         ADC #0
@@ -209,7 +240,7 @@ start:
         ; Advance to next cell row.
         CLC
         LDA my_cell_lo
-        ADC #CELL_DY
+        ADC v_cdy
         STA my_cell_lo
         LDA my_cell_hi
         ADC #0
@@ -220,14 +251,9 @@ start:
         CMP #24
         BNE @yloop
 
-        ; --- render done — wait for ESC ---
-@wait:
-        LDA KBDCR
-        BPL @wait
-        LDA KBD
-        CMP #KEY_ESC
-        BNE @wait
-        JMP exit_to_wozmon
+        ; --- render done — psychedelic colour cycle until a key arrives:
+        ; --- ESC exits to Wozmon, any other key renders the next zone.
+        JMP cycle_colors
 
 check_esc:
         LDA KBDCR
@@ -285,7 +311,7 @@ render_cell:
         ; mx += X_STEP
         CLC
         LDA mx_lo
-        ADC #X_STEP
+        ADC v_xstep              ; per-zone step (was #X_STEP)
         STA mx_lo
         LDA mx_hi
         ADC #0
@@ -310,7 +336,7 @@ render_cell:
         ; my_row += Y_STEP
         CLC
         LDA my_row_lo
-        ADC #Y_STEP
+        ADC v_ystep              ; per-zone step (was #Y_STEP)
         STA my_row_lo
         LDA my_row_hi
         ADC #0
@@ -794,6 +820,137 @@ clear_pattern_table:
         RTS
 
 
+; ----------------------------------------------------------------------------
+; load_zone: zone_idx (0..ZONE_COUNT-1) -> viewport ZP vars. Each zones row is
+;   8 bytes (x0_lo, x0_hi, y0_lo, y0_hi, xstep, ystep, pad, pad) so the index
+;   is a plain *8 shift. Cell increments are derived (step*8).
+; ----------------------------------------------------------------------------
+load_zone:
+        LDA zone_idx
+        ASL
+        ASL
+        ASL                     ; *8
+        TAX
+        LDA zones+0,X
+        STA v_x0_lo
+        LDA zones+1,X
+        STA v_x0_hi
+        LDA zones+2,X
+        STA v_y0_lo
+        LDA zones+3,X
+        STA v_y0_hi
+        LDA zones+4,X
+        STA v_xstep
+        ASL
+        ASL
+        ASL
+        STA v_cdx               ; xstep*8
+        LDA zones+5,X
+        STA v_ystep
+        ASL
+        ASL
+        ASL
+        STA v_cdy               ; ystep*8
+        RTS
+
+; ----------------------------------------------------------------------------
+; build_cycle_map: map256[$0E00 + b] = (cycmap[b>>4]<<4) | cycmap[b&15] — one
+;   lookup remaps BOTH nibbles of a Mode-2 colour byte in the cycle loop.
+; ----------------------------------------------------------------------------
+build_cycle_map:
+        LDX #0
+@lp:    TXA
+        LSR
+        LSR
+        LSR
+        LSR
+        TAY
+        LDA cycmap,Y
+        ASL
+        ASL
+        ASL
+        ASL
+        STA tmp
+        TXA
+        AND #$0F
+        TAY
+        LDA cycmap,Y
+        ORA tmp
+        STA map256,X
+        INX
+        BNE @lp
+        RTS
+
+; ----------------------------------------------------------------------------
+; cycle_colors: endless psychedelic crawl over the finished picture — remap
+;   the whole Mode-2 colour table ($2000-$37FF) through map256, 16 bytes per
+;   chunk (read into patbuf/colbuf, write back mapped), ~0.5 s per full pass.
+;   Key poll between chunks: ESC -> Wozmon, any other key -> next zone.
+;   In-set black and the transparent nibble are fixed points of cycmap, so
+;   only the escape bands animate — they crawl inward along the palette.
+; ----------------------------------------------------------------------------
+cycle_colors:
+        LDA #$00
+        STA cyc_lo
+        LDA #$20
+        STA cyc_hi
+@chunk:
+        ; read 16 colour bytes at cyc into patbuf..colbuf (16 contiguous ZP)
+        LDA cyc_lo
+        STA pix_addr_lo
+        LDA cyc_hi
+        STA pix_addr_hi
+        JSR vdp_set_read
+        LDY #0
+@rd:    JSR tms9918_pad18
+        LDA VDP_DATA
+        STA patbuf,Y
+        INY
+        CPY #16
+        BNE @rd
+        ; write them back remapped through map256
+        LDA cyc_lo
+        STA pix_addr_lo
+        LDA cyc_hi
+        STA pix_addr_hi
+        JSR vdp_set_write
+        LDY #0
+@wr:    LDX patbuf,Y
+        LDA map256,X
+        STA VDP_DATA
+        JSR tms9918_pad18
+        INY
+        CPY #16
+        BNE @wr
+        ; advance 16, wrap $3800 -> $2000
+        CLC
+        LDA cyc_lo
+        ADC #16
+        STA cyc_lo
+        BCC @nokey
+        INC cyc_hi
+        LDA cyc_hi
+        CMP #$38
+        BNE @nokey
+        LDA #$20
+        STA cyc_hi
+@nokey:
+        LDA KBDCR
+        BPL @chunk              ; no key -> keep crawling
+        LDA KBD
+        CMP #KEY_ESC
+        BNE @next_zone
+        JMP exit_to_wozmon
+@next_zone:
+        INC zone_idx
+        LDA zone_idx
+        CMP #ZONE_COUNT
+        BNE @go
+        LDA #0
+        STA zone_idx
+@go:    JMP render_zone
+
+
 ; =============================================
 ; mandel_palette — iteration count → TMS9918 colour mapping.
 ;   Index 0      = in-set pixels (never escaped) → black
@@ -806,6 +963,23 @@ clear_pattern_table:
 ; instead of jblang's `color = iter + 1` which puts colours 4 (dark
 ; blue) and 5 (light blue) BETWEEN warms and greens — the fix the
 ; user spotted in the May 2026 screenshot review.
+; --- Multi-zone viewport table: 8 bytes per zone (x0_lo, x0_hi, y0_lo,
+; --- y0_hi, xstep, ystep, pad, pad), Q8.8 two's complement. y0 = yc - 96*step,
+; --- x0 = xc - 128*step. Step 1 = the Q8.8 precision floor (3x zoom).
+ZONE_COUNT = 4
+zones:
+        .byte $00,$FE,$E0,$FE, 3,3, 0,0  ; 0: full set        x[-2,1] y[+/-1.125]
+        .byte $C0,$FE,$BC,$FF, 1,1, 0,0  ; 1: seahorse valley centre (-0.75, 0.11)
+        .byte $C6,$FF,$A0,$FF, 1,1, 0,0  ; 2: elephant valley centre ( 0.275, 0)
+        .byte $60,$FF,$60,$00, 1,1, 0,0  ; 3: period-3 bulb   centre (-0.125, 0.75)
+
+; --- Colour-cycle nibble successor: transparent(0)/black(1) are fixed
+; --- points; the 14 escape colours rotate along the mandel_palette band
+; --- order (06 08 09 0A 0B 0C 02 03 07 05 04 0D 0E 0F -> wrap).
+cycmap:
+        .byte $00,$01,$03,$07,$0D,$04,$08,$05
+        .byte $09,$0A,$0B,$0C,$02,$0E,$0F,$06
+
 mandel_palette:
         .byte $01    ; iter 0 — black (in-set)
         .byte $06    ; iter 1 — dark red    (just outside the set)
@@ -831,6 +1005,8 @@ greeting:
         .byte "MODE-2 BITMAP, Q8.8 FIXED-POINT", $0D
         .byte "256X192, 16 ITERATIONS", $0D
         .byte "ESC = EXIT TO WOZMON", $0D
+        .byte "AFTER RENDER: COLOR CYCLE +", $0D
+        .byte "ANY KEY = NEXT ZONE OF THE SET", $0D
         .byte $0D
         .byte $00
 

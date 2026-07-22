@@ -144,7 +144,8 @@ start:
         STA frame_hi
 
 @frame:
-        WAIT_VBLANK             ; clears bits 5/6/7 of status register
+        WAIT_VBLANK_SAFE        ; clears bits 5/6/7 of status register
+                                ; (hang-proof: bounded poll, see tms9918.inc)
 
         ; --- Push palette_top (cool colours) to colour table $2000 ---
         JSR push_palette_top

@@ -10,6 +10,47 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — WAIT_VBLANK_SAFE coverage completed + hostile-F burn-gate pass (Claudio's 8-July silicon report)
+
+- **Three shipped TMS9918 programs still carried an unbounded frame-flag
+  poll** after the 9-July `WAIT_VBLANK_SAFE` hardening pass — the exact class
+  that black-screened TMS_Rogue on Claudio's Replica-1: **TMS LOGO V2.6**
+  (`erase_turtle`, on *every* visible REPL command — a hostile-F chip froze
+  the interpreter on the first `FD`), **Nyan** (manual `BIT/BPL` spin in
+  `main_loop`) and **demo_split**. All three now use the bounded macro.
+  Negative proof: the pre-fix `Codetank_BASIC_LOGO.rom` under
+  `--tms-frameflag-hostile` freezes at the first turtle command; the rebuilt
+  one draws the full test scene.
+- **The LOGO 16 KB bank was full to 2 bytes** — the +18 B macro delta is paid
+  for by converting 27 `JSR x / RTS` pairs to `JMP x` tail-calls
+  (cycle-identical, −27 B → 8 B free).
+- **The Claudio burn gate now runs a `--tms-frameflag-hostile` boot pass per
+  scenario** (`tools/verify_codetank_roms.py`) — the one real-silicon
+  condition it never covered. 14/14 scenarios clean.
+- New **`Codetank_GALAGADIAG.rom`** bisection probe (ROGUEDIAG pattern):
+  Galaga's in-game player-ship sprite is missing on real silicon while POM1
+  renders it under every modelled condition (strict + vram-noise +
+  dram-refresh + ram-poison + hostile-F). The probe replays Galaga's exact
+  video path in 4 key-advanced steps (init / static SAT / gated rebuild /
+  ungated rebuild) so the first failing step pins the divergence.
+
+### Added — TMS Chess file letters, Mandelbrot zones + colour cycle (Claudio's 8-July wishlist)
+
+- **TMS_Chess**: file letters a-h now render as 5x6 grey micro-glyphs in the
+  bottom-left cell of every rank-1 square (the full-height board has no room
+  for a coordinate strip; piece bases never reach that cell's cols 0-5, and
+  `cellcol_for` forces the glyph cell's fg to grey so it reads on empty and
+  occupied squares alike).
+- **TMS_Mandel**: after the render completes the escape bands **colour-cycle
+  forever** (the whole Mode-2 colour table remapped through a boot-built
+  256-byte permutation table, ~0.5 s per pass — in-set black stays fixed so
+  only the bands crawl); any non-ESC key then renders the **next zone of the
+  set** (full view -> seahorse valley -> elephant valley -> period-3 bulb ->
+  wrap, Q8.8-precision-capped at 3x zoom). Viewport constants became
+  per-zone variables; ZP being full, the new state lives in the free `$0F00`
+  page. Standalone `TMS_Mandel.txt` / `TMS_Logo_16k.txt` / `TMS_Split.txt`
+  regenerated from the fixed sources.
+
 ### Added — Rogue ported to the GEN2 HGR card (`sketchs/gen2/game_rogue/`)
 
 - **`HGR_Rogue`** — full port of the TMS9918 roguelike to Uncle Bernie's GEN2

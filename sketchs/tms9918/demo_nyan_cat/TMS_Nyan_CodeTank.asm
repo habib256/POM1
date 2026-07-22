@@ -88,10 +88,12 @@ start:
         STA vsync_count
 
 main_loop:
-        BIT VDP_CTRL              ; drain stale F flag
-@v_wait:
-        BIT VDP_CTRL
-        BPL @v_wait
+        ; VBlank sync via the shared hang-proof macro (drain + bounded
+        ; poll). The old manual `BIT/BPL @v_wait` spin here was
+        ; UNBOUNDED — on silicon revisions that occasionally miss the
+        ; F flag (the TMS_Rogue black-screen class, see tms9918.inc)
+        ; it froze the animation for good.
+        WAIT_VBLANK_SAFE
 
         LDA KBDCR
         BPL @no_key

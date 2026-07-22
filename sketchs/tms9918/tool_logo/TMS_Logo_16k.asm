@@ -461,15 +461,13 @@ new_prompt:
         JSR ECHO
         LDA #' '
         ORA #$80
-        JSR ECHO
-        RTS
+        JMP ECHO  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 @std:   LDA #'?'
         ORA #$80
         JSR ECHO
         LDA #' '
         ORA #$80
-        JSR ECHO
-        RTS
+        JMP ECHO  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 
 banner_msg:
         .byte $0D, "APPLE-1 LOGO V2.6 - HELP", $0D
@@ -902,8 +900,7 @@ read_line:
 @cr:    LDA #$0D
         STA line_buf,X
         ORA #$80              ; A still $0D
-        JSR ECHO
-        RTS
+        JMP ECHO  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 
 ; ============================================================================
 ; poll_break: non-blocking check of $D011 for ESC ($1B) or Ctrl-G ($07).
@@ -1506,8 +1503,7 @@ parse_dec_term:
         STA arg_lo
         STA arg_hi
         LDA #ERR_UNK_VAR
-        JSR print_err
-        RTS
+        JMP print_err  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 @dec:   LDA #0
         STA arg_lo
         STA arg_hi
@@ -1587,8 +1583,7 @@ cmd_setpc:
         STA pen_color
         LDA sprite_mode
         BEQ @bitmap
-        JSR draw_turtle            ; sprite path: re-emit sprite-0 attribute
-        RTS
+        JMP draw_turtle            ; sprite path: re-emit sprite-0 attribute  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 @bitmap:
         LDA turtle_visible
         BEQ @done                  ; nothing to repaint
@@ -2005,11 +2000,9 @@ cmd_make:
         INC n_vars
         RTS
 @bad:   LDA #ERR_BAD_NAME
-        JSR print_err
-        RTS
+        JMP print_err  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 @full:  LDA #ERR_FULL
-        JSR print_err
-        RTS
+        JMP print_err  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 
 ; read_var_name: read up to NAME_LEN identifier chars (A-Z + 0-9) at
 ;   line_buf,line_idx into mnem_buf, uppercased, space-padded.
@@ -2133,12 +2126,10 @@ cmd_to:
         RTS
 @bad_name:
         LDA #ERR_BAD_NAME
-        JSR print_err
-        RTS
+        JMP print_err  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 @full:
         LDA #ERR_FULL
-        JSR print_err
-        RTS
+        JMP print_err  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 
 .ifdef CODETANK_BUILD
 ; ============================================================================
@@ -2246,8 +2237,7 @@ cmd_list:
         JMP @body
 @done:  RTS
 @bad:   LDA #ERR_BAD_NAME
-        JSR print_err
-        RTS
+        JMP print_err  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 
 ; --- LIST (no arg) -- list every proc name on the Apple-1 character
 ;     display via ECHO. No graphics; text output is more practical for
@@ -2331,8 +2321,7 @@ cmd_edit:
         RTS
 @bad_name:
         LDA #ERR_BAD_NAME
-        JSR print_err
-        RTS
+        JMP print_err  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 
 .endif
 
@@ -2370,8 +2359,7 @@ proc_collect_line:
         ; print "OK" so the user knows the definition closed
         LDA #1
         STA cmd_status
-        JSR print_status
-        RTS
+        JMP print_status  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 @append:
         LDA cur_proc_lo
         STA mptr_lo
@@ -2659,8 +2647,7 @@ proc_invoke:
         BCC @ok_to_call
         ; control stack full -- non-tail recursion exceeded depth limit
         LDA #ERR_FULL
-        JSR print_err
-        RTS
+        JMP print_err  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 @ok_to_call:
         ; --- 2. push outer body cursor/total (so they're free to scratch) ---
         LDA proc_body_cursor
@@ -2921,8 +2908,7 @@ cmd_print:
         JSR print_decimal
         LDA #$0D
         ORA #$80
-        JSR ECHO
-        RTS
+        JMP ECHO  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 @str:   INX
         STX line_idx
 @sl:    LDX line_idx
@@ -2941,8 +2927,7 @@ cmd_print:
         JMP @sl
 @sdone: LDA #$0D
         ORA #$80
-        JSR ECHO
-        RTS
+        JMP ECHO  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 
 ; (print_decimal + div_arg_by_10 moved to math.asm.)
 
@@ -3071,8 +3056,7 @@ cmd_home:
         ; sprite without leaving a bitmap trail. CS still implicitly
         ; resets pen via main: -> cmd_cs's clear_bitmap path (the screen
         ; is empty so it doesn't matter).
-        JSR draw_turtle
-        RTS
+        JMP draw_turtle  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 
 cmd_cs:
         ; clear_bitmap wipes everything including any visible turtle, so
@@ -3093,8 +3077,7 @@ cmd_seth:
         STA th_lo
         LDA arg_hi
         STA th_hi
-        JSR turn_draw
-        RTS
+        JMP turn_draw  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 
 cmd_setxy:
         JSR erase_turtle
@@ -3124,8 +3107,7 @@ cmd_setxy:
         BCC @yok
         LDA #191
 @yok:   STA ty_lo
-        JSR draw_turtle
-        RTS
+        JMP draw_turtle  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 
 cmd_tr:
         JSR turn_erase
@@ -3138,8 +3120,7 @@ cmd_tr:
         ADC arg_hi
         STA th_hi
         JSR norm360
-        JSR turn_draw
-        RTS
+        JMP turn_draw  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 
 cmd_tl:
         JSR turn_erase
@@ -3159,8 +3140,7 @@ cmd_tl:
         ADC tmp2
         STA th_hi
         JSR norm360
-        JSR turn_draw
-        RTS
+        JMP turn_draw  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 
 ; (mod360_arg + norm360 moved to math.asm.)
 
@@ -3339,8 +3319,7 @@ fd_common:
 .endif
         LDA ny_save
         STA ty_lo
-        JSR draw_turtle
-        RTS
+        JMP draw_turtle  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 
 ; mod360_tmp: reduce tmp:tmp2 modulo 360.
 ; (mod360_tmp + signed_sin + mul_dist_by_signed + negate_prod + sin_q
@@ -3978,8 +3957,7 @@ trace_turtle_lines:
         STA ln_x1h
         LDA ty0
         STA ln_y1
-        JSR line_xy16
-        RTS
+        JMP line_xy16  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 
 ; gen2_emote_vsync: coarse V-blank sync (HST0 = bit 7 of any $C25x read).
 ;   Called at the head of every visible EMOTE transition (erase_turtle @emote),
@@ -4317,8 +4295,7 @@ cmd_setshape:
         JSR apply_sprite_size     ; spr_xoff / spr_yoff
         LDA #1
         STA sprite_mode
-        JSR draw_turtle           ; blit the new emote
-        RTS
+        JMP draw_turtle           ; blit the new emote  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 @adv:   CLC
         LDA mptr_lo
         ADC #(NAME_LEN+3)
@@ -4327,8 +4304,7 @@ cmd_setshape:
         INC mptr_hi
         JMP @sl
 @bad:   LDA #ERR_BAD_NAME
-        JSR print_err
-        RTS
+        JMP print_err  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 
 .else
 arrow_save_bbox:
@@ -4436,8 +4412,7 @@ trace_turtle_lines:
         STA ln_x1
         LDA ty0
         STA ln_y1
-        JSR line_xy
-        RTS
+        JMP line_xy  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 
 ; --- heading_to_octant + apply_sprite_size live in
 ;     dev/lib/tms9918/sprite_helpers.asm. Caller-provided ZP wiring is
@@ -4515,9 +4490,12 @@ erase_turtle:
         BEQ @done
         ; Sync to VBlank before the bbox restore + line draw that
         ; follows in the caller. Every visible command path routes
-        ; through here, so a single WAIT_VBLANK paces the whole REPL
-        ; render burst.
-        WAIT_VBLANK
+        ; through here, so a single sync paces the whole REPL render
+        ; burst. SAFE variant: on silicon revisions that occasionally
+        ; miss the F flag (the TMS_Rogue black-screen class, see
+        ; tms9918.inc) the bounded poll gives up after ~0.4 s instead
+        ; of freezing the interpreter mid-command.
+        WAIT_VBLANK_SAFE
         JSR arrow_restore_bbox
         LDA #0
         STA turtle_visible
@@ -4686,12 +4664,10 @@ cmd_setshape:
         STA VDP_CTRL
 @reposition:
         ; Reposition sprite at the current turtle (tx, ty).
-        JSR draw_turtle
-        RTS
+        JMP draw_turtle  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 @bad_name:
         LDA #ERR_BAD_NAME
-        JSR print_err
-        RTS
+        JMP print_err  ; tail-call (was JSR+RTS; -1 B, juillet 2026 bank squeeze)
 .endif  ; LOGO_GEN2 (HGR turtle subsystem) vs TMS9918 sprite/VRAM region
 
 ; shape_table: name (NAME_LEN = 6 bytes) + size byte (8 or 32) +

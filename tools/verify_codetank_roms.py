@@ -19,6 +19,13 @@ runs every CodeTank bank under the HARSHEST conditions POM1 can model:
                      loops run slower than on POM1's default Briel/SRAM
                      model, shifting every VDP access phase.
 
+Plus one EXTRA run per scenario with --tms-frameflag-hostile on top: the
+status frame flag F is never set, so any unbounded VBlank poll (naked
+`BIT $CC01 / BPL` spin or the lib's plain WAIT_VBLANK) hangs forever.
+This is the exact condition that black-screened TMS_Rogue on Claudio's
+Replica-1 (2026-07-08 video) while tolerant POM1 rendered it fine — only
+WAIT_VBLANK_SAFE (bounded poll, tms9918.inc) survives it.
+
 For each ROM x jumper a scripted run boots the bank (4000R), walks the menu
 with deterministic key injection (--paste-at-cycle), and checks:
   1. ZERO `[TMS9918 DROP` lines on stderr (a drop on POM1-strict means lost
@@ -143,14 +150,22 @@ def run_scenario(pom1: Path, name, rom, jumper, keys, checkpoints,
         return False, f"missing ROM {rom_path}"
     cps = checkpoints[:1] if quick else checkpoints
     problems = []
-    for cp in cps:
-        png = out_dir / f"{name}_{cp // M}M.png"
+    # Standard checkpoints under the three real-silicon conditions, plus one
+    # hostile-frame-flag run at the last checkpoint: F never sets, so an
+    # unbounded VBlank poll anywhere on the boot/render path = timeout or a
+    # blank frame here (the TMS_Rogue 2026-07-08 black-screen class).
+    runs = [(cp, False) for cp in cps] + [(cps[-1], True)]
+    for cp, hostile in runs:
+        tag = "_hostileF" if hostile else ""
+        png = out_dir / f"{name}_{cp // M}M{tag}.png"
         cmd = [str(pom1), "--headless", "--preset", "9",
                "--silicon-strict", "--vram-noise", "--dram-refresh",
                "--enable", "codetank",
                "--codetank-rom", str(rom_path),
                "--codetank-jumper", jumper,
                "--run", "0x4000"]
+        if hostile:
+            cmd.insert(4, "--tms-frameflag-hostile")
         for (cyc, k) in keys:
             if cyc < cp:
                 cmd += ["--paste-at-cycle", str(cyc), k]
@@ -159,21 +174,21 @@ def run_scenario(pom1: Path, name, rom, jumper, keys, checkpoints,
             proc = subprocess.run(cmd, cwd=ROOT, capture_output=True,
                                   text=True, timeout=420)
         except subprocess.TimeoutExpired:
-            problems.append(f"@{cp // M}M: TIMEOUT")
+            problems.append(f"@{cp // M}M{tag}: TIMEOUT")
             continue
         drops = [ln for ln in proc.stderr.splitlines() if DROP_RE.match(ln)]
         if drops:
             sites = Counter(re.search(r"PC=\$(\w+)", d).group(1)
                             for d in drops if "PC=$" in d)
-            problems.append(f"@{cp // M}M: {len(drops)} VDP DROPS "
+            problems.append(f"@{cp // M}M{tag}: {len(drops)} VDP DROPS "
                             f"(top PCs: {sites.most_common(3)})")
         if proc.returncode != 0:
-            problems.append(f"@{cp // M}M: POM1 rc={proc.returncode}")
+            problems.append(f"@{cp // M}M{tag}: POM1 rc={proc.returncode}")
         elif png_is_boring(png):
-            problems.append(f"@{cp // M}M: frame blank/uniform ({png.name})")
+            problems.append(f"@{cp // M}M{tag}: frame blank/uniform ({png.name})")
     if problems:
         return False, "; ".join(problems)
-    return True, f"{len(cps)} checkpoint(s) clean"
+    return True, f"{len(cps)} checkpoint(s) + hostile-F clean"
 
 
 def main() -> int:
@@ -199,7 +214,8 @@ def main() -> int:
     scenarios = [s for s in SCENARIOS
                  if not args.only or args.only in s[0]]
     print(f"Claudio gate: {len(scenarios)} scenario(s), conditions = "
-          f"silicon-strict + vram-noise + dram-refresh")
+          f"silicon-strict + vram-noise + dram-refresh "
+          f"(+ frameflag-hostile boot pass)")
     print(f"Checkpoint PNGs -> {out_dir}\n")
 
     failures = 0

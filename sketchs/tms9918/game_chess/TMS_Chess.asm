@@ -627,6 +627,28 @@ draw_square:
         ORA cellbg
         STA ccn                 ; normal cell colour
         JSR compose_piece
+        ; Rank-1 squares carry their file letter (a..h) in the bottom-left
+        ; cell (cell 6) — OR the 5x6 micro-glyph into the composed buffer.
+        ; Piece pixels never reach cols 0..5 of that cell (the widest base,
+        ; knight/rook $3F, starts at square col 6), so the letter reads clean.
+        ; (Claudio's 8-July request: file letters to follow the moves.)
+        LDA dsq
+        AND #$F0
+        BNE @noletter           ; not rank 1 (dsq = rank*16 + file)
+        LDA dsq                 ; rank==0 -> dsq == file (0..7)
+        ASL
+        ASL
+        ASL                     ; file*8
+        TAX
+        LDY #0
+@orlp:  LDA filglyph8,X
+        ORA cbuf+48,Y           ; cell 6 = cbuf rows 48..55
+        STA cbuf+48,Y
+        INX
+        INY
+        CPY #8
+        BNE @orlp
+@noletter:
         JSR set_corner_color
         JMP draw_cells9
 
@@ -667,6 +689,19 @@ cellcol_for:
 @cf_corner:
         LDA cellcolor2
         STA cellcolor
+        ; Rank-1 cell 6 hosts the file letter: force fg = grey so the glyph
+        ; shows on empty squares too (their colour is bg in BOTH nibbles).
+        ; Costs 2 grey pixels on a knight/rook base corner — invisible.
+        CPX #6
+        BNE @cf_done
+        LDA dsq
+        AND #$F0
+        BNE @cf_done
+        LDA cellcolor
+        AND #$0F
+        ORA #$E0                ; fg = grey (matches the rank-digit pen)
+        STA cellcolor
+@cf_done:
         RTS
 
 ; ---------------------------------------------------------------------------
@@ -794,6 +829,25 @@ draw_empty9:
         STA mptr_lo
         LDA #>zeros8
         STA mptr_hi
+        ; Rank-1 empty squares: cell 6 shows the file letter instead of a
+        ; blank — point mptr at the letter's 8-row block (fg forced to grey
+        ; by cellcol_for so it renders on the both-nibbles-bg colour).
+        CPX #6
+        BNE @e_std
+        LDA dsq
+        AND #$F0
+        BNE @e_std              ; not rank 1
+        LDA dsq                 ; rank==0 -> dsq == file (0..7)
+        ASL
+        ASL
+        ASL                     ; file*8
+        CLC
+        ADC #<filglyph8
+        STA mptr_lo
+        LDA #>filglyph8
+        ADC #0
+        STA mptr_hi
+@e_std:
         STX save_x
         JSR cellcol_for         ; per-cell colour (corner cursor highlight)
         JSR blit_cell
@@ -1153,7 +1207,9 @@ clear_movelist:
         RTS
 
 ; draw_coords: rank numbers 1..8 down the left margin (static, drawn once).
-;   File letters are dropped -- the full-height board leaves no bottom row.
+;   File letters live INSIDE the rank-1 squares (bottom-left cell, drawn by
+;   draw_square / draw_empty9 via filglyph8) — the full-height board leaves
+;   no bottom row for a dedicated coordinate strip.
 draw_coords:
 .ifdef CODETANK_BUILD
         LDA #$0E                ; grey
@@ -1203,6 +1259,20 @@ puts:
 ; Read-only data.
 ; ---------------------------------------------------------------------------
 zeros8:    .byte 0,0,0,0,0,0,0,0
+
+; filglyph8[file*8 .. +7]: the file letter (A..H) as one 8-row cell block —
+; blank row, 6 rows of a 5x6 micro-glyph at cell cols 1..5, blank row.
+; ORed into cell 6 (bottom-left) of every rank-1 square; fg forced to grey
+; by cellcol_for so it reads on empty AND occupied squares alike.
+filglyph8:
+        .byte $00,$38,$44,$44,$7C,$44,$44,$00   ; A
+        .byte $00,$78,$44,$78,$44,$44,$78,$00   ; B
+        .byte $00,$3C,$40,$40,$40,$40,$3C,$00   ; C
+        .byte $00,$78,$44,$44,$44,$44,$78,$00   ; D
+        .byte $00,$7C,$40,$78,$40,$40,$7C,$00   ; E
+        .byte $00,$7C,$40,$78,$40,$40,$40,$00   ; F
+        .byte $00,$3C,$40,$4C,$44,$44,$3C,$00   ; G
+        .byte $00,$44,$44,$7C,$44,$44,$44,$00   ; H
 
 ; col_x[i] = i*24 -- board file/rank pixel offsets AND cell-row*24 for compose.
 col_x:     .byte 0, 24, 48, 72, 96, 120, 144, 168

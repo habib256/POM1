@@ -111,10 +111,12 @@ public:
     // is why TMS_Rogue was black on Claudio's Replica-1 yet fine in POM1 (which
     // sets F deterministically every frame). Turning this ON makes any naked
     // WAIT_VBLANK hang and any bounded/timed one survive — a stress test for
-    // vblank-wait robustness. NOT bundled into siliconStrictMode by default: the
-    // shipped Snake/Galaga still use the lib's unbounded WAIT_VBLANK and would
-    // hang the burn gate (a latent risk of their own, but out of scope here).
-    // Opt-in via --tms-frameflag-hostile. Default OFF.
+    // vblank-wait robustness. Since juillet 2026 every shipped title syncs via
+    // WAIT_VBLANK_SAFE (bounded poll, tms9918.inc) and the burn gate
+    // (tools/verify_codetank_roms.py) runs a hostile-F boot pass per scenario.
+    // NOT bundled into siliconStrictMode: hostile-F models a broken/worst-case
+    // chip, not the normal strict timing. Opt-in via --tms-frameflag-hostile.
+    // Default OFF.
     void setFrameFlagHostile(bool enabled) { frameFlagHostile = enabled; }
     bool isFrameFlagHostile() const { return frameFlagHostile; }
 
