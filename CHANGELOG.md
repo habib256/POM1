@@ -10,6 +10,64 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [1.9.3] — 2026-07-22
+
+### Fixed — pre-release review pass (2026-07-22)
+
+- **GEN2 HGR: stale/black card window after snapshot load or paused rewind
+  scrub** — the frame-atomic latch (the only thing the renderer reads) was
+  never re-seeded on restore, so the display kept the pre-restore frame until
+  the CPU completed a full frame (never, while paused). `readSnapshotSections`
+  now re-seeds both latches from the restored RAM, and UI hex-editor pokes to
+  `$2000-$5FFF` re-seed too so paused edits are visible immediately.
+- **TMS9918 Paint/Sprite editors: "auto-plug" never actually plugged the
+  card** — the menu/render paths set the UI flags but never called
+  `setTMS9918Enabled(true)` (the deferred-plug countdown was never armed), so
+  `$CC00/$CC01` stayed unmapped and the Graphic Card window stayed black while
+  the editor canvas worked via `editorPokeVram`. All four sites now plug
+  directly, mirroring the VDP Inspector.
+- **HGR Sprite editor: undo replayed strokes in forward order** — a drag
+  touching the same byte twice was only partially undone; the replay now walks
+  the ops in reverse like the TMS editor.
+- **HGR Sprite editor: Save PNG heap over-read on ×2 sprites larger than the
+  page** — the crop now clamps to the rendered 280×192 page instead of reading
+  up to 560×384 out of bounds.
+- **TMS9918 Paint editor: "Clear page" wiped the sprite pattern bank** — the
+  Graphics II clear ran to `$3FFF` instead of stopping at the colour table's
+  end (`$37FF`), erasing every sprite shared with the TMS Sprite editor.
+- **macOS Metal: per-frame autorelease leak** — `nextDrawable`/`commandBuffer`
+  return autoreleased objects and the GLFW main loop never drains a pool, so
+  each frame leaked a reference pinning a `CAMetalDrawable` (risking drawable
+  starvation). `beginFrame` now wraps the acquisition in an
+  `@autoreleasepool`.
+
+### Added — previously unlogged user-visible work this cycle
+
+- **Beeper SFX editor** (50-cue bank) and **SID Tracker editor** (built-in tune
+  bank + live SID preview) — two new sound tools.
+- **Buzzard Bait ported to the GEN2 HGR card**
+  (`software/Graphic HGR/BuzzardBait.txt`), following the Apple II HGR port
+  recipe (soft-switch remap + `$FCA8` WAIT + keyboard shim).
+- **Fixed IJKL controls in every game** — the QWERTY/AZERTY layout selector is
+  removed; all Apple-1 games now use the same IJKL movement keys.
+- **Interactive Apple-1 keyboard photo gains functional CLEAR/RESET keycaps.**
+
+### Fixed — previously unlogged first-launch / platform fixes this cycle
+
+- **Linux AppImage now runs on glibc ≥ 2.27 distros** (e.g. Mint 19.x) — the
+  release AppImage is built inside an Ubuntu 18.04 container.
+- **Windows: VC++ runtime bundled app-local** so POM1 launches on a bare
+  Windows without the redistributable installed.
+- **macOS: ad-hoc codesigning of POM1.app** fixes Gatekeeper refusing the
+  unsigned bundle.
+- **WASM: window layouts survive page reloads** — `ini/` is an IDBFS mount
+  flushed on `pagehide`, plus a debounced layout autosave (~2 s) on desktop so
+  crashes lose seconds, not the session.
+- **Undocumented multi-byte 6502 opcodes** now advance PC by their real NMOS
+  operand length (dispatch + disassembler), fixing instruction-stream desync.
+
 ### Fixed — WAIT_VBLANK_SAFE coverage completed + hostile-F burn-gate pass (Claudio's 8-July silicon report)
 
 - **Three shipped TMS9918 programs still carried an unbounded frame-flag
@@ -491,8 +549,6 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
   white, chromatic `$55/$2A` violet, black-on-empty, output distinct from the
   LUT, repaint on mode toggle). The golden-image `gfx_regress_gen2_testcard`
   stays byte-identical (default LUT path untouched).
-
-## [1.9.3] — 2026-07-01
 
 ### Fixed — 6502 software: Galaga title/help SAT rebuilt during active display
 

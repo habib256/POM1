@@ -340,8 +340,8 @@ void tmspaint::TmsPaintEditor::clearPage()
     // shows the backdrop everywhere; keep the canonical name table intact.
     std::vector<uint8_t> before = shadow;
     for (int i = 0; i < tmspaint::kNameBase; ++i) shadow[i] = 0;
-    if (mode_ == Mode::GraphicsII)
-        for (int i = tmspaint::kGfx2ColorBase; i < kVramSize; ++i) shadow[i] = 0;
+    if (mode_ == Mode::GraphicsII)   // colour table only — $3800+ is the sprite pattern bank
+        for (int i = tmspaint::kGfx2ColorBase; i < tmspaint::kSpritePatternBase; ++i) shadow[i] = 0;
     tmspaint::writeCanonicalNameTable(shadow.data(), mode_);
     beginStroke(true);
     for (int off = 0; off < kVramSize; ++off) {

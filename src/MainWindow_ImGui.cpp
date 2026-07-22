@@ -779,8 +779,9 @@ void MainWindow_ImGui::render()
         // appear on screen — auto-plug it, mirroring the HGR Paint behaviour.
         if (!tms9918Enabled) {
             tms9918Enabled = true;
-            pendingTms9918Enable = true;
             showTMS9918 = true;
+            emulation->setTMS9918Enabled(true);
+            sidSpecialEditionEnabled = false;   // TMS9918 evicts A1-AUDIO SE
         }
         const float w = TMS9918::kScreenWidth * 3.0f + 200.0f;
         const float h = TMS9918::kScreenHeight * 3.0f + 200.0f;
@@ -795,8 +796,9 @@ void MainWindow_ImGui::render()
         // sprite you draw appears on screen — auto-plug it (menu also does this).
         if (!tms9918Enabled) {
             tms9918Enabled = true;
-            pendingTms9918Enable = true;
             showTMS9918 = true;
+            emulation->setTMS9918Enabled(true);
+            sidSpecialEditionEnabled = false;   // TMS9918 evicts A1-AUDIO SE
         }
         ImGui::SetNextWindowSize(ImVec2(760, 560), ImGuiCond_FirstUseEver);
         applyPendingLayout("TMS9918 Sprite Editor");

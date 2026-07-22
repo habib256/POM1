@@ -165,6 +165,13 @@ public:
     // the framebuffer from here (SnapshotPublisher overlays it on the mirror).
     const uint8_t* gen2FrameLatch(void) const { return gen2FrameLatchBuf.data(); }
 
+    // Re-seed both GEN2 latches (beam + frame) from current RAM $2000-$5FFF.
+    // Needed whenever RAM is mutated outside the CPU stream (snapshot/rewind
+    // restore, UI hex-editor pokes) — the renderer only ever reads the frame
+    // latch, so without this such edits stay invisible until the CPU completes
+    // a full frame (never, while paused). No-op when the card is unplugged.
+    void gen2ReseedLatchFromRam(void);
+
     // Load Memory from file
     int loadROM(const char* filename, uint16_t startAddress, size_t maxSize, const char* label);
     int loadBasic(void);

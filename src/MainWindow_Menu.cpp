@@ -420,8 +420,9 @@ void MainWindow_ImGui::renderMenuBar()
             if (ImGui::MenuItem("TMS9918 Paint Editor...", nullptr, &showTMSPaintEditor)) {
                 if (showTMSPaintEditor && !tms9918Enabled) {
                     tms9918Enabled = true;
-                    pendingTms9918Enable = true;
                     showTMS9918 = true;
+                    emulation->setTMS9918Enabled(true);
+                    sidSpecialEditionEnabled = false;   // TMS9918 evicts A1-AUDIO SE
                     setStatusMessage("TMS9918 card plugged for TMS9918 Paint Editor", 2.0f);
                 }
             }
@@ -431,8 +432,9 @@ void MainWindow_ImGui::renderMenuBar()
             if (ImGui::MenuItem("TMS9918 Sprite Editor...", nullptr, &showTMSSpriteEditor)) {
                 if (showTMSSpriteEditor && !tms9918Enabled) {
                     tms9918Enabled = true;
-                    pendingTms9918Enable = true;
                     showTMS9918 = true;
+                    emulation->setTMS9918Enabled(true);
+                    sidSpecialEditionEnabled = false;   // TMS9918 evicts A1-AUDIO SE
                     setStatusMessage("TMS9918 card plugged for TMS9918 Sprite Editor", 2.0f);
                 }
             }

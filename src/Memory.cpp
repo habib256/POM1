@@ -2021,6 +2021,14 @@ static inline int gen2HgrRowOffset(int y)
 // latch at the cycle the beam crossed it, so line Y reflects RAM at its own beam
 // time. The latch is $2000-$5FFF-shaped: page 1 line at `off`, page 2 at
 // 0x2000+off. The renderer reads either page per band, unchanged.
+void Memory::gen2ReseedLatchFromRam(void)
+{
+    if (!hgrFramebufferAttached) return;
+    std::memcpy(gen2BeamLatchBuf.data(), mem.data() + 0x2000,
+                gen2BeamLatchBuf.size());
+    gen2FrameLatchBuf = gen2BeamLatchBuf;
+}
+
 void Memory::gen2LatchScanline(int line)
 {
     const int off = gen2HgrRowOffset(line);
@@ -2532,6 +2540,13 @@ bool Memory::readSnapshotSections(pom1::SnapshotReader& r, std::string& error, M
         error = "I/O error while reading snapshot";
         return false;
     }
+    // Re-seed the GEN2 beam/frame latches from the restored RAM: the renderer
+    // reads exclusively through gen2FrameLatchBuf (SnapshotPublisher overlays it
+    // onto $2000-$5FFF), and the FLAGS branch above deliberately bypasses
+    // setHgrFramebufferAttached() — without this the card window keeps showing
+    // the pre-restore frame (or black) until the CPU completes a full frame,
+    // which never happens in a paused rewind preview.
+    gen2ReseedLatchFromRam();
     return true;
   } catch (const std::exception& e) {
     error = std::string("corrupt snapshot: ") + e.what();

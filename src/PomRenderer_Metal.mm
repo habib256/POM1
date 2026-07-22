@@ -222,11 +222,17 @@ public:
                 metalLayer_.drawableSize = want;
         }
 
-        drawable_ = [metalLayer_ nextDrawable];
+        // @autoreleasepool: nextDrawable / commandBuffer return AUTORELEASED
+        // objects, and the C++ GLFW main loop provides no pool to drain that
+        // pending +1 — without this every frame leaks a reference that pins a
+        // CAMetalDrawable (pool exhaustion → stalls/nil drawables) on top of
+        // the memory growth. Our explicit retains inside the pool keep the
+        // ownership we release in present()/readBackbufferRGBA.
+        @autoreleasepool {
+            drawable_ = [[metalLayer_ nextDrawable] retain];
+            commandBuffer_ = drawable_ ? [[commandQueue_ commandBuffer] retain] : nil;
+        }
         if (!drawable_) return;   // window minimised / occluded; skip the frame
-        [drawable_ retain];
-
-        commandBuffer_ = [[commandQueue_ commandBuffer] retain];
 
         renderPassDescriptor_.colorAttachments[0].texture     = drawable_.texture;
         renderPassDescriptor_.colorAttachments[0].loadAction  = MTLLoadActionClear;

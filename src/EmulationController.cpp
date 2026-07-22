@@ -450,6 +450,8 @@ void EmulationController::writeMemory(uint16_t address, uint8_t value)
     const bool wasTripped = memory->isWatchpointTripped();
     memory->memWrite(address, value);
     if (!wasTripped) memory->clearWatchTrip();
+    if (address >= 0x2000 && address < 0x6000)
+        memory->gen2ReseedLatchFromRam();   // make the edit visible while paused
     publisher.publish(*memory, *cpu, runRequested.load());
 }
 
@@ -458,8 +460,13 @@ void EmulationController::writeMemoryBatch(const std::vector<std::pair<uint16_t,
     if (writes.empty()) return;
     std::lock_guard<PriorityMutex> lock(stateMutex);
     const bool wasTripped = memory->isWatchpointTripped();   // UI edits don't trip watchpoints
-    for (const auto& w : writes) memory->memWrite(w.first, w.second);
+    bool touchedHgr = false;
+    for (const auto& w : writes) {
+        memory->memWrite(w.first, w.second);
+        touchedHgr |= (w.first >= 0x2000 && w.first < 0x6000);
+    }
     if (!wasTripped) memory->clearWatchTrip();
+    if (touchedHgr) memory->gen2ReseedLatchFromRam();        // make edits visible while paused
     publisher.publish(*memory, *cpu, runRequested.load());   // one publish for the whole batch
 }
 

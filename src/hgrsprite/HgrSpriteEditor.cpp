@@ -85,7 +85,7 @@ bool HgrSpriteEditor::recordPlot(int x, int y, HgrColor c)
 void HgrSpriteEditor::applyOps(const std::vector<ByteEdit>& ops, bool forward)
 {
     if (forward) for (const auto& e : ops) scratch[e.addr] = e.newVal;
-    else         for (const auto& e : ops) scratch[e.addr] = e.oldVal;
+    else         for (auto it = ops.rbegin(); it != ops.rend(); ++it) scratch[it->addr] = it->oldVal;
 }
 
 void HgrSpriteEditor::doUndo()
@@ -465,7 +465,10 @@ bool HgrSpriteEditor::performFileAction(FileAction a, const std::string& fullPat
         std::vector<uint32_t> full(static_cast<size_t>(hgrpaint::kHiresWidth) *
                                    hgrpaint::kHiresHeight, 0);
         host->renderHgrPage(pg.data(), full.data(), false, false);
-        const int W = wB * 7, H = hR;
+        // The render page is only kHiresWidth×kHiresHeight; a ×2 sprite can
+        // exceed it, so crop to what was actually rendered.
+        const int W = std::min(wB * 7, hgrpaint::kHiresWidth);
+        const int H = std::min(hR, hgrpaint::kHiresHeight);
         std::vector<uint32_t> rgba(static_cast<size_t>(W) * H, 0);
         for (int y = 0; y < H; ++y)
             for (int x = 0; x < W; ++x)

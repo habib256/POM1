@@ -31,7 +31,7 @@ Built with Dear ImGui & OpenGL — fast, lightweight, cross-platform.
 - 🎨 **Three independent graphics cards across half a century** — **Uncle Bernie's GEN2 HGR** (280×192 Apple-II-style colour) and the **P-LAB TMS9918** (256×192 + 32 hardware sprites), plus the 1976 SWTPC GT-6144. Drive both colour cards from graphics BASIC, C, or asm.
 - 🎵 **Real chiptune sound on a 1976 board** — genuine MOS 6581 / CSG 8580 SID through libresidfp, swap chips *while it plays*.
 - 📡 **Wi-Fi modem dialing real BBSes** — `ATDT bbs.fozztexx.com:23` in WOZ Monitor and you're online, on a 1976 machine.
-- 💾 **A cartridge ecosystem unique to POM1** — the P-LAB CodeTank ships **3 ready-to-flip cartridges** (GAME1/2/3): arcade games, a dungeon crawler, a LOGO turtle, graphics demos.
+- 💾 **A cartridge ecosystem unique to POM1** — the P-LAB CodeTank ships **4 ready-to-flip cartridges** (CLASSICS / BASIC_LOGO / ARCADE / DEMOS): Tetris & chess, BASIC & LOGO interpreters, arcade games, a dungeon crawler, graphics demos.
 - 🔬 **Cycle-accurate down to the bus** — SID, TMS9918, cassette and modem all run on the same 1.022727 MHz clock; tempo follows emulation speed, not wall-clock. Klaus Dormann's 6502 test pinned in CI.
 - 🛠️ **Write your own — without leaving the app** — the in-app **DevBench** assembles 6502 asm, compiles C, runs BASIC or LOGO turtle graphics, or eats a Woz hex dump, then boots it in one click.
 
@@ -47,7 +47,7 @@ F000R    ; cold-start whatever ROM is currently mapped at $F000
 ```
 
 1. **Write your first BASIC program** → preset **#4**, load Integer BASIC from the inserted cassette (press **Play** on the deck — preset #4 mounts `BASIC.aci` but doesn't auto-play, and `$E000` is RAM until it loads), then `E000R`, `10 PRINT "HELLO WORLD"` and `RUN`. Welcome to 1976.
-2. **Plug a TMS9918 cartridge** → preset **#9** (CodeTank), *File → P-LAB CodeTank Library* → `Codetank_GAME2.rom` → flip *upper jumper* → `4000R`. Mode-III Nyan Cat at 20 fps.
+2. **Plug a TMS9918 cartridge** → preset **#9** (CodeTank), *File → P-LAB CodeTank Library* → `Codetank_DEMOS.rom` → *lower jumper* → `4000R` → pick **Nyan** in the menu. Mode-III Nyan Cat at 20 fps.
 3. **Draw in colour from BASIC** → preset **#2** (GEN2 HGR), inject a `.apf` from `sketchs/basic_applesoft/` (Mandelbrot, Sierpinski…), `9800R` — `HPLOT`/`HGR`/`HCOLOR` on a 1976 machine.
 4. **Play the A1-SID piano** → preset **#12** (default), *File → Load Memory* → `software/SOUND SID/Claudio_PARMIGIANI_SID_PIANO_ORIG.txt`, type `C400R`, then press keys to play.
 5. **Live debugging** → `F1` opens the memory viewer, `F7` single-steps the 6502, `F3` opens the BRK trace. Watch Microchess plan its move.
@@ -128,8 +128,8 @@ Full reference → [`doc/CLI.md`](doc/CLI.md).
 ./POM1 --enable sid --terminal --cpu-max          # plug A1-SID on the default preset
 ./POM1 --tape cassettes/APPLE50TH.ogg             # auto-press Play
 ./POM1 --preset 9 \
-       --codetank-rom roms/codetank/Codetank_GAME2.rom \
-       --codetank-jumper upper                     # boot directly into Nyan/CodeTank
+       --codetank-rom roms/codetank/Codetank_ARCADE.rom \
+       --codetank-jumper upper                     # boot directly into TMS_Rogue
 ```
 
 </details>
@@ -208,7 +208,7 @@ Bus-window exclusions are enforced (one P-LAB card at a time, per Parmigiani's r
 
 **P-LAB TMS9918** — TMS9918A VDP, **256×192**, 15 colours + transparent, 32 hardware sprites, 4 modes. I/O at `$CC00`/`$CC01`, 16 KB dedicated VRAM. Compatible with [nippur72's apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib). **Silicon Strict** mode enforces the VRAM timing model — tune it from *DevBench → Silicon Strict Inspector*. Chip quirks → [`Programming_TMS9918.md`](sketchs/doc/Programming_TMS9918.md).
 
-**P-LAB CodeTank** — ROM **daughterboard** of the TMS9918 card (enabling CodeTank auto-plugs TMS9918). Single 32 KB 28c256; jumper picks which 16 KB half maps to `$4000-$7FFF`. The **3-cartridge library** (GAME1/2/3) is in [Software Library](#-software-library). CLI: `--enable codetank`, `--codetank-jumper lower|upper`, `--codetank-rom <path>`.
+**P-LAB CodeTank** — ROM **daughterboard** of the TMS9918 card (enabling CodeTank auto-plugs TMS9918). Single 32 KB 28c256; jumper picks which 16 KB half maps to `$4000-$7FFF`. The **4-cartridge library** (CLASSICS / BASIC_LOGO / ARCADE / DEMOS) is in [Software Library](#-software-library). CLI: `--enable codetank`, `--codetank-jumper lower|upper`, `--codetank-rom <path>`.
 
 **P-LAB A1-SID** — driven by **[libresidfp](https://github.com/libsidplayfp/libsidplayfp)** (vendored, GPL-2.0+). **Hot-swappable chip model** (MOS 6581 ↔ CSG 8580) restores register state live. Cycle-driven into a lock-free ring; tempo follows emulation speed. Pick the address window in **Settings → A1-SID version & addresses**: standard **$C800-$CFFF** or the **A1-AUDIO SE** variant at **$CC00-$CC1F**. Add tunes via [`tools/sid2apple1.py`](tools/sid2apple1.py) from the [HVSC](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection) archive.
 
@@ -238,13 +238,14 @@ Bus-window exclusions are enforced (one P-LAB card at a time, per Parmigiani's r
 
 ### 🃏 P-LAB CodeTank cartridge library
 
-Plug the CodeTank daughterboard (preset 9 or *Hardware → CodeTank*), open *File → P-LAB CodeTank Library*, pick a `.rom`, choose a jumper. **3 cartridges shipped:**
+Plug the CodeTank daughterboard (preset 9 or *Hardware → CodeTank*), open *File → P-LAB CodeTank Library*, pick a `.rom`, choose a jumper. **4 cartridges shipped:**
 
 | ROM | Lower jumper (`4000R`) | Upper jumper (`4000R`) |
 |---|---|---|
-| **`Codetank_GAME1.rom`** | Tetris/CodeTank (full bank) | menu → 1=Galaga 2=Sokoban 3=Snake |
-| **`Codetank_GAME2.rom`** | TMS_Rogue (dungeon crawler) | TMS_Nyan_CodeTank (12-frame Mode III animation) |
-| **`Codetank_GAME3.rom`** | TMS_LOGO V2.6 turtle interpreter | menu → 1=Life 2=Mandel 3=Plasma |
+| **`Codetank_CLASSICS.rom`** | Tetris/CodeTank (full bank) | TMS_Chess (graphical chess) |
+| **`Codetank_BASIC_LOGO.rom`** | TMS_LOGO V2.6 turtle interpreter | Applesoft TMS9918 interpreter |
+| **`Codetank_ARCADE.rom`** | menu → Galaga, Sokoban, Snake | TMS_Rogue (dungeon crawler) |
+| **`Codetank_DEMOS.rom`** | menu → Life, Mandel, Plasma, Vague, Nyan | Sprite Animals (Fauna demo) |
 
 <details><summary><b>🕹️ Other games & demos</b></summary>
 
