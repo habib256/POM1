@@ -22,8 +22,18 @@ FROM ubuntu:18.04
 
 SHELL ["/bin/bash", "-euxo", "pipefail", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
+# Pinned toolchain inputs + SHA256 (P2): every download is version/commit-pinned
+# AND checksum-verified, so a rebuild fetches byte-identical inputs or fails loudly
+# — no silent `continuous`/`master`-HEAD drift (the class that flipped appimagetool
+# to an ET_DYN runtime). To update: bump the version/commit and refresh the SHA
+# (a mismatch is a hard build failure, on purpose).
 ARG CMAKE_VER=3.27.9
+ARG CMAKE_SHA256=72b01478eeb312bf1a0136208957784fe55a7b587f8d9f9142a7fc9b0b9e9a28
 ARG GLFW_VER=3.3.10
+ARG GLFW_SHA256=4ff18a3377da465386374d8127e7b7349b685288cb8e17122f7e1179f73769d5
+ARG CC65_COMMIT=547d923588d870aacf0b0016c67d0f6a92a70f83
+ARG APPIMAGETOOL_SHA256=b90f4a8b18967545fda78a445b27680a1642f1ef9488ced28b65398f2be7add2
+ARG LINUXDEPLOY_SHA256=e87ee0815d109282fdda73e34c2361d64d02b0ffaea3674b18f1fd1f6a687dcf
 
 # --- base tooling + X11/GL dev headers ---------------------------------------
 # bionic's apt archives moved to old-releases.ubuntu.com, but archive.ubuntu.com
@@ -55,6 +65,7 @@ RUN add-apt-repository -y ppa:ubuntu-toolchain-r/test && apt-get update && \
 # --- modern CMake (bionic ships 3.10; repo needs >= 3.16) --------------------
 RUN wget -qO /tmp/cmake.tar.gz \
         "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VER}/cmake-${CMAKE_VER}-linux-x86_64.tar.gz" && \
+    echo "${CMAKE_SHA256}  /tmp/cmake.tar.gz" | sha256sum -c - && \
     mkdir -p /opt/cmake && tar --strip-components=1 -xzf /tmp/cmake.tar.gz -C /opt/cmake && \
     rm -f /tmp/cmake.tar.gz
 ENV PATH="/opt/cmake/bin:${PATH}"
@@ -63,6 +74,7 @@ ENV PATH="/opt/cmake/bin:${PATH}"
 #     find_package(glfw3 3.3 CONFIG) resolves it; linuxdeploy bundles libglfw.so.3.
 RUN wget -qO /tmp/glfw.tar.gz \
         "https://github.com/glfw/glfw/archive/refs/tags/${GLFW_VER}.tar.gz" && \
+    echo "${GLFW_SHA256}  /tmp/glfw.tar.gz" | sha256sum -c - && \
     tar -xzf /tmp/glfw.tar.gz -C /tmp && \
     cmake -S "/tmp/glfw-${GLFW_VER}" -B /tmp/glfw-build \
         -DGLFW_BUILD_EXAMPLES=OFF -DGLFW_BUILD_TESTS=OFF -DGLFW_BUILD_DOCS=OFF \
@@ -71,10 +83,12 @@ RUN wget -qO /tmp/glfw.tar.gz \
     rm -rf /tmp/glfw.tar.gz "/tmp/glfw-${GLFW_VER}" /tmp/glfw-build
 
 # --- cc65 from source → /opt/cc65-install (bionic's 2.17 predates DevBench cfgs)
+#     Pinned to a specific commit (not master HEAD) so the build is reproducible;
 #     `make install` gives the canonical bin/ + share/cc65 layout the bundle
 #     stager (tools/build_cc65_bundle.sh) reads via CC65_BIN_DIR/CC65_SHARE_DIR.
 RUN git config --global --add safe.directory '*' && \
-    git clone --depth 1 https://github.com/cc65/cc65.git /tmp/cc65 && \
+    git clone https://github.com/cc65/cc65.git /tmp/cc65 && \
+    git -C /tmp/cc65 checkout "${CC65_COMMIT}" && \
     make -C /tmp/cc65 -j"$(nproc)" && \
     make -C /tmp/cc65 install PREFIX=/opt/cc65-install && \
     rm -rf /tmp/cc65
@@ -90,7 +104,9 @@ ENV CC65_SHARE_DIR=/opt/cc65-install/share/cc65
 #     AppRun (its bundled libgpgme isn't on bionic).
 RUN mkdir -p /opt/appimage-tools && cd /opt/appimage-tools && \
     wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage" -O linuxdeploy.AppImage && \
+    echo "${LINUXDEPLOY_SHA256}  linuxdeploy.AppImage" | sha256sum -c - && \
     wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -O appimagetool.AppImage && \
+    echo "${APPIMAGETOOL_SHA256}  appimagetool.AppImage" | sha256sum -c - && \
     chmod +x ./*.AppImage && \
     ./linuxdeploy.AppImage  --appimage-extract >/dev/null && mv squashfs-root linuxdeploy.AppDir && \
     ./appimagetool.AppImage --appimage-extract >/dev/null && mv squashfs-root appimagetool.AppDir && \
