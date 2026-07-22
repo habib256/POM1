@@ -154,13 +154,16 @@ NO_STRIP=1 "${TOOLS}/linuxdeploy.AppDir/AppRun" \
     --icon-file="${APPDIR}/POM1.png" \
     >/dev/null
 
-# 5. appimagetool : assemble et compresse en zstd squashfs.
+# 5. appimagetool : assemble le runtime ET_EXEC + squashfs gzip.
+# On appelle AppRun (et NON le binaire usr/bin/appimagetool en direct) : celui
+# d'AppImageKit est lié dynamiquement à libgpgme/libassuan/libgpg-error, que
+# bionic ne fournit pas (libgpgme.so.11 manquant). AppRun met ces libs
+# embarquées sur LD_LIBRARY_PATH et le mksquashfs embarqué sur PATH.
 mkdir -p "${DIST}"
 OUT="${DIST}/POM1-${VERSION}-x86_64.AppImage"
-PATH="${TOOLS}/appimagetool.AppDir/usr/bin:${PATH}" \
 ARCH=x86_64 \
 VERSION="${VERSION}" \
-"${TOOLS}/appimagetool.AppDir/usr/bin/appimagetool" \
+"${TOOLS}/appimagetool.AppDir/AppRun" \
     "${APPDIR}" \
     "${OUT}"
 
