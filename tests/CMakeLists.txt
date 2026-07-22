@@ -729,6 +729,13 @@ add_test(NAME basic_native_codegen COMMAND test_basic_native_codegen
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(basic_native_codegen PROPERTIES TIMEOUT 30)
 
+# The six cc65-gated native-compiler tests below drive ca65/ld65 through
+# mkdtemp()/<unistd.h> — POSIX-only, no MSVC equivalent. They exercise the
+# BASIC->6502 compiler (platform-independent 6502 output already pinned on
+# Linux/macOS CI), so skip building them on Windows instead of porting the
+# temp-dir plumbing.
+if(NOT WIN32)
+
 # -- Native BASIC compiler: end-to-end run + speedup (cc65-gated) -------------
 # Builds the standalone native binary (ca65/ld65 against dev/lib/basicrt) and the
 # interpreter path, runs both, asserts identical output and that native is faster.
@@ -877,6 +884,8 @@ endif()
 add_test(NAME basic_native_bench COMMAND test_basic_native_bench
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(basic_native_bench PROPERTIES TIMEOUT 300 SKIP_RETURN_CODE 77)
+
+endif()   # NOT WIN32 — end of the POSIX-only native-compiler test block
 
 # -- SID audio production smoke test ------------------------------------------
 # Needs the full Memory+peripheral core to exercise the PeripheralBus path.

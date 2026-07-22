@@ -26,6 +26,13 @@
 
 #include <GLFW/glfw3.h>
 
+// Windows' system <GL/gl.h> (pulled in by glfw3.h) is stuck at GL 1.1 and
+// lacks the GL 1.2 clamp mode; the imgui GL3 backend loads function
+// pointers but not enums.
+#ifndef GL_CLAMP_TO_EDGE
+#define GL_CLAMP_TO_EDGE 0x812F
+#endif
+
 #include <cstdint>
 #include <cstring>
 #include <vector>

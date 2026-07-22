@@ -34,11 +34,18 @@ export DEBIAN_FRONTEND=noninteractive
 CMAKE_VER=3.27.9
 GLFW_VER=3.3.10
 
-# --- bionic is EOL: its apt archives moved to old-releases.ubuntu.com --------
-sed -i -e 's|http://archive.ubuntu.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g' \
-       -e 's|http://security.ubuntu.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g' \
-       /etc/apt/sources.list
-apt-get update
+# --- bionic is EOL: its apt archive location has MOVED TWICE ------------------
+# Early juillet 2026 archive.ubuntu.com 404'd bionic and old-releases served it;
+# by 22 juillet the situation had inverted (old-releases 404s, archive serves it
+# again — run 29819799811 failed on exactly this). Try the stock sources first
+# and only rewrite to old-releases when archive no longer carries bionic. (No
+# curl/wget probe possible — the bare ubuntu:18.04 image ships neither.)
+if ! apt-get update; then
+    sed -i -e 's|http://archive.ubuntu.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g' \
+           -e 's|http://security.ubuntu.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g' \
+           /etc/apt/sources.list
+    apt-get update
+fi
 
 # --- base tooling + X11/GL dev headers (the latter to build GLFW from source) -
 apt-get install -y --no-install-recommends \

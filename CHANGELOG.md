@@ -67,6 +67,13 @@ _Nothing yet._
   crashes lose seconds, not the session.
 - **Undocumented multi-byte 6502 opcodes** now advance PC by their real NMOS
   operand length (dispatch + disassembler), fixing instruction-stream desync.
+- **Release CI repaired (all three OS jobs were broken, run 29819799811)** —
+  Linux: the bionic apt rewrite to `old-releases.ubuntu.com` now only happens
+  when `archive.ubuntu.com` stops serving bionic (the mirrors flipped back);
+  macOS: `macos-13` was retired by GitHub and queued forever → `macos-15-intel`,
+  plus `timeout-minutes: 90` on every OS job; Windows: MSVC can't build the six
+  POSIX-only (`mkdtemp`/`unistd.h`) native-BASIC tests → skipped on WIN32, and
+  `GL_CLAMP_TO_EDGE` gets a fallback define (Windows' `<GL/gl.h>` is GL 1.1).
 
 ### Fixed — WAIT_VBLANK_SAFE coverage completed + hostile-F burn-gate pass (Claudio's 8-July silicon report)
 
