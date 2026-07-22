@@ -134,6 +134,23 @@ jobs:
             || { echo "ERROR: AppImage requires ${MAX} > GLIBC_2.27"; exit 1; }
           echo "OK: ET_EXEC + magic + glibc floor <= 2.27"
 
+      - name: Smoke-launch the packaged AppImage (--list-presets)
+        run: |
+          set -euo pipefail
+          # Structural checks above prove the file is SHAPED right; this proves it
+          # actually RUNS — AppRun sets up the env and the bundled libs resolve at
+          # glibc 2.27. --list-presets exits 0 before GLFW/any window, so it is
+          # safe on a display-less runner. --appimage-extract-and-run drives the
+          # real AppRun path without needing FUSE (unavailable on the runner).
+          APP=$(ls dist/*.AppImage | head -1)
+          OUT=$("$APP" --appimage-extract-and-run --list-presets)
+          echo "$OUT"
+          grep -q "Available machine presets:" <<<"$OUT" \
+            || { echo "ERROR: AppImage did not print the preset table"; exit 1; }
+          grep -q "Multiplexing Fantasy" <<<"$OUT" \
+            || { echo "ERROR: preset table is empty/truncated (no Fantasy preset)"; exit 1; }
+          echo "OK: packaged AppImage launches and lists presets"
+
       - uses: actions/upload-artifact@v4
         with:
           name: POM1-linux-AppImage
@@ -167,6 +184,19 @@ jobs:
 
       - name: Verify cc65 inside the staged .app (asm + C)
         run: tools/verify_cc65_bundle.sh dist/POM1.app/Contents/Resources/cc65
+
+      - name: Smoke-launch the packaged .app binary (--list-presets)
+        run: |
+          set -euo pipefail
+          # Proves the bundled binary starts and its dylibs (glfw, etc.) resolve.
+          # --list-presets exits 0 before GLFW/any window, so no display is needed.
+          OUT=$(dist/POM1.app/Contents/MacOS/POM1 --list-presets)
+          echo "$OUT"
+          grep -q "Available machine presets:" <<<"$OUT" \
+            || { echo "ERROR: .app binary did not print the preset table"; exit 1; }
+          grep -q "Multiplexing Fantasy" <<<"$OUT" \
+            || { echo "ERROR: preset table is empty/truncated (no Fantasy preset)"; exit 1; }
+          echo "OK: packaged .app binary launches and lists presets"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -222,6 +252,22 @@ jobs:
             test -f "dist/POM1-Windows/$d" || { echo "MISSING app-local VC++ runtime: $d"; exit 1; }
           done
           echo "VC++ runtime bundled app-local: OK"
+
+      - name: Smoke-launch the packaged POM1.exe (--list-presets)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # POM1 is a console-subsystem exe, so stdout is captured here. Launching
+          # from the package dir proves the app-local VC++ runtime DLLs resolve
+          # (Windows searches the exe's own directory first). --list-presets exits
+          # 0 before any window opens.
+          OUT=$(dist/POM1-Windows/POM1.exe --list-presets)
+          echo "$OUT"
+          grep -q "Available machine presets:" <<<"$OUT" \
+            || { echo "ERROR: POM1.exe did not print the preset table"; exit 1; }
+          grep -q "Multiplexing Fantasy" <<<"$OUT" \
+            || { echo "ERROR: preset table is empty/truncated (no Fantasy preset)"; exit 1; }
+          echo "OK: packaged POM1.exe launches and lists presets"
 
       - uses: actions/upload-artifact@v4
         with:
