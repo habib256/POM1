@@ -50,7 +50,7 @@ fi
 # --- base tooling + X11/GL dev headers (the latter to build GLFW from source) -
 apt-get install -y --no-install-recommends \
     ca-certificates gnupg wget curl git make pkg-config \
-    file desktop-file-utils python3 xz-utils \
+    file desktop-file-utils python3 python3.8 xz-utils \
     build-essential software-properties-common \
     libgl1-mesa-dev \
     libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev
@@ -115,4 +115,9 @@ cmake --build build -j"$(nproc)"
 #     appimagetool run in extract-and-run mode.
 export POM1_APPIMAGE_SKIP_BUILD=1
 export APPIMAGE_EXTRACT_AND_RUN=1
+# tools/build_codetank_rom.py (invoked by build_appimage.sh) needs python >= 3.7
+# (`from __future__ import annotations`); bionic's default python3 is 3.6. Only
+# repoint python3 NOW — add-apt-repository above depends on the 3.6-built
+# python3-apt and would break if this ran before the apt phase.
+update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 90
 packaging/linux/build_appimage.sh
