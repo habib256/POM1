@@ -134,6 +134,22 @@ jobs:
             || { echo "ERROR: AppImage requires ${MAX} > GLIBC_2.27"; exit 1; }
           echo "OK: ET_EXEC + magic + glibc floor <= 2.27"
 
+      - name: Install runtime GL/X libs for the launch smoke
+        run: |
+          set -eu
+          # The AppImage deliberately does NOT bundle libGL/libOpenGL (AppImage
+          # rule: graphics-driver libs come from the HOST). A real desktop has
+          # them; the headless runner does not, and they are DT_NEEDED — resolved
+          # by the dynamic linker at exec, before main reaches --list-presets — so
+          # POM1 dies with "libOpenGL.so.0: cannot open" (exit 127) without them.
+          # No Xvfb/GPU needed: we exit before any GL context is created; the libs
+          # only have to be loadable. glibc is forward-compatible, so the
+          # 2.27-built binary loads fine against the runner's newer libraries.
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libopengl0 libglx0 libgl1 \
+            libx11-6 libxext6 libxrandr2 libxinerama1 libxcursor1 libxi6
+
       - name: Smoke-launch the packaged AppImage (--list-presets)
         run: |
           set -euo pipefail
