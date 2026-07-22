@@ -31,7 +31,11 @@ VERSION="${POM1_VERSION:-1.9.3}"
 DIST="${REPO_ROOT}/dist"
 WORK="${REPO_ROOT}/build-appimage"
 APPDIR="${WORK}/AppDir"
-TOOLS="${WORK}/tools"
+# TOOLS holds the extracted linuxdeploy + appimagetool AppDirs. The bionic
+# release image bakes them at POM1_APPIMAGE_TOOLS_DIR (/opt/appimage-tools) so no
+# download happens per release; local desktop packaging leaves it unset and
+# fetches into build-appimage/tools/ (fetch_extract caches by directory).
+TOOLS="${POM1_APPIMAGE_TOOLS_DIR:-${WORK}/tools}"
 RESOURCES="${APPDIR}/usr/share/POM1"
 
 # 1. Build du binaire — TOUJOURS recompiler pour empiler la dernière version.

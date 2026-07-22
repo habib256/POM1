@@ -57,45 +57,70 @@ jobs:
           fi
 
   # ---------------------------------------------------------------- Linux ----
-  # The AppImage is built INSIDE an Ubuntu 18.04 (bionic, glibc 2.27) container
-  # so it links against glibc 2.27 and runs on Linux Mint 19.x and everything
-  # newer. An AppImage never bundles glibc, so its floor == the build image's
-  # glibc; building on ubuntu-latest (2.39) previously stamped GLIBC_2.34 and
-  # broke pre-2.34 systems (Uncle Bernie / Mint 19.x, juillet 2026).
+  # The AppImage is built INSIDE the pinned bionic (glibc 2.27) builder image so
+  # it links against glibc 2.27 and runs on Linux Mint 19.x and everything newer
+  # (an AppImage never bundles glibc, so its floor == the build image's glibc;
+  # building on ubuntu-latest previously stamped GLIBC_2.34 and broke pre-2.34
+  # systems). The toolchain is FROZEN in ghcr.io/<owner>/pom1-bionic-builder
+  # (packaging/linux/Dockerfile.bionic, built by the build-bionic-image workflow)
+  # so this job downloads no toolchain and never touches bionic's flaky EOL apt
+  # mirrors — reproducible by image digest. Build that image first if it's missing.
   #
-  # We drive the container with `docker run` rather than a `container:` key
-  # because GitHub's node20 actions (checkout@v4, upload-artifact@v4) need glibc
-  # >= 2.28 to run — one notch above bionic's 2.27 — so they cannot execute
-  # inside a bionic `container:`. The actions therefore run on the host; the repo
-  # is bind-mounted into the container so the finished AppImage lands back on the
-  # host for upload. Full recipe: packaging/linux/build_in_bionic.sh.
+  # `docker run` rather than a `container:` key because GitHub's node20 actions
+  # (checkout@v4, upload-artifact@v4) need glibc >= 2.28 — one notch above bionic's
+  # 2.27 — so they can't run inside a bionic `container:`. Actions run on the host;
+  # the repo is bind-mounted in. Full recipe: packaging/linux/build_in_bionic.sh.
   linux:
     needs: version
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: read          # pull the builder image from GHCR
+    env:
+      # Stable tag. For full reproducibility pin the digest the build-bionic-image
+      # workflow prints, e.g. ghcr.io/habib256/pom1-bionic-builder@sha256:<digest>.
+      BUILDER_IMAGE: ghcr.io/${{ github.repository_owner }}/pom1-bionic-builder:bionic
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build POM1 + AppImage in Ubuntu 18.04 (glibc 2.27 floor, cc65 bundled, strict)
+      - name: Log in to GHCR (pull the builder image)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build POM1 + AppImage in the pinned bionic builder (cc65 bundled, strict)
         env:
           POM1_VERSION: ${{ needs.version.outputs.pom1_version }}
         run: |
+          # Lowercase the owner — GHCR repositories must be lowercase.
+          IMAGE="$(echo "$BUILDER_IMAGE" | tr '[:upper:]' '[:lower:]')"
+          docker pull "$IMAGE"
           docker run --rm \
             -v "$PWD":/work -w /work \
             -e POM1_VERSION -e POM1_REQUIRE_CC65 -e IMGUI_TAG \
-            ubuntu:18.04 \
+            "$IMAGE" \
             bash /work/packaging/linux/build_in_bionic.sh
 
       - name: Verify cc65 inside the staged AppDir (asm + C)
         run: tools/verify_cc65_bundle.sh build-appimage/AppDir/usr/share/POM1/cc65
 
-      - name: Verify the AppImage's glibc floor is <= 2.27 (Mint 19 launches)
+      - name: Verify the AppImage — glibc floor <= 2.27 AND ET_EXEC runtime
         run: |
           set -euo pipefail
           # appimagetool emits a 0755 (world-readable/executable) file; it is
           # root-owned here because the build ran as root in the container, so we
           # only read/execute it — never chmod (would EPERM as the runner user).
           APP=$(ls dist/*.AppImage | head -1)
+          # The runtime must be ELF ET_EXEC (not the new static-pie ET_DYN) or
+          # AppImageLauncher rejects it as "type -1" — this is the regression the
+          # AppImageKit appimagetool switch fixed; assert it never comes back.
+          TYPE=$(readelf -h "$APP" | awk -F'[ :]+' '/^ *Type:/ {print $3; exit}')
+          echo "AppImage runtime ELF type: ${TYPE}"
+          test "$TYPE" = "EXEC" \
+            || { echo "ERROR: AppImage runtime is $TYPE, not EXEC — AppImageLauncher will reject it"; exit 1; }
+          # Magic AI\x02 at offset 8 = valid AppImage type 2.
+          MAGIC=$(xxd -s 8 -l 3 -p "$APP")
+          test "$MAGIC" = "414902" \
+            || { echo "ERROR: bad AppImage magic $MAGIC (expected 414902)"; exit 1; }
           "$APP" --appimage-extract >/dev/null
           BIN=squashfs-root/usr/bin/POM1
           # Highest GLIBC_x.y version any symbol in the binary requires.
@@ -106,7 +131,7 @@ jobs:
           # 2.27 is the bionic floor; anything higher would break Mint 19.x.
           test "$(printf '%s\nGLIBC_2.27\n' "$MAX" | sort -V | tail -1)" = "GLIBC_2.27" \
             || { echo "ERROR: AppImage requires ${MAX} > GLIBC_2.27"; exit 1; }
-          echo "OK: glibc floor is <= 2.27"
+          echo "OK: ET_EXEC + magic + glibc floor <= 2.27"
 
       - uses: actions/upload-artifact@v4
         with:

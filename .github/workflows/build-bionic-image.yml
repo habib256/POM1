@@ -1,0 +1,56 @@
+name: Build bionic builder image
+
+# Builds packaging/linux/Dockerfile.bionic — the FROZEN glibc-2.27 toolchain the
+# Linux release uses — and pushes it to ghcr.io. This is the ONE place the flaky
+# bionic apt / upstream-download steps run; a release then just `docker run`s the
+# result (release.yml `linux` job), off the mirror-outage critical path.
+#
+# Run this manually (Actions → Build bionic builder image → Run workflow) after
+# changing the Dockerfile, then confirm release.yml references the tag/digest it
+# prints. Auto-runs when the Dockerfile or this workflow changes on the default
+# branch.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'packaging/linux/Dockerfile.bionic'
+      - '.github/workflows/build-bionic-image.yml'
+
+permissions:
+  contents: read
+  packages: write        # push the image to GHCR
+
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build + push the pinned builder image
+        run: |
+          set -euxo pipefail
+          # Lowercase the owner — GHCR repositories must be lowercase.
+          OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          IMAGE="ghcr.io/${OWNER}/pom1-bionic-builder"
+          DATETAG="$(date +%Y%m%d)-${GITHUB_SHA::7}"
+          # Context = packaging/linux/ (tiny): the Dockerfile COPYs nothing from
+          # the repo, so a minimal context keeps the daemon upload fast.
+          docker build -f packaging/linux/Dockerfile.bionic \
+            -t "${IMAGE}:bionic" -t "${IMAGE}:${DATETAG}" packaging/linux
+          docker push "${IMAGE}:bionic"
+          docker push "${IMAGE}:${DATETAG}"
+
+      - name: Report the pushed digest (pin THIS in release.yml for reproducibility)
+        run: |
+          OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          IMAGE="ghcr.io/${OWNER}/pom1-bionic-builder"
+          echo "Pushed:"
+          docker inspect --format='{{range .RepoTags}}  tag:    {{.}}{{"\n"}}{{end}}' "${IMAGE}:bionic"
+          docker inspect --format='{{range .RepoDigests}}  digest: {{.}}{{"\n"}}{{end}}' "${IMAGE}:bionic"
+          echo "To pin: set BUILDER_IMAGE in .github/workflows/release.yml to the digest above."

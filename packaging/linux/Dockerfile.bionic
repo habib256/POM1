@@ -1,0 +1,105 @@
+# Dockerfile.bionic — the FROZEN POM1 Linux release toolchain.
+#
+# WHY THIS EXISTS: the Linux AppImage must link against glibc 2.27 so it runs on
+# Mint 19.x and every newer distro (an AppImage never bundles glibc, so its floor
+# == the build machine's glibc). That means building inside Ubuntu 18.04 (bionic,
+# glibc 2.27). But bionic is EOL: its apt mirrors flip between archive.ubuntu.com
+# and old-releases.ubuntu.com and suffer outages, so doing `apt-get` + `git clone`
+# + tool downloads AT RELEASE TIME made every release depend on unreliable, mutable
+# external infrastructure (multiple CI failures, juillet 2026). It also made builds
+# non-reproducible — you got whatever upstream served that day (the appimagetool
+# `continuous` tag silently switched to an ET_DYN runtime and broke the artifacts).
+#
+# THE FIX (this file): bake the ENTIRE toolchain ONCE into a pinned image pushed to
+# ghcr.io. The flaky apt/download steps run only when THIS image is (re)built —
+# off the release critical path, retryable at leisure. A release then just
+# `docker run`s this image to compile + package (see build_in_bionic.sh), immune to
+# mirror outages and upstream drift, and reproducible by image digest.
+#
+# Build + push via .github/workflows/build-bionic-image.yml. Pin by digest in
+# release.yml for full reproducibility.
+FROM ubuntu:18.04
+
+SHELL ["/bin/bash", "-euxo", "pipefail", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
+ARG CMAKE_VER=3.27.9
+ARG GLFW_VER=3.3.10
+
+# --- base tooling + X11/GL dev headers ---------------------------------------
+# bionic's apt archives moved to old-releases.ubuntu.com, but archive.ubuntu.com
+# flip-flops back and has transient outages. Retry archive first (it carries
+# bionic again as of juillet 2026); only rewrite to old-releases if it truly
+# gives up. This fragility now bites ONLY at image-build time, not per release.
+RUN apt_update_retry() { local i; for i in 1 2 3 4; do apt-get update && return 0; echo "[apt] update attempt $i/4 failed; retrying in 15s" >&2; sleep 15; done; return 1; }; \
+    if ! apt_update_retry; then \
+        echo "[apt] archive.ubuntu.com unreachable — falling back to old-releases" >&2; \
+        sed -i -e 's|http://archive.ubuntu.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g' \
+               -e 's|http://security.ubuntu.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g' \
+               /etc/apt/sources.list; \
+        apt_update_retry; \
+    fi; \
+    apt-get install -y --no-install-recommends \
+        ca-certificates gnupg wget curl git make pkg-config \
+        file desktop-file-utils python3 python3.8 xz-utils \
+        build-essential software-properties-common \
+        libgl1-mesa-dev \
+        libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev
+
+# --- g++-9 (bionic default g++-7 lacks a usable <filesystem>) ----------------
+RUN add-apt-repository -y ppa:ubuntu-toolchain-r/test && apt-get update && \
+    apt-get install -y --no-install-recommends gcc-9 g++-9 && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 \
+                        --slave   /usr/bin/g++ g++ /usr/bin/g++-9 && \
+    gcc --version
+
+# --- modern CMake (bionic ships 3.10; repo needs >= 3.16) --------------------
+RUN wget -qO /tmp/cmake.tar.gz \
+        "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VER}/cmake-${CMAKE_VER}-linux-x86_64.tar.gz" && \
+    mkdir -p /opt/cmake && tar --strip-components=1 -xzf /tmp/cmake.tar.gz -C /opt/cmake && \
+    rm -f /tmp/cmake.tar.gz
+ENV PATH="/opt/cmake/bin:${PATH}"
+
+# --- GLFW 3.3 from source → /usr/local (bionic libglfw3-dev is 3.2.1) --------
+#     find_package(glfw3 3.3 CONFIG) resolves it; linuxdeploy bundles libglfw.so.3.
+RUN wget -qO /tmp/glfw.tar.gz \
+        "https://github.com/glfw/glfw/archive/refs/tags/${GLFW_VER}.tar.gz" && \
+    tar -xzf /tmp/glfw.tar.gz -C /tmp && \
+    cmake -S "/tmp/glfw-${GLFW_VER}" -B /tmp/glfw-build \
+        -DGLFW_BUILD_EXAMPLES=OFF -DGLFW_BUILD_TESTS=OFF -DGLFW_BUILD_DOCS=OFF \
+        -DBUILD_SHARED_LIBS=ON -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    cmake --build /tmp/glfw-build -j"$(nproc)" --target install && ldconfig && \
+    rm -rf /tmp/glfw.tar.gz "/tmp/glfw-${GLFW_VER}" /tmp/glfw-build
+
+# --- cc65 from source → /opt/cc65-install (bionic's 2.17 predates DevBench cfgs)
+#     `make install` gives the canonical bin/ + share/cc65 layout the bundle
+#     stager (tools/build_cc65_bundle.sh) reads via CC65_BIN_DIR/CC65_SHARE_DIR.
+RUN git config --global --add safe.directory '*' && \
+    git clone --depth 1 https://github.com/cc65/cc65.git /tmp/cc65 && \
+    make -C /tmp/cc65 -j"$(nproc)" && \
+    make -C /tmp/cc65 install PREFIX=/opt/cc65-install && \
+    rm -rf /tmp/cc65
+ENV CC65_BIN_DIR=/opt/cc65-install/bin
+ENV CC65_SHARE_DIR=/opt/cc65-install/share/cc65
+
+# --- AppImage tooling, extracted → /opt/appimage-tools (baked, no FUSE needed)
+#     appimagetool from AppImageKit (the OLD repo): its runtime is ELF ET_EXEC +
+#     gzip squashfs, which AppImageLauncher accepts. The NEW AppImage/appimagetool
+#     ships a static-pie ET_DYN runtime that AppImageLauncher rejects ("type -1").
+#     Baking a fixed copy here freezes it against `continuous` drift. build_appimage.sh
+#     picks these up via POM1_APPIMAGE_TOOLS_DIR and calls appimagetool through
+#     AppRun (its bundled libgpgme isn't on bionic).
+RUN mkdir -p /opt/appimage-tools && cd /opt/appimage-tools && \
+    wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage" -O linuxdeploy.AppImage && \
+    wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -O appimagetool.AppImage && \
+    chmod +x ./*.AppImage && \
+    ./linuxdeploy.AppImage  --appimage-extract >/dev/null && mv squashfs-root linuxdeploy.AppDir && \
+    ./appimagetool.AppImage --appimage-extract >/dev/null && mv squashfs-root appimagetool.AppDir && \
+    rm -f ./*.AppImage
+ENV POM1_APPIMAGE_TOOLS_DIR=/opt/appimage-tools
+
+# --- python3 → 3.8 (tools/build_codetank_rom.py needs >= 3.7 for `from __future__
+#     import annotations`). Done LAST: add-apt-repository above depends on the
+#     bionic-default 3.6 python3-apt, which this alternative would shadow.
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 90
+
+WORKDIR /work
