@@ -18,7 +18,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-VERSION="${POM1_VERSION:-1.9.3}"   # release workflow overrides from the git tag
+# Single source of truth: the repo-root VERSION file (release workflow overrides
+# via POM1_VERSION from the git tag). Never hardcode the version here.
+VERSION="${POM1_VERSION:-$(cat VERSION)}"
 STAGING="dist/POM1.app"
 DMG_STAGE="dist/dmg-staging"
 DMGPATH="dist/POM1-macOS-v${VERSION}.dmg"

@@ -1,6 +1,20 @@
 cmake_minimum_required(VERSION 3.16)
 project(pom1_imgui)
 
+# --- Single-source version (P3) ---------------------------------------------
+# The repo-root VERSION file is the ONE place the version lives. C++ reads it via
+# the generated PomVersion.h (POM1_VERSION_STRING); the macOS bundle metadata and
+# the packaging scripts read it too. Static docs (README, shell.html, packaging
+# READMEs) are synced from it by tools/set_version.sh and guarded by
+# tools/check_version_sync.sh (ctest `version_sync`). Never hardcode the version.
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" POM1_VERSION LIMIT_COUNT 1)
+string(STRIP "${POM1_VERSION}" POM1_VERSION)
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/PomVersion.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/PomVersion.h"
+    @ONLY)
+include_directories("${CMAKE_CURRENT_BINARY_DIR}/generated")
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -645,8 +659,8 @@ else()
             MACOSX_BUNDLE_EXECUTABLE_NAME       "POM1"
             MACOSX_BUNDLE_GUI_IDENTIFIER        "net.gistlabs.pom1"
             MACOSX_BUNDLE_ICON_FILE             "POM1.icns"
-            MACOSX_BUNDLE_BUNDLE_VERSION        "1.9.3"
-            MACOSX_BUNDLE_SHORT_VERSION_STRING  "1.9.3"
+            MACOSX_BUNDLE_BUNDLE_VERSION        "${POM1_VERSION}"
+            MACOSX_BUNDLE_SHORT_VERSION_STRING  "${POM1_VERSION}"
             MACOSX_BUNDLE_COPYRIGHT             "Copyright © 2000-2026 Verhille Arnaud. GPL-3.0."
             MACOSX_BUNDLE_INFO_PLIST
                 "${CMAKE_CURRENT_SOURCE_DIR}/packaging/macos/Info.plist.in"

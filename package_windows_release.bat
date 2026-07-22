@@ -68,10 +68,10 @@ if not exist "roms\applesoft-gen2.rom" (
 )
 
 REM Version: honor POM1_VERSION (release workflow sets it from the git tag),
-REM else the shipped default. Keep this default in lockstep with the other
-REM version-string locations (see CLAUDE.md).
+REM else read the repo-root VERSION file (the single source of truth). Never
+REM hardcode the version here — see CLAUDE.md.
 set "POM1_VER=%POM1_VERSION%"
-if not defined POM1_VER set "POM1_VER=1.9.3"
+if not defined POM1_VER set /p POM1_VER=<"%~dp0VERSION"
 set "OUTDIR=dist\POM1-Windows"
 set "ZIPNAME=POM1-Windows-v%POM1_VER%.zip"
 set "ZIPPATH=dist\%ZIPNAME%"

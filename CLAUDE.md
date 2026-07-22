@@ -170,14 +170,9 @@ New invariant tests follow `tests/peripheral_bus_smoke_test.cpp` — `<cassert>`
 
 ## Version string locations
 
-Bump version in **all**:
-- `src/main_imgui.cpp` (console + window title)
-- `src/MainWindow_Dialogs.cpp` (About — 2 occurrences, with-photo + no-photo branches)
-- `src/Screen_ImGui.cpp` (welcome)
-- `build-wasm/shell.html` (3 occurrences: `<meta>`, `<title>`, `<div class="sub">` header)
-- `README.md` (title)
-- `CMakeLists.txt` (`MACOSX_BUNDLE_BUNDLE_VERSION` + `MACOSX_BUNDLE_SHORT_VERSION_STRING`)
-- `package_windows_release.bat` (ZIP filename)
-- `package_macos_release.sh` (`VERSION="…"` → DMG filename)
-- `packaging/linux/build_appimage.sh` (`VERSION="${POM1_VERSION:-…}"` fallback)
-- `packaging/windows/README.txt` (header)
+**Single source of truth: the repo-root `VERSION` file.** To bump: edit `VERSION`, run `tools/set_version.sh` (syncs the static docs), rebuild. Never hardcode the version anywhere else.
+
+- **C++** reads it via the generated `PomVersion.h` (`POM1_VERSION_STRING`) — CMake `configure_file`s `cmake/PomVersion.h.in` from `VERSION` into the build dir (on the global include path). Used by `src/main_imgui.cpp`, `src/MainWindow_Dialogs.cpp`, `src/Screen_ImGui.cpp`.
+- **CMake** reads `VERSION` for `MACOSX_BUNDLE_BUNDLE_VERSION` / `MACOSX_BUNDLE_SHORT_VERSION_STRING`.
+- **Packaging scripts** read `VERSION` at runtime (override via `POM1_VERSION` env, e.g. the release workflow's git tag): `package_macos_release.sh`, `package_windows_release.bat`, `packaging/linux/build_appimage.sh`.
+- **Static docs** carry a literal `POM1 v<version>` that `tools/set_version.sh` rewrites and `tools/check_version_sync.sh` (ctest **`version_sync`**) guards: `README.md` (title), `build-wasm/shell.html` (3×: `<meta>`, `<title>`, `.sub` header), `packaging/windows/README.txt` (header).

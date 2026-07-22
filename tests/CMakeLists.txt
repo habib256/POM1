@@ -1646,3 +1646,15 @@ if(Python3_FOUND)
              WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(zp_map_check PROPERTIES TIMEOUT 60)
 endif()
+
+# ── Version single-source guard ──────────────────────────────────────────────
+# The repo-root VERSION file is the sole source of truth; C++/CMake/packaging
+# read it directly. This asserts the static docs (README, shell.html, packaging
+# READMEs) that carry a literal "POM1 v<version>" stay in lockstep. UNIX only
+# (bash); Linux+macOS CI covers it. Fix drift with tools/set_version.sh.
+if(UNIX)
+    add_test(NAME version_sync
+             COMMAND bash "${CMAKE_SOURCE_DIR}/tools/check_version_sync.sh"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(version_sync PROPERTIES TIMEOUT 30)
+endif()

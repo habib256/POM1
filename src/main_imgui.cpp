@@ -1,6 +1,7 @@
 #include <iostream>
 #include <GLFW/glfw3.h>
 #include "POM1Build.h"
+#include "PomVersion.h"   // POM1_VERSION_STRING (generated from VERSION)
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 // imgui_impl_opengl3.h is no longer included here directly — the rendering
@@ -662,7 +663,7 @@ int main(int argc, char* argv[])
     // Install the Tee(stream + ring) logger so every subsystem message lands
     // both in stdout/stderr and in the ring buffer the debug console reads.
     pom1::initDefaultTeeLogger();
-    pom1::log().info("POM1", "v1.9.3 - Apple 1 Emulator (Dear ImGui)");
+    pom1::log().info("POM1", "v" POM1_VERSION_STRING " - Apple 1 Emulator (Dear ImGui)");
 
 #if !POM1_IS_WASM && defined(__APPLE__)
     pom1_macos_provision_user_data_dir();
@@ -751,7 +752,7 @@ int main(int argc, char* argv[])
     // right after creation, via pom1ShowGlfwWindowX11().
     glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
 #endif
-    GLFWwindow* window = glfwCreateWindow(1274, 801, "POM1 v1.9.3 - Apple 1 Emulator", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(1274, 801, "POM1 v" POM1_VERSION_STRING " - Apple 1 Emulator", NULL, NULL);
     if (window == NULL)
         return -1;
 

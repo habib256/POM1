@@ -27,7 +27,9 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
 
-VERSION="${POM1_VERSION:-1.9.3}"
+# Single source of truth: the repo-root VERSION file (CI overrides via
+# POM1_VERSION from the git tag). Never hardcode the version here.
+VERSION="${POM1_VERSION:-$(cat "${REPO_ROOT}/VERSION")}"
 DIST="${REPO_ROOT}/dist"
 WORK="${REPO_ROOT}/build-appimage"
 APPDIR="${WORK}/AppDir"

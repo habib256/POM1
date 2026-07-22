@@ -1,5 +1,6 @@
 #include "Screen_ImGui.h"
 #include "PomRenderer.h"
+#include "PomVersion.h"   // POM1_VERSION_STRING (generated from VERSION)
 #include "SnapshotIO.h"
 #include "imgui.h"
 #include <cstring>
@@ -273,7 +274,7 @@ void Screen_ImGui::autoClearAndWelcome()
         for (size_t i = 0; i < welcome.length() && startX + (int)i < SCREEN_WIDTH; ++i)
             screenBuffer[bufferIndex(0, startX + (int)i)] = welcome[i];
 
-        std::string version = "Version 1.9.3";
+        std::string version = "Version " POM1_VERSION_STRING;
         startX = (SCREEN_WIDTH - (int)version.length()) / 2;
         for (size_t i = 0; i < version.length() && startX + (int)i < SCREEN_WIDTH; ++i)
             screenBuffer[bufferIndex(1, startX + (int)i)] = version[i];
