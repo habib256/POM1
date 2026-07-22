@@ -38,13 +38,27 @@ GLFW_VER=3.3.10
 # Early juillet 2026 archive.ubuntu.com 404'd bionic and old-releases served it;
 # by 22 juillet the situation had inverted (old-releases 404s, archive serves it
 # again — run 29819799811 failed on exactly this). Try the stock sources first
-# and only rewrite to old-releases when archive no longer carries bionic. (No
-# curl/wget probe possible — the bare ubuntu:18.04 image ships neither.)
-if ! apt-get update; then
+# and only rewrite to old-releases when archive genuinely stops carrying bionic.
+#
+# CRITICAL: retry archive several times BEFORE any fallback. archive.ubuntu.com
+# has transient connection failures (run 29936629911), and rewriting to the
+# currently-dead old-releases on the first flake turns a retryable network blip
+# into a hard failure. Only fall back after archive has really given up.
+apt_update_retry() {   # $1 = attempts
+    local i
+    for i in $(seq 1 "$1"); do
+        apt-get update && return 0
+        echo "[apt] update attempt $i/$1 failed; retrying in 15s…" >&2
+        sleep 15
+    done
+    return 1
+}
+if ! apt_update_retry 4; then
+    echo "[apt] archive.ubuntu.com unreachable after retries — trying old-releases." >&2
     sed -i -e 's|http://archive.ubuntu.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g' \
            -e 's|http://security.ubuntu.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g' \
            /etc/apt/sources.list
-    apt-get update
+    apt_update_retry 4
 fi
 
 # --- base tooling + X11/GL dev headers (the latter to build GLFW from source) -
