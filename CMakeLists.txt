@@ -351,6 +351,18 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # so SID.cpp can include "residfp/residfp_defs.h" and the upstream SID.h.
 target_link_libraries(${PROJECT_NAME} libresidfp_static)
 
+# miniaudio (AudioDevice.cpp) dlopens its ALSA/Pulse/JACK backends and spawns
+# threads — link libdl/libpthread EXPLICITLY instead of riding on whatever the
+# glfw target happens to export. glibc >= 2.34 folds both into libc, which hid
+# the omission everywhere except the bionic (glibc 2.27) AppImage container,
+# whose from-source GLFW exports no dl dependency (run 29921172763).
+# CMAKE_DL_LIBS is empty on macOS/Windows/Emscripten, Threads is a no-op where
+# threads live in libc, so the plain UNIX guard is safe.
+if(UNIX AND NOT EMSCRIPTEN)
+    find_package(Threads REQUIRED)
+    target_link_libraries(${PROJECT_NAME} Threads::Threads ${CMAKE_DL_LIBS})
+endif()
+
 # ImDrawIdx 32 bits : imconfig.h le définit déjà ; le pré-include garantit imgui.cpp et tous les TUs
 # (évite WASM / CI avec caches ou chemins où imconfig semblait ignoré → assert 64k sommets).
 set(POM1_IMGUI_PREINCLUDE "${POM1_SRC_DIR}/POM1ImGuiPreinclude.h")
