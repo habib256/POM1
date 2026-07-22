@@ -87,9 +87,13 @@ ldconfig
 git config --global --add safe.directory '*'
 git clone --depth 1 https://github.com/cc65/cc65.git /tmp/cc65
 make -C /tmp/cc65 -j"$(nproc)"
+# The in-tree build leaves asminc/include/lib at the repo ROOT — share/cc65
+# only exists after `make install` (run 29918523855 failed on exactly this).
+# Install into a scratch prefix to get the canonical bin/ + share/cc65 layout.
+make -C /tmp/cc65 install PREFIX=/tmp/cc65-install
 # Stage the freshly built (glibc-2.27-linked) toolchain into the release bundle
 # layout that build_appimage.sh copies into usr/share/POM1/cc65.
-CC65_BIN_DIR=/tmp/cc65/bin CC65_SHARE_DIR=/tmp/cc65/share/cc65 \
+CC65_BIN_DIR=/tmp/cc65-install/bin CC65_SHARE_DIR=/tmp/cc65-install/share/cc65 \
     tools/build_cc65_bundle.sh --out dist/cc65-bundle
 
 # --- Dear ImGui (pinned; matches the macOS/Windows release jobs) -------------
