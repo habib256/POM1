@@ -8,7 +8,7 @@
 #include "imgui.h"
 #include "DisplayDevice.h"
 
-namespace pom1 { struct Texture; }   // PomRenderer.h — fwd-decl to keep this header GL-free
+namespace pom1 { struct Texture; class Pom1CrtEffects; }   // PomRenderer.h / Pom1CrtEffects.h — fwd-decls to keep this header GL-free
 
 class Screen_ImGui : public DisplayDevice
 {
@@ -37,6 +37,12 @@ public:
     void resetDisplay();     // garbage screen → auto-clear → welcome (cold boot / hard reset)
     void setShowBanner(bool show) { showBanner = show; }
     void setCursorPosition(int x, int y);
+
+    // Optional universal CRT post-process (owned by MainWindow). When active,
+    // the text framebuffer is routed through it and drawn as a single
+    // processed image (the shader supplies scanlines / phosphor / mask), so
+    // the built-in ImGui phosphor-glow + scanline overlay is skipped.
+    void setCrtEffects(pom1::Pom1CrtEffects* fx) { crtEffects = fx; }
 
     // DisplayDevice interface — Memory calls this on every $D012 write.
     void onChar(char c) override { writeChar(c); }
@@ -138,6 +144,7 @@ private:
     // destroyScreenFramebuffer.
     pom1::Texture* screenFbTexture = nullptr;
     bool screenFbUploaded = false;
+    pom1::Pom1CrtEffects* crtEffects = nullptr;   // non-owning; MainWindow-owned
     std::vector<uint32_t> screenFb;   // CPU-side native FB (kFbWidth*kFbHeight RGBA)
     void buildScreenFramebuffer(const std::array<char, BUFFER_SIZE>& grid);
     void destroyScreenFramebuffer();

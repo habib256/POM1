@@ -2178,6 +2178,105 @@ void MainWindow_ImGui::renderScreenConfigDialog()
     ImGui::End();
 }
 
+// ─── CRT Effects (universal shader post-process) ─────────────────────────
+//
+// Master ON/OFF + the OpenEmulator-style glass knobs that drive the per-
+// framebuffer CrtEffectStack (the Apple-1 text screen AND the GEN2/TMS/GT
+// graphics cards). Ported from POM2's "CRT Settings" panel, trimmed to the
+// knobs POM1's effect-only shader consumes. All values persist to
+// ini/ui.settings under the crt_* keys.
+void MainWindow_ImGui::renderCrtSettingsWindow()
+{
+    ImGui::SetNextWindowSize(ImVec2(380, 420), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("CRT Effects", &showCrtSettings)) {
+        ImGui::End();
+        return;
+    }
+
+    bool changed = false;
+
+    // Master ON/OFF, full-width at the top; greys out the knobs when off.
+    {
+        const bool on = crtEffects.enabled;
+        const ImVec4 col = on ? ImVec4(0.16f, 0.52f, 0.22f, 1.0f)
+                              : ImVec4(0.55f, 0.18f, 0.18f, 1.0f);
+        ImGui::PushStyleColor(ImGuiCol_Button, col);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+            ImVec4(col.x + 0.08f, col.y + 0.08f, col.z + 0.08f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, col);
+        if (ImGui::Button(on ? "CRT Effects: ON  (click to disable)"
+                             : "CRT Effects: OFF  (click to enable)",
+                          ImVec2(ImGui::GetContentRegionAvail().x, 0.0f))) {
+            crtEffects.enabled = !crtEffects.enabled;
+            changed = true;
+        }
+        ImGui::PopStyleColor(3);
+    }
+    ImGui::Separator();
+
+    // Backend / shader availability note.
+    {
+        pom1::PomRenderer* r = pom1::renderer();
+        if (r && !r->isOpenGL()) {
+            ImGui::TextColored(ImVec4(1, 0.6f, 0.3f, 1),
+                "CRT shader is OpenGL-only — inactive on this (Metal) backend.");
+            ImGui::Separator();
+        } else if (crtEffects.enabled && !crtEffects.active()) {
+            ImGui::TextColored(ImVec4(1, 0.5f, 0.3f, 1),
+                "CRT shader unavailable — presenting the raw framebuffer.");
+            ImGui::Separator();
+        }
+    }
+
+    ImGui::BeginDisabled(!crtEffects.enabled);
+
+    pom1::CrtParams& p = crtEffects.params;
+    changed |= ImGui::SliderFloat("Brightness",  &p.brightness,  -0.5f, 0.5f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    changed |= ImGui::SliderFloat("Contrast",    &p.contrast,     0.5f, 1.5f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    changed |= ImGui::SliderFloat("Saturation",  &p.saturation,   0.0f, 2.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    changed |= ImGui::SliderFloat("Hue",         &p.hue,         -0.5f, 0.5f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::Separator();
+    changed |= ImGui::SliderFloat("Sharpness",   &p.sharpness,    0.0f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    changed |= ImGui::SliderFloat("Persistence", &p.persistence,  0.0f, 0.95f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::Separator();
+    changed |= ImGui::SliderFloat("Scanlines",   &p.scanlines,    0.0f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    changed |= ImGui::SliderFloat("Barrel",      &p.barrel,       0.0f, 0.30f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+
+    ImGui::Separator();
+    static const char* kMaskNames[] = {
+        "Off", "Triad (3-stripe)", "Aperture grille (Trinitron)",
+        "Dot mask (offset triads)"
+    };
+    int maskIdx = static_cast<int>(p.shadowMask);
+    if (ImGui::Combo("Shadow mask", &maskIdx, kMaskNames,
+                     IM_ARRAYSIZE(kMaskNames))) {
+        p.shadowMask = static_cast<pom1::CrtParams::ShadowMask>(maskIdx);
+        changed = true;
+    }
+    ImGui::BeginDisabled(p.shadowMask == pom1::CrtParams::ShadowMask::Off);
+    changed |= ImGui::SliderFloat("Mask strength",
+                                  &p.shadowMaskStrength, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::EndDisabled();
+    changed |= ImGui::SliderFloat("Luminance gain", &p.luminanceGain, 1.0f, 2.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    changed |= ImGui::SliderFloat("Center lighting", &p.centerLighting, 0.5f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    changed |= ImGui::SliderFloat("Phosphor curve (gamma)",
+                                  &p.phosphorGamma, 0.6f, 2.6f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+
+    ImGui::Spacing();
+    if (ImGui::Button("Reset to defaults")) {
+        p = pom1::CrtParams{};
+        changed = true;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("Saved to ini/ui.settings");
+
+    ImGui::EndDisabled();
+
+    if (changed) saveUiSettings();
+
+    ImGui::End();
+}
+
 void MainWindow_ImGui::renderMemoryConfigDialog()
 {
     ImGui::SetNextWindowSize(ImVec2(450, 400), ImGuiCond_FirstUseEver);

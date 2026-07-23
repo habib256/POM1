@@ -92,6 +92,7 @@ void MainWindow_ImGui::createPom1()
 {
     pom1::log().info("POM1", "Welcome to POM1 - Apple I Emulator");
     screen = std::make_unique<Screen_ImGui>();
+    screen->setCrtEffects(&crtEffects);   // opt-in shader CRT (inert until enabled)
     emulation = std::make_unique<EmulationController>(screen.get());
     memoryViewer = std::make_unique<MemoryViewer_ImGui>();
     memoryViewer->setWriteCallback([this](uint16_t address, uint8_t value) {
@@ -735,6 +736,7 @@ void MainWindow_ImGui::render()
     if (showHappyWozPhoto) renderHappyWozPhotoWindow();
     if (showPlabTms9918Photo) renderPlabTms9918PhotoWindow();
     if (showScreenConfig) renderScreenConfigDialog();
+    if (showCrtSettings) renderCrtSettingsWindow();
     if (showMemoryConfig) renderMemoryConfigDialog();
     if (showLoadDialog) renderLoadDialog();
     if (showLoadTapeDialog) renderLoadTapeDialog();

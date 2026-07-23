@@ -26,6 +26,7 @@
 #include "SidTrackerEditor.h"      // sidtrack/ (portable SID tracker) on the include path
 #include "Pom1SidHost.h"
 #include "Screen_ImGui.h"
+#include "Pom1CrtEffects.h"        // universal shader CRT post-process (opt-in)
 #include "GraphicsCard.h"
 #include "TMS9918.h"
 #include "GT6144.h"
@@ -208,6 +209,12 @@ private:
     // Pom1 Apple I Hardware
     std::unique_ptr<EmulationController> emulation;
     std::unique_ptr<Screen_ImGui> screen;
+
+    // Universal shader CRT post-process (opt-in). Master ON/OFF + shared knob
+    // set drive a per-framebuffer effect stack (text screen + GEN2/TMS/GT-6144
+    // cards). Owned here; the screen + hardware windows route their framebuffer
+    // draws through it. Persisted under ini/ui.settings (crt_* keys).
+    pom1::Pom1CrtEffects crtEffects;
     std::unique_ptr<MemoryViewer_ImGui> memoryViewer;
     // Portable HGR Paint editor (hgrpaint/) + its POM1 host. Host is declared
     // first so it outlives the editor that holds a raw pointer to it.
@@ -277,6 +284,7 @@ private:
     bool showTutorialTerminalCard = false;    // P-LAB Terminal Card (desktop)
     bool showTutorialKrusader = false;        // Briel Replica-1 Krusader assembler
     bool showScreenConfig = false;
+    bool showCrtSettings = false;   // Settings → CRT Effects (shader sliders)
     bool showMemoryConfig = false;
     bool showLoadDialog = false;
     bool showLoadTapeDialog = false;
@@ -605,6 +613,7 @@ private:
     void renderDebugDialog();
     void renderRewindTimelineWindow();
     void renderScreenConfigDialog();
+    void renderCrtSettingsWindow();   // Settings → CRT Effects (shader sliders)
     void renderMemoryConfigDialog();
     void renderLoadDialog();
     void renderLoadTapeDialog();

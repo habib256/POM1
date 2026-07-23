@@ -180,6 +180,9 @@ set(SOURCES
     ${POM1_SRC_DIR}/MainWindow_Keyboard.cpp
     ${POM1_SRC_DIR}/NativeFileDialog.cpp
     ${POM1_SRC_DIR}/PomRenderer.cpp
+    ${POM1_SRC_DIR}/OpenGLShader.cpp
+    ${POM1_SRC_DIR}/CrtEffectStack.cpp
+    ${POM1_SRC_DIR}/Pom1CrtEffects.cpp
     ${POM1_SRC_DIR}/Logger.cpp
     ${POM1_SRC_DIR}/third_party/ImGuiColorTextEdit/TextEditor.cpp
     ${POM1_SRC_DIR}/Pom1BenchHost.cpp

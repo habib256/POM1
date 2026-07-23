@@ -109,12 +109,19 @@ void MainWindow_ImGui::renderGraphicsCardWindow()
             cursorPos.y + std::max(0.0f, (avail.y - size.y) * 0.5f)));
 
         const ImVec2 imgScreenPos = ImGui::GetCursorScreenPos();
-        ImGui::Image(r->asImTextureID(graphicsCardTexture), size);
+        ImGui::Image(crtEffects.apply(pom1::Pom1CrtEffects::Slot::Gen2Hgr,
+                                       graphicsCardTexture,
+                                       r->textureWidth(graphicsCardTexture),
+                                       r->textureHeight(graphicsCardTexture),
+                                       std::max(1, static_cast<int>(size.x)),
+                                       std::max(1, static_cast<int>(size.y))),
+                     size);
 
         // Scanline overlay — drawn after the image so it sits on top of the
         // texture pixels. Reuses Screen_ImGui's "1-px dark row every 2 display
-        // pixels" model with user-controllable alpha. Skipped at alpha=0.
-        if (gen2ScanlineAlpha > 0.001f && size.y > 1.0f) {
+        // pixels" model with user-controllable alpha. Skipped at alpha=0, and
+        // when the shader CRT is active (it already supplies scanlines).
+        if (gen2ScanlineAlpha > 0.001f && size.y > 1.0f && !crtEffects.active()) {
             ImDrawList* dl = ImGui::GetWindowDrawList();
             const int alpha8 = static_cast<int>(gen2ScanlineAlpha * 255.0f) & 0xFF;
             const ImU32 col = IM_COL32(0, 0, 0, alpha8);
@@ -243,7 +250,13 @@ void MainWindow_ImGui::renderTMS9918Window()
             cursor.x + std::max(0.0f, (avail.x - size.x) * 0.5f),
             cursor.y + std::max(0.0f, (avail.y - size.y) * 0.5f)));
 
-        ImGui::Image(r->asImTextureID(tms9918Texture), size);
+        ImGui::Image(crtEffects.apply(pom1::Pom1CrtEffects::Slot::Tms9918,
+                                       tms9918Texture,
+                                       r->textureWidth(tms9918Texture),
+                                       r->textureHeight(tms9918Texture),
+                                       std::max(1, static_cast<int>(size.x)),
+                                       std::max(1, static_cast<int>(size.y))),
+                     size);
     }
     ImGui::End();
     ImGui::PopStyleColor();
@@ -324,7 +337,13 @@ void MainWindow_ImGui::renderGT6144Window()
             cursorPos.x + std::max(0.0f, (avail.x - size.x) * 0.5f),
             cursorPos.y + std::max(0.0f, (avail.y - size.y) * 0.5f)));
 
-        ImGui::Image(r->asImTextureID(gt6144Texture), size);
+        ImGui::Image(crtEffects.apply(pom1::Pom1CrtEffects::Slot::Gt6144,
+                                       gt6144Texture,
+                                       r->textureWidth(gt6144Texture),
+                                       r->textureHeight(gt6144Texture),
+                                       std::max(1, static_cast<int>(size.x)),
+                                       std::max(1, static_cast<int>(size.y))),
+                     size);
     }
     ImGui::End();
     ImGui::PopStyleColor();

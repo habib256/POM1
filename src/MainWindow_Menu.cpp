@@ -188,6 +188,15 @@ void MainWindow_ImGui::renderMenuBar()
             if (ImGui::MenuItem("Display Options")) {
                 configScreen();
             }
+            if (ImGui::MenuItem("CRT Effects (sliders)...", nullptr,
+                                &showCrtSettings)) {}
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip(
+                    "Universal shader CRT look for the Apple-1 screen AND the\n"
+                    "graphics cards (GEN2 HGR / TMS9918 / GT-6144): scanlines,\n"
+                    "phosphor persistence + gamma, shadow mask, barrel, vignette\n"
+                    "and brightness/contrast/saturation/hue. Off by default.\n"
+                    "(OpenGL backend only; no effect on the macOS Metal backend.)");
             if (ImGui::MenuItem("Save UI Windows Layout")) {
                 savePresetLayout(activePresetIndex);
                 setStatusMessage("UI windows layout saved for this preset", 2.5f);

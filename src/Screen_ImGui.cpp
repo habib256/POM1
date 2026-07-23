@@ -1,5 +1,6 @@
 #include "Screen_ImGui.h"
 #include "PomRenderer.h"
+#include "Pom1CrtEffects.h"
 #include "PomVersion.h"   // POM1_VERSION_STRING (generated from VERSION)
 #include "SnapshotIO.h"
 #include "imgui.h"
@@ -628,13 +629,21 @@ void Screen_ImGui::render()
         return ((renderTopRow + logicalY) % SCREEN_HEIGHT) * SCREEN_WIDTH + x;
     };
 
+    // Universal shader CRT post-process (GEN2/TMS-style scanlines, phosphor,
+    // shadow mask, barrel …). When it is active it re-creates the whole CRT
+    // look on the GPU from the framebuffer, so the built-in ImGui overlays
+    // (phosphor-band backdrop, glow bloom, dark scanlines) are all skipped to
+    // avoid double-dipping. crtEffect (the legacy overlay toggle) still gates
+    // those overlays when the shader path is off.
+    const bool crtStackActive = crtEffects && crtEffects->active();
+
     // CRT pass 1/2 — phosphor-band backdrop. Drawn BEFORE the glyph pass so
     // the alternating tinted lines never cut across a character. The dark
     // scanlines are now a separate pass below, drawn AFTER the glyphs with a
     // reduced alpha so the CRT effect stays visible over the text (as on a
     // real CRT) without reintroducing the hard dark bars that used to bisect
     // every glyph when the whole overlay sat on top.
-    if (crtEffect) {
+    if (crtEffect && !crtStackActive) {
         drawCRTBackdrop(crtFullMin.x, crtFullMin.y,
                         crtFullMax.x, crtFullMax.y, useCharmapRenderer);
     }
@@ -682,7 +691,22 @@ void Screen_ImGui::render()
             screenFbContentValid = false;   // force rebuild when charmap returns
         }
 
-        if (useCharmapRenderer && screenFbUploaded) {
+        if (useCharmapRenderer && screenFbUploaded && crtStackActive) {
+            // Universal CRT post-process path: route the native 280×192 FB
+            // through the shader (scanlines / phosphor / mask / barrel) at the
+            // on-screen size, then draw the processed image once. The monitor
+            // tint still comes from the AddImage(col) param, so Green/Amber/
+            // Mono keep working over the CRT glass.
+            const ImVec2 fbP0 = drawMin;
+            const ImVec2 fbP1(drawMin.x + drawSize.x, drawMin.y + drawSize.y);
+            const ImTextureID crtTex = crtEffects->apply(
+                pom1::Pom1CrtEffects::Slot::TextScreen, screenFbTexture,
+                kFbWidth, kFbHeight,
+                std::max(1, static_cast<int>(drawSize.x)),
+                std::max(1, static_cast<int>(drawSize.y)));
+            drawList->AddImage(crtTex, fbP0, fbP1,
+                               ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f), col);
+        } else if (useCharmapRenderer && screenFbUploaded) {
             // One image, scaled to the display rect — the ONLY resample in the
             // pipeline. The 280×192 native FB is squished to the
             // kApple1RasterWidthScale aspect by the rect itself (the non-square
@@ -770,7 +794,7 @@ void Screen_ImGui::render()
     // CRT pass 2/2 — dark scanlines on top of the glyphs. Reduced alpha
     // (drawCRTScanlines) keeps the scanline pattern visible across the text
     // without the hard bisecting bars that the pre-split version produced.
-    if (crtEffect) {
+    if (crtEffect && !crtStackActive) {
         drawCRTScanlines(crtFullMin.x, crtFullMin.y,
                          crtFullMax.x, crtFullMax.y, useCharmapRenderer);
     }

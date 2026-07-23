@@ -87,6 +87,19 @@ public:
     virtual void     destroyTexture(Texture*) = 0;
     virtual ImTextureID asImTextureID(const Texture*) const = 0;
 
+    /// Raw OpenGL texture name (GLuint) backing this Texture, or 0 when the
+    /// backend is not OpenGL (e.g. the macOS Metal backend, which never
+    /// overrides this). The GL-only CRT post-process (CrtEffectStack) uses
+    /// this to reach the underlying texture; a 0 return is the graceful
+    /// "no GL path" signal → the caller presents the raw framebuffer.
+    virtual unsigned int glTextureName(const Texture*) const { return 0; }
+
+    /// True when this is the OpenGL / OpenGL-ES backend. Lets GL-only paths
+    /// (the CRT post-process) decide, before touching any GL entry point,
+    /// whether the GL path is even available. The Metal backend leaves this
+    /// false so those paths stay inert on macOS.
+    virtual bool isOpenGL() const { return false; }
+
     /// Texture dimensions, or 0 when `t == nullptr`. Lets callers (notably
     /// the paint hosts) decide whether an incoming RGBA buffer can be sent
     /// through `updateTexture` (cheap glTexSubImage2D / replaceRegion) or

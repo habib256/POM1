@@ -105,6 +105,13 @@ public:
         return (ImTextureID)(uintptr_t)t->glId;
     }
 
+    unsigned int glTextureName(const Texture* t) const override
+    {
+        return t ? t->glId : 0u;
+    }
+
+    bool isOpenGL() const override { return true; }
+
     int  textureWidth(const Texture* t)  const override { return t ? t->w : 0; }
     int  textureHeight(const Texture* t) const override { return t ? t->h : 0; }
 

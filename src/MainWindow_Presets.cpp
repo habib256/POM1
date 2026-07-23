@@ -1952,6 +1952,7 @@ MainWindow_ImGui::windowRegistry()
         { "PlabTms9918Photo",     "P-LAB TMS9918 Board (Photo)",               &MW::showPlabTms9918Photo,   K::Info,        true  },
         // ── Transient dialogs — NOT persisted (would re-pop a file/config op) ─────────────────────────────────────────────────
         { "ScreenConfig",         "Display Settings",                          &MW::showScreenConfig,       K::Dialog,      false },
+        { "CrtSettings",          "CRT Effects",                               &MW::showCrtSettings,        K::Dialog,      false },
         { "MemoryConfig",         "Memory Settings",                           &MW::showMemoryConfig,       K::Dialog,      false },
         { "LoadDialog",           "Load Program",                              &MW::showLoadDialog,         K::Dialog,      false },
         { "LoadTapeDialog",       "Load Tape",                                 &MW::showLoadTapeDialog,     K::Dialog,      false },
@@ -2364,10 +2365,29 @@ void MainWindow_ImGui::loadUiSettings()
         if (eq == std::string::npos) continue;
         const std::string key = line.substr(0, eq);
         const std::string val = line.substr(eq + 1);
+        pom1::CrtParams& c = crtEffects.params;
         try {
             if      (key == "theme")       theme      = std::stoi(val);
             else if (key == "hidpi_auto")  hidpiAuto  = std::stoi(val);
             else if (key == "hidpi_scale") hidpiScale = std::stof(val);
+            else if (key == "crt_enabled")     crtEffects.enabled = (std::stoi(val) != 0);
+            else if (key == "crt_brightness")  c.brightness        = std::stof(val);
+            else if (key == "crt_contrast")    c.contrast          = std::stof(val);
+            else if (key == "crt_saturation")  c.saturation        = std::stof(val);
+            else if (key == "crt_hue")         c.hue               = std::stof(val);
+            else if (key == "crt_sharpness")   c.sharpness         = std::stof(val);
+            else if (key == "crt_persistence") c.persistence       = std::stof(val);
+            else if (key == "crt_scanlines")   c.scanlines         = std::stof(val);
+            else if (key == "crt_barrel")      c.barrel            = std::stof(val);
+            else if (key == "crt_shadowmask") {
+                int m = std::stoi(val);
+                if (m < 0) m = 0; else if (m > 3) m = 3;
+                c.shadowMask = static_cast<pom1::CrtParams::ShadowMask>(m);
+            }
+            else if (key == "crt_maskstrength") c.shadowMaskStrength = std::stof(val);
+            else if (key == "crt_lumgain")      c.luminanceGain      = std::stof(val);
+            else if (key == "crt_centerlight")  c.centerLighting     = std::stof(val);
+            else if (key == "crt_gamma")        c.phosphorGamma      = std::stof(val);
         } catch (...) { /* ignore malformed line */ }
     }
     applyUiTheme(theme);
@@ -2389,6 +2409,22 @@ void MainWindow_ImGui::saveUiSettings()
     f << "theme=" << uiTheme_ << '\n'
       << "hidpi_auto=" << (uiHiDpiAuto_ ? 1 : 0) << '\n'
       << "hidpi_scale=" << uiHiDpiManualScale_ << '\n';
+    // Universal CRT effect stack — master toggle + shader knob set.
+    const pom1::CrtParams& c = crtEffects.params;
+    f << "crt_enabled="     << (crtEffects.enabled ? 1 : 0) << '\n'
+      << "crt_brightness="  << c.brightness         << '\n'
+      << "crt_contrast="    << c.contrast           << '\n'
+      << "crt_saturation="  << c.saturation         << '\n'
+      << "crt_hue="         << c.hue                << '\n'
+      << "crt_sharpness="   << c.sharpness          << '\n'
+      << "crt_persistence=" << c.persistence        << '\n'
+      << "crt_scanlines="   << c.scanlines          << '\n'
+      << "crt_barrel="      << c.barrel             << '\n'
+      << "crt_shadowmask="  << static_cast<int>(c.shadowMask) << '\n'
+      << "crt_maskstrength="<< c.shadowMaskStrength << '\n'
+      << "crt_lumgain="     << c.luminanceGain      << '\n'
+      << "crt_centerlight=" << c.centerLighting     << '\n'
+      << "crt_gamma="       << c.phosphorGamma      << '\n';
     f.close();
     syncIniToIdbfs();
 }

@@ -10,7 +10,26 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added — universal shader CRT effects (opt-in)
+
+- **CRT Effects window (Settings → "CRT Effects (sliders)...")** — a universal
+  GPU post-process (ported from POM2's effect stack) that applies a composable
+  CRT look to **every emulated framebuffer at once**: the Apple-1 text screen
+  AND the GEN2 HGR / TMS9918 / GT-6144 card windows. Knobs: brightness /
+  contrast / saturation / hue, spatial sharpness, phosphor persistence
+  (temporal afterglow) + phosphor gamma, smooth anti-aliased scanlines, barrel
+  curvature, procedural shadow mask (triad / aperture grille / dot, Lottes
+  luminance-preserving triplet), center-lighting vignette and post-glass
+  luminance gain. Off by default; all values persist to `ini/ui.settings`
+  (`crt_*` keys). New sources: `CrtEffectStack` (GLSL pass, per-framebuffer
+  ping-pong FBO rendered at on-screen resolution for analytic AA),
+  `OpenGLShader` (portable GLSL 1.50 / ES 3.00 compile helper), `CrtParams`,
+  `Pom1CrtEffects` (per-slot manager; single `apply()` call site returns the
+  ImTextureID to draw). When active, the shader replaces the legacy ImGui
+  scanline/phosphor overlays (no double-dipping); the monitor tint
+  (Green/Amber/Mono) still applies on top. **OpenGL backends only** (Linux /
+  Windows / WASM / macOS-GL); on the macOS Metal backend the stack stays inert
+  and the raw framebuffer is presented unchanged.
 
 ## [1.9.3] — 2026-07-22
 
