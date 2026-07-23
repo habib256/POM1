@@ -10,6 +10,20 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — adaptive UI refresh (perf, old machines)
+
+- **Adaptive UI refresh** (Display Settings → Performance, on by default,
+  desktop only) — when nothing on screen is changing (no input for 2 s, no
+  pending Apple-1 output, no open card-framebuffer window with the CPU
+  running, CRT shader off, no status message), the ImGui re-render drops to a
+  ~5 Hz floor instead of 60: an idle Wozmon renders ×10 fewer frames
+  (measured 660 vs 1500 over 30 s). The emulation thread is untouched; GLFW
+  events stay polled every ~10 ms so any input restores full rate within one
+  tick, and a window-refresh callback repaints immediately on expose. The
+  5 Hz floor guarantees a missed animation degrades to 5 fps rather than
+  freezing. Persisted as `idle_throttle` in `ini/ui.settings`. This is P2-D
+  of [`doc/PERF_VIEILLES_MACHINES_FR.md`](doc/PERF_VIEILLES_MACHINES_FR.md).
+
 ### Added — universal shader CRT effects (opt-in)
 
 - **CRT Effects window (Settings → "CRT Effects (sliders)...")** — a universal

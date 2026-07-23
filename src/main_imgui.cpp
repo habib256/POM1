@@ -258,8 +258,18 @@ static void glfw_error_callback(int error, const char* description)
     fprintf(stderr, "GLFW Error %d: %s\n", error, description);
 }
 
+// Adaptive-UI throttle (P2-D): timestamp of the last user-input / window
+// event. The main loop renders at full (vsync) rate for a grace period after
+// any activity, then drops to a low idle rate when MainWindow reports nothing
+// on screen needs animating. Updated from GLFW callbacks (which run inside
+// glfwPollEvents — polled every loop tick even while idle, so a keypress
+// wakes the renderer within one ~10 ms tick, not at the idle rate).
+static std::atomic<double> g_lastActivityTime{0.0};
+static void pom1_note_activity() { g_lastActivityTime.store(glfwGetTime(), std::memory_order_relaxed); }
+
 static void glfw_char_callback(GLFWwindow* window, unsigned int codepoint)
 {
+    pom1_note_activity();
     ImGui_ImplGlfw_CharCallback(window, codepoint);
 
     auto* mw = static_cast<MainWindow_ImGui*>(glfwGetWindowUserPointer(window));
@@ -270,6 +280,7 @@ static void glfw_char_callback(GLFWwindow* window, unsigned int codepoint)
 
 static void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
+    pom1_note_activity();
     ImGui_ImplGlfw_KeyCallback(window, key, scancode, action, mods);
 
     // PRESS + REPEAT : le handler n’exécute les raccourcis sur REPEAT que pour F7 (step).
@@ -280,6 +291,38 @@ static void glfw_key_callback(GLFWwindow* window, int key, int scancode, int act
         }
     }
 }
+
+// Mouse / window callbacks: same chain-to-ImGui pattern as key/char above.
+// They exist solely to feed the activity timestamp; ImGui's backend handlers
+// do the actual input plumbing. Desktop only — WASM keeps the browser's
+// requestAnimationFrame pacing and never throttles.
+#if !POM1_IS_WASM
+static void glfw_mouse_button_callback(GLFWwindow* w, int button, int action, int mods)
+{
+    pom1_note_activity();
+    ImGui_ImplGlfw_MouseButtonCallback(w, button, action, mods);
+}
+static void glfw_cursor_pos_callback(GLFWwindow* w, double x, double y)
+{
+    pom1_note_activity();
+    ImGui_ImplGlfw_CursorPosCallback(w, x, y);
+}
+static void glfw_scroll_callback(GLFWwindow* w, double dx, double dy)
+{
+    pom1_note_activity();
+    ImGui_ImplGlfw_ScrollCallback(w, dx, dy);
+}
+static void glfw_window_focus_callback(GLFWwindow* w, int focused)
+{
+    pom1_note_activity();
+    ImGui_ImplGlfw_WindowFocusCallback(w, focused);
+}
+// Expose/resize damage: with the idle throttle skipping present(), the window
+// must repaint promptly when the WM asks (uncomposited X11 shows stale pixels
+// otherwise). No ImGui counterpart to chain for these two.
+static void glfw_window_refresh_callback(GLFWwindow*) { pom1_note_activity(); }
+static void glfw_window_size_callback(GLFWwindow*, int, int) { pom1_note_activity(); }
+#endif // !POM1_IS_WASM
 
 #if !POM1_IS_WASM && defined(__APPLE__)
 /// Provision `~/Library/Application Support/POM1/` on first launch, refresh
@@ -996,6 +1039,15 @@ int main(int argc, char* argv[])
     // Installer nos callbacks GLFW APRÈS ImGui pour les chaîner
     glfwSetCharCallback(window, glfw_char_callback);
     glfwSetKeyCallback(window, glfw_key_callback);
+#if !POM1_IS_WASM
+    // Adaptive-UI throttle activity sources (desktop only — WASM keeps rAF).
+    glfwSetMouseButtonCallback(window, glfw_mouse_button_callback);
+    glfwSetCursorPosCallback(window, glfw_cursor_pos_callback);
+    glfwSetScrollCallback(window, glfw_scroll_callback);
+    glfwSetWindowFocusCallback(window, glfw_window_focus_callback);
+    glfwSetWindowRefreshCallback(window, glfw_window_refresh_callback);
+    glfwSetWindowSizeCallback(window, glfw_window_size_callback);
+#endif
 
     // Main loop
 #if POM1_IS_WASM
@@ -1081,9 +1133,34 @@ int main(int argc, char* argv[])
     }, &ctx, 0, true);
     // emscripten_set_main_loop_arg never returns when simulate_infinite_loop=true
 #else
+    double lastUiRenderTime = 0.0;
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
+
+        // Adaptive-UI throttle (P2-D, doc/PERF_VIEILLES_MACHINES_FR.md §9):
+        // the EMULATION runs untouched on its own thread; only the ImGui
+        // re-render is skipped. Full (vsync) rate while the user interacts,
+        // during the boot window, or while MainWindow reports on-screen
+        // motion; otherwise ~5 Hz. The 5 Hz floor is the safety net: any
+        // animation the heuristic misses degrades to 5 fps for at most the
+        // idle period, never freezes. Events stay polled every ~10 ms tick,
+        // so input latency is one tick, not the idle period.
+        {
+            constexpr double kActiveAfterInputSec = 2.0;   // grace after any event
+            constexpr double kBootFullRateSec     = 10.0;  // deferred CLI/plug window
+            constexpr double kIdleFramePeriodSec  = 0.20;  // idle floor ≈ 5 Hz
+            const double now = glfwGetTime();
+            const bool uiActive =
+                now < kBootFullRateSec
+                || (now - g_lastActivityTime.load(std::memory_order_relaxed)) < kActiveAfterInputSec
+                || mainWindow.wantsContinuousRender();
+            if (!uiActive && (now - lastUiRenderTime) < kIdleFramePeriodSec) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                continue;
+            }
+            lastUiRenderTime = now;
+        }
 
         // Start the Dear ImGui frame
         pom1::renderer()->beginFrame();

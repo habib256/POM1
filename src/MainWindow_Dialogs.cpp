@@ -2170,6 +2170,22 @@ void MainWindow_ImGui::renderScreenConfigDialog()
             ImGui::TextDisabled("Detected monitor scale: %.2f×", detected);
         }
 
+#if !POM1_IS_WASM
+        ImGui::Spacing();
+        ImGui::Text("Performance");
+        ImGui::Separator();
+        if (ImGui::Checkbox("Adaptive UI refresh (save CPU/GPU when idle)",
+                            &uiIdleThrottle_)) {
+            saveUiSettings();
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(
+                "When nothing on screen is changing, redraw the UI ~5x per\n"
+                "second instead of 60 — a big saving on old machines. The\n"
+                "emulation itself always runs at full speed on its own thread;\n"
+                "any input instantly restores the full frame rate.");
+#endif
+
         ImGui::Spacing();
         if (ImGui::Button("Close")) {
             showScreenConfig = false;

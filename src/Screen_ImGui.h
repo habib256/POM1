@@ -44,6 +44,14 @@ public:
     // the built-in ImGui phosphor-glow + scanline overlay is skipped.
     void setCrtEffects(pom1::Pom1CrtEffects* fx) { crtEffects = fx; }
 
+    // True when the display has un-rendered output pending: characters written
+    // since the last render() (dirty) or a boot-sequence phase in flight. The
+    // adaptive-UI throttle uses this to keep full frame rate while the Apple-1
+    // is actually printing; a racy unlocked read is fine for that hint.
+    bool hasPendingOutput() const {
+        return dirty || garbageClearTimer > 0.0f || blackScreenTimer > 0.0f;
+    }
+
     // DisplayDevice interface — Memory calls this on every $D012 write.
     void onChar(char c) override { writeChar(c); }
 

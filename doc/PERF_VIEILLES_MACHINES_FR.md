@@ -302,14 +302,23 @@ une fonction pure du cycle — il s'y prête). C'est le plus gros multiplicateur
 du cœur mais le plus délicat : les pins beam-race (`gen2_beam_race_smoke`,
 `gen2_floatingbus_smoke`, `gen2_horizontal_split_smoke`) sont le harnais.
 
-### P2-D — UI adaptative pour vieux iGPU `[S]`
+### P2-D — UI adaptative pour vieux iGPU `[S]` — **IMPLÉMENTÉ (23 juil. 2026)**
 
 L'émulation vit sur son thread ; l'UI n'a pas besoin de 60 Hz quand rien ne
-change. Re-rendre ImGui seulement si (snapshot sale ‖ entrée clavier/souris ‖
-animation active), sinon re-présenter ou dormir — un Wozmon idle passe de
-60 renders/s à ~2. Compléments : update de texture des cartes seulement si le
-framebuffer a changé (la TMS copie 288×216 chaque frame même statique), cap
-UI 30 Hz optionnel.
+change. Implémentation livrée : plein régime (vsync) pendant 10 s au boot,
+2 s après tout événement d'entrée (callbacks GLFW → horodatage atomique,
+événements pollés toutes les ~10 ms même en idle → latence de réveil d'un
+tick), et tant que `MainWindow::wantsContinuousRender()` est vrai (sortie
+Apple-1 en attente, fenêtre carte ouverte + CPU actif, shader CRT
+(persistance), message status, compte-à-rebours de plug différé) ; sinon
+**plancher ~5 Hz** — toute animation ratée par l'heuristique dégrade à 5 fps,
+ne gèle jamais. Un callback WindowRefresh force le re-rendu sur expose (X11
+sans compositeur). Toggle "Adaptive UI refresh" dans Display Settings,
+persisté `ini/ui.settings` (`idle_throttle`), desktop seulement (le WASM
+garde le rAF du navigateur). **Mesuré : Wozmon idle 30 s = 660 frames avec
+vs 1500 sans (×10 moins de rendus en régime idle).** Reste ouvert du P2-D
+d'origine : update de texture des cartes seulement si le framebuffer a
+changé (la TMS copie 288×216 chaque frame même statique).
 
 ### P2-E — PGO au packaging `[S]`
 

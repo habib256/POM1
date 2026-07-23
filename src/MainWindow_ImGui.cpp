@@ -481,6 +481,21 @@ void MainWindow_ImGui::applyBootCliOverrides()
     // before loadTape() decides between pulse mode and audio-stream mode.
 }
 
+bool MainWindow_ImGui::wantsContinuousRender() const
+{
+    if (!uiIdleThrottle_) return true;            // feature disabled → always 60 Hz
+    if (!uiSettingsLoaded_) return true;          // first frames — settings not read yet
+    if (pendingCardEnableFrames > 0) return true; // deferred plug counts FRAMES
+    if (statusTimer > 0.0f) return true;          // status-bar message fading
+    if (screen && screen->hasPendingOutput()) return true;   // Apple-1 printing / boot
+    // Card framebuffer windows animate while the CPU runs (a program may be
+    // redrawing them every frame — we don't track their content).
+    if (cpuRunning && (showGraphicsCard || showTMS9918 || showGT6144)) return true;
+    // CRT shader phosphor persistence decays across frames (ping-pong).
+    if (crtEffects.enabled) return true;
+    return false;
+}
+
 void MainWindow_ImGui::render()
 {
     float deltaTime = ImGui::GetIO().DeltaTime;

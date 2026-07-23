@@ -47,6 +47,15 @@ public:
     ~MainWindow_ImGui();
 
     void render();
+    // Adaptive-UI throttle (P2-D): true while something on screen genuinely
+    // needs full frame rate — pending Apple-1 output, an animating card
+    // framebuffer window, the CRT shader's phosphor decay, a status-bar
+    // message fading, or the deferred card-plug countdown (frame-counted).
+    // The main loop drops to a low idle rate (~5 Hz floor, so any missed
+    // condition degrades to 5 fps rather than freezing) when this is false
+    // AND no input arrived recently. Desktop only; WASM keeps the browser's
+    // requestAnimationFrame pacing.
+    bool wantsContinuousRender() const;
     void setWindow(GLFWwindow* win) { window = win; }
     // Free GL resources owned by sub-widgets (the HGR Paint editor's textures)
     // while the context is still current — call before ImGui/GLFW teardown.
@@ -501,6 +510,7 @@ private:
     // whenever the user changes one of them. On WASM the file lives under the
     // IDBFS-backed ini/ mount, so it survives page reloads too.
     int  uiTheme_ = 0;              // 0=Dark (default) 1=Light 2=High contrast
+    bool uiIdleThrottle_ = true;    // adaptive UI rate (P2-D) — Display Settings toggle
     bool uiSettingsLoaded_ = false;
     void applyUiTheme(int theme);
     void loadUiSettings();

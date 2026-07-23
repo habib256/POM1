@@ -2370,6 +2370,7 @@ void MainWindow_ImGui::loadUiSettings()
             if      (key == "theme")       theme      = std::stoi(val);
             else if (key == "hidpi_auto")  hidpiAuto  = std::stoi(val);
             else if (key == "hidpi_scale") hidpiScale = std::stof(val);
+            else if (key == "idle_throttle") uiIdleThrottle_ = (std::stoi(val) != 0);
             else if (key == "crt_enabled")     crtEffects.enabled = (std::stoi(val) != 0);
             else if (key == "crt_brightness")  c.brightness        = std::stof(val);
             else if (key == "crt_contrast")    c.contrast          = std::stof(val);
@@ -2408,7 +2409,8 @@ void MainWindow_ImGui::saveUiSettings()
     if (!f) return;
     f << "theme=" << uiTheme_ << '\n'
       << "hidpi_auto=" << (uiHiDpiAuto_ ? 1 : 0) << '\n'
-      << "hidpi_scale=" << uiHiDpiManualScale_ << '\n';
+      << "hidpi_scale=" << uiHiDpiManualScale_ << '\n'
+      << "idle_throttle=" << (uiIdleThrottle_ ? 1 : 0) << '\n';
     // Universal CRT effect stack — master toggle + shader knob set.
     const pom1::CrtParams& c = crtEffects.params;
     f << "crt_enabled="     << (crtEffects.enabled ? 1 : 0) << '\n'
