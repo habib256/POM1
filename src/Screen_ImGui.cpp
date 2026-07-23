@@ -50,7 +50,8 @@ void Screen_ImGui::destroyScreenFramebuffer()
     screenFbContentValid = false;
 }
 
-void Screen_ImGui::buildScreenFramebuffer(const std::array<char, BUFFER_SIZE>& grid)
+void Screen_ImGui::buildScreenFramebuffer(const std::array<char, BUFFER_SIZE>& grid,
+                                          bool bakeRefreshDots)
 {
     // Rasterise the whole 40×24 grid into ONE native-resolution RGBA texture:
     // every character cell is kNativeCellW × kNativeCellH dots, the 5×8 charmap
@@ -86,6 +87,31 @@ void Screen_ImGui::buildScreenFramebuffer(const std::array<char, BUFFER_SIZE>& g
             }
         }
     }
+
+    // DRAM refresh crosstalk dots, native-resolution port of the
+    // drawCRTRefreshDots overlay (see there for the silicon layout). Baked
+    // into the framebuffer ONLY on the shader-CRT path, so the dots ride the
+    // same barrel/scanline/mask warp as the glyphs instead of floating flat
+    // above the curved image. Only the 24 active rows fit the 280×192 raster —
+    // the 4 blanking rows (1 top + 3 bottom) live in the overscan outside the
+    // framebuffer and are cropped here. Intensity is encoded in RGB (not
+    // alpha) because the CRT shader samples .rgb and ignores source alpha.
+    if (bakeRefreshDots) {
+        const uint32_t dim = IM_COL32(33, 33, 33, 255);  // ≈ the overlay's 33/255 alpha
+        constexpr int kShift = 2;   // ≈ the overlay's 6-display-px upward shift at typical zoom
+        for (int rr = 1; rr <= SCREEN_HEIGHT; ++rr) {
+            const int cy = rr * kNativeCellH - kShift;   // dash centre (char-row bottom edge)
+            for (int i = 0; i < 20; ++i) {
+                const int cx = (2 * i + 1) * kNativeCellW;   // char right edge, every 2 chars
+                for (int py = cy - 1; py <= cy; ++py) {      // 1×2-dot dash, right-anchored
+                    if (py < 0 || py >= kFbHeight || cx < 1) continue;
+                    uint32_t& p = screenFb[static_cast<size_t>(py) * kFbWidth + (cx - 1)];
+                    if (p == 0) p = dim;   // never darken a lit glyph dot
+                }
+            }
+        }
+    }
+    screenFbDotsBaked = bakeRefreshDots;
 
     // Filter::Nearest matches the GEN2/TMS9918/GT-6144 framebuffers: crisp
     // pixel-art under both backends (GL honours it; the Metal patch forces
@@ -678,17 +704,27 @@ void Screen_ImGui::render()
             }
         }
 
+        // On the shader-CRT path the DRAM refresh dots are baked into the
+        // native framebuffer (so they warp with the glyphs) instead of being
+        // drawn as the flat overlay below.
+        const bool bakeDotsInFb = dramRefreshDotsEnabled && crtStackActive
+                                  && useCharmapRenderer;
+
         if (useCharmapRenderer) {
             // Re-rasterise the native-resolution framebuffer only when the grid
             // content changed (idle Wozmon / paused BASIC keep it valid for many
-            // frames, so most frames are a single AddImage with no upload).
-            if (!screenFbContentValid || !screenFbUploaded || effective != lastEffectiveGrid) {
-                buildScreenFramebuffer(effective);
+            // frames, so most frames are a single AddImage with no upload) — or
+            // when the dots-baked state flips (CRT shader / dots toggles).
+            if (!screenFbContentValid || !screenFbUploaded
+                || bakeDotsInFb != screenFbDotsBaked
+                || effective != lastEffectiveGrid) {
+                buildScreenFramebuffer(effective, bakeDotsInFb);
                 lastEffectiveGrid = effective;
                 screenFbContentValid = true;
             }
         } else {
             screenFbContentValid = false;   // force rebuild when charmap returns
+            screenFbDotsBaked = false;      // FB not drawn → dots come from the overlay
         }
 
         if (useCharmapRenderer && screenFbUploaded && crtStackActive) {
@@ -801,8 +837,11 @@ void Screen_ImGui::render()
     // DRAM refresh crosstalk dots — painted on top of scanlines so they
     // remain visible inside the dark mesh. Drawn regardless of crtEffect and
     // of silicon mode: shown by default (dramRefreshDotsEnabled = true) as a
-    // permanent part of the Apple-1 screen look.
-    if (dramRefreshDotsEnabled) {
+    // permanent part of the Apple-1 screen look. On the shader-CRT path the
+    // dots are baked into the framebuffer instead (screenFbDotsBaked — see
+    // buildScreenFramebuffer) so they follow the barrel warp; the flat
+    // overlay would float above the curved image.
+    if (dramRefreshDotsEnabled && !screenFbDotsBaked) {
         drawCRTRefreshDots(drawMin.x, drawMin.y,
                            drawMin.x + drawSize.x, drawMin.y + drawSize.y, useCharmapRenderer);
     }

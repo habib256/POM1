@@ -144,9 +144,11 @@ private:
     // destroyScreenFramebuffer.
     pom1::Texture* screenFbTexture = nullptr;
     bool screenFbUploaded = false;
+    bool screenFbDotsBaked = false;   // DRAM refresh dots rasterised into the FB (shader-CRT path)
     pom1::Pom1CrtEffects* crtEffects = nullptr;   // non-owning; MainWindow-owned
     std::vector<uint32_t> screenFb;   // CPU-side native FB (kFbWidth*kFbHeight RGBA)
-    void buildScreenFramebuffer(const std::array<char, BUFFER_SIZE>& grid);
+    void buildScreenFramebuffer(const std::array<char, BUFFER_SIZE>& grid,
+                                bool bakeRefreshDots);
     void destroyScreenFramebuffer();
 
     // The effective grid (screenBuffer + cursor override + power-on pattern)
