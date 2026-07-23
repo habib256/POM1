@@ -259,3 +259,76 @@ Dans le run GEN2 (sans SID), les tables de boot pèsent même **~39 % des
 Autre confirmation : `checkOutOfRangeAccess` fait ~7 écritures pile par appel
 (sauvegarde de registres = pur overhead d'appel) → l'inline de R4 les
 supprime intégralement.
+
+## 9. Phase 2 — au-delà de R1-R7 (restructurations)
+
+R1-R5 grattent des pourcentages *sans changer le modèle d'exécution*. Le
+levier suivant est structurel. Point de départ chiffré : en régime établi
+(§8, boot exclu), **~170 Ir/cycle émulé**, dont ~25-40 seulement de vrai
+travail 6502 (`executeOpcode` + adressage + ALU ≈ 15 %). Le reste est de la
+comptabilité **appelée à chaque instruction**. Trois chantiers, par ROI :
+
+### P2-A — SID sur son propre thread `[M · le plus rentable]`
+
+Le scénario serré (§6, SID en lecture ~1,7×) a une issue parfaite sur les
+cibles réelles : un Core 2 **Duo** a un 2ᵉ cœur inoccupé pendant l'émulation.
+Découpler le clocking SID du thread émulation : le thread émulation pousse un
+**journal d'écritures registre horodatées en cycles** (exactement le modèle du
+soft-switch journal GEN2 déjà dans `Memory::advanceCycles`), le thread SID
+consomme le journal, clocke `libresidfp` par gros lots et remplit le ring
+audio existant (déjà SPSC). Le DSP (55 % du run) disparaît du chemin critique
+→ **SID actif ≈ gratuit pour l'émulation** sur tout dual-core. Précaution :
+lecture de registre SID (rare, POT/OSC3) = point de synchronisation.
+
+### P2-B — Dispatch mémoire par table de pages `[M]`
+
+`memRead` (13 % Ir) re-teste à CHAQUE accès : alias PIA `$D0xx`, write-protect
+ROM, OOR, `pageMask` du bus, sniffer cassette. Classique et prouvé : deux
+tables de 256 handlers (`readPage[256]`, `writePage[256]`) reconstruites au
+(dé)branchement de carte — le cas RAM pure devient `mem[addr]` après UN test
+indexé, tous les cas spéciaux vivent dans leurs handlers. Absorbe R4 et R5 au
+passage. Gain estimé sur le cœur : 1,3-1,5×. Pins : `klaus`, `cpu_harte`,
+`peripheral_bus_smoke`, byte-identique exigé.
+
+### P2-C — `advanceCycles` événementiel `[M/L]`
+
+Aujourd'hui chaque instruction avance cassette + scanner GEN2 + N cartes
+(16 % Ir + les virtuels). Modèle "next event" : calculer le **prochain cycle
+intéressant** (rollover de frame GEN2, latch de scanline si le programme
+écrit le framebuffer, échéance cassette, timer VIA…) et laisser le CPU
+tourner en boucle serrée jusqu'à lui ; les périphériques se rattrapent
+paresseusement depuis le compteur de cycles global (le scanner GEN2 est déjà
+une fonction pure du cycle — il s'y prête). C'est le plus gros multiplicateur
+du cœur mais le plus délicat : les pins beam-race (`gen2_beam_race_smoke`,
+`gen2_floatingbus_smoke`, `gen2_horizontal_split_smoke`) sont le harnais.
+
+### P2-D — UI adaptative pour vieux iGPU `[S]`
+
+L'émulation vit sur son thread ; l'UI n'a pas besoin de 60 Hz quand rien ne
+change. Re-rendre ImGui seulement si (snapshot sale ‖ entrée clavier/souris ‖
+animation active), sinon re-présenter ou dormir — un Wozmon idle passe de
+60 renders/s à ~2. Compléments : update de texture des cartes seulement si le
+framebuffer a changé (la TMS copie 288×216 chaque frame même statique), cap
+UI 30 Hz optionnel.
+
+### P2-E — PGO au packaging `[S]`
+
+Entraîner avec les scénarios headless du §1 (`-fprofile-generate` →
+`-fprofile-use` dans le job release). Typiquement +5-15 % sur un
+interpréteur, zéro risque fonctionnel, s'ajoute à tout le reste.
+
+### À ne PAS faire (phase 2 incluse)
+
+- **JIT/dynarec 6502** : pour une cible à 1 MHz déjà 50× temps réel, tout
+  risque, zéro besoin.
+- **Multithreader le cœur CPU+bus** : le 6502 est séquentiel, les cibles ont
+  2 cœurs — P2-A les emploie mieux.
+- **GPU NTSC** : toujours non (§4).
+
+### Estimation cumulée (vieille machine ÷12, dual-core)
+
+| | Aujourd'hui | R1-R5 | + Phase 2 |
+|---|---|---|---|
+| Cœur sans SID | ~4,2× | ~6-7× | **~12-15×** |
+| SID en lecture | ~1,3× | ~1,7-2× | **~5× (P2-A : DSP sur cœur 2)** |
+| UI idle (Wozmon) | 60 renders/s | — | ~2 renders/s (P2-D) |
