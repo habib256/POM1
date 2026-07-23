@@ -355,7 +355,7 @@ render_screen:
         LDA GRID_BASE,X
         TAY                     ; Y = tile index
         ; Cell content is 3 chars wide to match "+---+" separator spacing:
-        ; leading space, char, trailing space, then '|'
+        ; leading space, char, trailing space, then the column separator.
         LDA #$A0
         JSR ECHO
         LDA tile_char,Y
@@ -363,7 +363,9 @@ render_screen:
         JSR ECHO
         LDA #$A0
         JSR ECHO
-        LDA #$FC                ; '|' with bit 7 = $7C | $80
+        ; '!' ($21|$80) — the Signetics 2513 char ROM has no '|' ($7C is out of
+        ; its $20-$5F range and renders as '\'), so use '!' like the chess board.
+        LDA #$A1
         JSR ECHO
 
         INC render_c
@@ -438,7 +440,7 @@ str_sep:
         .byte "       +---+---+---+---+---+---+---+", $0D, 0
 
 str_indent:
-        .byte "       |", 0
+        .byte "       !", 0
 
 str_red_turn:
         .byte $0D, " RED'S TURN   (1-7 / R=RESTART)", $0D, 0
