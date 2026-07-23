@@ -34,8 +34,9 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
   (temporal afterglow) + phosphor gamma, smooth anti-aliased scanlines, barrel
   curvature, procedural shadow mask (triad / aperture grille / dot, Lottes
   luminance-preserving triplet), center-lighting vignette and post-glass
-  luminance gain. Off by default; all values persist to `ini/ui.settings`
-  (`crt_*` keys). New sources: `CrtEffectStack` (GLSL pass, per-framebuffer
+  luminance gain. **On by default** (turn off with the master button in the
+  window — an explicit off is remembered); all values persist to
+  `ini/ui.settings` (`crt_*` keys). New sources: `CrtEffectStack` (GLSL pass, per-framebuffer
   ping-pong FBO rendered at on-screen resolution for analytic AA),
   `OpenGLShader` (portable GLSL 1.50 / ES 3.00 compile helper), `CrtParams`,
   `Pom1CrtEffects` (per-slot manager; single `apply()` call site returns the

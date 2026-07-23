@@ -195,7 +195,8 @@ void MainWindow_ImGui::renderMenuBar()
                     "Universal shader CRT look for the Apple-1 screen AND the\n"
                     "graphics cards (GEN2 HGR / TMS9918 / GT-6144): scanlines,\n"
                     "phosphor persistence + gamma, shadow mask, barrel, vignette\n"
-                    "and brightness/contrast/saturation/hue. Off by default.\n"
+                    "and brightness/contrast/saturation/hue. On by default;\n"
+                    "all settings are remembered across sessions.\n"
                     "(OpenGL backend only; no effect on the macOS Metal backend.)");
             if (ImGui::MenuItem("Save UI Windows Layout")) {
                 savePresetLayout(activePresetIndex);

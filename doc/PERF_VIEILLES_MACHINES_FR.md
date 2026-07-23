@@ -137,14 +137,18 @@ seulement au changement de grille), scanlines en ~400 quads batchés,
 ≈ 215 Ko/frame/carte (négligeable).
 
 À savoir pour les vieux iGPU :
-- Le **shader CRT** (opt-in, OFF par défaut — bon défaut) rend chaque
+- Le **shader CRT** (désormais **ON par défaut**, choix produit du
+  23 juillet — opt-out persistant dans le panneau CRT Effects) rend chaque
   framebuffer **à la résolution fenêtre** ; 4 fenêtres ouvertes en 1080p ≈
   4 passes plein écran avec bicubique 16 taps → un GMA/HD2000 décrochera.
-  Réglage simple si besoin : plafonner la résolution interne du pass CRT
+  **Le désactiver est le premier réglage à proposer sur un vieux iGPU.**
+  Réglage code si besoin : plafonner la résolution interne du pass CRT
   (p.ex. 2× le FB source) quand `GL_RENDERER` matche un iGPU ancien, ou
   exposer un "CRT qualité basse" (sampling bilinéaire, pas de bicubique).
-- La **persistance** force un `process()` par frame même écran statique
-  (ping-pong). CRT OFF, ce coût disparaît entièrement.
+- La **persistance** force un `process()` par frame rendue, même écran
+  statique (ping-pong) — mais l'UI adaptative (P2-D) ramène ces frames à
+  ~5 Hz en idle, CRT compris ; en régime idle le coût GPU du CRT est donc
+  divisé par ~10 aussi.
 - Vsync ON (défaut GLFW) est l'ami des vieilles machines : pas de spin.
 
 ### R7 — Distribution `[déjà correct]`
@@ -309,8 +313,10 @@ change. Implémentation livrée : plein régime (vsync) pendant 10 s au boot,
 2 s après tout événement d'entrée (callbacks GLFW → horodatage atomique,
 événements pollés toutes les ~10 ms même en idle → latence de réveil d'un
 tick), et tant que `MainWindow::wantsContinuousRender()` est vrai (sortie
-Apple-1 en attente, fenêtre carte ouverte + CPU actif, shader CRT
-(persistance), message status, compte-à-rebours de plug différé) ; sinon
+Apple-1 en attente, fenêtre carte ouverte + CPU actif, message status,
+compte-à-rebours de plug différé — le shader CRT, ON par défaut depuis le
+23 juillet, n'en fait volontairement pas partie : sa seule animation propre,
+la traînée de persistance, finit de s'éteindre au plancher idle) ; sinon
 **plancher ~5 Hz** — toute animation ratée par l'heuristique dégrade à 5 fps,
 ne gèle jamais. Un callback WindowRefresh force le re-rendu sur expose (X11
 sans compositeur). Toggle "Adaptive UI refresh" dans Display Settings,

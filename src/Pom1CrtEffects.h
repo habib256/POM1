@@ -41,8 +41,10 @@ public:
     Pom1CrtEffects& operator=(const Pom1CrtEffects&) = delete;
 
     // Master ON/OFF + the shared knob set. MainWindow owns the authoritative
-    // copy (menu / settings window / persistence); these mirror it.
-    bool      enabled = false;
+    // copy (menu / settings window / persistence); these mirror it. ON by
+    // default — a saved crt_enabled=0 in ini/ui.settings (an explicit user
+    // opt-out) overrides this at load time.
+    bool      enabled = true;
     CrtParams params;
 
     // True when the CRT effect will actually alter pixels: master ON, the GL

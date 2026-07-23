@@ -491,8 +491,12 @@ bool MainWindow_ImGui::wantsContinuousRender() const
     // Card framebuffer windows animate while the CPU runs (a program may be
     // redrawing them every frame — we don't track their content).
     if (cpuRunning && (showGraphicsCard || showTMS9918 || showGT6144)) return true;
-    // CRT shader phosphor persistence decays across frames (ping-pong).
-    if (crtEffects.enabled) return true;
+    // NOTE: the CRT shader being enabled is deliberately NOT a continuous-
+    // render condition (it is ON by default — it would disable the idle
+    // throttle entirely). The only motion it owns is the phosphor-persistence
+    // trail, which finishes fading at the idle floor (~5 frames ≈ 1 s) after
+    // the screen goes static; active content is already covered by the
+    // pending-output / card-window conditions above.
     return false;
 }
 

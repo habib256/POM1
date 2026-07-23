@@ -13,10 +13,11 @@
 // backend there is no equivalent, so callers detect that (the renderer's
 // glTextureName() returns 0) and present the raw framebuffer unchanged.
 //
-// Safety: opt-in. Pom1CrtEffects only routes a framebuffer through this when
-// the user enables CRT effects; if the shader fails to compile / GL entry
-// points are missing, available() stays false and the caller presents the
-// raw framebuffer unchanged (graceful passthrough).
+// Safety: Pom1CrtEffects only routes a framebuffer through this while the
+// master toggle is on (ON by default, opt-out persisted in ini/ui.settings);
+// if the shader fails to compile / GL entry points are missing, available()
+// stays false and the caller presents the raw framebuffer unchanged
+// (graceful passthrough).
 
 #ifndef POM1_CRT_EFFECT_STACK_H
 #define POM1_CRT_EFFECT_STACK_H
