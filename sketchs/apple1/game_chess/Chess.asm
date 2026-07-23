@@ -725,11 +725,13 @@ tele_emit_move:
 ; Empty cells: "  " (light square) or ".." (dark square).
 ; =============================================
 render_board:
-        ; Anti-scroll: Apple-1 has no cursor addressing, but emitting a
-        ; full screen-height of CRs pushes any prior board entirely off
-        ; the 24-line display. The new board lands at the top, period-
-        ; authentic and easier to read than scroll-pollution.
-        LDX #24
+        ; Anti-scroll clear. Apple-1 has no cursor addressing, so a frame is
+        ; redrawn by scrolling the previous one off. The full frame below is
+        ; ~24 lines (board 18 + a 2-line gap + the caller's status/prompt), so
+        ; it already fills the screen and lands the board flush at the TOP; a
+        ; short 6-CR clear is enough to guarantee the previous frame is erased
+        ; without emitting a whole extra screen-height of blank scroll.
+        LDX #6
 @scroll_lp:
         LDA #$8D
         JSR ECHO
@@ -825,6 +827,15 @@ render_board:
         JSR print_str_ax
         ; Material balance line directly under the board.
         JSR print_material_balance
+        ; Gap that lets the board sit flush at the TOP of the screen: the
+        ; caller's status ("... TO MOVE" / "MOVE? ") prints below this, so the
+        ; ~3-4 spare rows on the 24-line display land between the board and the
+        ; prompt (bottom) instead of above the board. 2 CRs keeps the top file
+        ; labels on screen even when the optional material line is present.
+        LDA #$8D
+        JSR ECHO
+        LDA #$8D
+        JSR ECHO
         RTS
 
 ; ============================================================================
