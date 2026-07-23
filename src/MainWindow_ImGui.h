@@ -547,7 +547,6 @@ private:
     //   * no file            → DEFAULT: boot POM1 Fantasy (the last preset).
     //   * auto=1, preset=N    → boot preset N (the chooser's "always start" box).
     //   * chooser=1           → show the profile chooser at startup (opt-in).
-    bool chooserRememberChoice_ = false;   // live checkbox state in the chooser
     static bool readStartupPreset(int& presetIndex);   // true = auto-boot a preset
     static bool startupShowsChooser();                 // true = chooser=1 in ini/startup
     static void writeStartupPreset(int presetIndex);   // -1 = clear (→ Fantasy default)

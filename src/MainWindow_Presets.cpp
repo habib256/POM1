@@ -1293,18 +1293,10 @@ void MainWindow_ImGui::renderProfileChooser()
         ImGui::PopStyleColor(3);
     }
 
-    // Opt-in startup preference: when checked, the machine profile picked
-    // below is written to ini/startup and the chooser is skipped on the next
-    // launches (Settings > Show profile chooser at startup re-enables it).
-    // Applies to the machine-profile buttons only — the activity launchers
-    // (language / paint / audio / game) are one-off compositions.
-    {
-        const char* rememberLabel = "Always start with the profile I pick (skip this screen)";
-        const float chkW = ImGui::CalcTextSize(rememberLabel).x
-                         + ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x;
-        ImGui::SetCursorPosX(std::max(0.0f, (ImGui::GetWindowWidth() - chkW) * 0.5f));
-        ImGui::Checkbox(rememberLabel, &chooserRememberChoice_);
-    }
+    // (The chooser no longer carries an "always start with this profile" box:
+    // POM1 boots straight into Fantasy by default, and the startup preference
+    // now lives in Settings — "Boot straight into this profile" /
+    // "Show profile chooser at startup".)
 
     // Footer anchored near the bottom of the viewport: a dim, centred nod to
     // Apple's 50th anniversary (1976-2026).
@@ -1326,8 +1318,6 @@ void MainWindow_ImGui::renderProfileChooser()
 
     // Run the picked action after ImGui::End() (every path dismisses the chooser).
     if (chosenPreset >= 0) {
-        if (chooserRememberChoice_)
-            writeStartupPreset(chosenPreset);
         applyBootConfig(chosenPreset);
         showProfileChooser = false;
     } else if (chosenLang >= 0) {
