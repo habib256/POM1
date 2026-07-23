@@ -602,21 +602,25 @@ void MainWindow_ImGui::render()
     }
 #endif
 
-    // Boot profile chooser. On the very first frame decide the boot flow: an
-    // explicit --preset (defaultPresetIndex >= 0) boots straight in via
-    // applyBootConfig; otherwise raise a full-viewport profile selector and
-    // suppress ALL other UI (menu bar, toolbar, windows) until the user picks —
-    // applyBootConfig then runs from renderProfileChooser(). Headless never
-    // reaches render(), so it is unaffected.
+    // Boot flow decided on the very first frame. Precedence:
+    //   1. explicit --preset (defaultPresetIndex >= 0)      → boot that preset
+    //   2. ini/startup auto=1,preset=N (chooser "remember") → boot preset N
+    //   3. ini/startup chooser=1 (opt-in)                   → show the chooser
+    //   4. DEFAULT (no preference)                          → boot POM1 Fantasy
+    // The full-viewport chooser suppresses ALL other UI until dismissed;
+    // applyBootConfig runs straight in for the boot-a-preset paths. Headless
+    // never reaches render(), so it is unaffected.
     if (!bootChooserDecided) {
         bootChooserDecided = true;
         int startupPreset = -1;
         if (defaultPresetIndex >= 0 && defaultPresetIndex < kMachinePresetCount) {
             applyBootConfig(defaultPresetIndex);      // CLI --preset wins
         } else if (readStartupPreset(startupPreset)) {
-            applyBootConfig(startupPreset);           // opt-in ini/startup pref
+            applyBootConfig(startupPreset);           // opt-in ini/startup preset
+        } else if (startupShowsChooser()) {
+            showProfileChooser = true;                // opt-in ini/startup chooser
         } else {
-            showProfileChooser = true;
+            applyBootConfig(kMachinePresetCount - 1); // default: POM1 Fantasy
         }
     }
     if (showProfileChooser) {

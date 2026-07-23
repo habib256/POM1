@@ -2471,6 +2471,39 @@ void MainWindow_ImGui::writeStartupPreset(int presetIndex)
     syncIniToIdbfs();
 }
 
+// True when ini/startup carries the explicit "show the profile chooser at
+// startup" opt-in (chooser=1). Kept separate from readStartupPreset because
+// the chooser request and an auto-boot preset are mutually exclusive states of
+// the same file, and the default (no file) is neither — it boots Fantasy.
+bool MainWindow_ImGui::startupShowsChooser()
+{
+    std::ifstream f("ini/startup");
+    if (!f) return false;
+    std::string line;
+    while (std::getline(f, line)) {
+        const auto eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        if (line.substr(0, eq) == "chooser") {
+            try { return std::stoi(line.substr(eq + 1)) == 1; }
+            catch (...) { return false; }
+        }
+    }
+    return false;
+}
+
+void MainWindow_ImGui::writeStartupChooser(bool showChooser)
+{
+    std::error_code ec;
+    if (!showChooser) {
+        std::filesystem::remove("ini/startup", ec);   // → default (Fantasy)
+    } else {
+        std::filesystem::create_directories("ini", ec);
+        std::ofstream f("ini/startup");
+        if (f) f << "chooser=1\n";
+    }
+    syncIniToIdbfs();
+}
+
 // ---------------------------------------------------------------------------
 // UI keyboard-navigation mode (F10). While ON, ImGui owns the keyboard
 // (Tab / arrows / Space / Enter navigate the UI) and the Apple-1 receives

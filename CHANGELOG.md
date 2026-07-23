@@ -10,6 +10,18 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — boot straight into POM1 Fantasy by default
+
+- **First launch now boots directly into the POM1 Fantasy profile** instead of
+  showing the profile chooser. `ini/startup` gained a third state so all paths
+  stay reachable: no file → POM1 Fantasy (new default); `auto=1,preset=N` →
+  that preset (the chooser's "always start with this profile" box); `chooser=1`
+  → show the chooser at startup (Settings → "Show profile chooser at startup").
+  The chooser is still openable mid-session (Settings → "Profile chooser
+  now..."), and CLI `--preset` overrides everything. Fixed the game/demo
+  hex-dump loader in the same cycle (see below), so the Fantasy machine now
+  runs every bundled program.
+
 ### Added — adaptive UI refresh (perf, old machines)
 
 - **Adaptive UI refresh** (Display Settings → Performance, on by default,

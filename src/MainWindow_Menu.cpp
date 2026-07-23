@@ -263,24 +263,42 @@ void MainWindow_ImGui::renderMenuBar()
             }
             ImGui::Separator();
             {
+                // Startup boot preference. Default (neither box) = boot POM1
+                // Fantasy. "Boot straight into this profile" pins the current
+                // machine; "Show profile chooser" opts back into the picker.
+                // The two are mutually exclusive (same ini/startup file).
                 int startupPreset = -1;
                 bool autoStart = readStartupPreset(startupPreset);
-                bool toggled = autoStart;
-                if (ImGui::MenuItem("Skip profile chooser at startup", nullptr, &toggled)) {
-                    writeStartupPreset(toggled ? activePresetIndex : -1);
-                    setStatusMessage(toggled
+                bool showChooser = startupShowsChooser();
+
+                bool autoToggle = autoStart;
+                if (ImGui::MenuItem("Boot straight into this profile", nullptr, &autoToggle)) {
+                    writeStartupPreset(autoToggle ? activePresetIndex : -1);
+                    setStatusMessage(autoToggle
                         ? "POM1 will boot straight into this profile"
-                        : "POM1 will show the profile chooser at startup", 3.0f);
+                        : "POM1 will boot into POM1 Fantasy by default", 3.0f);
                 }
                 if (ImGui::IsItemHovered()) {
                     const char* n = getPresetName(startupPreset);
                     if (autoStart && n)
                         ImGui::SetTooltip("Currently booting straight into \"%s\".\n"
-                                          "Uncheck to get the profile chooser back.", n);
+                                          "Uncheck to return to the default (POM1 Fantasy).", n);
                     else
-                        ImGui::SetTooltip("Check to always boot into the CURRENT profile\n"
-                                          "(you can also tick the box on the chooser itself).");
+                        ImGui::SetTooltip("Check to always boot into the CURRENT profile.\n"
+                                          "Default (unchecked) boots POM1 Fantasy.");
                 }
+
+                bool chooserToggle = showChooser;
+                if (ImGui::MenuItem("Show profile chooser at startup", nullptr, &chooserToggle)) {
+                    writeStartupChooser(chooserToggle);
+                    setStatusMessage(chooserToggle
+                        ? "POM1 will show the profile chooser at startup"
+                        : "POM1 will boot into POM1 Fantasy by default", 3.0f);
+                }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Show the boot profile screen every launch.\n"
+                                      "Default (unchecked) boots POM1 Fantasy straight away.");
+
                 if (ImGui::MenuItem("Profile chooser now...")) {
                     showProfileChooser = true;
                 }

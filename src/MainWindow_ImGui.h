@@ -542,11 +542,16 @@ private:
     void setUiNavMode(bool on);
 
     // ── Startup profile preference — ini/startup ──────────────────────────
-    // Opt-in "always boot this preset" written by the Profile Chooser's
-    // checkbox (or Settings menu). CLI --preset still wins over it.
+    // Startup boot preference (ini/startup). Three states drive render()'s boot
+    // gate; CLI --preset always wins over all of them:
+    //   * no file            → DEFAULT: boot POM1 Fantasy (the last preset).
+    //   * auto=1, preset=N    → boot preset N (the chooser's "always start" box).
+    //   * chooser=1           → show the profile chooser at startup (opt-in).
     bool chooserRememberChoice_ = false;   // live checkbox state in the chooser
-    static bool readStartupPreset(int& presetIndex);   // false = no auto-start
-    static void writeStartupPreset(int presetIndex);   // -1 = clear the pref
+    static bool readStartupPreset(int& presetIndex);   // true = auto-boot a preset
+    static bool startupShowsChooser();                 // true = chooser=1 in ini/startup
+    static void writeStartupPreset(int presetIndex);   // -1 = clear (→ Fantasy default)
+    static void writeStartupChooser(bool showChooser); // true = chooser=1, false = clear
 
     // Keyboard input
     bool keyboardAutorepeat = false;  // default off: TTL keyboard has no repeat
