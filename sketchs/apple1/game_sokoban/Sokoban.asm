@@ -517,14 +517,17 @@ render_screen:
         LDA #$8D
         JSR ECHO
 
-        ; Grid (12 rows x 16 cols, NCOLS)
-        LDA #$00
+        ; Grid — render ONLY the level's bounding box (rows row_offset ..
+        ; row_offset+lvl_h-1) instead of the full 12-row playfield, so a small
+        ; level no longer floats in a sea of blank rows above and below it.
+        ; col_offset still keeps each printed row horizontally centred.
+        LDA row_offset
         STA render_r
 @rowlp:
         LDA #$00
         STA render_c
 @collp:
-        ; cell = state[render_r*20 + render_c]
+        ; cell = state[render_r*16 + render_c]
         LDX render_r
         LDA row_x16,X
         CLC
@@ -544,8 +547,10 @@ render_screen:
         LDA #$8D                        ; CR at end of row
         JSR ECHO
         INC render_r
-        LDA render_r
-        CMP #NROWS
+        LDA render_r                    ; rows emitted so far = render_r - row_offset
+        SEC
+        SBC row_offset
+        CMP lvl_h
         BCC @rowlp
 
         ; Blank line + "MOVES: NNN" + controls hint + CR
