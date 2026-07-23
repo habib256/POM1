@@ -123,14 +123,56 @@ int main()
     std::error_code ec;
     std::filesystem::remove(path, ec);
 
-    // Zero-page address prefix (regression: "40:FF" must parse as addr $40, not
-    // a lone data byte 0x40 — the old >=3-digit guard rejected 1–2 digit addrs).
+    // Inline ':' group separator (regression for the "demos don't launch" bug).
+    // Several bundled programs (mandelbrot-65, 2048, cat, cellular, 50th) are a
+    // SINGLE line that groups data with a ':' every 8th byte:
+    //     "0280:4C 5F 03 2E 2E 2C 27 5E:3D 2B 3A 3B 5B 2F 3C 2A:3F ..."
+    // The trailing byte of each group ("5E", "2A", …) is DATA, and the ':' is a
+    // separator — NOT an address. A too-loose guard (>=1 digit) read "5E" as
+    // address $005E and scattered the whole program across zero page (zones in
+    // the hundreds), so the first `JMP` derailed to $0000 and nothing rendered.
+    // The rule: a hex token before ':' is an address only when it is >=3 digits
+    // (real addresses here are 4; the merged data+addr case is >4). Pin that a
+    // 1-2 digit token before ':' stays contiguous data.
+    {
+        const std::string sepPath = (std::filesystem::temp_directory_path()
+                                   / "pom1_hex_dump_inline_colon.txt").string();
+        {
+            std::ofstream f(sepPath);
+            // 12 bytes at $0280, ':' after the 8th byte (value 0x5E) as a group
+            // separator exactly like the shipped single-line demos.
+            f << "0280:4C 5F 03 20 21 22 23 5E:3D 2B 3A 3B 0280R\n";
+        }
+        Memory memSep;
+        uint16_t run = 0;
+        int loaded = 0;
+        std::vector<std::pair<uint16_t, uint16_t>> sepZones;
+        assert(memSep.loadHexDump(sepPath.c_str(), run, &loaded, &sepZones) == 0);
+        assert(run == 0x0280);
+        assert(loaded == 12 && "all 12 bytes are data; the inner ':' is a separator");
+        assert(sepZones.size() == 1 && "inline-':' data must stay ONE contiguous zone");
+        assert(sepZones[0].first == 0x0280 && sepZones[0].second == 0x028B);
+        const uint8_t expect[12] = {0x4C,0x5F,0x03,0x20,0x21,0x22,0x23,0x5E,
+                                    0x3D,0x2B,0x3A,0x3B};
+        for (int i = 0; i < 12; ++i)
+            assert(memSep.memRead(0x0280 + i) == expect[i] &&
+                   "inline-':' byte landed at the wrong address (parser scattered it)");
+        // The byte before the ':' must NOT have been mistaken for address $005E.
+        assert(memSep.memRead(0x005E) == 0x00 && "0x5E was misread as address $005E");
+        std::error_code ecSep;
+        std::filesystem::remove(sepPath, ecSep);
+        std::printf("hex_dump_inline_colon: OK (single-line demo format, 1 zone)\n");
+    }
+
+    // Zero-page / short address still works when written UNAMBIGUOUSLY with >=3
+    // digits (e.g. "040:"). This is the supported way to target page zero; a
+    // 1-2 digit "40:" is data (see the inline-separator pin above).
     {
         const std::string zpPath = (std::filesystem::temp_directory_path()
                                   / "pom1_hex_dump_zp_addr.txt").string();
         {
             std::ofstream f(zpPath);
-            f << "40: FF A9 00 40R\n";
+            f << "040: FF A9 00 040R\n";
         }
         Memory memZp;
         uint16_t run = 0;
@@ -143,7 +185,7 @@ int main()
         assert(memZp.memRead(0x0042) == 0x00);
         std::error_code ecZp;
         std::filesystem::remove(zpPath, ecZp);
-        std::printf("hex_dump_zp_addr: OK ($0040: FF A9 00)\n");
+        std::printf("hex_dump_zp_addr: OK ($0040: FF A9 00 via 3-digit '040:')\n");
     }
 
     // Inline '#' comment (regression): '#' is documented as inline-strippable

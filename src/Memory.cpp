@@ -1243,7 +1243,18 @@ int Memory::loadHexDump(const char* filename, uint16_t &startAddress, int* bytes
                 continue;
             }
 
-            if (peek < cleaned.size() && cleaned[peek] == ':' && hexStr.size() >= 1) {
+            // A hex token before ':' is an ADDRESS only when it is ≥3 hex
+            // digits (real addresses in these dumps are 4 digits; 3 covers a
+            // rare "300:"; the merged data+address case ">4" is split below).
+            // A 1-2 digit token before ':' is a DATA byte followed by a
+            // group-separator colon — several bundled programs (mandelbrot-65,
+            // 2048, cat, cellular, 50th) format one contiguous line as
+            // "0280:4C 5F 03 2E 2E 2C 27 5E:3D 2B ..." with a ':' every 8th
+            // byte. Treating that trailing "5E" as address $005E used to
+            // scatter the whole program across zero page (zones=166) so it
+            // crashed to $0000 on the very first JMP. Chess/Connect4 etc. put
+            // ':' only after their 4-digit line address, so they are unaffected.
+            if (peek < cleaned.size() && cleaned[peek] == ':' && hexStr.size() >= 3) {
                 // Handle merged data+address: e.g. "ED0300:" = data ED, address 0300
                 if (hexStr.size() > 4) {
                     size_t dataLen = hexStr.size() - 4;
