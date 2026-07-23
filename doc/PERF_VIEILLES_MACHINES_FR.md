@@ -5,15 +5,14 @@
 (l'AppImage bionic/18.04 validée sur Mint 19.x — Core 2 Duo, premiers i3,
 Atom, iGPU Intel GMA/HD sous Mesa GL 3.2).*
 
-> **Méthode.** `valgrind` n'était pas installé sur la machine de dev (et `perf`
-> est bloqué par `perf_event_paranoid=4`), le profilage a donc été fait avec un
-> **build instrumenté gprof sans LTO** (type de build custom `Profile`,
-> attribution de symboles fiable) sur des scénarios headless **déterministes**
+> **Méthode.** Première passe au **gprof sans LTO** (type de build custom
+> `Profile`, attribution de symboles fiable), `perf` étant bloqué par
+> `perf_event_paranoid=4`. Scénarios headless **déterministes**
 > (`--headless --dump-*-frame --dump-after-cycles N` : N cycles émulés exacts,
-> plein régime, zéro pacing wall-clock). Les commandes valgrind prêtes à
-> l'emploi sont en §7 — à lancer telles quelles une fois `apt install valgrind`
-> fait, idéalement **sur la machine 18.04 elle-même** (c'est son cache et son
-> horloge qui comptent).
+> plein régime, zéro pacing wall-clock). Deuxième passe **valgrind 3.22**
+> (cachegrind géométrie Core 2 + callgrind) sur un build `-O2 -g` sans LTO ni
+> `-pg` : résultats en **§8** — ils confirment les hotspots et **corrigent une
+> hypothèse** (pas d'éviction L1, voir §8.2).
 
 ## 1. Mesures de référence (100 M cycles émulés, headless)
 
@@ -56,12 +55,13 @@ vieilles machines ; le reste est confortable.
 | 9,0 % | `reSIDfp::EnvelopeGenerator::clock` | 150 M | idem (3 voix) |
 | 4,5 % | `pom1::SID::advanceCycles` | 14,3 M | mutex + ring par instruction |
 
-Le DSP incompressible (Integrator+Envelope+Filter) ≈ 30 % ; **tout le reste du
-coût SID est de l'overhead d'appel** : `chip->clock()` par instruction,
-`lock_guard(chipMutex)` par instruction (28 M locks/s), et un
-`short staging[8192]` — **16 Ko de pile touchés à chaque instruction** pour
-récolter ~7 échantillons, ce qui évince le L1-D à chaque passage (mortel sur
-un Core 2 à 32 Ko de L1).
+Répartition affinée au callgrind (§8.3) : le DSP par-cycle inhérent à
+libresidfp ≈ **55 %** du run, l'overhead d'appel (boucle de `SID::clock` par
+micro-lot, wrapper `pom1::SID` + mutex par instruction) ≈ **15-20 %**, les
+tables de boot ≈ 13 %, le cœur émulateur ≈ 12 %. *(Hypothèse initiale
+corrigée : le `short staging[8192]` de 16 Ko est **réservé** sur la pile mais
+seuls ~7 échantillons sont **écrits** — cachegrind mesure 0,0 % de D1 miss,
+aucune éviction L1. Voir §8.2.)*
 
 ## 3. Recommandations, classées impact ÷ effort
 
@@ -80,8 +80,13 @@ Correctif en trois pièces, sans perte d'exactitude :
    `setChipModel` (UI, rarissime). Un `std::atomic<bool> swapPending` testé
    sans lock + rattrapage sous lock uniquement quand il est vrai suffit.
 
-Gain attendu : le run SID passe de 6,1 s à ~2,5–3 s (le DSP devient le seul
-coût) → **le SID redevient confortablement temps réel sur Core 2**.
+Gain attendu (recalibré par le callgrind §8.3) : l'overhead d'appel pèse
+15-20 % du run SID → 6,1 s → ~4,8-5,2 s. Le DSP par-cycle restant est
+**inhérent au modèle d'exactitude de libresidfp** ; pour aller plus loin sur
+vieille machine, ajouter un **silence-skip** : quand les 3 enveloppes sont à
+zéro et le volume à 0 depuis N cycles, sauter `clock()` et pousser des zéros
+dans le ring (un SID branché mais muet — le cas le plus fréquent — redevient
+alors quasi gratuit).
 
 ### R2 — libresidfp : construction paresseuse `[startup · S]`
 
@@ -173,18 +178,26 @@ Chaque étape est verrouillable par les tests existants (`klaus`, `cpu_harte`,
 `gfx_regress_*`, `gen2_*_smoke`) : aucun de ces changements n'a le droit de
 modifier un seul octet de sortie.
 
-## 6. Estimation après R1–R5 (vieille machine ÷12)
+## 6. Estimation après R1–R5 (vieille machine ÷12, recalibrée §8)
 
 | Scénario | Aujourd'hui | Après |
 |---|---|---|
 | Cœur sans SID | ~4,2× temps réel | ~6–7× |
-| Avec SID | ~1,3× (limite !) | ~3× |
+| SID branché, **muet** (silence-skip R1) | ~1,3× | ~5× |
+| SID **en lecture** (musique active) | ~1,3× (limite !) | ~1,7–2× |
 | Boot | 4–6 s | ~1–2 s |
 
-## 7. Le jour où valgrind est installé
+Le SID en lecture active reste le scénario serré : son coût est le DSP
+cycle-exact de libresidfp lui-même (§8.3). Si un jour ça ne suffit pas, la
+seule marche supplémentaire est une option de qualité audio (chip alternatif
+type reSID classique ou décimation) — à ne considérer que sur plainte réelle.
+
+## 7. Commandes valgrind (exécutées le 23 juillet — résultats en §8)
+
+À rejouer telles quelles **sur la 18.04** pour valider avec son cache/horloge :
 
 ```bash
-sudo apt install valgrind   # sur la machine de dev ET sur la 18.04
+sudo apt install valgrind
 
 # Profil d'appels (équivalent gprof, plus précis, sans rebuild) :
 valgrind --tool=callgrind --callgrind-out-file=cg.out \
@@ -198,8 +211,7 @@ valgrind --tool=cachegrind --cache-sim=yes \
   ./build/POM1 --headless --enable sid \
   --dump-gen2-frame /tmp/f.png --dump-after-cycles 20000000
 cg_annotate cachegrind.out.* | head -40
-# → vérifier le D1-miss-rate de SID::advanceCycles (le staging 16 Ko, §2)
-#   avant/après R1 : c'est la preuve chiffrée de l'éviction L1.
+# → résultat mesuré (§8.2) : D1 0,0 % — PAS d'éviction L1, hypothèse infirmée.
 
 # Pics mémoire (RSS 34 Mo headless ; le rewind 128 Mo est le vrai budget) :
 valgrind --tool=massif ./build/POM1 --headless --dump-after-cycles 5000000 \
@@ -209,3 +221,41 @@ valgrind --tool=massif ./build/POM1 --headless --dump-after-cycles 5000000 \
 Attention : sous valgrind tout est 20–100× plus lent — réduire
 `--dump-after-cycles` à ~20 M et ignorer le wall-clock, seuls les ratios
 comptent.
+
+## 8. Mesures valgrind (valgrind 3.22, 20 M cycles, géométrie Core 2)
+
+Build `-O2 -g` sans LTO ni `-pg` (compteurs cache non faussés).
+
+### 8.1 POM1 est compute-bound, pas memory-bound
+
+| Scénario | Instructions (Ir) | Ir / cycle émulé | I1 miss | D1 miss | LL miss |
+|---|---|---|---|---|---|
+| GEN2 (preset 11) | 5,66 G | ~283 | 0,00 % | **0,1 %** | 0,0 % |
+| `--enable sid` | 16,51 G | ~825 | 0,00 % | **0,0 %** | 0,0 % |
+
+Avec la géométrie d'un Core 2 (L1 32 K/8 voies, LL 2 M), **tout tient en
+cache** : pas de falaise mémoire à craindre sur les vieilles machines, la
+vitesse scale linéairement avec l'IPC/fréquence mono-thread. C'est la
+meilleure nouvelle du rapport — et elle valide de concentrer l'effort sur la
+**réduction du nombre d'instructions** (R1–R5), pas sur la localité.
+
+### 8.2 Hypothèse infirmée : pas d'éviction L1 par le staging SID
+
+Le `short staging[8192]` (16 Ko) est **réservé** à chaque appel (le pointeur
+de pile bouge, gratuit) mais seuls ~7 échantillons y sont **écrits** = 1 ligne
+de cache touchée. D1 miss mesuré : 0,0 %. La recommandation R1 reste valable
+mais pour l'**overhead d'appel**, pas pour le cache.
+
+### 8.3 Répartition callgrind du run SID (16,5 G Ir = 100 %)
+
+| Part | Quoi | Détail |
+|---|---|---|
+| ~55 % | **DSP libresidfp par cycle** (inhérent) | `WaveformGenerator` 11,6 % + `Integrator6581::solve` 11,4+2,7 % + `EnvelopeGenerator::clock` 11,3 % + `Filter*` 7,3 % + `ExternalFilter` 1,9 % + `Voice` 1,8 % + boucle `SID::clock` 3,8 % + accès tables 6,4 % |
+| ~13 % | **Tables de filtre au boot** (R2) | `OpAmp::solve` 8,0 % + `Spline::evaluate` 5,4 % — payées à CHAQUE lancement, SID branché ou non |
+| ~12 % | **Cœur émulateur** | `memRead` 4,1 % + `checkOutOfRangeAccess` 2,3 % + `advanceCycles` 2,1 % + `executeOpcode` 1,9 % + `tryReadSlow` 1,6 % |
+
+Dans le run GEN2 (sans SID), les tables de boot pèsent même **~39 % des
+5,66 G Ir** (OpAmp 23,4 % + Spline 15,8 %) — sur 20 M cycles, le boot domine.
+Autre confirmation : `checkOutOfRangeAccess` fait ~7 écritures pile par appel
+(sauvegarde de registres = pur overhead d'appel) → l'inline de R4 les
+supprime intégralement.
