@@ -322,9 +322,19 @@ ne gèle jamais. Un callback WindowRefresh force le re-rendu sur expose (X11
 sans compositeur). Toggle "Adaptive UI refresh" dans Display Settings,
 persisté `ini/ui.settings` (`idle_throttle`), desktop seulement (le WASM
 garde le rAF du navigateur). **Mesuré : Wozmon idle 30 s = 660 frames avec
-vs 1500 sans (×10 moins de rendus en régime idle).** Reste ouvert du P2-D
-d'origine : update de texture des cartes seulement si le framebuffer a
-changé (la TMS copie 288×216 chaque frame même statique).
+vs 1500 sans (×10 moins de rendus en régime idle).**
+
+**Complément livré (23 juil. aussi) — dirty-gate des uploads texture** : la
+TMS (288×216, ~249 Ko) et la GT-6144 ne re-uploadent leur framebuffer que
+s'il a réellement changé (memcmp contre la dernière copie uploadée, ~µs avec
+early-out — le chip re-rasterise chaque ligne à chaque frame, donc c'est le
+seul endroit où « l'image a-t-elle changé » est décidable) ; la GEN2 l'était
+déjà via le retour diffé de `GraphicsCard::render()`. Ce signal remplace
+aussi la condition grossière « fenêtre carte ouverte + CPU actif » du
+throttle par « framebuffer changé il y a < 2 s » : un jeu posé sur un écran
+titre statique laisse maintenant l'UI descendre au plancher idle, et le
+plancher ~5 Hz re-exécute la détection, donc une animation qui reprend
+retrouve le plein régime en ≤ 200 ms.
 
 ### P2-E — PGO au packaging `[S]`
 

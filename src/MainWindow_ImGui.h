@@ -389,13 +389,26 @@ private:
     bool showTMS9918 = false;
     bool tms9918Enabled = false;
     pom1::Texture* tms9918Texture = nullptr;
-    // 288×216 buffer including R7-coloured border bands. The active 256×192
-    // image lives at offset (kBorderLeft, kBorderTop) inside the buffer.
+    // Last framebuffer actually uploaded to tms9918Texture (288×216 incl. the
+    // R7 border bands). Upload dirty-gate: the snapshot FB is memcmp'd against
+    // this every frame and the GPU upload is skipped when identical — a static
+    // TMS screen costs a ~249 KB compare (µs) instead of a texture upload.
     std::array<uint32_t, TMS9918::kFullWidth * TMS9918::kFullHeight> tms9918PixelBuf{};
+    bool tms9918FbUploaded = false;   // force the very first upload (zeroed buf can match)
     bool showGT6144 = false;
     bool gt6144Enabled = false;
     pom1::Texture* gt6144Texture = nullptr;
     std::array<uint32_t, GT6144::kWidth * GT6144::kHeight> gt6144PixelBuf{};
+    // Same dirty-gate for the GT-6144: last uploaded copy + first-upload latch.
+    std::array<uint32_t, GT6144::kWidth * GT6144::kHeight> gt6144UploadedBuf{};
+    bool gt6144FbUploaded = false;
+    // ImGui::GetTime() of the last real card-framebuffer change (GEN2 render()
+    // returning true, TMS/GT dirty-gate miss). The adaptive-UI throttle keeps
+    // full frame rate for a grace period after this instead of the old coarse
+    // "card window open + CPU running" condition — a game sitting on a static
+    // title screen now idles too, and the ~5 Hz idle floor re-runs the
+    // detection so a resuming animation restores full rate within one tick.
+    double lastCardFbChangeTime = 0.0;
     bool showIECCard = false;
     bool iecCardEnabled = false;
     bool sidEnabled = false;

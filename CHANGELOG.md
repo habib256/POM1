@@ -23,6 +23,16 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
   5 Hz floor guarantees a missed animation degrades to 5 fps rather than
   freezing. Persisted as `idle_throttle` in `ini/ui.settings`. This is P2-D
   of [`doc/PERF_VIEILLES_MACHINES_FR.md`](doc/PERF_VIEILLES_MACHINES_FR.md).
+- **Card texture uploads are dirty-gated** — the TMS9918 window used to
+  re-upload its full 288×216 framebuffer to the GPU every frame even when
+  the picture was static (the chip re-rasterises every line regardless);
+  it now memcmps against the last uploaded copy (~µs, early-out) and skips
+  the upload when identical, and the GT-6144 does the same (GEN2 was
+  already gated by `GraphicsCard::render()`'s diff). The same
+  changed-recently signal replaces the throttle's coarse "card window open
+  + CPU running" condition, so a game sitting on a static title screen now
+  idles too; a resuming animation is picked up by the ~5 Hz floor within
+  one tick.
 
 ### Added — universal shader CRT effects (opt-in)
 

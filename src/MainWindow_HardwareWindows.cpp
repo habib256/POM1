@@ -87,6 +87,7 @@ void MainWindow_ImGui::renderGraphicsCardWindow()
                                 : Gen2VideoScanner::kLinesPerFrame)) {
         r->updateTexture(graphicsCardTexture,
                          reinterpret_cast<const uint32_t*>(graphicsCard.pixels()));
+        lastCardFbChangeTime = ImGui::GetTime();   // adaptive-UI: card is animating
     }
 
     const float defPs = kVideoCardDefaultPixelScale;
@@ -222,11 +223,25 @@ void MainWindow_ImGui::renderTMS9918Window()
 
     // The TMS9918 emulation already rasterises line-by-line into
     // uiSnapshot.tms9918.framebuffer (silicon-progressive raster, R7 border
-    // bands, mid-frame R7/R1/VRAM changes all reflected). Upload the
-    // framebuffer directly to the GPU texture — no per-snapshot rendering
-    // needed in the UI path. IM_COL32 byte order [R,G,B,A] on little-endian
-    // matches the renderer's RGBA8 layout.
-    r->updateTexture(tms9918Texture, uiSnapshot.tms9918.framebuffer.data());
+    // bands, mid-frame R7/R1/VRAM changes all reflected). IM_COL32 byte order
+    // [R,G,B,A] on little-endian matches the renderer's RGBA8 layout.
+    // Upload dirty-gate: the chip re-rasterises every line every frame even
+    // when nothing changes, so "did the picture change" can only be decided
+    // here — memcmp against the last uploaded copy (~249 KB, µs, early-out)
+    // and skip the GPU upload when identical.
+    static_assert(sizeof(uiSnapshot.tms9918.framebuffer) ==
+                  sizeof(tms9918PixelBuf), "TMS framebuffer size mismatch");
+    if (!tms9918FbUploaded
+        || std::memcmp(tms9918PixelBuf.data(),
+                       uiSnapshot.tms9918.framebuffer.data(),
+                       sizeof(tms9918PixelBuf)) != 0) {
+        std::memcpy(tms9918PixelBuf.data(),
+                    uiSnapshot.tms9918.framebuffer.data(),
+                    sizeof(tms9918PixelBuf));
+        r->updateTexture(tms9918Texture, tms9918PixelBuf.data());
+        tms9918FbUploaded = true;
+        lastCardFbChangeTime = ImGui::GetTime();   // adaptive-UI: card is animating
+    }
 
     const float defPs = kTMS9918DefaultPixelScale;
     const float winW = TMS9918::kFullWidth  * defPs + 16.0f;
@@ -297,8 +312,17 @@ void MainWindow_ImGui::renderGT6144Window()
             pom1::PomRenderer::Filter::Nearest);
     }
 
+    // Same upload dirty-gate as the TMS window (the 64×96 rasterise is cheap;
+    // only the GPU upload is worth skipping).
     GT6144::renderToBuffer(gt6144PixelBuf.data(), uiSnapshot.gt6144);
-    r->updateTexture(gt6144Texture, gt6144PixelBuf.data());
+    if (!gt6144FbUploaded
+        || std::memcmp(gt6144UploadedBuf.data(), gt6144PixelBuf.data(),
+                       sizeof(gt6144PixelBuf)) != 0) {
+        gt6144UploadedBuf = gt6144PixelBuf;
+        r->updateTexture(gt6144Texture, gt6144PixelBuf.data());
+        gt6144FbUploaded = true;
+        lastCardFbChangeTime = ImGui::GetTime();   // adaptive-UI: card is animating
+    }
 
     // Aspect correction: the GT-6144 sent its 64x96 logical matrix to a
     // stock 4:3 CRT (TV or composite monitor), so the visible pixels were

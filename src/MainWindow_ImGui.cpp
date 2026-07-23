@@ -488,9 +488,12 @@ bool MainWindow_ImGui::wantsContinuousRender() const
     if (pendingCardEnableFrames > 0) return true; // deferred plug counts FRAMES
     if (statusTimer > 0.0f) return true;          // status-bar message fading
     if (screen && screen->hasPendingOutput()) return true;   // Apple-1 printing / boot
-    // Card framebuffer windows animate while the CPU runs (a program may be
-    // redrawing them every frame — we don't track their content).
-    if (cpuRunning && (showGraphicsCard || showTMS9918 || showGT6144)) return true;
+    // Card framebuffers: real change detection (GEN2 render() diff, TMS/GT
+    // upload dirty-gate) stamps lastCardFbChangeTime. Full rate holds for a
+    // grace period after the last actual pixel change — a game on a static
+    // title screen idles; the ~5 Hz floor keeps running the detection, so a
+    // resuming animation restores full rate within one idle tick (≤200 ms).
+    if (ImGui::GetTime() - lastCardFbChangeTime < 2.0) return true;
     // NOTE: the CRT shader being enabled is deliberately NOT a continuous-
     // render condition (it is ON by default — it would disable the idle
     // throttle entirely). The only motion it owns is the phosphor-persistence
