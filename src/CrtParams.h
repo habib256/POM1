@@ -32,7 +32,7 @@ struct CrtParams
 
     // Pure post-effects.
     float scanlines   = 0.25f;  // 0 = off, 1 = black between every line
-    float barrel      = 0.05f;  // 0 = flat, 0.2..0.3 = old curved CRT
+    float barrel      = 0.25f;  // 0 = flat, 0.2..0.3 = old curved CRT (default = curved)
 
     // Shadow-mask emulation (procedural, no texture upload; free when Off).
     enum class ShadowMask : int {
