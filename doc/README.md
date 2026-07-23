@@ -61,6 +61,7 @@ Guides live in [`sketchs/doc/`](../sketchs/doc/). Source, libraries and build co
 | [`sketchs/doc/TMS9918-SPRITE_BEST_PRACTICES.md`](../sketchs/doc/TMS9918-SPRITE_BEST_PRACTICES.md) | Operational sprite checklist (complements SPRITE_INIT; timing → [`Programming_TMS9918.md`](../sketchs/doc/Programming_TMS9918.md)). |
 | [`TMS9918_Sprite_Emulation_FR.md`](TMS9918_Sprite_Emulation_FR.md) | French deep-dive: TMS9918 sprite-emulation problems & references. |
 | [`SWTPC_GT-6144.md`](SWTPC_GT-6144.md) · [`SWTPC_PR-40.md`](SWTPC_PR-40.md) | Research on the two 1976 SWTPC cards POM1 emulates. |
+| [`PERF_VIEILLES_MACHINES_FR.md`](PERF_VIEILLES_MACHINES_FR.md) | **Rapport perf (FR) — optimiser la vitesse pour les vieilles architectures** (cible AppImage 18.04/Mint 19) : mesures gprof, hotspots (SID par-instruction, OOR check, divisions u64), recommandations R1–R7 classées, commandes valgrind prêtes. |
 | [`Apple1_Peripherals_Inventory_FR.md`](Apple1_Peripherals_Inventory_FR.md) | French deep-dive: complete Apple-I peripheral inventory. |
 | [`Apple1_Software_Catalog_FR.md`](Apple1_Software_Catalog_FR.md) | French deep-dive: Apple-1 software catalog for the emulator. |
 
