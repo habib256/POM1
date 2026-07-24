@@ -729,6 +729,13 @@ EmulationController::RewindStatus EmulationController::getRewindStatus() const
     s.frameCount  = rewindFrameCount_.load();
     s.currentPos  = rewindPos_.load();
     s.storedBytes = rewindStoredBytes_.load();
+    // These five atomics are updated as a group by the emulation thread but read
+    // without a lock (deliberately — a lock-free UI read). A read can land mid
+    // update and see frameCount/currentPos momentarily skewed; clamp so the
+    // returned struct is always self-consistent (currentPos < frameCount, or
+    // both 0) and the UI slider never renders an out-of-range thumb.
+    if (s.frameCount == 0)             s.currentPos = 0;
+    else if (s.currentPos >= s.frameCount) s.currentPos = s.frameCount - 1;
     return s;
 }
 
@@ -1988,7 +1995,14 @@ void EmulationController::emulationLoop()
     while (!terminateRequested.load()) {
         if (!runRequested.load()) {
             std::unique_lock<std::mutex> waitLock(wakeMutex);
-            wakeCv.wait_for(waitLock, std::chrono::milliseconds(2));
+            // Re-test under the lock via the predicate overload: a notify that
+            // lands between the load() above and acquiring wakeMutex would
+            // otherwise be lost (the notifier stores runRequested then notifies
+            // without the lock). Re-checking here returns immediately in that
+            // case; the 2 ms timeout still bounds the one remaining micro-window.
+            wakeCv.wait_for(waitLock, std::chrono::milliseconds(2),
+                            [this] { return runRequested.load() ||
+                                            terminateRequested.load(); });
             lastTick = clock::now();
             continue;
         }

@@ -261,11 +261,36 @@ void RewindBuffer::evictToBudget() {
         for (std::size_t i = 1; i < frames.size(); ++i) {
             if (frames[i].keyframe) { secondKf = i; break; }
         }
-        if (secondKf == 0) break;  // only one segment — cannot evict it safely
-        for (std::size_t i = 0; i < secondKf; ++i) {
-            storedBytes_ -= frames.front().bytes;
-            frames.pop_front();
+        if (secondKf != 0) {
+            // Multiple segments: drop the whole leading one.
+            for (std::size_t i = 0; i < secondKf; ++i) {
+                storedBytes_ -= frames.front().bytes;
+                frames.pop_front();
+            }
+            continue;
         }
+        // Single over-budget segment: we can't just drop the front keyframe
+        // (every delta behind it depends on it). Re-anchor instead — reconstruct
+        // frames[1] into a fresh keyframe (frames[2..] were already deltated
+        // against exactly that blob, so the chain stays valid) and drop the old
+        // front. This evicts the oldest frame while keeping the budget honoured,
+        // instead of overshooting until the next forced keyframe. frames[1] is a
+        // delta here (a keyframe there would have set secondKf != 0).
+        std::vector<uint8_t> anchor = reconstruct(1);
+        if (anchor.empty()) break;  // can't rebuild — leave the segment intact
+        storedBytes_ -= frames[1].bytes;
+        frames[1].keyframe = true;
+        frames[1].blob     = std::move(anchor);
+        frames[1].header.clear();
+        frames[1].header.shrink_to_fit();
+        frames[1].deltas.clear();
+        frames[1].deltas.shrink_to_fit();
+        frames[1].bytes = frames[1].blob.size();
+        storedBytes_ += frames[1].bytes;
+        storedBytes_ -= frames.front().bytes;
+        frames.pop_front();
+        // The tail lost one delta from its (now re-anchored) segment.
+        if (framesSinceKeyframe > 0) --framesSinceKeyframe;
     }
 }
 

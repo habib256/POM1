@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdio>
 #include <utility>
 
 PeripheralBus::Handle PeripheralBus::registerHandle(std::string name, Range range,
@@ -13,6 +14,17 @@ PeripheralBus::Handle PeripheralBus::registerHandle(std::string name, Range rang
 {
     assert(entries.size() < static_cast<size_t>(kMaxEntries) &&
            "PeripheralBus::EntryMask only supports 32 entries; widen the type.");
+    // Release-safe backstop for the same limit: the assert compiles out under
+    // NDEBUG, but rebuildPageMask()'s `1u << idx` would be undefined behaviour
+    // at idx==32. Refuse the registration (returning an invalid handle that
+    // setEnabled/isEnabled harmlessly ignore) rather than corrupt the page map.
+    if (entries.size() >= static_cast<size_t>(kMaxEntries)) {
+        std::fprintf(stderr,
+                     "PeripheralBus: refusing '%s' — %d-entry EntryMask full; "
+                     "widen EntryMask to add more peripherals.\n",
+                     name.c_str(), kMaxEntries);
+        return kInvalidHandle;
+    }
     // Capture the insertion index for the new entry BEFORE sorting. After
     // sortEntries() the vector is reordered by priority, so `entries.back()`
     // is NOT guaranteed to be the one we just pushed — higher-priority
@@ -125,7 +137,7 @@ void PeripheralBus::sortEntries()
 void PeripheralBus::rebuildPageMask()
 {
     pageMask.fill(0);
-    for (size_t idx = 0; idx < entries.size(); ++idx) {
+    for (size_t idx = 0; idx < entries.size() && idx < static_cast<size_t>(kMaxEntries); ++idx) {
         const Entry& e = entries[idx];
         // Disabled entries stay in the map: setEnabled() flips the flag and
         // rebuilds, which is rare. The runtime `if (!e.enabled) continue;`

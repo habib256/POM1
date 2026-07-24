@@ -153,6 +153,57 @@ void MainWindow_ImGui::loadMemory()
     showLoadDialog = true;
 }
 
+std::vector<std::string> MainWindow_ImGui::evictStorageCards()
+{
+    std::vector<std::string> evicted;
+    if (!emulation) return evicted;
+    // Unplug every enabled ROM/IO storage card. Each decodes a window somewhere
+    // in $2000-$BFFF (see CLAUDE.md Memory map) that would shadow a graphic-card
+    // program loaded there. Caller invokes this BEFORE the load so the program
+    // executes once, in clean RAM — evicting AFTER a shadowed first load and
+    // reloading corrupts programs that relocate their own code at runtime
+    // (Buzzard Bait copies its engine to $8000 and installs a $9900 shim).
+    if (microSDEnabled) {
+        microSDEnabled = false;
+        emulation->setMicroSDEnabled(false);
+        // Memory::setMicroSDEnabled(false) cascade-drops the IEC daughterboard
+        // (it rides on microSD's VIA). Mirror that on the UI side or the IEC
+        // Disk window keeps rendering a phantom drive and a later microSD
+        // re-toggle mis-cascades. Matches MainWindow_Menu.cpp's microSD path.
+        iecCardEnabled = false;
+        showIECCard = false;
+        evicted.push_back("microSD");
+    }
+    if (cffa1Enabled) {
+        cffa1Enabled = false;
+        emulation->setCFFA1Enabled(false);
+        evicted.push_back("CFFA1");
+    }
+    if (codeTankEnabled) {
+        codeTankEnabled = false;
+        showCodeTankLibrary = false;
+        // Disarm any pending cold-boot WOZ autorun, else it fires a 4000R
+        // against a bus where CodeTank ROM is no longer mapped, disturbing the
+        // just-loaded program. Every other CodeTank-disable site clears this.
+        codeTankPendingWozRunAt = 0.0;
+        emulation->setCodeTankEnabled(false);
+        evicted.push_back("CodeTank");
+    }
+    if (jukeBoxEnabled) {
+        jukeBoxEnabled = false;
+        showJukeBox = false;
+        emulation->setJukeBoxEnabled(false);
+        evicted.push_back("Juke-Box");
+    }
+    if (a1ioRtcEnabled) {
+        a1ioRtcEnabled = false;
+        showA1IO_RTC = false;
+        emulation->setA1IO_RTCEnabled(false);
+        evicted.push_back("A1-IO/RTC");
+    }
+    return evicted;
+}
+
 bool MainWindow_ImGui::performMemoryLoad(const std::string& path,
                                          int fileType, uint16_t address)
 {
@@ -178,12 +229,20 @@ bool MainWindow_ImGui::performMemoryLoad(const std::string& path,
         return path.find(fwd) != std::string::npos ||
                path.find(back) != std::string::npos;
     };
+    // Storage cards unplugged to make room for a graphic-card program (see the
+    // Graphic HGR / GT-6144 branches). Reported in the final status line.
+    std::vector<std::string> evicted;
     if (pathHas("/Graphic HGR/", "\\Graphic HGR\\")) {
         if (!graphicsCardEnabled) {
             graphicsCardEnabled = true;
             emulation->setHgrFramebufferAttached(true);
         }
         showGraphicsCard = true;
+        // Clear any ROM/IO storage card off the bus BEFORE loading so the HGR
+        // program lands in clean RAM (the multiplexing-Fantasy preset plugs
+        // microSD/CFFA1 whose $6000-$AFFF windows otherwise shadow it → black
+        // card). No-op on the single-card GEN2 presets.
+        evicted = evictStorageCards();
     } else if (pathHas("/SOUND SID/", "\\SOUND SID\\")) {
         if (!sidEnabled) {
             sidEnabled = true;
@@ -242,6 +301,8 @@ bool MainWindow_ImGui::performMemoryLoad(const std::string& path,
             setStatusMessage("SWTPC GT-6144 plugged (64x96 framebuffer at $D00A)", 3.0f);
         }
         showGT6144 = true;
+        // Same clean-RAM rationale as the Graphic HGR branch above.
+        evicted = evictStorageCards();
     }
 
     uint16_t addr = address;
@@ -312,7 +373,15 @@ bool MainWindow_ImGui::performMemoryLoad(const std::string& path,
     ss << "Loaded " << filename << " at $" << std::hex << std::uppercase << addr;
     if (symbolsLoaded > 0)
         ss << std::dec << "  (+" << symbolsLoaded << " symbols)";
-    setStatusMessage(ss.str(), 3.0f);
+    if (!evicted.empty()) {
+        ss << "  [unplugged ";
+        for (size_t i = 0; i < evicted.size(); ++i) {
+            if (i) ss << ", ";
+            ss << evicted[i];
+        }
+        ss << ": was shadowing the program]";
+    }
+    setStatusMessage(ss.str(), evicted.empty() ? 3.0f : 5.0f);
     showLoadDialog = false;
     loadDlg.reset();
     return true;

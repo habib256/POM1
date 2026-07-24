@@ -683,6 +683,16 @@ private:
     // binary loads `address` is the destination; for hex dumps the address
     // comes from the file (pass 0). Returns true on success.
     bool performMemoryLoad(const std::string& path, int fileType, uint16_t address);
+    // Unplug every enabled ROM/IO storage card (microSD, CFFA1, CodeTank,
+    // Juke-Box, A1-IO/RTC) so a graphic-card program can load into clean RAM.
+    // The multiplexing-Fantasy preset plugs several at once and their bus
+    // windows ($2000-$BFFF) shadow a GEN2/GT6144 program loaded there — reads
+    // return the ROM, the program never runs → black screen. A graphic-card
+    // program is mutually exclusive with all of them under Parmigiani's
+    // one-board rule, so this runs BEFORE the load (a single clean load; the
+    // program never executes shadowed). Returns the display names unplugged,
+    // empty when none were. See FileDialogs.
+    std::vector<std::string> evictStorageCards();
     // software/ sub-directory of the single active "content" card (reverse of
     // performMemoryLoad's auto-enable map), or "" when ambiguous (0 or ≥2 cards).
     // Seeds the Load/Save Memory picker into the right folder. See FileDialogs.

@@ -36,6 +36,9 @@ public:
     };
 
     using Handle = int;
+    // Returned by registerHandle when the bus is full (EntryMask exhausted).
+    // setEnabled/isEnabled treat it as a no-op / disabled.
+    static constexpr Handle kInvalidHandle = -1;
 
     /// Register a peripheral. `onRead`/`onWrite` may be empty (std::function{})
     /// to mark the range as read-only or write-only respectively. Higher

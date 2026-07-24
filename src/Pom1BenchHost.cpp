@@ -797,6 +797,12 @@ struct AsmProjectCtx {
     std::filesystem::path dir;
     std::string cfg;                       // absolute linker .cfg
     std::vector<std::string> extraAsm;     // absolute EXTRA_ASM siblings
+    std::vector<std::string> incDirs;      // extra ca65 -I dirs beyond the
+                                           // project dir (sidecar "incDirs" or
+                                           // the Makefile LIB's -I tokens) —
+                                           // cross-sketch includes like
+                                           // game_rogue_x2 pulling the x1
+                                           // asset pack from ../game_rogue
     std::vector<std::string> defines;      // ca65 -D symbols (e.g. CODETANK_BUILD)
     bool dualBank = false;
     uint16_t loAddr = 0x0280, hiAddr = 0xE000, entryAddr = 0x0280;
@@ -1001,6 +1007,15 @@ static AsmProjectCtx probeSketchProject(const std::string& sourcePath)
     for (const std::string& ea : sketchJsonStringArray(json, "extraAsm")) {
         const fs::path ep = resolveRepoRelativePath(p.dir, ea);
         if (!ep.empty()) p.extraAsm.push_back(ep.string());
+    }
+
+    // Optional extra ca65 include dirs — for cross-sketch includes the project
+    // dir alone can't resolve (game_rogue_x2 .include's the x1 asset pack
+    // from ../game_rogue, the Makefile's `-I ../game_rogue`). Relative
+    // entries resolve against the sketch dir, repo-relative ones walk up.
+    for (const std::string& d : sketchJsonStringArray(json, "incDirs")) {
+        const fs::path ip = resolveRepoRelativePath(p.dir, d);
+        if (!ip.empty()) p.incDirs.push_back(ip.string());
     }
 
     // Optional ca65 -D symbols (e.g. CODETANK_BUILD for the full TMS LOGO /
@@ -1486,11 +1501,21 @@ static AsmProjectCtx probeAsmProject(const std::string& sourcePath)
     if (!fs::exists(mk, ec)) return p;
 
     std::ifstream f(mk);
-    std::string line, loadCfg, cfgDefault, extra, v;
+    std::string line, loadCfg, cfgDefault, extra, lib, v;
     while (std::getline(f, line)) {
+        // Fold backslash-continued lines (the `LIB := -I a \` convention).
+        while (true) {
+            const std::string t = benchTrim(line);
+            if (t.empty() || t.back() != '\\') break;
+            line = t.substr(0, t.size() - 1);
+            std::string cont;
+            if (!std::getline(f, cont)) break;
+            line += " " + cont;
+        }
         if      (benchMakeVar(line, "LOAD_CFG",  v)) loadCfg    = v;
         else if (benchMakeVar(line, "EXTRA_ASM", v)) extra      = v;
         else if (benchMakeVar(line, "CFG",       v)) cfgDefault = v;
+        else if (benchMakeVar(line, "LIB",       v)) lib        = v;
     }
     if (loadCfg == "$(CFG)") loadCfg = cfgDefault;     // CFG ?= default + LOAD_CFG := $(CFG)
     if (loadCfg.empty()) return p;
@@ -1513,6 +1538,24 @@ static AsmProjectCtx probeAsmProject(const std::string& sourcePath)
         if (!ec && fs::exists(ep, ec)) p.extraAsm.push_back(ep.string());
     }
 
+    // LIB's `-I <dir>` tokens -> extra include dirs. dev/lib entries duplicate
+    // libFlags_ (harmless, ca65 dedups); the load-bearing ones are the
+    // cross-sketch dirs like game_rogue_x2's `-I ../game_rogue`.
+    {
+        std::istringstream ls(lib);
+        std::string tok;
+        while (ls >> tok) {
+            std::string d;
+            if (tok == "-I") { if (!(ls >> d)) break; }
+            else if (tok.rfind("-I", 0) == 0) d = tok.substr(2);
+            else continue;
+            fs::path ip(d);
+            if (ip.is_relative()) ip = p.dir / ip;
+            ip = fs::weakly_canonical(ip, ec);
+            if (!ec && fs::exists(ip, ec)) p.incDirs.push_back(ip.string());
+        }
+    }
+
     probeDualBankFromCfg(p.cfg, p);
 
     p.ok = true;
@@ -1526,7 +1569,13 @@ struct BuildLogMeta {
     const P1T*  target = nullptr;
     std::string sourcePath;
     std::string cfgPath;
-    const AsmProjectCtx* proj = nullptr;
+    // Snapshotted by value from the AsmProjectCtx: the finalizer that reads
+    // these runs at function-scope exit, after the block-scoped proj local has
+    // already been destroyed — a stored pointer would dangle.
+    bool     projValid    = false;   // proj.ok
+    bool     projDualBank = false;
+    uint16_t projLoAddr   = 0;
+    uint16_t projHiAddr   = 0;
     const char* host = nullptr;      // desktop | wasm
     const char* toolchain = nullptr;   // ca65+ld65 | cl65 | wasm-cc65
 };
@@ -1558,11 +1607,11 @@ static std::string formatBuildLogHeader(const BuildLogMeta& m)
     if (!m.sourcePath.empty()) os << "# source_path: " << m.sourcePath << "\n";
     else                       os << "# source_path: (untitled scratch)\n";
     if (!m.cfgPath.empty())    os << "# linker_cfg: " << m.cfgPath << "\n";
-    if (m.proj && m.proj->ok) {
+    if (m.projValid) {
         os << "# project_ctx: sketch_sidecar_or_makefile\n";
-        if (m.proj->dualBank)
-            os << "# load_map: dual_bank lo=$" << std::hex << m.proj->loAddr
-               << " hi=$" << m.proj->hiAddr << std::dec << "\n";
+        if (m.projDualBank)
+            os << "# load_map: dual_bank lo=$" << std::hex << m.projLoAddr
+               << " hi=$" << m.projHiAddr << std::dec << "\n";
     }
     if (m.toolchain) os << "# toolchain: " << m.toolchain << "\n";
     os << "# interpreter: cc65/ca65/ld65 compiler output below; status bar = human summary\n";
@@ -3136,7 +3185,12 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             for (size_t i = 0; i < proj.defines.size(); ++i)
                 defs += (i ? "," : "") + std::string("\"") + proj.defines[i] + "\"";
             defs += "]";
+            std::string incs = "[";
+            for (size_t i = 0; i < proj.incDirs.size(); ++i)
+                incs += (i ? "," : "") + jsonQuoted(memfsAbs(proj.incDirs[i]));
+            incs += "]";
             specExtra = ",\"asmSources\":" + srcs + ",\"defines\":" + defs
+                      + ",\"incDirs\":" + incs
                       + ",\"sketchDir\":\"" + memfsAbs(proj.dir.string()) + "\"";
         } else {
             cfg = std::string("/dev/cc65/") + (t.cfg ? t.cfg : "");
@@ -3178,6 +3232,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             };
             walk('/dev/lib');
             if (spec.sketchDir) incDirs.push(spec.sketchDir);
+            if (spec.incDirs) incDirs = incDirs.concat(spec.incDirs);
             Module.__benchJob = ({ state: 'running', code: -1 });
             window.POM1cc65.buildAsm(src, ({ cfg: spec.cfg, incDirs: incDirs, asmSources: spec.asmSources || [], defines: spec.defines || [] }))
                 .then(function (res) {
@@ -3337,8 +3392,13 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         if (proj.ok) {
             cfgPath  = proj.cfg;
             logMeta.cfgPath = cfgPath;
-            logMeta.proj = &proj;
+            logMeta.projValid    = proj.ok;
+            logMeta.projDualBank = proj.dualBank;
+            logMeta.projLoAddr   = proj.loAddr;
+            logMeta.projHiAddr   = proj.hiAddr;
             asmFlags += "-I " + bench::shellQuote(proj.dir.string()) + " ";
+            for (const std::string& id : proj.incDirs)
+                asmFlags += "-I " + bench::shellQuote(id) + " ";
             for (const std::string& d : proj.defines)
                 asmFlags += "-D " + bench::shellQuote(d) + " ";
             int n = 0;
