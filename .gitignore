@@ -4,6 +4,10 @@
 # Build output
 build/
 dist/
+# macOS Universal 2 release build: from-source arm64+x86_64 GLFW/cc65 prefix
+# (packaging/macos/build_universal_deps.sh) and its separate POM1 build tree.
+build-universal-deps/
+build-universal/
 
 # In-source CMake spill (canonical out-of-tree dir is build/ — some IDE
 # integrations configure from the repo root and leave these behind)
