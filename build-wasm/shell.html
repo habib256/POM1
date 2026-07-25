@@ -127,11 +127,18 @@
     setStatus: (text) => {
       if (!text) { setStatus("Loading POM1: initializing the emulator…"); return; }
       // Emscripten posts "prefix (loaded/total)" during the data download.
+      // The ratio can exceed 1: when the server ships POM1.data with gzip or
+      // brotli, xhr.loaded counts DECOMPRESSED bytes while event.total comes
+      // from Content-Length, i.e. the COMPRESSED size. The quotient is then the
+      // package's compression ratio — ~2.2x on 60 MB of ROMs and hex text, which
+      // is exactly how the splash came to announce "220%". The bar was already
+      // clamped; the text was not. Clamp once, use for both.
       const m = text.match(/\((\d+(?:\.\d+)?)\/(\d+)\)/);
       if (m) {
-        setProgress(parseFloat(m[1]), parseFloat(m[2]));
-        setStatus("Loading POM1: downloading assets… " +
-                  Math.round(100 * parseFloat(m[1]) / parseFloat(m[2])) + "%");
+        const pct = Math.max(0, Math.min(100,
+                      Math.round(100 * parseFloat(m[1]) / parseFloat(m[2]))));
+        setProgress(pct, 100);
+        setStatus("Loading POM1: downloading assets… " + pct + "%");
       } else {
         setStatus("Loading POM1: " + text);
       }
