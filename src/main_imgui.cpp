@@ -757,12 +757,23 @@ int main(int argc, char* argv[])
     // backend (it ignores the parameter inside initImGuiBackend).
     const char* glsl_version = nullptr;
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-#elif POM1_IS_WASM
-    // WebGL 2.0 = OpenGL ES 3.0 — GLSL ES 300
+#elif POM1_GL_ES
+    // OpenGL ES 3.0 — GLSL ES 300. Two targets share this branch: WASM (WebGL
+    // 2.0 IS GLES 3.0) and the native GLES tier (-DPOM1_GLES=ON) for GPUs that
+    // expose GLES 3.x but not desktop GL 3.2 — Raspberry Pi 4/5 above all,
+    // where Mesa's V3D caps desktop GL at 3.1 and the core-profile request
+    // below would simply fail.
     const char* glsl_version = "#version 300 es";
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
+#if !POM1_IS_WASM && defined(GLFW_CONTEXT_CREATION_API)
+    // Force EGL: GLFW's default on X11 is GLX, which can only produce a GLES
+    // context when the server advertises GLX_EXT_create_context_es2_profile —
+    // V3D does not. EGL is the path those drivers actually implement, and it
+    // is also what a Wayland/KMS session uses anyway.
+    glfwWindowHint(GLFW_CONTEXT_CREATION_API, GLFW_EGL_CONTEXT_API);
+#endif
 #else
     // GL 3.2 + GLSL 150 pour macOS / Linux / Windows
     const char* glsl_version = "#version 150";

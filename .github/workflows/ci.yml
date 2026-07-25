@@ -20,7 +20,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake g++ libglfw3-dev libgl1-mesa-dev cc65
+          sudo apt-get install -y cmake g++ libglfw3-dev libgl1-mesa-dev cc65 \
+                                  libgles2-mesa-dev libegl1-mesa-dev
 
       - name: Fetch Dear ImGui (pinned to the tested release)
         run: git clone --depth 1 --branch v1.92.7 https://github.com/ocornut/imgui.git
@@ -44,6 +45,27 @@ jobs:
                 -Isrc -Iimgui -Ibuild || exit 1
           done
           echo "OK: GL TUs compile without glext.h (Windows include path)"
+
+      - name: Compile the GLES 3.0 tier (Raspberry Pi path)
+        # -DPOM1_GLES=ON is what the `raspberry` release job builds, and that job
+        # only runs on a tag — the same blind spot the Windows include-path gate
+        # above exists to close. POM1_GL_ES flips the include selection, the
+        # `#version 300 es` prologue and the direct-vs-glfwGetProcAddress entry
+        # points in these four TUs, so a desktop-GL-only refactor can break the
+        # Pi package without any x86 build noticing.
+        #
+        # Only the four affected objects are compiled (a full second build would
+        # roughly double CI wall time for no extra coverage) — the convenience
+        # targets `src/<name>.o` carry the exact flags CMake would use. Mesa
+        # provides GLES 3.0 on x86_64 too, so no ARM hardware is needed to prove
+        # the code compiles and links against libGLESv2/libEGL.
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-gles -DPOM1_GLES=ON -DPOM1_ENABLE_TESTS=OFF
+          for f in OpenGLShader CrtEffectStack PomRenderer_GL main_imgui; do
+            cmake --build build-gles --target "src/$f.o"
+          done
+          echo "OK: GLES 3.0 TUs compile"
 
       - name: Run ctest (Klaus, smoke tests, graphics regression)
         run: ctest --test-dir build --output-on-failure

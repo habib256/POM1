@@ -24,6 +24,13 @@
 #include "imgui.h"
 #include "backends/imgui_impl_opengl3.h"
 
+// Native GLES tier (-DPOM1_GLES=ON): glfw3.h defaults to <GL/gl.h>, which on a
+// GLESv2-only stack declares entry points nothing exports. Ask it for
+// <GLES3/gl3.h> instead. Emscripten's own glfw3.h already resolves to the
+// WebGL2/GLES3 headers, so only the native case needs the hint.
+#if POM1_GL_ES && !POM1_IS_WASM
+#define GLFW_INCLUDE_ES3
+#endif
 #include <GLFW/glfw3.h>
 
 // Windows' system <GL/gl.h> (pulled in by glfw3.h) is stuck at GL 1.1 and

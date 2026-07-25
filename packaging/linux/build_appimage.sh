@@ -1,5 +1,9 @@
 #!/bin/bash
-# Build d'un AppImage POM1 pour Linux x86_64.
+# Build d'un AppImage POM1 pour Linux — x86_64 ou aarch64 (Raspberry Pi 4/5).
+#
+# L'architecture est déduite de `uname -m` : on ne cross-compile pas, on
+# empaquette ce que la machine courante vient de compiler. Le nom de sortie et
+# les deux outils AppImage téléchargés suivent.
 #
 # Stratégie :
 #   1. Compilation classique (./setup_pom1.sh + cmake/make) — l'utilisateur
@@ -20,12 +24,28 @@
 #        - exec usr/bin/POM1 avec LD_LIBRARY_PATH = usr/lib
 #   4. linuxdeploy bundle les libs non-blacklist, appimagetool emballe.
 #
-# Sortie : dist/POM1-<VERSION>-x86_64.AppImage
+# Sortie : dist/POM1-<VERSION>-<arch>.AppImage
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
+
+# 0. Architecture cible = celle de la machine (aucune cross-compilation ici).
+#    APPIMAGE_ARCH nomme à la fois les binaires linuxdeploy/appimagetool à
+#    récupérer et le suffixe du fichier produit ; appimagetool exige en plus la
+#    variable d'environnement ARCH pour tamponner le runtime.
+HOST_ARCH="$(uname -m)"
+case "${HOST_ARCH}" in
+    x86_64|amd64)   APPIMAGE_ARCH="x86_64"  ;;
+    aarch64|arm64)  APPIMAGE_ARCH="aarch64" ;;
+    armv7l|armhf)   APPIMAGE_ARCH="armhf"   ;;
+    *)
+        echo "[appimage] Architecture non gérée : ${HOST_ARCH}" >&2
+        exit 1
+        ;;
+esac
+echo "[appimage] Architecture : ${HOST_ARCH} → ${APPIMAGE_ARCH}"
 
 # Single source of truth: the repo-root VERSION file (CI overrides via
 # POM1_VERSION from the git tag). Never hardcode the version here.
@@ -65,7 +85,7 @@ fetch_extract() {
     chmod +x "${TOOLS}/${outname}.AppImage"
     (cd "${TOOLS}" && "./${outname}.AppImage" --appimage-extract >/dev/null && mv squashfs-root "${outname}.AppDir")
 }
-fetch_extract "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage" linuxdeploy
+fetch_extract "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${APPIMAGE_ARCH}.AppImage" linuxdeploy
 # appimagetool depuis AppImageKit (l'ANCIEN dépôt), PAS le nouveau
 # AppImage/appimagetool. Raison : le nouveau appimagetool embarque un runtime
 # « static-pie » de type ELF ET_DYN et ne sait compresser qu'en zstd.
@@ -76,7 +96,7 @@ fetch_extract "https://github.com/linuxdeploy/linuxdeploy/releases/download/cont
 # ET_EXEC + squashfs gzip → reconnu par AppImageLauncher. Le binaire POM1
 # empaqueté est identique (plancher glibc 2.27 inchangé) ; seul le petit runtime
 # d'amorçage change. Vérifié : ET_EXEC, magic AI\x02, monte en gzip, se lance.
-fetch_extract "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" appimagetool
+fetch_extract "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${APPIMAGE_ARCH}.AppImage" appimagetool
 
 # 3. AppDir from scratch.
 rm -rf "${APPDIR}"
@@ -166,8 +186,8 @@ NO_STRIP=1 "${TOOLS}/linuxdeploy.AppDir/AppRun" \
 # bionic ne fournit pas (libgpgme.so.11 manquant). AppRun met ces libs
 # embarquées sur LD_LIBRARY_PATH et le mksquashfs embarqué sur PATH.
 mkdir -p "${DIST}"
-OUT="${DIST}/POM1-${VERSION}-x86_64.AppImage"
-ARCH=x86_64 \
+OUT="${DIST}/POM1-${VERSION}-${APPIMAGE_ARCH}.AppImage"
+ARCH="${APPIMAGE_ARCH}" \
 VERSION="${VERSION}" \
 "${TOOLS}/appimagetool.AppDir/AppRun" \
     "${APPDIR}" \
