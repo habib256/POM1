@@ -9,9 +9,11 @@
 // mask, vignette and post-glass luminance gain. This is what makes "CRT
 // effects, on any card" possible.
 //
-// GL-only (the POM1 GL backend on Linux / Windows / WASM). On the macOS Metal
-// backend there is no equivalent, so callers detect that (the renderer's
-// glTextureName() returns 0) and present the raw framebuffer unchanged.
+// THIS class is the OpenGL / OpenGL-ES half (Linux, Windows, WASM). The Metal
+// build links no OpenGL framework at all, so on macOS every method here
+// compiles to an inert stub and CrtEffectStackMetal takes over instead —
+// same contract, same CrtParams, same look. Pom1CrtEffects picks between them
+// and hides the choice. A knob added to one shader MUST be added to the other.
 //
 // Safety: Pom1CrtEffects only routes a framebuffer through this while the
 // master toggle is on (ON by default, opt-out persisted in ini/ui.settings);

@@ -89,16 +89,41 @@ public:
 
     /// Raw OpenGL texture name (GLuint) backing this Texture, or 0 when the
     /// backend is not OpenGL (e.g. the macOS Metal backend, which never
-    /// overrides this). The GL-only CRT post-process (CrtEffectStack) uses
-    /// this to reach the underlying texture; a 0 return is the graceful
-    /// "no GL path" signal → the caller presents the raw framebuffer.
+    /// overrides this). The GL CRT post-process (CrtEffectStack) uses this to
+    /// reach the underlying texture; a 0 return is the graceful "no GL path"
+    /// signal → the caller presents the raw framebuffer.
     virtual unsigned int glTextureName(const Texture*) const { return 0; }
 
-    /// True when this is the OpenGL / OpenGL-ES backend. Lets GL-only paths
-    /// (the CRT post-process) decide, before touching any GL entry point,
-    /// whether the GL path is even available. The Metal backend leaves this
-    /// false so those paths stay inert on macOS.
+    /// True when this is the OpenGL / OpenGL-ES backend. Lets GL-specific
+    /// paths decide, before touching any GL entry point, whether the GL path
+    /// is even available. The Metal backend leaves this false.
     virtual bool isOpenGL() const { return false; }
+
+    // ── Metal interop (macOS) ───────────────────────────────────────────
+    //
+    // The Metal counterparts of glTextureName()/isOpenGL(), used by the Metal
+    // CRT post-process (CrtEffectStackMetal) exactly the way the GL stack uses
+    // the two above. Everything is typed `void*` so this header never drags in
+    // Metal/ — the .mm casts back to id<MTLTexture> / id<MTLDevice> /
+    // id<MTLCommandQueue>. The GL backend inherits the nullptr/false defaults,
+    // so both post-processes stay inert on the backend that isn't theirs.
+    //
+    // Lifetime: the returned objects belong to the renderer and stay valid for
+    // as long as it does. Callers must NOT release them.
+    //
+    // Ordering note for anything that encodes work on `metalCommandQueue()`:
+    // the ImGui frame's command buffer is CREATED in beginFrame() but only
+    // committed (hence enqueued) in present(). Metal executes command buffers
+    // in enqueue order, so a buffer committed between those two points — which
+    // is where the CRT pass runs, during the UI build — is guaranteed to
+    // finish before ImGui samples its output. That is what lets the effect
+    // pass run without a second render target owned by the backend.
+    virtual void* metalTexture(const Texture*) const { return nullptr; }
+    virtual void* metalDevice() const       { return nullptr; }
+    virtual void* metalCommandQueue() const { return nullptr; }
+
+    /// True when this is the Metal backend (macOS). Mirror of isOpenGL().
+    virtual bool isMetal() const { return false; }
 
     /// Texture dimensions, or 0 when `t == nullptr`. Lets callers (notably
     /// the paint hosts) decide whether an incoming RGBA buffer can be sent

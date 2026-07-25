@@ -331,8 +331,14 @@ endif()
 # always compiled; the actual GL or Metal impl follows POM1_USE_METAL.
 set(POM1_RENDERER_SOURCES "")
 if(POM1_USE_METAL)
+    # CrtEffectStackMetal.mm rides along with the Metal backend: it is the
+    # macOS half of the universal CRT post-process (CrtEffectStack.cpp keeps
+    # the GL half and compiles to inert stubs here, since the Metal build
+    # links no OpenGL framework at all). Without it macOS is the one platform
+    # where the CRT effects silently do nothing.
     list(APPEND POM1_RENDERER_SOURCES
-         "${POM1_SRC_DIR}/PomRenderer_Metal.mm")
+         "${POM1_SRC_DIR}/PomRenderer_Metal.mm"
+         "${POM1_SRC_DIR}/CrtEffectStackMetal.mm")
 else()
     list(APPEND POM1_RENDERER_SOURCES
          "${POM1_SRC_DIR}/PomRenderer_GL.cpp")
@@ -714,8 +720,12 @@ else()
             # release pairs. Forcing -fno-objc-arc on it leaks one
             # FramebufferDescriptor per frame and crashes on shutdown.
             # Keep the two TUs on opposite policies.
+            # CrtEffectStackMetal.mm follows the same explicit
+            # retain/release discipline (its ownership audit is written
+            # against it), so it must be -fno-objc-arc too.
             set_source_files_properties(
                 "${POM1_SRC_DIR}/PomRenderer_Metal.mm"
+                "${POM1_SRC_DIR}/CrtEffectStackMetal.mm"
                 PROPERTIES COMPILE_FLAGS "-fno-objc-arc")
             # ARC on the PATCHED copy (the one we actually compile — see
             # the linear-→-nearest sampler patch earlier in this file).

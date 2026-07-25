@@ -196,6 +196,19 @@ public:
     int  textureWidth(const Texture* t)  const override { return t ? t->w : 0; }
     int  textureHeight(const Texture* t) const override { return t ? t->h : 0; }
 
+    // ─── Metal interop (CRT post-process) ──────────────────────────────
+    // Unretained borrows: CrtEffectStackMetal reads the device/queue to build
+    // its pipeline and encode one pass per framebuffer, and the source
+    // id<MTLTexture> to sample from. Ownership stays here — destroyTexture()
+    // is still the only place that releases a texture.
+    void* metalTexture(const Texture* t) const override
+    {
+        return t ? t->mtlTexture : nullptr;
+    }
+    void* metalDevice()       const override { return (void*)device_; }
+    void* metalCommandQueue() const override { return (void*)commandQueue_; }
+    bool  isMetal()           const override { return true; }
+
     // ─── ImGui backend lifecycle ───────────────────────────────────────
     bool initImGuiBackend(const char* /*glslVersion*/) override
     {

@@ -8,6 +8,47 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 [Keep a Changelog](https://keepachangelog.com/). Versions track the string in
 `src/main_imgui.cpp` / `README.md`.
 
+## [Unreleased]
+
+### Added — OpenGL ES 3.0 tier + Raspberry Pi package
+
+- **`cmake -DPOM1_GLES=ON` builds against OpenGL ES 3.0 / GLSL ES 300** instead
+  of desktop GL 3.2 core. This is what unblocks the **Raspberry Pi 4/5**: Mesa's
+  V3D driver caps *desktop* OpenGL at 3.1, so POM1's default core-profile
+  context request failed outright and no window ever opened. The `POM1_GL_ES`
+  macro (`src/POM1Build.h`) now actually drives the three GL translation units —
+  header selection, `#version 300 es` prologue, direct entry points instead of
+  `glfwGetProcAddress`, `GLFW_OPENGL_ES_API` + `GLFW_EGL_CONTEXT_API` — where
+  they previously keyed on `__EMSCRIPTEN__`, i.e. "are we a browser" rather than
+  "do we speak GLES". Same sources for both tiers; only the link line
+  (`GLESv2`/`EGL` vs `libGL`) and the context creation differ.
+- **A Raspberry Pi AppImage is now built and published per release**
+  (`POM1-<version>-aarch64.AppImage`, `raspberry` job). Native arm64 runner,
+  compiled inside a `debian:bookworm` container so the glibc floor matches
+  Raspberry Pi OS (2.36) rather than the runner's 2.39 — an AppImage never
+  bundles glibc, so the build image *is* the floor. `build_appimage.sh` derives
+  the architecture from `uname -m`, and CI compiles the GLES tier on every push
+  so the tag-only release job is no longer the first thing to try it.
+
+### Added — CRT effects on macOS (Metal)
+
+- **The universal CRT effect stack now runs on the macOS Metal backend.**
+  It was OpenGL-only, so on macOS every slider in "CRT Effects (sliders)..."
+  did nothing and the Settings panel said as much. `CrtEffectStackMetal`
+  (MTLRenderPipelineState + two private RGBA8 render targets ping-ponged for
+  phosphor persistence) mirrors the GL stack effect for effect — same order,
+  same constants, same analytic anti-aliasing — and `Pom1CrtEffects` picks
+  between the two from the live renderer.
+
+### Fixed
+
+- **WASM asset staging is a deny-list, not an allow-list of extensions.** The
+  desktop packagers ship the whole `sketchs/` tree, so any extension missing
+  from the old allow-list vanished from the *web build only* — silently, in the
+  one build nobody runs locally (that is how `sketchs/logo/*.logo` went missing
+  from `POM1.data`). Now everything ships except heavy media and build residue.
+  Bundle: 1147 preloaded files, up from 1117, for +275 KB.
+
 ## [1.9.4] — 2026-07-25
 
 ### Changed — boot straight into POM1 Fantasy by default
