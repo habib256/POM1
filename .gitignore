@@ -62,6 +62,9 @@ imgui/
 imgui.ini
 ini/
 
+# Terminal Card screenshot sink (Ctrl-S / ESC S writes pom1_latest.png here)
+screenshots/
+
 # clangd / other tool caches (local preprocessing index — machine-specific)
 .cache/
 compile_commands.json
@@ -76,6 +79,9 @@ dev/projects/*/*.o
 # sketchs/gen2/game_pang/GEN2Pang.bin (only committed build of the game).
 sketchs/**/*.o
 sketchs/**/*.map
+# ld65 output before emit_*_txt.py repackages it — the canonical artefact is
+# the Wozmon .txt under software/
+sketchs/**/*.rawbin
 *.lst
 *.lbl
 # Specific in-tree intermediate .bin (rebuilt by `make` in their directory)
