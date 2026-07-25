@@ -1887,8 +1887,9 @@ void MainWindow_ImGui::renderWelcomeWindow()
         ImGui::TextWrapped(
             "Applesoft Lite ($6000-$7FFF with microSD, $E000-$FFFF "
             "with CFFA1): cut-down port of Applesoft (Microsoft 6502 "
-            "BASIC). Adds floating-point, strings, trig (SIN/COS/...), "
-            "multi-letter variables, PRINT USING. Slower than Integer "
+            "BASIC). Adds floating-point, strings, SQR/LOG/EXP/RND, "
+            "multi-letter variables. The trig functions (SIN/COS/TAN/ATN) "
+            "were cut to make it fit. Slower than Integer "
             "BASIC but much more expressive. Cold start: 6000R "
             "(microSD build) or E000R (CFFA1 build).");
 
@@ -2563,14 +2564,14 @@ void MainWindow_ImGui::renderTutorialApplesoftWindow()
         tutStep(3, "Write a floating-point program");
         tutCode(
             "10 PRINT \"SQR(2) = \"; SQR(2)\n"
-            "20 FOR A=0 TO 6.28 STEP 0.5\n"
-            "30 PRINT A; \"  \"; SIN(A)\n"
+            "20 FOR A=1 TO 5 STEP 0.5\n"
+            "30 PRINT A; \"  \"; LOG(A); \"  \"; EXP(A)\n"
             "40 NEXT\n"
             "50 END");
         ImGui::TextWrapped(
-            "Applesoft understands SIN, COS, SQR, EXP, LOG, ATN, RND and "
-            "full floating-point arithmetic. Strings with A$ = \"TEXT\" also "
-            "work.");
+            "Applesoft Lite understands SQR, LOG, EXP, RND, INT, ABS, SGN "
+            "and full floating-point arithmetic. Strings with A$ = \"TEXT\", "
+            "LEFT$ / RIGHT$ / MID$ / LEN / VAL / STR$ also work.");
 
         tutStep(4, "LIST and RUN");
         tutCode(
@@ -2597,6 +2598,12 @@ void MainWindow_ImGui::renderTutorialApplesoftWindow()
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
+        bulletWrapped(
+            "NO trig: SIN, COS, TAN and ATN were removed to make Applesoft "
+            "fit. They do NOT report a syntax error - SIN(A) parses as the "
+            "array SI(A), which auto-dimensions to zero, so it silently "
+            "prints 0. Compute them yourself with a Taylor series, or use "
+            "the full Applesoft on the GEN2 / TMS9918 cards.");
         bulletWrapped("Line editor: Ctrl-H (Backspace) deletes the last character typed.");
         bulletWrapped("No HGR / HCOLOR - the GEN2 HGR card is addressed directly via POKE.");
         bulletWrapped("See tutorial 'microSD: load and save programs' for full ASAVE / LOAD / RUN workflow.");

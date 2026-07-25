@@ -7,6 +7,10 @@
 
 #include "TmsPaintModel.h"
 
+// <cstddef> for size_t: libc++ and g++-9's libstdc++ both drag it in
+// transitively via <vector>, but GCC 12 (Debian bookworm — the Raspberry Pi
+// arm64 release job) does not, and the flood fill below broke the build there.
+#include <cstddef>
 #include <vector>
 
 namespace tmspaint {
