@@ -38,9 +38,14 @@ bool shaderRunningOnGLES() { return false; }
 #elif defined(__APPLE__)
 #  include <OpenGL/gl3.h>
 #else
+// GLFW FIRST, deliberately: on Win32 the system <GL/gl.h> declares its
+// prototypes with WINGDIAPI/APIENTRY and does NOT include <windows.h> that
+// defines them, so including it standalone is 100+ syntax errors under MSVC.
+// glfw3.h pulls windows.h and then gl.h in the right order (and gl.h's own
+// include guard makes the explicit include below a no-op everywhere).
+#  include <GLFW/glfw3.h>
 #  include <GL/gl.h>
 #  include <GL/glext.h>
-#  include <GLFW/glfw3.h>
 
 // Function-pointer slots for the GL 2.0+ entry points we use. Resolved
 // at first call by loadEntryPoints(); zero until then.

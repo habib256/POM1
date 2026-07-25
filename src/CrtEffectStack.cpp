@@ -36,9 +36,11 @@ unsigned int CrtEffectStack::process(unsigned int, int, int, int, int) { return 
 #elif defined(__APPLE__)
 #  include <OpenGL/gl3.h>
 #else
+// GLFW FIRST — see the note in OpenGLShader.cpp: <GL/gl.h> is unusable on
+// Win32 unless <windows.h> (which glfw3.h pulls) was included before it.
+#  include <GLFW/glfw3.h>
 #  include <GL/gl.h>
 #  include <GL/glext.h>
-#  include <GLFW/glfw3.h>
 
 // Lazily-loaded GL 2.0+ entry points (Linux/Windows). Same dynamic-loader
 // strategy as OpenGLShader.cpp — see there for the rationale. Kept
