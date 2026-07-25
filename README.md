@@ -64,7 +64,9 @@ Two zero-effort ways to start — no toolchain, no build:
 
 ### ⬇ Download a release
 
-**[Grab the latest build →](https://github.com/habib256/POM1/releases)** for Windows (`.zip`), macOS (`.dmg`) or Linux (AppImage). The desktop packages **bundle everything** — including the cc65 DevBench toolchain — so it works out of the box with nothing else to install.
+**[Grab the latest build →](https://github.com/habib256/POM1/releases)** for Windows (`.zip`), macOS (`.dmg`) or Linux (AppImage — `x86_64` for PCs, `aarch64` for the **Raspberry Pi 4/5**). The desktop packages **bundle everything** — including the cc65 DevBench toolchain — so it works out of the box with nothing else to install.
+
+> **🍓 Raspberry Pi** — take the `aarch64` AppImage. It is built against OpenGL **ES 3.0** because Mesa's V3D driver caps *desktop* OpenGL at 3.1 on the Pi, one notch below what the standard build asks for. Built on Debian bookworm, so it runs on Raspberry Pi OS bookworm and newer.
 
 > **🍏 macOS — "POM1.app is damaged and can't be opened"?** It isn't. POM1 is ad-hoc signed but not notarized, so a browser download gets quarantined and macOS shows this misleading dialog. **Don't trash it** — clear the quarantine flag once: `xattr -cr /Applications/POM1.app` (or right-click POM1.app → **Open** → **Open**). It opens normally afterwards.
 
@@ -79,6 +81,13 @@ cd POM1
 ./setup_pom1.sh                    # fetch Dear ImGui + install deps (one-time)
 cd build && cmake .. && make
 cd .. && ./run_emulator.sh
+```
+
+On a **Raspberry Pi** (or any GPU that exposes GLES 3.x but not desktop GL 3.2), add `-DPOM1_GLES=ON`:
+
+```bash
+sudo apt install libgles2-mesa-dev libegl1-mesa-dev
+cmake -S . -B build -DPOM1_GLES=ON && cmake --build build -j$(nproc)
 ```
 
 #### 🪟 Windows
