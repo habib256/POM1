@@ -424,6 +424,22 @@ if(EMSCRIPTEN)
            PATTERN "*.inc" PATTERN "*.cfg" PATTERN "*.json"
            PATTERN "*.apf" PATTERN "*.ibas" PATTERN "*.bas")
 
+    # Same treatment for the dev/ trees the in-browser cc65 reads (cc65 cfgs,
+    # lib sources, bench specs): stage a copy WITHOUT the local build residue.
+    # `make -C dev/lib check` and the per-project Makefiles drop .o/.lib next to
+    # the sources, and the python emitters leave __pycache__; preloading dev/
+    # verbatim shipped ~310 KB of that dead weight inside POM1.data, downloaded
+    # by every visitor. A fresh checkout has none of it — the exclusions here
+    # just make the local bundle match. (TODO.md › Infra.)
+    set(DEV_STAGE ${CMAKE_BINARY_DIR}/wasm_preload)
+    file(REMOVE_RECURSE ${DEV_STAGE}/dev)
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/dev/cc65
+              ${CMAKE_CURRENT_SOURCE_DIR}/dev/lib
+              ${CMAKE_CURRENT_SOURCE_DIR}/dev/bench
+         DESTINATION ${DEV_STAGE}/dev
+         REGEX "\\.(o|lib|pyc|map|lst|lbl)$" EXCLUDE
+         PATTERN "__pycache__" EXCLUDE)
+
     # Stack-size linker flag was renamed in Emscripten 3.1.27 (TOTAL_STACK
     # → STACK_SIZE). Both spellings are accepted on their respective
     # versions, but the wrong one is a hard error. Probe emcc's version
@@ -491,12 +507,12 @@ if(EMSCRIPTEN)
         # themselves (build-wasm/cc65/*.wasm) are loaded on demand by JS, NOT
         # preloaded here. See doc/CC65_WASM.md. Build them once with
         # tools/build_cc65_wasm.sh --out build-wasm/cc65.
-        "--preload-file ${PRELOAD_DIR}/dev/cc65@dev/cc65"
-        "--preload-file ${PRELOAD_DIR}/dev/lib@dev/lib"
+        "--preload-file ${DEV_STAGE}/dev/cc65@dev/cc65"
+        "--preload-file ${DEV_STAGE}/dev/lib@dev/lib"
         # Per-target C build specs (cfg + runtime file lists) read by the Bench
         # at build time — dev/bench/<target>.json; Pom1BenchHost falls back to
         # its compiled-in copies if these are absent.
-        "--preload-file ${PRELOAD_DIR}/dev/bench@dev/bench"
+        "--preload-file ${DEV_STAGE}/dev/bench@dev/bench"
         # DevBench sketches (build-only staging, see SKETCHS_STAGE above) so the
         # in-browser bench can load repo sketches with their own cfg/extraAsm/defines.
         "--preload-file ${SKETCHS_STAGE}/sketchs@sketchs"
