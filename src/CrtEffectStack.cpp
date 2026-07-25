@@ -40,7 +40,7 @@ unsigned int CrtEffectStack::process(unsigned int, int, int, int, int) { return 
 // Win32 unless <windows.h> (which glfw3.h pulls) was included before it.
 #  include <GLFW/glfw3.h>
 #  include <GL/gl.h>
-#  include <GL/glext.h>
+#  include "GLProcs.h"   // see the note in OpenGLShader.cpp (no glext.h on Windows)
 
 // Lazily-loaded GL 2.0+ entry points (Linux/Windows). Same dynamic-loader
 // strategy as OpenGLShader.cpp — see there for the rationale. Kept

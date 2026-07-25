@@ -30,6 +30,21 @@ jobs:
           cmake -S . -B build
           cmake --build build -j"$(nproc)"
 
+      - name: Compile the GL TUs the way Windows sees them (no glext.h)
+        # The Windows SDK ships a GL 1.1 <GL/gl.h> and NO <GL/glext.h>, so the
+        # shader/CRT translation units take a different include path there —
+        # one that only the (slow, tag-only) release workflow used to exercise.
+        # -DGL_GLEXT_LEGACY makes Mesa's gl.h skip glext.h, reproducing that
+        # path here in seconds. Two Windows-only breakages shipped through this
+        # blind spot before the gate existed (include order, then missing
+        # glext.h), each costing a full release-workflow round trip.
+        run: |
+          for f in src/OpenGLShader.cpp src/CrtEffectStack.cpp; do
+            g++ -std=c++17 -DGL_GLEXT_LEGACY -c "$f" -o /dev/null \
+                -Isrc -Iimgui -Ibuild || exit 1
+          done
+          echo "OK: GL TUs compile without glext.h (Windows include path)"
+
       - name: Run ctest (Klaus, smoke tests, graphics regression)
         run: ctest --test-dir build --output-on-failure
 

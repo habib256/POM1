@@ -45,7 +45,10 @@ bool shaderRunningOnGLES() { return false; }
 // include guard makes the explicit include below a no-op everywhere).
 #  include <GLFW/glfw3.h>
 #  include <GL/gl.h>
-#  include <GL/glext.h>
+// PFN typedefs + post-1.1 enums. Linux gets them from <GL/glext.h> (pulled by
+// Mesa's gl.h); the Windows SDK ships no glext.h, so GLProcs.h declares the
+// entry points POM1 uses. Skipped entirely when glext.h already provided them.
+#  include "GLProcs.h"
 
 // Function-pointer slots for the GL 2.0+ entry points we use. Resolved
 // at first call by loadEntryPoints(); zero until then.
