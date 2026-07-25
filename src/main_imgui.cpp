@@ -1071,8 +1071,9 @@ int main(int argc, char* argv[])
         }
         glfwPollEvents();
 
-        // Taille canvas : hors plein écran = celle calculée dans MainWindow (Apple 1 + chrome) ;
-        // en plein écran = taille CSS du canvas (viewport navigateur).
+        // Taille canvas : en plein écran = taille CSS du canvas (viewport
+        // navigateur) ; hors plein écran = viewport, relevé au besoin du profil
+        // (voir le bloc du bas).
         int targetW = 0;
         int targetH = 0;
         if (c->mainWindow->isWasmFullscreen()) {
@@ -1088,7 +1089,41 @@ int main(int argc, char* argv[])
                 targetH = 800;
             }
         } else {
-            c->mainWindow->getWasmCanvasPixelSize(targetW, targetH);
+            // Hors plein écran : PRENDRE TOUT LE VIEWPORT, puis garantir au
+            // minimum ce que le profil réclame.
+            //
+            // Le canvas partait autrefois à la taille calculée par le profil
+            // (écran Apple-1 + enveloppe des fenêtres) : plus petit que l'onglet,
+            // il laissait des bandes noires alors que la place était libre ;
+            // plus grand, il était réduit par le CSS. On prend donc le max par
+            // axe entre le viewport et le besoin du profil.
+            //
+            // Quand le résultat dépasse l'onglet, c'est le CSS de shell.html
+            // (max-width/max-height: 100vw/100vh sur un élément remplacé) qui
+            // réduit l'image en conservant le rapport — l'UI n'est pas
+            // reflowée, elle est mise à l'échelle, ce qui est le comportement
+            // voulu : un profil large reste lisible en miniature plutôt que de
+            // voir ses fenêtres sortir du cadre.
+            //
+            // clientWidth/Height du documentElement = viewport hors barres de
+            // défilement (innerWidth les inclut et ferait osciller la taille).
+            const int vpW = MAIN_THREAD_EM_ASM_INT({
+                return document.documentElement.clientWidth | 0;
+            });
+            const int vpH = MAIN_THREAD_EM_ASM_INT({
+                return document.documentElement.clientHeight | 0;
+            });
+            int wantW = 0;
+            int wantH = 0;
+            c->mainWindow->getWasmCanvasPixelSize(wantW, wantH);
+            targetW = (vpW > wantW) ? vpW : wantW;
+            targetH = (vpH > wantH) ? vpH : wantH;
+            if (targetW < 1) {
+                targetW = 1200;
+            }
+            if (targetH < 1) {
+                targetH = 800;
+            }
         }
 
         int bufW = 0;
