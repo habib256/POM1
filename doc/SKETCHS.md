@@ -32,6 +32,7 @@ DevBench reads at compile time:
 - `language` — `asm`, `c`, `hex`, or `raw`
 - `cfg` — linker config when not the target default
 - `extraAsm` — additional `.asm` files from `dev/lib/`
+- `incDirs` — extra ca65 `-I` directories beyond the sketch's own folder (always on the path). For cross-sketch includes: `game_rogue_x2` lists `sketchs/gen2/game_rogue` so its `.include "rogue_assets_hgr.inc"` (the ×1 asset pack) resolves. Sidecar-less projects get the same from their Makefile's `LIB` `-I` tokens.
 - `defines` — ca65 `-D` symbols passed to the main source **and** every `extraAsm` module, so gated lib code (`.ifdef`) compiles consistently. Used by `tool_logo` (`["CODETANK_BUILD"]`) to build the full CodeTank feature set (on-bitmap text, speech bubbles, buffer editor) for the bench's 8 KB dual-bank + CodeTank profile.
 - Dual-bank load (`.lo` @ `$0280` + `.hi` @ `$E000`) is inferred automatically when the linker cfg declares `%O.lo` and `%O.hi` (e.g. HGR Sokoban, text Chess). Single-bank GEN2 sketches use `apple1_gen2.cfg` (`file = %O` @ `$E000` only).
 - `asset` / `assetAddr` — companion binary loaded alongside the program
