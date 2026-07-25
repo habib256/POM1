@@ -98,6 +98,32 @@ fetch_extract "https://github.com/linuxdeploy/linuxdeploy/releases/download/cont
 # d'amorçage change. Vérifié : ET_EXEC, magic AI\x02, monte en gzip, se lance.
 fetch_extract "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${APPIMAGE_ARCH}.AppImage" appimagetool
 
+# … mais ce raisonnement ne tient QUE sur x86_64. Le runtime embarqué dans la
+# release `continuous` d'AppImageKit est ET_EXEC en x86_64 et ET_DYN en
+# aarch64 : côté ARM, l'amont n'a jamais reconstruit le runtime à l'ancienne.
+# Vérifié en téléchargeant les deux (2026-07-25) :
+#
+#   continuous/runtime-x86_64   → ET_EXEC
+#   continuous/runtime-aarch64  → ET_DYN   ← d'où l'échec du job Raspberry Pi
+#   12/runtime-aarch64          → ET_EXEC  ← la dernière version ET_EXEC publiée
+#
+# On épingle donc le runtime aarch64 sur la release figée 12 et on le passe à
+# appimagetool via --runtime-file. Le format type-2 est inchangé, seul le petit
+# binaire d'amorçage diffère ; le contrat ET_EXEC vérifié par release.yml
+# redevient donc satisfiable sur les deux architectures.
+RUNTIME_ARG=()
+if [ "${APPIMAGE_ARCH}" = "aarch64" ]; then
+    RUNTIME_FILE="${TOOLS}/runtime-aarch64-et_exec"
+    if [ ! -f "${RUNTIME_FILE}" ]; then
+        echo "[appimage] Téléchargement du runtime aarch64 ET_EXEC (AppImageKit 12)…"
+        mkdir -p "${TOOLS}"
+        wget -q "https://github.com/AppImage/AppImageKit/releases/download/12/runtime-aarch64" \
+             -O "${RUNTIME_FILE}"
+    fi
+    chmod +x "${RUNTIME_FILE}"
+    RUNTIME_ARG=(--runtime-file "${RUNTIME_FILE}")
+fi
+
 # 3. AppDir from scratch.
 rm -rf "${APPDIR}"
 mkdir -p "${APPDIR}/usr/bin" \
@@ -190,6 +216,7 @@ OUT="${DIST}/POM1-${VERSION}-${APPIMAGE_ARCH}.AppImage"
 ARCH="${APPIMAGE_ARCH}" \
 VERSION="${VERSION}" \
 "${TOOLS}/appimagetool.AppDir/AppRun" \
+    ${RUNTIME_ARG[@]+"${RUNTIME_ARG[@]}"} \
     "${APPDIR}" \
     "${OUT}"
 
