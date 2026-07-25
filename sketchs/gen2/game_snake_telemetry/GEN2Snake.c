@@ -517,10 +517,17 @@ void main(void)
              * restart early. The minimum is timing-stable because we lock
              * tick_spins to its max (new_game() will reset it anyway). */
             unsigned int hold;
-            /* Clear a black panel BEHIND the banner first — otherwise "GAME OVER"
+            /* Clear a black band BEHIND the banner first — otherwise "GAME OVER"
              * is OR'd straight over the snake/apple under it and smears into
-             * garbage. The 9-glyph word spans x=40..199 at y=80..95; pad it. */
-            gen2_hgr_clear_pixrect(36u, 78u, 168u, 20u);
+             * garbage. The old 168x20 px panel was too tight: a snake segment or
+             * the apple in the grid row just above/below it stayed glued to the
+             * letters and read as corruption (cells are 8 px, the panel edges
+             * were not cell-aligned). Wipe the FULL-WIDTH band of grid rows
+             * 8..13 (y=64..111) instead — cell-aligned, so every leftover block
+             * near the text is erased whole, never half-cut; the rest of the
+             * death scene stays visible. fill_rect (whole byte columns, val 0)
+             * is the fast asm path and clears the HIRES palette bits too. */
+            gen2_hgr_fill_rect(64u, 48u, 0u, 40u, 0x00u);
             gen2_hgr_puts_color(40, 80, "GAME OVER", GEN2_ORANGE);
             tick_spins = 3565u;             /* pin the throttle to its slow cadence */
             /* Phase 1 — ~4-second mandatory hold (no input read). */
