@@ -1881,8 +1881,9 @@ void MainWindow_ImGui::renderWelcomeWindow()
         ImGui::TextWrapped("BASIC variants");
         ImGui::TextWrapped(
             "Integer BASIC ($E000-$EFFF, 4 KB): Steve Wozniak's 1976 "
-            "Math (-32767..+32767), no strings beyond PRINT, no "
-            "floating-point. Tiny and fast. Cold start: E000R.");
+            "Math (-32767..+32767), no floating-point. Strings exist but "
+            "must be DIMensioned first (DIM A$(30)) and are sliced with "
+            "A$(1,5), not LEFT$/MID$. Tiny and fast. Cold start: E000R.");
         ImGui::Spacing();
         ImGui::TextWrapped(
             "Applesoft Lite ($6000-$7FFF with microSD, $E000-$FFFF "
@@ -2476,9 +2477,10 @@ void MainWindow_ImGui::renderTutorialIntegerBasicWindow()
     if (ImGui::Begin("Tutorial: Integer BASIC", &showTutorialIntegerBasic)) {
         ImGui::TextWrapped(
             "Apple-1 Integer BASIC is Wozniak's original handwritten BASIC "
-            "(4 kB at $E000). 16-bit signed integers only, no floats, no "
-            "strings other than PRINT literals. Perfect for learning the "
-            "machine and for tight little games.");
+            "(4 kB at $E000). 16-bit signed integers only, no floats. It "
+            "does have strings, but they work differently from Applesoft "
+            "(see the notes). Perfect for learning the machine and for "
+            "tight little games.");
         ImGui::BeginChild("tut_int_scroll", ImVec2(0, 0), true);
         tutStep(1, "Pick a preset that includes Integer BASIC");
         ImGui::TextWrapped(
@@ -2524,7 +2526,13 @@ void MainWindow_ImGui::renderTutorialIntegerBasicWindow()
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
-        bulletWrapped("Integers only: -32767..32767. No SIN, no strings, no FOR step.");
+        bulletWrapped("Integers only: -32767..32767. No floats, so no SIN/COS/SQR - "
+                      "the functions are ABS, SGN, PEEK, RND and LEN.");
+        bulletWrapped("FOR does take a STEP: 'FOR I=9 TO 1 STEP -2'. Up to 8 nested FORs.");
+        bulletWrapped("Strings work, but not the Applesoft way: DIM A$(30) BEFORE use "
+                      "(that reserves 30 characters, not 30 strings), slice with "
+                      "A$(1,5) instead of LEFT$/MID$/RIGHT$, compare with = and # "
+                      "(not <>), and there is no + concatenation.");
         bulletWrapped("POKE / PEEK use signed 16-bit values. $C800 is -14336, $E000 is -8192.");
         bulletWrapped("PRINT chains with commas (tab) or semicolons (concatenate).");
         bulletWrapped("See doc/reference/Preliminary_Apple_Basic_Users_Manual.pdf for the full reference.");
