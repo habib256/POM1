@@ -8,7 +8,7 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 [Keep a Changelog](https://keepachangelog.com/). Versions track the string in
 `src/main_imgui.cpp` / `README.md`.
 
-## [Unreleased]
+## [1.9.4] — 2026-07-25
 
 ### Changed — boot straight into POM1 Fantasy by default
 
@@ -67,6 +67,62 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
   (Green/Amber/Mono) still applies on top. **OpenGL backends only** (Linux /
   Windows / WASM / macOS-GL); on the macOS Metal backend the stack stays inert
   and the raw framebuffer is presented unchanged.
+
+### Fixed — hex-dump loader, card eviction, concurrency
+
+- **Bundled demos loaded into zero page and never started** — most single-line
+  Apple-1 demos (`mandelbrot-65`, `2048`, `cat`, `cellular`, `50th`, …) group
+  data with a `:` every 8th byte, and `loadHexDump`'s colon-address guard had
+  been loosened from ≥3 to ≥1 digit, so a trailing data byte (`5E`) was read as
+  address `$005E`: the program scattered across hundreds of zones and the first
+  `JMP` derailed. The ≥3-digit guard is restored (real dumps address with 4
+  digits; page-zero targets use the unambiguous `040:` form) and pinned by a
+  new `hex_dump_inline_colon` case. Every bundled game **and** demo now prints
+  its title/first frame headlessly.
+- **Card-eviction desyncs + concurrency hardening** (seven findings from a
+  bug-hunt sweep of the load path, DevBench host and rewind layer): microSD
+  eviction now drops the UI-side IEC flags too (phantom drive window,
+  mis-cascading re-toggle); CodeTank eviction disarms a pending cold-boot
+  `4000R` autorun so it can't fire against an unmapped bus; the DevBench build
+  log snapshots the project context by value (use-after-scope);
+  `RewindBuffer::evictToBudget` re-anchors a single over-budget segment instead
+  of overshooting the budget; `getRewindStatus` clamps `currentPos` against a
+  torn lock-free read; the emulation-thread wait uses the predicate overload
+  (lost-wakeup window); `PeripheralBus::registerHandle` refuses a 33rd entry in
+  release builds (`1u<<32` UB with the assert compiled out).
+
+### Changed — text games fill the screen; CRT curvature on by default
+
+- **Sokoban** renders only the level's bounding box instead of all 12 playfield
+  rows — Microban #1 goes from 16 lines (9 of them blank) to ~7.
+- **Chess** sits flush at the top of the 24-line display (the spare rows move
+  below the board) and its anti-scroll clear drops from 24 to 6 CRs, so a
+  redraw no longer scrolls a full screen height on the slow Apple-1 video.
+- **Connect 4** draws its column separators with `!` instead of `|` — the
+  Signetics 2513 char ROM only covers `$20-$5F`, so `|` rendered as `\`.
+- **CRT barrel curvature defaults to 0.25** (was 0.05) so a first boot shows a
+  visibly curved tube; a saved `crt_barrel` still wins.
+- **Profile chooser: the "always start with this profile" checkbox is gone** —
+  redundant now that the startup preference lives in Settings and POM1 boots
+  into Fantasy by default.
+
+### Changed — 6502 software & repo hygiene
+
+- **`hgr_blit2` dispatches the blit mode once per call, not per byte** — the
+  mode decision is hoisted out of the inner loop into specialised unrolled row
+  loops (one per width × mode): a 4-byte STORE row drops from ~250 to ~101
+  cycles, a 28×32 tile from ~8000 to ~3300. ZP shrinks (`bl_a`/`bl_i` collapse
+  into the walking pointer `bl_sp`), `bl_src` survives the call, and mode 3 =
+  PALFLIP is added. Rogue + RogueX2 rebuild byte-identical.
+- **GEN2 Snake clears a cell-aligned band behind GAME OVER** — the old 168×20
+  px panel left half-cut blocks glued to the letters.
+- `game_rogue_x2` declares its cross-sketch include dir (`incDirs`) so the
+  DevBench resolves the x1 asset pack; documented in `doc/SKETCHS.md`.
+- Bundled artefacts refreshed (`HGR_BBFontShow`, `HGR_Life`, `GEN2Bounces`),
+  `Chess.bin.hi/.lo` dropped (the shipped form is `Chess.txt`), and the English
+  **Intruder** build added to the games catalogue.
+- Repo hygiene: `*.rawbin` build residue untracked, the stray
+  `scratch_hgr/priestess_hgr.png` dropped, `screenshots/` ignored.
 
 ## [1.9.3] — 2026-07-22
 
