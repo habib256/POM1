@@ -437,25 +437,32 @@ if(EMSCRIPTEN)
 
     # DevBench WASM needs the sketchs/ tree in MEMFS so probeSketchProject can
     # read each .sketch.json (cfg + extraAsm + defines) and ld65 the per-sketch
-    # cfgs — exactly like desktop. Stage a *build-only* copy (sources + cfgs +
-    # metadata + BASIC listings) so the ~1.3 MB of tool_logo PDFs + game_rogue
-    # PNGs stay out of the web payload. The BASIC .apf/.ibas/.bas listings, the
-    # LOGO .logo programs and the .md docs (sketchs/doc/, which CodeBench opens
-    # in presentation mode) are tiny text, so they ride along (browsable +
-    # injectable in the web DevBench like on desktop) — the three desktop
-    # packagers copy the whole sketchs/ tree, so any extension missing from this
-    # list ships everywhere EXCEPT the web, which is how sketchs/logo/*.logo
-    # went absent from POM1.data.
+    # cfgs — exactly like desktop. Stage a *build-only* copy so the ~1.3 MB of
+    # tool_logo PDFs + game_rogue PNGs and the local build residue stay out of
+    # the web payload.
+    #
+    # This is a DENY-list on purpose. It used to be an allow-list of extensions,
+    # and the failure mode was silent + one-sided: the three desktop packagers
+    # copy the whole sketchs/ tree, so a newly-introduced extension shipped
+    # everywhere EXCEPT the web (that is exactly how sketchs/logo/*.logo went
+    # missing from POM1.data — and WASM is the build nobody runs locally, so
+    # nothing caught it). Defaulting to "ship it" makes the next forgotten file
+    # type a few stray KB in the bundle instead of a feature that only breaks
+    # in the browser. Everything textual — sources, cfgs, .sketch.json, BASIC
+    # .apf/.ibas/.bas listings, .logo programs, Makefiles, the .md docs of
+    # sketchs/doc/ that CodeBench opens in presentation mode — rides along.
+    #
+    # Excluded: heavy media (PDF/PNG/JPEG/GIF/BMP — documentation assets the
+    # browser build has no use for) and build residue that a fresh checkout
+    # does not have (.o/.lib/.map/.lst/.lbl/.rawbin, __pycache__). Compiled
+    # .bin artefacts stay: several are committed as reference images.
     # Configure-time copy (rebuild WASM after touching sketchs/).
     set(SKETCHS_STAGE ${CMAKE_BINARY_DIR}/wasm_preload)
     file(REMOVE_RECURSE ${SKETCHS_STAGE}/sketchs)
     file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/sketchs
          DESTINATION ${SKETCHS_STAGE}
-         FILES_MATCHING
-           PATTERN "*.asm" PATTERN "*.s"   PATTERN "*.c"   PATTERN "*.h"
-           PATTERN "*.inc" PATTERN "*.cfg" PATTERN "*.json"
-           PATTERN "*.apf" PATTERN "*.ibas" PATTERN "*.bas"
-           PATTERN "*.logo" PATTERN "*.md")
+         REGEX "\\.(o|lib|a|map|lst|lbl|pyc|rawbin|pdf|png|jpe?g|gif|bmp)$" EXCLUDE
+         PATTERN "__pycache__" EXCLUDE)
 
     # Same treatment for the dev/ trees the in-browser cc65 reads (cc65 cfgs,
     # lib sources, bench specs): stage a copy WITHOUT the local build residue.
