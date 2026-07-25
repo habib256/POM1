@@ -2230,14 +2230,12 @@ void MainWindow_ImGui::renderCrtSettingsWindow()
     }
     ImGui::Separator();
 
-    // Backend / shader availability note.
+    // Shader availability note. There is no longer a backend that structurally
+    // cannot run the effect — macOS/Metal got its own stack
+    // (CrtEffectStackMetal) — so the only thing left to report is a shader
+    // that failed to build on this machine.
     {
-        pom1::PomRenderer* r = pom1::renderer();
-        if (r && !r->isOpenGL()) {
-            ImGui::TextColored(ImVec4(1, 0.6f, 0.3f, 1),
-                "CRT shader is OpenGL-only — inactive on this (Metal) backend.");
-            ImGui::Separator();
-        } else if (crtEffects.enabled && !crtEffects.active()) {
+        if (crtEffects.enabled && !crtEffects.active()) {
             ImGui::TextColored(ImVec4(1, 0.5f, 0.3f, 1),
                 "CRT shader unavailable — presenting the raw framebuffer.");
             ImGui::Separator();

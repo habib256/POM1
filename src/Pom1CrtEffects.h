@@ -12,8 +12,13 @@
 // apply() is the single call site: hand it the source framebuffer texture
 // and the on-screen draw size; it returns the ImTextureID to actually draw
 // with — the CRT-processed output when active, or the raw source texture
-// otherwise (master OFF, non-GL backend, or a failed shader). Callers draw
-// the returned id exactly as before.
+// otherwise (master OFF, headless, or a failed shader). Callers draw the
+// returned id exactly as before.
+//
+// Two implementations sit behind that call, picked once at ensureInit() from
+// the live renderer: CrtEffectStack (OpenGL / OpenGL-ES — Linux, Windows,
+// WASM) and CrtEffectStackMetal (macOS). They are visually equivalent; see
+// CrtEffectStackMetal.h for the "keep the two shaders in lockstep" rule.
 
 #ifndef POM1_POM1_CRT_EFFECTS_H
 #define POM1_POM1_CRT_EFFECTS_H
@@ -27,6 +32,8 @@ namespace pom1 {
 
 struct Texture;
 class CrtEffectStack;
+class CrtEffectStackMetal;
+class PomRenderer;
 
 class Pom1CrtEffects
 {
@@ -47,25 +54,35 @@ public:
     bool      enabled = true;
     CrtParams params;
 
-    // True when the CRT effect will actually alter pixels: master ON, the GL
-    // backend is live, and at least one stack compiled. Callers that have
+    // True when the CRT effect will actually alter pixels: master ON, a
+    // renderer is live, and at least one stack compiled. Callers that have
     // their own non-CRT look (the text screen's phosphor glow) use this to
     // decide whether to switch to the single processed-image path. Lazily
-    // compiles the stacks on the render thread (GL context current).
+    // compiles the stacks on the render thread.
     bool active();
 
     // Route framebuffer `src` (logical size srcW×srcH) through the slot's
-    // CrtEffectStack and return the ImTextureID to draw at on-screen size
-    // dstW×dstH. Falls back to the raw source id on OFF / non-GL / failure.
+    // effect stack and return the ImTextureID to draw at on-screen size
+    // dstW×dstH. Falls back to the raw source id on OFF / headless / failure.
     ImTextureID apply(Slot slot, Texture* src, int srcW, int srcH,
                       int dstW, int dstH);
 
 private:
     void ensureInit();
+    // Can THIS renderer host an effect stack at all? False only when there is
+    // no renderer (headless). Shared by active() and apply() so the two can
+    // never disagree.
+    static bool backendSupported(PomRenderer* r);
 
     bool triedInit_ = false;   // ensureInit() ran (whatever the outcome)
     bool anyReady_  = false;   // at least one stack compiled its shader
+    // Exactly one array is populated, decided at ensureInit() from the live
+    // backend. The Metal one only exists in a Metal build (its element type is
+    // implemented in an .mm that isn't compiled otherwise).
     std::unique_ptr<CrtEffectStack> stacks_[kSlotCount];
+#if defined(POM1_HAS_METAL)
+    std::unique_ptr<CrtEffectStackMetal> metalStacks_[kSlotCount];
+#endif
 };
 
 } // namespace pom1
