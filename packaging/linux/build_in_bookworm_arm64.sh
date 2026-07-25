@@ -26,9 +26,6 @@ set -euxo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
 
-# The bind-mounted repo is owned by the host uid, not root — let git touch it.
-git config --global --add safe.directory '*'
-
 # --- Toolchain + build deps --------------------------------------------------
 #     libgles2-mesa-dev / libegl1-mesa-dev are the GLES tier's headers and
 #     link libraries (the desktop job's libgl1-mesa-dev counterpart).
@@ -42,6 +39,12 @@ apt-get install -y --no-install-recommends \
     libglfw3-dev libgles2-mesa-dev libegl1-mesa-dev \
     libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev \
     cc65
+
+# The bind-mounted repo is owned by the host uid, not root — let git touch it.
+# MUST come after the apt-get above: `debian:bookworm` is a bare base image with
+# no git at all, so running this first killed the job at second 14 with
+# "git: command not found" (exit 127) before a single package was installed.
+git config --global --add safe.directory '*'
 
 # --- Stage the cc65 bundle from the Debian install ---------------------------
 tools/build_cc65_bundle.sh --out dist/cc65-bundle

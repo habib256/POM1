@@ -289,38 +289,96 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------- macOS ----
+  # ONE Universal 2 (arm64 + x86_64) .dmg — native on Apple Silicon AND Intel,
+  # no Rosetta anywhere. Runs on the arm64 image (macos-15); the x86_64 slice is
+  # cross-compiled, which the Apple toolchain does natively.
+  #
+  # This job used to `brew install glfw cc65` on an Intel runner, and that was
+  # broken twice over:
+  #
+  #   1. Homebrew is single-arch, so the DMG was x86_64-only.
+  #   2. Worse, the linker baked brew's ABSOLUTE prefix into the binary, so the
+  #      shipped app looked for /usr/local/opt/glfw/lib/libglfw.3.dylib — a path
+  #      that does not exist on Apple Silicon (brew is /opt/homebrew there).
+  #      Every released DMG died at dyld with "Library not loaded"; Finder
+  #      reports that as the misleading "POM1 quit unexpectedly". The
+  #      smoke-launch below could never catch it, because the runner itself
+  #      obviously HAS brew glfw at exactly that path.
+  #
+  # Both dependencies are therefore built from source as universal binaries
+  # (packaging/macos/build_universal_deps.sh) — GLFW statically, so there is no
+  # dylib left to resolve at runtime at all, and cc65 universal because it ships
+  # INSIDE the .app for the in-app DevBench to execute.
   macos:
     needs: version
-    # Intel build — runs on Apple Silicon via Rosetta too. macos-13 was retired
-    # by GitHub (Dec 2025) and the label now queues forever (run 29819799811 sat
-    # 24 h without a runner); macos-15-intel is the supported Intel image.
-    runs-on: macos-15-intel
+    runs-on: macos-15
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install deps (glfw + cc65)
-        run: brew install glfw cc65
-
       - name: Fetch Dear ImGui (pinned)
         run: git clone --depth 1 --branch "$IMGUI_TAG" https://github.com/ocornut/imgui.git
 
-      - name: Stage cc65 bundle (asm ca65/ld65 + C cl65/cc65)
+      - name: Build universal deps (static GLFW + cc65, arm64 + x86_64)
+        run: packaging/macos/build_universal_deps.sh --out build-universal-deps
+
+      - name: Stage cc65 bundle from the universal build (asm ca65/ld65 + C cl65/cc65)
+        env:
+          CC65_BIN_DIR: ${{ github.workspace }}/build-universal-deps/cc65-src/bin
+          CC65_SHARE_DIR: ${{ github.workspace }}/build-universal-deps/cc65-src
         run: tools/build_cc65_bundle.sh --out dist/cc65-bundle
 
-      - name: Package .app + .dmg (cc65 bundled, strict)
+      - name: Package universal .app + .dmg (cc65 bundled, strict)
         env:
           POM1_VERSION: ${{ needs.version.outputs.pom1_version }}
+          POM1_MACOS_ARCHS: arm64;x86_64
+          # CMake honours CMAKE_PREFIX_PATH from the environment — this is what
+          # points find_package(glfw3) at the universal static build instead of
+          # any Homebrew copy that happens to be on the image.
+          CMAKE_PREFIX_PATH: ${{ github.workspace }}/build-universal-deps/glfw
         run: ./package_macos_release.sh
 
       - name: Verify cc65 inside the staged .app (asm + C)
         run: tools/verify_cc65_bundle.sh dist/POM1.app/Contents/Resources/cc65
 
+      - name: Verify the .app is universal AND self-contained
+        run: |
+          set -euo pipefail
+          BIN=dist/POM1.app/Contents/MacOS/POM1
+          otool -L "$BIN"
+          # Universal 2: both slices must be present or half the userbase gets a
+          # package that cannot execute at all.
+          lipo -info "$BIN"
+          for a in arm64 x86_64; do
+            lipo -info "$BIN" | grep -qw "$a" \
+              || { echo "ERROR: POM1 is missing the $a slice"; exit 1; }
+          done
+          # The cc65 tools run from inside the bundle — same requirement.
+          for t in ca65 ld65 cl65 cc65 ar65; do
+            f=dist/POM1.app/Contents/Resources/cc65/bin/$t
+            lipo -info "$f"
+            for a in arm64 x86_64; do
+              lipo -info "$f" | grep -qw "$a" \
+                || { echo "ERROR: $t is missing the $a slice"; exit 1; }
+            done
+          done
+          # No absolute Homebrew/MacPorts reference may survive — that is the
+          # exact regression described in this job's header comment.
+          LEAKED=$(otool -L "$BIN" | tail -n +2 | awk '{print $1}' \
+                   | grep -E '^(/usr/local|/opt/homebrew|/opt/local)' || true)
+          if [ -n "$LEAKED" ]; then
+            echo "ERROR: .app references dylibs outside the bundle:"; echo "$LEAKED"; exit 1
+          fi
+          echo "OK: .app is Universal 2 and self-contained"
+
       - name: Smoke-launch the packaged .app binary (--list-presets)
         run: |
           set -euo pipefail
-          # Proves the bundled binary starts and its dylibs (glfw, etc.) resolve.
+          # Proves the bundled binary starts and every dependency resolves.
           # --list-presets exits 0 before GLFW/any window, so no display is needed.
+          # This exercises the arm64 slice (the runner's own arch); the x86_64
+          # slice is verified structurally by the lipo gate above — GitHub's
+          # arm64 macOS images ship without Rosetta, so it cannot be run here.
           OUT=$(dist/POM1.app/Contents/MacOS/POM1 --list-presets)
           echo "$OUT"
           grep -q "Available machine presets:" <<<"$OUT" \

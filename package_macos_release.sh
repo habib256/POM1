@@ -30,13 +30,24 @@ echo " POM1 — macOS distribution package (v${VERSION})"
 echo "============================================"
 
 # ---------- 1. Build (or reuse) the .app -------------------------------------
-APP="build/POM1.app"
+# POM1_BUILD_DIR lets a universal release build live beside a developer's
+# native build/ instead of clobbering it (the release workflow leaves it unset
+# and gets the usual build/).
+BUILD_DIR="${POM1_BUILD_DIR:-build}"
+APP="$BUILD_DIR/POM1.app"
 if [[ ! -d "$APP" ]]; then
     echo "==> POM1.app not found, building in Release mode..."
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release >/dev/null
-    cmake --build build -j"$(sysctl -n hw.ncpu)" --target pom1_imgui
+    # POM1_MACOS_ARCHS (set by the release workflow to "arm64;x86_64") makes this
+    # a Universal 2 build. Unset for a local build → native arch only, which is
+    # what a developer wants: half the compile time, and Homebrew's single-arch
+    # GLFW is enough. See packaging/macos/build_universal_deps.sh.
+    CMAKE_ARCH_ARG=()
+    [[ -n "${POM1_MACOS_ARCHS:-}" ]] && \
+        CMAKE_ARCH_ARG=(-DCMAKE_OSX_ARCHITECTURES="${POM1_MACOS_ARCHS}")
+    cmake -S . -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release "${CMAKE_ARCH_ARG[@]}" >/dev/null
+    cmake --build "$BUILD_DIR" -j"$(sysctl -n hw.ncpu)" --target pom1_imgui
 fi
-[[ -d "$APP" ]] || { echo "ERROR: build/POM1.app still missing."; exit 1; }
+[[ -d "$APP" ]] || { echo "ERROR: $APP still missing."; exit 1; }
 [[ -x "$APP/Contents/MacOS/POM1" ]] || { echo "ERROR: inner binary missing."; exit 1; }
 
 # ---------- 2. Preflight: mandatory assets -----------------------------------
@@ -121,6 +132,109 @@ elif [[ "${POM1_REQUIRE_CC65:-0}" == "1" ]]; then
     echo "ERROR: POM1_REQUIRE_CC65=1 but the cc65 bundle is missing/incomplete (asm+C required)." >&2
     echo "       Install cc65 (brew install cc65) or provide POM1_CC65_BUNDLE." >&2
     exit 1
+fi
+
+# ---------- 3a. Bundle non-system dylibs into Contents/Frameworks -----------
+# POM1 links GLFW from whatever Homebrew prefix built it, and the linker bakes
+# that ABSOLUTE path into the binary:
+#
+#   /usr/local/opt/glfw/lib/libglfw.3.dylib      (Intel brew — the CI runner)
+#   /opt/homebrew/opt/glfw/lib/libglfw.3.dylib   (Apple Silicon brew)
+#
+# A locally-built .app therefore runs on the machine that built it and NOWHERE
+# else: the CI-produced DMG died on every Apple Silicon Mac with
+# "dyld: Library not loaded: /usr/local/opt/glfw/lib/libglfw.3.dylib" (surfaced
+# by Finder as the misleading "POM1 quit unexpectedly"). The CI smoke-launch
+# missed it because the runner obviously HAS brew glfw at that exact path.
+#
+# Fix: copy every non-system dependency into Contents/Frameworks, rewrite the
+# references to @rpath, and give the executable an @executable_path/../Frameworks
+# rpath — the standard self-contained-bundle layout. Recursive, so a dependency
+# that itself pulls a brew dylib is caught too. MUST run BEFORE the codesign in
+# 3b: install_name_tool rewrites the Mach-O headers and invalidates signatures.
+echo "==> Bundling non-system dylibs into Contents/Frameworks"
+BIN="$STAGING/Contents/MacOS/POM1"
+FRAMEWORKS="$STAGING/Contents/Frameworks"
+mkdir -p "$FRAMEWORKS"
+
+# Absolute paths outside /usr/lib and /System are ours to carry. Anything
+# already expressed as @rpath/@loader_path/@executable_path is either a system
+# framework reference or a dep we have already rewritten.
+needs_bundling() {
+    case "$1" in
+        /usr/lib/*|/System/*|@*) return 1 ;;
+        /*)                      return 0 ;;
+        *)                       return 1 ;;
+    esac
+}
+
+# Work queue: files still to scan. bash 3.2 (macOS system bash) — indexed
+# arrays only, no associative arrays; "already copied?" is just a file test.
+QUEUE=("$BIN")
+qi=0
+while [[ $qi -lt ${#QUEUE[@]} ]]; do
+    f="${QUEUE[$qi]}"; qi=$((qi + 1))
+    # Skip the `path:` header AND (for a dylib) its own LC_ID_DYLIB line — the
+    # id was rewritten to @rpath/... when we copied it in, so the @* filter in
+    # needs_bundling() drops it naturally.
+    while read -r dep _; do
+        needs_bundling "$dep" || continue
+        base="$(basename "$dep")"
+        if [[ ! -f "$FRAMEWORKS/$base" ]]; then
+            echo "    + $base  ($dep)"
+            cp "$dep" "$FRAMEWORKS/$base"
+            chmod u+w "$FRAMEWORKS/$base"
+            install_name_tool -id "@rpath/$base" "$FRAMEWORKS/$base"
+            # A bundled dylib resolves its OWN siblings from its own directory.
+            install_name_tool -add_rpath "@loader_path" "$FRAMEWORKS/$base" 2>/dev/null || true
+            QUEUE+=("$FRAMEWORKS/$base")
+        fi
+        install_name_tool -change "$dep" "@rpath/$base" "$f"
+    done < <(otool -L "$f" | tail -n +2 | sed 's/^[[:space:]]*//')
+done
+
+if [[ -n "$(ls -A "$FRAMEWORKS" 2>/dev/null)" ]]; then
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "$BIN" 2>/dev/null || true
+else
+    rmdir "$FRAMEWORKS"
+fi
+
+# Hard gate: a single surviving brew path means the DMG is machine-specific
+# again. Fail the packaging rather than ship a bundle that dies on dyld.
+LEAKED="$(otool -L "$BIN" | tail -n +2 | sed 's/^[[:space:]]*//' \
+          | awk '{print $1}' | grep -E '^(/usr/local|/opt/homebrew|/opt/local)' || true)"
+if [[ -n "$LEAKED" ]]; then
+    echo "ERROR: POM1 still references non-bundled Homebrew/MacPorts dylibs:" >&2
+    echo "$LEAKED" >&2
+    exit 1
+fi
+echo "    bundle is self-contained (no /usr/local, /opt/homebrew, /opt/local refs)"
+
+# Architecture report + gate. When POM1_MACOS_ARCHS asks for a Universal 2
+# build, every Mach-O we ship must actually carry every requested slice —
+# including the cc65 tools, which the in-app DevBench executes: an arm64-only
+# toolchain cannot run on an Intel Mac at all, and an x86_64-only one silently
+# requires Rosetta on Apple Silicon.
+echo "==> Architectures"
+if [[ -z "${POM1_MACOS_ARCHS:-}" ]]; then
+    echo "    POM1 : $(lipo -info "$BIN" | sed 's/.*:[^:]*: *//')  (native build)"
+else
+    MACHOS=("$BIN")
+    for f in "$FRAMEWORKS"/*.dylib "$DATA_ROOT"/cc65/bin/*; do
+        [[ -f "$f" ]] && MACHOS+=("$f")
+    done
+    for f in "${MACHOS[@]}"; do
+        HAVE="$(lipo -info "$f" 2>/dev/null | sed 's/.*:[^:]*: *//')"
+        for want in ${POM1_MACOS_ARCHS//;/ }; do
+            case " $HAVE " in
+                *" $want "*) ;;
+                *) echo "ERROR: $(basename "$f") is missing the $want slice (has: $HAVE)" >&2
+                   exit 1 ;;
+            esac
+        done
+        echo "    $(basename "$f") : $HAVE"
+    done
+    echo "    all Mach-O files carry: ${POM1_MACOS_ARCHS//;/ }"
 fi
 
 # ---------- 3b. Ad-hoc codesign --------------------------------------------
