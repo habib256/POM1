@@ -1103,7 +1103,7 @@ static const char* kBenchCSpecApple1c = R"json({
 static const char* kBenchCSpecGen2c = R"json({
   "cfg": "/dev/cc65/apple1_gen2_c.cfg",
   "defines": ["POM1_GFX_GEN2"],
-  "incDirs": ["/dev/lib/gen2c", "/dev/lib/apple1c", "/dev/lib/gfx", "/dev/lib/telemetry"],
+  "incDirs": ["/dev/lib/gen2c", "/dev/lib/gen2", "/dev/lib/apple1c", "/dev/lib/gfx", "/dev/lib/telemetry"],
   "cSources": [
     { "path": "/dev/lib/gen2c/gen2_init.c", "name": "gen2_init.c" },
     { "path": "/dev/lib/gen2c/gen2_pixel.c", "name": "gen2_pixel.c" },
