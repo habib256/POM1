@@ -100,8 +100,14 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
   redraw no longer scrolls a full screen height on the slow Apple-1 video.
 - **Connect 4** draws its column separators with `!` instead of `|` — the
   Signetics 2513 char ROM only covers `$20-$5F`, so `|` rendered as `\`.
-- **CRT barrel curvature defaults to 0.25** (was 0.05) so a first boot shows a
-  visibly curved tube; a saved `crt_barrel` still wins.
+- **CRT barrel curvature defaults to 0.025** — a light bow that reads as glass
+  without warping the 40-column text at the edges. Because a *saved* value
+  always won over the compiled default, every install that had ever run POM1
+  (and, on the web, every returning visitor through the IDBFS-persisted copy)
+  kept its old CRT block forever. `ini/ui.settings` now carries a
+  `settings_version`; a file without one predates 1.9.4, so its CRT block is
+  dropped once and the current defaults apply. Later edits are written back
+  with `settings_version=1` and never migrated again.
 - **Profile chooser: the "always start with this profile" checkbox is gone** —
   redundant now that the startup preference lives in Settings and POM1 boots
   into Fantasy by default.

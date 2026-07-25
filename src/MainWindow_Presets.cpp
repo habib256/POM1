@@ -2350,6 +2350,9 @@ void MainWindow_ImGui::loadUiSettings()
     int   theme = uiTheme_;
     int   hidpiAuto = uiHiDpiAuto_ ? 1 : 0;
     float hidpiScale = uiHiDpiManualScale_;
+    // Settings-file generation. Files written before 1.9.4 carry no
+    // `settings_version` key; see the migration at the end of this function.
+    int   settingsVersion = 0;
     while (std::getline(f, line)) {
         const auto eq = line.find('=');
         if (eq == std::string::npos) continue;
@@ -2357,7 +2360,8 @@ void MainWindow_ImGui::loadUiSettings()
         const std::string val = line.substr(eq + 1);
         pom1::CrtParams& c = crtEffects.params;
         try {
-            if      (key == "theme")       theme      = std::stoi(val);
+            if      (key == "settings_version") settingsVersion = std::stoi(val);
+            else if (key == "theme")       theme      = std::stoi(val);
             else if (key == "hidpi_auto")  hidpiAuto  = std::stoi(val);
             else if (key == "hidpi_scale") hidpiScale = std::stof(val);
             else if (key == "idle_throttle") uiIdleThrottle_ = (std::stoi(val) != 0);
@@ -2381,6 +2385,26 @@ void MainWindow_ImGui::loadUiSettings()
             else if (key == "crt_gamma")        c.phosphorGamma      = std::stof(val);
         } catch (...) { /* ignore malformed line */ }
     }
+    // ── Migration v0 → v1 (POM1 1.9.4) ───────────────────────────────────
+    // The CRT effects shipped OFF with barrel 0.05; 1.9.4 turns them ON with a
+    // lighter, deliberate bow (0.025). Both values live in this
+    // file, and a saved value always wins over the compiled default — so every
+    // machine that had ever run POM1 kept the old flat look forever, and on the
+    // web the IDBFS-persisted copy did the same for returning visitors. That
+    // reads as "the WASM build ignores the new default" when in fact it is the
+    // stale file talking.
+    //
+    // A file with no `settings_version` predates 1.9.4: drop its CRT block and
+    // take the current defaults once. Anything the user changes afterwards is
+    // written back with settings_version=1 and is never touched again — the
+    // migration cannot fire twice.
+    if (settingsVersion < 1) {
+        crtEffects.params  = pom1::CrtParams{};
+        crtEffects.enabled = true;
+        pom1::log().info("UI", "ui.settings migrated to v1 — CRT effects reset "
+                               "to the 1.9.4 defaults (on, barrel 0.025)");
+    }
+
     applyUiTheme(theme);
     uiHiDpiAuto_ = (hidpiAuto != 0);
     if (hidpiScale >= 0.75f && hidpiScale <= 3.0f)
@@ -2397,7 +2421,9 @@ void MainWindow_ImGui::saveUiSettings()
     std::filesystem::create_directories("ini", ec);
     std::ofstream f("ini/ui.settings");
     if (!f) return;
-    f << "theme=" << uiTheme_ << '\n'
+    // Generation marker — loadUiSettings() migrates anything older (see there).
+    f << "settings_version=1\n"
+      << "theme=" << uiTheme_ << '\n'
       << "hidpi_auto=" << (uiHiDpiAuto_ ? 1 : 0) << '\n'
       << "hidpi_scale=" << uiHiDpiManualScale_ << '\n'
       << "idle_throttle=" << (uiIdleThrottle_ ? 1 : 0) << '\n';
