@@ -6,6 +6,7 @@
 #include "CrtEffectStack.h"
 #include "OpenGLShader.h"
 #include "Logger.h"
+#include "POM1Build.h"   // POM1_GL_ES — "we speak GLES", not "we are a browser"
 
 #include <algorithm>
 #include <string>
@@ -31,7 +32,10 @@ unsigned int CrtEffectStack::process(unsigned int, int, int, int, int) { return 
 
 #else // ── OpenGL / OpenGL-ES backend (Linux / Windows / WASM / macOS-GL) ──
 
-#if defined(__EMSCRIPTEN__)
+// POM1_GL_ES covers both GLES targets: WASM/WebGL2 and the native GLES 3.0
+// tier (-DPOM1_GLES=ON, Raspberry Pi & co). Both declare + export the GL 2.0+
+// entry points, so neither needs the glfwGetProcAddress fallback below.
+#if POM1_GL_ES
 #  include <GLES3/gl3.h>
 #elif defined(__APPLE__)
 #  include <OpenGL/gl3.h>
@@ -130,7 +134,7 @@ bool loadEntryPoints()
 
 namespace pom1 {
 
-#if defined(__EMSCRIPTEN__) || defined(__APPLE__)
+#if POM1_GL_ES || defined(__APPLE__)
 namespace { [[maybe_unused]] bool loadEntryPoints() { return true; } }
 #endif
 
@@ -365,7 +369,7 @@ bool CrtEffectStack::initialize()
     if (initialized) return ready;
     initialized = true;
 
-#if !defined(__EMSCRIPTEN__) && !defined(__APPLE__)
+#if !POM1_GL_ES && !defined(__APPLE__)
     if (!loadEntryPoints()) {
         errorMsg = "GL 3.x entry points unavailable";
         return false;

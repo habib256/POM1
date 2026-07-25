@@ -74,6 +74,33 @@ else()
 endif()
 message(STATUS "POM1: graphics backend = ${POM1_RENDERER}")
 
+# ── OpenGL ES 3.0 tier (native) ──────────────────────────────────────────
+# POM1_GLES=ON swaps the native desktop-GL 3.2 core context for an OpenGL ES
+# 3.0 one (GLSL ES 300). That is the tier Raspberry Pi 4/5 actually expose —
+# Mesa's V3D caps *desktop* GL at 3.1, so a GL 3.2 core context request just
+# fails there — and it also covers most ARM SoCs and older iGPUs.
+#
+# No source fork: POM1's GL usage (VAO/VBO, shaders, FBO, 2D textures) is the
+# common subset of GL 3.2 core and GLES 3.0, so the same TUs compile for both.
+# POM1Build.h's POM1_GL_ES macro picks the GLES headers, the `#version 300 es`
+# shader prologue and the direct-link entry points (libGLESv2 exports every
+# GL 2.0+ symbol, so the glfwGetProcAddress dance the desktop Linux/Windows
+# path needs is skipped). WASM is GLES already — WebGL 2.0 IS GLES 3.0 — and
+# turns POM1_GL_ES on by itself, without this option.
+option(POM1_GLES "Target OpenGL ES 3.0 instead of desktop GL 3.2 (Raspberry Pi & co)" OFF)
+if(POM1_GLES)
+    if(EMSCRIPTEN)
+        message(FATAL_ERROR
+            "POM1_GLES is implied by the WASM build (WebGL 2 = GLES 3.0) — drop the flag.")
+    endif()
+    if(POM1_USE_METAL)
+        message(FATAL_ERROR
+            "POM1_GLES conflicts with POM1_RENDERER=metal. "
+            "Pass -DPOM1_RENDERER=opengl alongside it.")
+    endif()
+    message(STATUS "POM1: GL tier = OpenGL ES 3.0 / GLSL ES 300")
+endif()
+
 # ImGui
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
 # Core ImGui TUs are picked up by glob — they don't change between backends.
@@ -590,7 +617,9 @@ else()
     # entirely — Apple's GL framework would still resolve (10.14+ keeps the
     # shim around) but linking against it brings back the deprecation warnings
     # we are explicitly avoiding by going Metal.
-    if(NOT POM1_USE_METAL)
+    # On the GLES tier we link libGLESv2 + libEGL instead; find_package(OpenGL)
+    # would drag in libGL, which is exactly the driver stack we are avoiding.
+    if(NOT POM1_USE_METAL AND NOT POM1_GLES)
         find_package(OpenGL REQUIRED)
     endif()
 
@@ -605,7 +634,28 @@ else()
     endif()
 
     target_link_libraries(${PROJECT_NAME} ${GLFW_TARGET})
-    if(NOT POM1_USE_METAL)
+    if(POM1_GLES)
+        # libGLESv2 declares AND exports the GL 2.0+ entry points, so the GLES
+        # TUs call them directly (see POM1_GL_ES in OpenGLShader.cpp /
+        # CrtEffectStack.cpp). libEGL is needed because we ask GLFW for
+        # GLFW_EGL_CONTEXT_API — GLX can only hand out a GLES context when the
+        # server advertises GLX_EXT_create_context_es2_profile, which V3D
+        # (Raspberry Pi) does not.
+        find_library(POM1_GLESV2_LIB NAMES GLESv2)
+        find_library(POM1_EGL_LIB    NAMES EGL)
+        if(NOT POM1_GLESV2_LIB OR NOT POM1_EGL_LIB)
+            message(FATAL_ERROR
+                "POM1_GLES=ON but libGLESv2 / libEGL were not found. "
+                "On Debian/Raspberry Pi OS: apt install libgles2-mesa-dev libegl1-mesa-dev")
+        endif()
+        target_link_libraries(${PROJECT_NAME} ${POM1_GLESV2_LIB} ${POM1_EGL_LIB})
+        # POM1_BUILD_GLES flips POM1Build.h's POM1_GL_ES; IMGUI_IMPL_OPENGL_ES3
+        # switches ImGui's GL3 backend to the same profile (as the WASM build
+        # already does above).
+        target_compile_definitions(${PROJECT_NAME} PRIVATE
+            POM1_BUILD_GLES=1
+            IMGUI_IMPL_OPENGL_ES3)
+    elseif(NOT POM1_USE_METAL)
         target_link_libraries(${PROJECT_NAME} ${OPENGL_LIBRARIES})
     endif()
 

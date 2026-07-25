@@ -5,6 +5,7 @@
 
 #include "OpenGLShader.h"
 #include "Logger.h"
+#include "POM1Build.h"   // POM1_GL_ES — "we speak GLES", not "we are a browser"
 
 #if defined(POM1_HAS_METAL)
 // macOS Metal backend links no OpenGL framework (see CMakeLists) — provide
@@ -24,8 +25,11 @@ bool shaderRunningOnGLES() { return false; }
 // We need GL 2.0+ entry points (glCreateShader, glCompileShader, …) that
 // aren't in the stock <GL/gl.h> 1.1 header on Linux/Windows. Strategy:
 //   * macOS  — <OpenGL/gl3.h> declares them directly.
-//   * Emscripten / WebGL2 — <GLES3/gl3.h> declares them directly.
-//   * Linux / Windows — pull in PFN typedefs from <GL/glext.h> and
+//   * GLES 3.0 — <GLES3/gl3.h> declares them directly, and libGLESv2 (native,
+//                -DPOM1_GLES=ON) / the WebGL2 shim (Emscripten) exports them.
+//                POM1_GL_ES covers BOTH; keying this on __EMSCRIPTEN__ was
+//                what pinned the GLES path to the browser build.
+//   * Linux / Windows desktop GL — pull in PFN typedefs from <GL/glext.h> and
 //                       resolve the symbols lazily via glfwGetProcAddress
 //                       (GLFW is already linked everywhere POM1 runs).
 
@@ -33,7 +37,7 @@ bool shaderRunningOnGLES() { return false; }
 #include <cstring>
 #include <string>
 
-#if defined(__EMSCRIPTEN__)
+#if POM1_GL_ES
 #  include <GLES3/gl3.h>
 #elif defined(__APPLE__)
 #  include <OpenGL/gl3.h>
@@ -117,24 +121,20 @@ namespace pom1 {
 
 bool shaderRunningOnGLES()
 {
-#if defined(__EMSCRIPTEN__)
-    return true;
-#else
-    return false;
-#endif
+    return POM1_GL_ES != 0;
 }
 
 void deleteShaderProgram(unsigned int program)
 {
     if (!program) return;
-#if defined(__EMSCRIPTEN__) || defined(__APPLE__)
+#if POM1_GL_ES || defined(__APPLE__)
     glDeleteProgram(program);
 #else
     if (loadEntryPoints() && glDeleteProgram_) glDeleteProgram_(program);
 #endif
 }
 
-#if defined(__EMSCRIPTEN__) || defined(__APPLE__)
+#if POM1_GL_ES || defined(__APPLE__)
 [[maybe_unused]] static bool loadEntryPoints() { return true; }
 #endif
 
@@ -172,7 +172,7 @@ unsigned int compileShaderProgram(const char* vertexBody,
                                   const char* fragmentBody,
                                   std::string* errorOut)
 {
-#if !defined(__EMSCRIPTEN__) && !defined(__APPLE__)
+#if !POM1_GL_ES && !defined(__APPLE__)
     if (!loadEntryPoints()) {
         if (errorOut) *errorOut = "GL 3.x entry points unavailable";
         pom1::log().warn("CRT", "GL 3.x entry points unavailable — "
@@ -181,7 +181,7 @@ unsigned int compileShaderProgram(const char* vertexBody,
     }
 #endif
 
-#if defined(__EMSCRIPTEN__)
+#if POM1_GL_ES
     const char* versionLine   = "#version 300 es\n";
     const char* precisionLine = "precision highp float;\nprecision highp int;\n";
 #else
