@@ -26,8 +26,16 @@
 ;
 ; Bottom-clipped at scanline 192. None of the routines touch X -- the
 ; pool-iteration loops of the game ports keep slot offsets there.
-; Clobbers A and Y. Caller provides hgr_lo / hgr_hi
-; (include hgr_scanline.inc). The module allocates its own ZP (~11 B).
+; Clobbers A and Y; bl_src is preserved. Caller provides hgr_lo /
+; hgr_hi (include hgr_scanline.inc). The module allocates its own ZP
+; (~11 B).
+;
+; Speed: bl_mode is dispatched ONCE per call to a specialised, unrolled
+; row loop (one loop per width x mode) -- ~101 cycles per 4-byte STORE
+; row vs ~250 for the old per-byte JSR bl_put dispatch, i.e. a 28x32
+; tile drops from ~8000 to ~3300 cycles. The byte column is folded into
+; the row pointer up front: hgr_lo peaks at $D0 and bl_col <= 39, so
+; the add can never carry into the high byte.
 ;
 ; First consumer: sketchs/gen2/game_rogue (map tiles + entities + boss).
 ; Migration candidate: game_sokoban's draw_tile inner loop.
@@ -37,16 +45,15 @@
 _HGR_BLIT2_LOADED_ = 1
 
 .zeropage
-bl_src:     .res 2      ; -> source bitmap (public)
+bl_src:     .res 2      ; -> source bitmap (public, preserved)
 bl_col:     .res 1      ; dest: byte column of the leftmost byte (public)
 bl_sl:      .res 1      ; dest: top scanline (public)
 bl_h:       .res 1      ; rows (public)
-bl_mode:    .res 1      ; 0 = OR, 1 = FLASH, 2 = STORE (public)
-bl_a:       .res 1      ; byte cache across the mode dispatch
-bl_i:       .res 1      ; source byte index
+bl_mode:    .res 1      ; 0 = OR, 1 = FLASH, 2 = STORE, 3 = PALFLIP (public)
+bl_sp:      .res 2      ; walking source pointer (bl_src stays untouched)
 bl_y:       .res 1      ; current scanline
 bl_r:       .res 1      ; rows remaining
-bl_lin_lo:  .res 1      ; scanline pointer
+bl_lin_lo:  .res 1      ; scanline pointer (base + bl_col pre-added)
 bl_lin_hi:  .res 1
 bl_page:    .res 1      ; HGR page selector, EORed into the scanline
                         ; high byte: $00 = page 1 ($2000), $60 = page 2
@@ -55,116 +62,111 @@ bl_page:    .res 1      ; HGR page selector, EORed into the scanline
 
 .code
 
-; bl_put / _put0..3: store A at the scanline pointer, byte column
-; bl_col + n, applying bl_mode.
-bl_put0:
-        LDY bl_col
-        JMP bl_put
-bl_put1:
-        LDY bl_col
-        INY
-        JMP bl_put
-bl_put2:
-        LDY bl_col
-        INY
-        INY
-        JMP bl_put
-bl_put3:
-        LDY bl_col
-        INY
-        INY
-        INY
-bl_put:
-        STA bl_a
-        LDA bl_mode
-        BEQ @or
-        CMP #2
-        BEQ @st
-        CMP #3
-        BEQ @pal
-        LDA bl_a                ; FLASH: light everything EXCEPT the
-        EOR #$7F                ; silhouette
+; BL_PUT: A holds the source byte, Y the dest offset -- apply the mode's
+; raster op and store at (bl_lin_lo),Y. Compile-time specialised.
+.macro BL_PUT mode
+        .if mode = 1
+        EOR #$7F                ; FLASH: light everything EXCEPT the shape
+        .elseif mode = 3
+        EOR #$80                ; PALFLIP: same pixels, other palette
+        .endif
+        .if mode <> 2
         ORA (bl_lin_lo),Y
-        JMP @w
-@pal:   LDA bl_a                ; PALFLIP: same pixels, other palette
-        EOR #$80
-        ORA (bl_lin_lo),Y
-        JMP @w
-@or:    LDA bl_a
-        ORA (bl_lin_lo),Y
-        JMP @w
-@st:    LDA bl_a
-@w:     STA (bl_lin_lo),Y
+        .endif
+        STA (bl_lin_lo),Y
+.endmacro
+
+; BL_LOOP: the whole row loop for one width x mode pair. Row address =
+; scanline base + bl_col (no carry possible, see header); source bytes
+; and dest bytes then share Y = 0..width-1, fully unrolled.
+.macro BL_LOOP width, mode
+@row:   LDY bl_y
+        LDA hgr_lo,Y
+        CLC
+        ADC bl_col
+        STA bl_lin_lo
+        LDA hgr_hi,Y
+        EOR bl_page
+        STA bl_lin_hi
+        LDY #0
+        .repeat width-1
+        LDA (bl_sp),Y
+        BL_PUT mode
+        INY
+        .endrepeat
+        LDA (bl_sp),Y
+        BL_PUT mode
+        LDA bl_sp               ; advance the source one row
+        CLC
+        ADC #width
+        STA bl_sp
+        BCC @nc
+        INC bl_sp+1
+@nc:    INC bl_y
+        DEC bl_r
+        BNE @row
         RTS
+.endmacro
+
+; BL_HEAD: shared per-call setup -- copy bl_src to the walking pointer,
+; clip the row count against scanline 192, bail if nothing to draw,
+; then dispatch bl_mode to the specialised loop.
+.macro BL_HEAD or_lp, flash_lp, store_lp, pal_lp
+        LDA bl_src
+        STA bl_sp
+        LDA bl_src+1
+        STA bl_sp+1
+        LDA bl_sl
+        STA bl_y
+        CMP #192
+        BCS @rts                ; fully below the screen
+        LDA #192                ; rows = min(bl_h, 192 - bl_sl)
+        SEC
+        SBC bl_y
+        CMP bl_h
+        BCC @clip
+        LDA bl_h
+@clip:  STA bl_r
+        BEQ @rts
+        LDA bl_mode             ; the unrolled loops sit past branch
+        BNE @n0                 ; range -- dispatch through JMPs
+        JMP or_lp
+@n0:    CMP #2
+        BNE @n2
+        JMP store_lp
+@n2:    CMP #3
+        BNE @n3
+        JMP pal_lp
+@n3:    JMP flash_lp
+@rts:   RTS
+.endmacro
 
 ; ----------------------------------------------------------------------------
 ; hgr_blit2: 2-byte-wide bitmap, bl_h rows.
 ; ----------------------------------------------------------------------------
 hgr_blit2:
-        LDA #0
-        STA bl_i
-        LDA bl_sl
-        STA bl_y
-        LDA bl_h
-        STA bl_r
-@row:   LDY bl_y
-        CPY #192
-        BCS @done               ; bottom clip (defensive)
-        LDA hgr_lo,Y
-        STA bl_lin_lo
-        LDA hgr_hi,Y
-        EOR bl_page
-        STA bl_lin_hi
-        LDY bl_i
-        LDA (bl_src),Y
-        JSR bl_put0
-        INC bl_i
-        LDY bl_i
-        LDA (bl_src),Y
-        JSR bl_put1
-        INC bl_i
-        INC bl_y
-        DEC bl_r
-        BNE @row
-@done:  RTS
+        BL_HEAD b2_or, b2_flash, b2_store, b2_pal
+b2_or:
+        BL_LOOP 2, 0
+b2_flash:
+        BL_LOOP 2, 1
+b2_store:
+        BL_LOOP 2, 2
+b2_pal:
+        BL_LOOP 2, 3
 
 ; ----------------------------------------------------------------------------
 ; hgr_blit4: 4-byte-wide bitmap, bl_h rows.
 ; ----------------------------------------------------------------------------
 hgr_blit4:
-        LDA #0
-        STA bl_i
-        LDA bl_sl
-        STA bl_y
-        LDA bl_h
-        STA bl_r
-@row:   LDY bl_y
-        CPY #192
-        BCS @done
-        LDA hgr_lo,Y
-        STA bl_lin_lo
-        LDA hgr_hi,Y
-        EOR bl_page
-        STA bl_lin_hi
-        LDY bl_i
-        LDA (bl_src),Y
-        JSR bl_put0
-        INC bl_i
-        LDY bl_i
-        LDA (bl_src),Y
-        JSR bl_put1
-        INC bl_i
-        LDY bl_i
-        LDA (bl_src),Y
-        JSR bl_put2
-        INC bl_i
-        LDY bl_i
-        LDA (bl_src),Y
-        JSR bl_put3
-        INC bl_i
-        INC bl_y
-        DEC bl_r
-        BNE @row
-@done:  RTS
+        BL_HEAD b4_or, b4_flash, b4_store, b4_pal
+b4_or:
+        BL_LOOP 4, 0
+b4_flash:
+        BL_LOOP 4, 1
+b4_store:
+        BL_LOOP 4, 2
+b4_pal:
+        BL_LOOP 4, 3
 
 .endif  ; _HGR_BLIT2_LOADED_
