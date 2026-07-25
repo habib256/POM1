@@ -412,8 +412,9 @@ if(EMSCRIPTEN)
     # read each .sketch.json (cfg + extraAsm + defines) and ld65 the per-sketch
     # cfgs — exactly like desktop. Stage a *build-only* copy (sources + cfgs +
     # metadata + BASIC listings) so the ~1.3 MB of tool_logo PDFs + game_rogue
-    # PNGs stay out of the web payload. The BASIC .apf/.ibas/.bas listings and
-    # the LOGO .logo programs are tiny text, so they ride along (browsable +
+    # PNGs stay out of the web payload. The BASIC .apf/.ibas/.bas listings, the
+    # LOGO .logo programs and the .md docs (sketchs/doc/, which CodeBench opens
+    # in presentation mode) are tiny text, so they ride along (browsable +
     # injectable in the web DevBench like on desktop) — the three desktop
     # packagers copy the whole sketchs/ tree, so any extension missing from this
     # list ships everywhere EXCEPT the web, which is how sketchs/logo/*.logo
@@ -427,7 +428,7 @@ if(EMSCRIPTEN)
            PATTERN "*.asm" PATTERN "*.s"   PATTERN "*.c"   PATTERN "*.h"
            PATTERN "*.inc" PATTERN "*.cfg" PATTERN "*.json"
            PATTERN "*.apf" PATTERN "*.ibas" PATTERN "*.bas"
-           PATTERN "*.logo")
+           PATTERN "*.logo" PATTERN "*.md")
 
     # Same treatment for the dev/ trees the in-browser cc65 reads (cc65 cfgs,
     # lib sources, bench specs): stage a copy WITHOUT the local build residue.
