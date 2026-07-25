@@ -235,7 +235,28 @@ jobs:
         run: vcpkg install glfw3:x64-windows
 
       - name: Install LLVM MinGW (compile cc65 from source)
-        run: winget install -e --id MartinStorsjo.LLVM-MinGW.UCRT --accept-package-agreements --accept-source-agreements
+        # winget is the flakiest step of the whole release: it talks to the
+        # Microsoft Store source over the network and has failed with a bare
+        # "exit code 1" on a runner where nothing else was wrong, costing a
+        # full re-run. Retry three times with backoff before giving up, and
+        # treat "already installed" (exit 0x8A15002B / -1978335189) as success
+        # so a warm runner image doesn't fail the job either.
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          for ($i = 1; $i -le 3; $i++) {
+            winget install -e --id MartinStorsjo.LLVM-MinGW.UCRT `
+                  --accept-package-agreements --accept-source-agreements
+            $code = $LASTEXITCODE
+            if ($code -eq 0 -or $code -eq -1978335189) {
+              Write-Host "llvm-mingw ready (attempt $i, exit $code)"
+              exit 0
+            }
+            Write-Host "winget attempt $i failed with exit $code; retrying…"
+            Start-Sleep -Seconds (15 * $i)
+          }
+          Write-Error "winget could not install llvm-mingw after 3 attempts"
+          exit 1
 
       - name: Stage cc65 bundle (compile from source; asm + C + ar65)
         shell: pwsh
