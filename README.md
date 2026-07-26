@@ -60,11 +60,11 @@ Two zero-effort ways to start — no toolchain, no build:
 
 ### ▶ Play in your browser
 
-**[Launch POM1 now →](https://habib256.github.io/POM1/build-wasm/POM1.html)** — the full emulator runs in WebAssembly. Nothing to install.
+**[Launch POM1 now →](https://habib256.github.io/pom1/build-wasm/POM1.html)** — the full emulator runs in WebAssembly. Nothing to install.
 
 ### ⬇ Download a release
 
-**[Grab the latest build →](https://github.com/habib256/POM1/releases)** for Windows (`.zip`), macOS (`.dmg`) or Linux (AppImage — `x86_64` for PCs, `aarch64` for the **Raspberry Pi 4/5**). The desktop packages **bundle everything** — including the cc65 DevBench toolchain — so it works out of the box with nothing else to install.
+**[Grab the latest build →](https://github.com/habib256/pom1/releases)** for Windows (`.zip`), macOS (`.dmg`) or Linux (AppImage — `x86_64` for PCs, `aarch64` for the **Raspberry Pi 4/5**). The desktop packages **bundle everything** — including the cc65 DevBench toolchain — so it works out of the box with nothing else to install.
 
 > **🍓 Raspberry Pi** — take the `aarch64` AppImage. It is built against OpenGL **ES 3.0** because Mesa's V3D driver caps *desktop* OpenGL at 3.1 on the Pi, one notch below what the standard build asks for. Built on Debian bookworm, so it runs on Raspberry Pi OS bookworm and newer.
 
@@ -76,7 +76,7 @@ Two zero-effort ways to start — no toolchain, no build:
 #### 🐧 Linux / 🍏 macOS
 
 ```bash
-git clone https://github.com/habib256/POM1.git
+git clone https://github.com/habib256/pom1.git
 cd POM1
 ./setup_pom1.sh                    # fetch Dear ImGui + install deps (one-time)
 cd build && cmake .. && make
@@ -95,7 +95,7 @@ cmake -S . -B build -DPOM1_GLES=ON && cmake --build build -j$(nproc)
 Prereqs: [Visual Studio](https://visualstudio.microsoft.com/) (C++ workload), [CMake](https://cmake.org/download/), [Git](https://git-scm.com/download/win), [vcpkg](https://vcpkg.io/).
 
 ```batch
-git clone https://github.com/habib256/POM1.git
+git clone https://github.com/habib256/pom1.git
 cd POM1
 setup_pom1.bat
 cd build && cmake --build . --config Release
