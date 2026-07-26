@@ -33,6 +33,22 @@ public:
     /// no backing RAM, it lives in the display device. Screen_ImGui overrides.
     virtual void serialize(pom1::SnapshotWriter&) const {}
     virtual void deserialize(pom1::SnapshotReader&) {}
+
+    /// Blank the display immediately (no power-on pattern, no banner). Used
+    /// when a fresh program is about to run and should not inherit the
+    /// previous session's text — DevBench compile-and-run, Load Memory.
+    virtual void clear() {}
+
+    /// Cold-boot presentation: garbage screen → auto-clear → welcome banner,
+    /// as a real Apple-1 shows when power is applied. Used by hard reset.
+    virtual void resetDisplay() {}
 };
+
+/// Attach point for the emulation core. EmulationController drives the display
+/// exclusively through this interface — it deliberately does NOT know about
+/// Screen_ImGui, which would drag imgui.h (and the whole UI layer) into the
+/// core's include graph and break the "core is UI-free" invariant the rest of
+/// the architecture keeps.
+
 
 #endif // DISPLAYDEVICE_H

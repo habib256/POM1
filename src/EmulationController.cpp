@@ -43,7 +43,7 @@ constexpr double kTelemetryStallTimeoutSec = 5.0;
 
 } // namespace
 
-EmulationController::EmulationController(Screen_ImGui* screenWidget)
+EmulationController::EmulationController(DisplayDevice* screenWidget)
     : screen(screenWidget)
 {
     memory = std::make_unique<Memory>();
@@ -1084,7 +1084,7 @@ void EmulationController::dumpTms9918DropDiagnostics(std::FILE* out, int topN) c
     memory->getTMS9918().dumpDropDiagnostics(out ? out : stderr, topN);
 }
 
-TMS9918::DropDiagnostics EmulationController::getTms9918DropDiagnostics() const
+pom1::Tms9918DropDiagnostics EmulationController::getTms9918DropDiagnostics() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     return memory->getTMS9918().dropDiagnostics();

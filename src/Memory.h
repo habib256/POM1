@@ -187,6 +187,24 @@ public:
     int loadKrusader(void);
     int loadWozMonitor(void);
     int loadAciRom(void);
+
+    // ── ROM (re)load policy ─────────────────────────────────────────────
+    // Both microSD boot paths avoid a redundant disk read by sniffing the
+    // first two opcodes already sitting in the ROM window. Those magic bytes
+    // used to be inline literals at the two call sites, which read as
+    // unexplained numbers and gave no hint that changing a ROM's first
+    // instruction would silently turn the guard into "always reload" (a
+    // performance bug, invisible in tests). Naming the check keeps the
+    // signature next to the ROM it identifies.
+    //
+    //   $FF00: D8 58  — Woz Monitor entry (CLD / CLI)
+    //   $8000: A9 00  — SD CARD OS entry (LDA #$00)
+    //
+    // Returns true when the expected ROM already occupies `addr`, i.e. when
+    // the load can be skipped.
+    bool romSignaturePresent(uint16_t addr, uint8_t op0, uint8_t op1) const;
+    bool wozMonitorPresent() const  { return romSignaturePresent(0xFF00, 0xD8, 0x58); }
+    bool sdCardOsPresent() const    { return romSignaturePresent(0x8000, 0xA9, 0x00); }
     void configureResetVectors(uint16_t vectorAddress = 0xFF00);
     int loadBinary(const char* filename, uint16_t startAddress, int* bytesLoaded = nullptr);
     // loadHexDump: parse a Wozmon-hex dump (e.g. games_chess Chess.txt) and
@@ -755,6 +773,44 @@ private :
     PeripheralBus::Handle gen2SoftSwitchBusHandle = -1;
     PeripheralBus::Handle telemetryBusHandle = -1;   // $C440-$C443, priority 30 (GEN2 A9=0 blind zone)
 
+public:
+    // ── Card registry (snapshot serialization) ──────────────────────────
+    // ONE ordered table replacing what used to be four hand-synced lists that
+    // had to stay in lockstep, all in this file: the FLAGS bitmap pack, the
+    // FLAGS unpack, the per-card section write order, and the read-dispatch
+    // vector. Adding a card meant editing all four and silently corrupting
+    // save-states if you missed one.
+    //
+    // Iterating this table in order reproduces every one of those sequences
+    // byte for byte — that the four orders already agreed (once the flag-only
+    // rows are interleaved at their historical positions) is what makes the
+    // collapse safe rather than a format change. Row order is therefore
+    // LOAD-BEARING twice over: it fixes the on-disk section order, and the
+    // unpack has real ordering constraints (IEC cascades onto microSD, so it
+    // must follow it; GEN2 attaches last). Append new cards at the end, and
+    // never reorder existing rows without bumping the snapshot version.
+    struct CardSlot {
+        // Section name. Also the uniqueness key — see kCardNamesUnique below.
+        // nullptr for a flag-only row (a bit in FLAGS with no card section:
+        // the A1-SID Special Edition variant, the cassette-audio and
+        // silicon-strict mode bits, and the GEN2 HGR attach).
+        const char* name;
+        // FLAGS bit, or 0 for a row that owns a section but no enable bit.
+        uint32_t    flag;
+        // Read/write the enable state. Function pointers rather than
+        // pointer-to-member because the members are not uniform: most are
+        // plain bools, terminalCardEnabled is a std::atomic<bool>, and GEN2
+        // needs a bus handle flipped alongside the member. Captureless
+        // lambdas convert to these, so each row stays a one-liner.
+        bool (*isEnabled)(const Memory&);
+        void (*setEnabled)(Memory&, bool);
+        // The peripheral owning this section, or nullptr for a flag-only row.
+        pom1::Peripheral* (*card)(const Memory&);
+    };
+    // The table. Defined in MemorySnapshot.cpp next to its only users.
+    static const std::array<CardSlot, 17>& cardSlots();
+
+private:
 };
 
 #endif // MEMORY_H

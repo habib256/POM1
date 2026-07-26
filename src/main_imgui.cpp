@@ -1,4 +1,10 @@
 #include <iostream>
+// std::string / std::vector are used by the window-creation diagnostic below,
+// which is compiled on every platform — the <string>/<vector> includes further
+// down sit inside the non-WASM branch, so name them here rather than relying on
+// a transitive include holding for the WASM build too.
+#include <string>
+#include <vector>
 #include <GLFW/glfw3.h>
 #include "POM1Build.h"
 #include "PomVersion.h"   // POM1_VERSION_STRING (generated from VERSION)
@@ -253,9 +259,129 @@ static void capture_screenshot_to_png(TerminalCard& card)
 }
 #endif
 
+// Last error GLFW reported, latched. GLFW hands the *reason* for a failure to
+// this callback and returns only NULL from the failing call, so without keeping
+// it here the window-creation diagnostic below would have nothing to say.
+static int         g_lastGlfwErrorCode = 0;
+static std::string g_lastGlfwErrorDesc;
+
 static void glfw_error_callback(int error, const char* description)
 {
+    g_lastGlfwErrorCode = error;
+    g_lastGlfwErrorDesc = description ? description : "";
     fprintf(stderr, "GLFW Error %d: %s\n", error, description);
+}
+
+// Report a failed glfwCreateWindow() in terms the user can act on.
+//
+// This is the most opaque failure POM1 has, and issue #34 is why it gets 40
+// lines: the user saw only the callback's one-liner — "WGL: The driver does not
+// appear to support OpenGL" — and that line names the WRONG cause. GLFW emits it
+// from choosePixelFormat() whenever the enumeration yields no non-generic pixel
+// format, which is exactly what a *failed ICD load* looks like from outside. The
+// reporter reasonably concluded his graphics driver was at fault and spent a
+// month reinstalling NVIDIA drivers that were never the problem; the actual
+// cause was an app-local msvcp140.dll shipped next to POM1.exe that the ICD
+// picked up instead of the system one. So: name the real causes, most likely
+// first, and hand over the facts already in hand.
+// stderr + (on Windows) a message box, so the report also reaches the user who
+// double-clicked POM1.exe in Explorer and watched the console flash away. POM1
+// is a console-subsystem exe, so the stderr half alone covers terminal launches.
+static void pom1_emit_fatal_report(const std::string& msg, const wchar_t* caption)
+{
+    fputs("\n", stderr);
+    fputs(msg.c_str(), stderr);
+    fflush(stderr);
+
+#if defined(_WIN32)
+    const int wlen = MultiByteToWideChar(CP_UTF8, 0, msg.c_str(), -1, nullptr, 0);
+    if (wlen > 0) {
+        std::vector<wchar_t> wide(static_cast<size_t>(wlen));
+        if (MultiByteToWideChar(CP_UTF8, 0, msg.c_str(), -1, wide.data(), wlen) > 0)
+            MessageBoxW(nullptr, wide.data(), caption, MB_OK | MB_ICONERROR);
+    }
+#else
+    (void)caption;
+#endif
+}
+
+// glfwInit() failing gets the same treatment as window creation below: it used
+// to be a bare `return -1`, and on Linux it is the failure a headless or
+// SSH-without-X user actually hits first.
+static void pom1_report_glfw_init_failure()
+{
+    std::string msg = "POM1 could not initialise GLFW (no window system).\n\n";
+    if (g_lastGlfwErrorCode != 0) {
+        msg += "Last GLFW error: " + std::to_string(g_lastGlfwErrorCode) + " - "
+             + g_lastGlfwErrorDesc + "\n";
+    }
+    msg += "\nMost likely causes, in order:\n";
+#if defined(_WIN32)
+    msg +=
+      "  1. Running in a session with no desktop (a service, or a container).\n"
+      "  2. The window station / desktop is not reachable for this user.\n";
+#elif defined(__APPLE__)
+    msg +=
+      "  1. Running with no window server access (ssh, or a launch daemon).\n"
+      "     POM1 needs a normal user session.\n";
+#else
+    msg +=
+      "  1. No display: DISPLAY / WAYLAND_DISPLAY unset, or ssh without `-X`.\n"
+      "  2. A headless machine. For scripted runs use the flags that exit before\n"
+      "     any window opens, e.g. --list-presets, or run under xvfb-run.\n";
+#endif
+    msg += "\nPOM1 needs no window for --list-presets and the other query flags.\n";
+    pom1_emit_fatal_report(msg, L"POM1 - cannot start");
+}
+
+static void pom1_report_window_creation_failure(const char* requestDesc)
+{
+    std::string msg = "POM1 could not open its window.\n\n";
+
+    msg += "What POM1 asked the driver for: ";
+    msg += requestDesc;
+    msg += "\n";
+    if (g_lastGlfwErrorCode != 0) {
+        msg += "Last GLFW error: " + std::to_string(g_lastGlfwErrorCode) + " - "
+             + g_lastGlfwErrorDesc + "\n";
+    } else {
+        msg += "Last GLFW error: (none reported)\n";
+    }
+    if (const char* ver = glfwGetVersionString()) {
+        msg += std::string("GLFW build: ") + ver + "\n";
+    }
+
+    msg += "\nMost likely causes, in order:\n";
+#if defined(_WIN32)
+    msg +=
+      "  1. A DLL sitting next to POM1.exe is shadowing the C runtime that your\n"
+      "     GPU's OpenGL driver needs. Windows searches the application folder\n"
+      "     BEFORE System32, so a stray msvcp140.dll / vcruntime140.dll there is\n"
+      "     handed to the driver and the version mix stops it from loading. POM1\n"
+      "     ships as one self-contained exe with no DLL: if you see any .dll next\n"
+      "     to POM1.exe, delete it. (This was issue #34 — and note the GLFW error\n"
+      "     above blames the driver, which in this case is a red herring.)\n"
+      "  2. No vendor OpenGL driver present: a fresh Windows install still on the\n"
+      "     Microsoft Basic Display Adapter, or a Remote Desktop / VM session with\n"
+      "     no GPU passthrough (RDP caps OpenGL at 1.1). Install the GPU vendor's\n"
+      "     driver, or run on the physical console.\n"
+      "  3. GPU or driver older than OpenGL 3.2 (2009).\n";
+#elif defined(__APPLE__)
+    msg +=
+      "  1. The Mac reports no OpenGL 3.2 core profile - every Mac since OS X\n"
+      "     10.7 does, so this usually means a virtualised or remote session.\n"
+      "  2. Running over a remote session with no window server access.\n";
+#else
+    msg +=
+      "  1. No usable OpenGL driver: missing Mesa, or a headless session. Check\n"
+      "     with `glxinfo | grep \"OpenGL version\"`.\n"
+      "  2. No display reachable: DISPLAY / WAYLAND_DISPLAY unset, or SSH without\n"
+      "     X forwarding.\n"
+      "  3. GPU exposes OpenGL ES but not desktop GL 3.2 - Raspberry Pi 4/5 above\n"
+      "     all. Rebuild the GLES tier: cmake -DPOM1_GLES=ON ..\n";
+#endif
+
+    pom1_emit_fatal_report(msg, L"POM1 - cannot open a window");
 }
 
 // Adaptive-UI throttle (P2-D): timestamp of the last user-input / window
@@ -741,8 +867,10 @@ int main(int argc, char* argv[])
 
     // Setup GLFW
     glfwSetErrorCallback(glfw_error_callback);
-    if (!glfwInit())
+    if (!glfwInit()) {
+        pom1_report_glfw_init_failure();
         return -1;
+    }
 
     // Make raw Xlib protocol errors non-fatal (Linux/X11 only; no-op elsewhere).
     // GLFW's error callback above never sees these — a stray clipboard BadWindow
@@ -806,9 +934,47 @@ int main(int argc, char* argv[])
     // right after creation, via pom1ShowGlfwWindowX11().
     glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
 #endif
-    GLFWwindow* window = glfwCreateWindow(1274, 801, "POM1 v" POM1_VERSION_STRING " - Apple 1 Emulator", NULL, NULL);
-    if (window == NULL)
+    const char* const kWindowTitle = "POM1 v" POM1_VERSION_STRING " - Apple 1 Emulator";
+    GLFWwindow* window = glfwCreateWindow(1274, 801, kWindowTitle, NULL, NULL);
+
+#if !POM1_IS_WASM && !defined(__APPLE__) && !POM1_GL_ES
+    // One free retry, desktop-GL only: ask for 3.2 without pinning the CORE
+    // profile. Some old and most virtualised ICDs (VMware, VirtualBox, older
+    // Intel) refuse a core-profile request outright yet happily hand out a 3.2+
+    // compatibility context — where `#version 150` is still valid, so nothing
+    // downstream changes. Excluded on macOS, where a non-core 3.2 request
+    // yields a legacy 2.1 context that GLSL 150 could not run on, and on the
+    // GLES tier, which never asks for a profile in the first place.
+    //
+    // This is deliberately the ONLY fallback. A retry chain below 3.2 is not
+    // free: `#version 150` is hardcoded in two places (the ImGui backend here
+    // and OpenGLShader.cpp:188 for the CRT stack) and needs a GL >= 3.2
+    // context, so going lower means maintaining GLSL 130 shader variants. The
+    // real sub-3.2 path already exists as a separate build: -DPOM1_GLES=ON.
+    // And in the failure mode of issue #34 no fallback could have helped at
+    // all — the ICD never loaded, so every context request failed identically.
+    if (window == NULL) {
+        fprintf(stderr, "POM1: core-profile context refused, retrying without "
+                        "the core-profile constraint...\n");
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_FALSE);
+        window = glfwCreateWindow(1274, 801, kWindowTitle, NULL, NULL);
+        if (window != NULL)
+            fprintf(stderr, "POM1: got a non-core OpenGL 3.2 context.\n");
+    }
+#endif
+
+    if (window == NULL) {
+#if defined(POM1_HAS_METAL) && POM1_HAS_METAL
+        pom1_report_window_creation_failure("a Metal-backed window (no GL context)");
+#elif POM1_GL_ES
+        pom1_report_window_creation_failure("OpenGL ES 3.0 (GLSL ES 300)");
+#else
+        pom1_report_window_creation_failure("OpenGL 3.2 core profile (GLSL 150)");
+#endif
+        glfwTerminate();
         return -1;
+    }
 
 #if !POM1_IS_WASM && !defined(__APPLE__)
     // OS window icon from pic/icon.png — no-op silently if the asset can't

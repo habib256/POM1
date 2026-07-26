@@ -57,6 +57,7 @@ endif()
 set(POM1_TEST_CORE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/M6502.cpp
     ${CMAKE_SOURCE_DIR}/src/Memory.cpp
+    ${CMAKE_SOURCE_DIR}/src/MemorySnapshot.cpp
     ${CMAKE_SOURCE_DIR}/src/PeripheralBus.cpp
     ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
     ${CMAKE_SOURCE_DIR}/src/Logger.cpp
@@ -86,9 +87,11 @@ add_executable(test_klaus_6502
 )
 target_include_directories(test_klaus_6502 PRIVATE
     ${CMAKE_SOURCE_DIR}/src
-    # TMS9918.h uses ImU32 (colour constants) and GraphicsCard.h / Screen_ImGui.h
-    # transitively reach via Memory's peripheral unique_ptrs. Just headers — no
-    # ImGui symbols are called from the test runner, so we don't link ImGui.
+    # GraphicsCard.h / Screen_ImGui.h are still reachable transitively via
+    # Memory's peripheral unique_ptrs. Just headers — no ImGui symbols are
+    # called from the test runner, so we don't link ImGui. (TMS9918.h no longer
+    # needs this: its colour constants are plain uint32_t now, so the chip model
+    # itself is ImGui-free.)
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_klaus_6502 PRIVATE libresidfp_static)
@@ -1658,3 +1661,60 @@ if(UNIX)
              WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(version_sync PROPERTIES TIMEOUT 30)
 endif()
+
+# -- Coverage gaps closed (TODO.md › Infra, juillet 2026) ---------------------
+# Five modules carried no dedicated test at all. Each of these is headless and
+# deterministic despite three of the subjects being "desktop-only": the parts
+# that hold logic (register files, parsers, the display sniffer) need neither a
+# socket nor a display, so nothing here opens either.
+
+# Disassembler6502 — instruction length cross-checked against the CPU's real PC
+# advance for every non-control-flow opcode. Pins the undocumented-opcode length
+# invariant (CLAUDE.md › M6502) that nothing else covered.
+add_executable(test_disassembler
+    disassembler_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+    ${CMAKE_SOURCE_DIR}/src/Disassembler6502.cpp
+    ${CMAKE_SOURCE_DIR}/src/Symbols.cpp
+)
+target_include_directories(test_disassembler PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui)
+target_link_libraries(test_disassembler PRIVATE libresidfp_static)
+add_test(NAME disassembler_smoke COMMAND test_disassembler)
+set_tests_properties(disassembler_smoke PROPERTIES TIMEOUT 30)
+
+# P-LAB A1-IO Board & RTC — injected fixed clock + VIA register file.
+add_executable(test_a1io_rtc
+    a1io_rtc_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/A1IO_RTC.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
+    ${CMAKE_SOURCE_DIR}/src/Logger.cpp
+)
+target_include_directories(test_a1io_rtc PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME a1io_rtc_smoke COMMAND test_a1io_rtc)
+set_tests_properties(a1io_rtc_smoke PROPERTIES TIMEOUT 10)
+
+# P-LAB Terminal Card — $D012 display sniffer + key-injector seam. Opens no
+# socket (startServer() is never called), so it is safe in CI sandboxes.
+add_executable(test_terminal_card
+    terminal_card_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/TerminalCard.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
+    ${CMAKE_SOURCE_DIR}/src/Logger.cpp
+)
+target_include_directories(test_terminal_card PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME terminal_card_smoke COMMAND test_terminal_card)
+set_tests_properties(terminal_card_smoke PROPERTIES TIMEOUT 10)
+
+# P-LAB MODEM BBS — 65C51 ACIA register file + Hayes AT parser. No ATD is
+# issued, so no connection is attempted.
+add_executable(test_wifi_modem
+    wifi_modem_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/WiFiModem.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
+    ${CMAKE_SOURCE_DIR}/src/Logger.cpp
+)
+target_include_directories(test_wifi_modem PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME wifi_modem_smoke COMMAND test_wifi_modem)
+set_tests_properties(wifi_modem_smoke PROPERTIES TIMEOUT 15)

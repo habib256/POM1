@@ -120,7 +120,7 @@ emrun POM1.html
 | Fedora | `sudo dnf install cmake glfw-devel mesa-libGL-devel pkgconf` |
 | Arch | `sudo pacman -S cmake glfw mesa pkgconf` |
 | macOS | `brew install cmake glfw pkg-config` |
-| Windows | `vcpkg install glfw3:x64-windows` |
+| Windows | `vcpkg install --triplet x64-windows-static` from the repo root (static triplet — POM1 links the CRT statically so the exe needs no DLL; the dependency and its pinned version come from `vcpkg.json`, so pass no package name) |
 
 A source/git build also needs a system **cc65** for the asm/C DevBench targets (`apt install cc65` · `dnf install cc65` · `pacman -S cc65` · `brew install cc65` · <https://cc65.github.io/>). Release packages bundle it.
 

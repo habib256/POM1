@@ -22,7 +22,7 @@
 #include "CpuClock.h"
 #include "Peripheral.h"
 #include "BeamClock.h"
-#include "imgui.h"
+#include "Tms9918Diagnostics.h"   // POD DropDiagnostics, re-exported below
 
 class TMS9918 : public pom1::Peripheral
 {
@@ -132,13 +132,15 @@ public:
     // so a "test run" can be bounded by a strict-mode toggle. Exposed read-only;
     // dump via `dumpDropDiagnostics()` for human-readable triage of the offending
     // STA sites and modes.
-    enum SlotTableId : uint8_t {
-        kSlotTableScreenOff = 0,
-        kSlotTableGfx12     = 1,
-        kSlotTableGfx3      = 2,
-        kSlotTableText      = 3,
-        kSlotTableCount     = 4,
-    };
+    // Defined in Tms9918Diagnostics.h (the POD split-out) and re-exported here
+    // so every `TMS9918::kSlotTable*` / `TMS9918::DropDiagnostics` spelling in
+    // the codebase keeps compiling unchanged.
+    using SlotTableId = pom1::Tms9918SlotTableId;
+    static constexpr SlotTableId kSlotTableScreenOff = pom1::kSlotTableScreenOff;
+    static constexpr SlotTableId kSlotTableGfx12     = pom1::kSlotTableGfx12;
+    static constexpr SlotTableId kSlotTableGfx3      = pom1::kSlotTableGfx3;
+    static constexpr SlotTableId kSlotTableText      = pom1::kSlotTableText;
+    static constexpr SlotTableId kSlotTableCount     = pom1::kSlotTableCount;
 
     // ── VDP transmission zones (CPU → VRAM access windows) ───────────────────
     // The 6502 may only push a byte to $CC00/$CC01 when the VDP's internal
@@ -177,24 +179,7 @@ public:
         return z == TransmissionZone::Blanked || z == TransmissionZone::VBlank;
     }
     static std::string_view zoneName(TransmissionZone z);
-    struct DropDiagnostics {
-        // A "drop" here is an openMSX too-fast event: an access arrived while a
-        // VRAM access was still pending. For a data write that means newest-wins
-        // (the pending byte was overwritten); for a read the prefetch was
-        // overwritten; for a control write the gated byte was discarded.
-        uint64_t total       = 0;          // == droppedWrites (all too-fast events)
-        uint64_t writeData   = 0;          // $CC00 data-port writes (newest-wins overwrite)
-        uint64_t readData    = 0;          // $CC00 data-port reads (prefetch overwritten)
-        uint64_t writeCtrl   = 0;          // $CC01 control-port writes (gated, discarded)
-        uint64_t byTable[kSlotTableCount] = {0,0,0,0};
-        uint64_t inActive    = 0;          // in a GATED active-display zone (ActiveGfx12/Text/Multi) — expected
-        uint64_t inVBlank    = 0;          // in a FREE zone (Blanked|VBlank, ScreenOff slots) — anomalous
-        // PC histogram. STA $CC00 is 3 bytes — captured PC = STA addr + 3.
-        // The disassembly site is at PC-3 (or PC-2 for STA absX/absY = 3 bytes
-        // too, or PC-2 for STA $CC00,X via abs,X also 3 bytes). Always look at
-        // PC-3 first, then walk back if the opcode at PC-3 is not an STA.
-        std::unordered_map<uint16_t, uint64_t> byPc;
-    };
+    using DropDiagnostics = pom1::Tms9918DropDiagnostics;
     const DropDiagnostics& dropDiagnostics() const { return dropStats; }
     // Pretty-print the diagnostics to a stream (stderr by default).
     // Format: header + table breakdown + port breakdown + top-N PC histogram.
@@ -285,7 +270,7 @@ public:
     // canvas from the main playfield).
     static void renderToBufferWithBorder(uint32_t* pixels, const Snapshot& snap);
 
-    static const ImU32 kPalette[16];
+    static const uint32_t kPalette[16];
 
     // Bug N°8 detector — public so unit tests can verify it. Returns
     // true when 2 or more of M1/M2/M3 are simultaneously set (the
@@ -336,10 +321,10 @@ public:
 
 private:
     // Display mode helpers — write into pixel buffer
-    static void renderGraphicsI  (uint32_t* pixels, const Snapshot& s, ImU32 backdrop);
-    static void renderGraphicsII (uint32_t* pixels, const Snapshot& s, ImU32 backdrop);
-    static void renderText       (uint32_t* pixels, const Snapshot& s, ImU32 backdrop);
-    static void renderMulticolor (uint32_t* pixels, const Snapshot& s, ImU32 backdrop);
+    static void renderGraphicsI  (uint32_t* pixels, const Snapshot& s, uint32_t backdrop);
+    static void renderGraphicsII (uint32_t* pixels, const Snapshot& s, uint32_t backdrop);
+    static void renderText       (uint32_t* pixels, const Snapshot& s, uint32_t backdrop);
+    static void renderMulticolor (uint32_t* pixels, const Snapshot& s, uint32_t backdrop);
     static void renderSprites    (uint32_t* pixels, const Snapshot& s);
 
     // Per-scanline progressive-raster helpers. Read state directly from
@@ -374,23 +359,23 @@ private:
     // snapshot-based renderToBuffer.
     static void renderGfxILineRaw       (int line, uint32_t* lineBuf,
                                          const uint8_t* vram, const uint8_t* regs,
-                                         uint16_t vramMask, ImU32 backdrop);
+                                         uint16_t vramMask, uint32_t backdrop);
     static void renderGfxIILineRaw      (int line, uint32_t* lineBuf,
                                          const uint8_t* vram, const uint8_t* regs,
-                                         uint16_t vramMask, ImU32 backdrop);
+                                         uint16_t vramMask, uint32_t backdrop);
     static void renderTextLineRaw       (int line, uint32_t* lineBuf,
                                          const uint8_t* vram, const uint8_t* regs,
-                                         uint16_t vramMask, ImU32 backdrop);
+                                         uint16_t vramMask, uint32_t backdrop);
     static void renderMulticolorLineRaw (int line, uint32_t* lineBuf,
                                          const uint8_t* vram, const uint8_t* regs,
-                                         uint16_t vramMask, ImU32 backdrop);
+                                         uint16_t vramMask, uint32_t backdrop);
     // Hybrid M1+M2 (or M1+M2+M3 after the M3-XOR rule) "static
     // vertical bars" glitch — meisei vdp.c:480-488. The chip
     // generates a deterministic 4 px text-color + 2 px backdrop
     // pattern × 40, independent of VRAM contents. POM1 emits this
     // when renderActiveLine's mode-dispatch lands in mode 5.
     static void renderTextBarsLineRaw   (int line, uint32_t* lineBuf,
-                                         const uint8_t* regs, ImU32 backdrop);
+                                         const uint8_t* regs, uint32_t backdrop);
     static void renderSpritesLineRaw    (int line, uint32_t* lineBuf,
                                          const uint8_t* vram, const uint8_t* regs,
                                          uint16_t vramMask);

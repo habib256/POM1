@@ -154,3 +154,9 @@ software/**/*.bin
 # at runtime, but the clean image ships so the TMS9918 DevBench works out of the box.
 roms/codetank/CODETANKDEV.rom
 roms/codetank/CODETANKDEV.txt
+
+# vcpkg manifest-mode install tree (Windows). `vcpkg install --triplet
+# x64-windows-static` run from the repo root drops the built dependencies here;
+# the CMake toolchain uses build/vcpkg_installed instead. Neither belongs in git
+# — vcpkg.json + its builtin-baseline are what pin the versions.
+vcpkg_installed/

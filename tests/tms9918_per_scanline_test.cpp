@@ -236,8 +236,8 @@ int main()
         const int kFullWidth  = TMS9918::kFullWidth;
         const uint32_t earlyLR  = snap.framebuffer[(kBorderTop + 5) * kFullWidth + 4];
         const uint32_t lateLR   = snap.framebuffer[(kBorderTop + 150) * kFullWidth + 4];
-        const ImU32 white  = TMS9918::kPalette[0x0F];
-        const ImU32 yellow = TMS9918::kPalette[0x0A];
+        const uint32_t white  = TMS9918::kPalette[0x0F];
+        const uint32_t yellow = TMS9918::kPalette[0x0A];
         mustBeTrue(earlyLR == white,
                    "PhaseF: early line border = R7 at-line-render time (white)"); ++assertions;
         mustBeTrue(lateLR == yellow,
@@ -267,8 +267,8 @@ int main()
 
         const int   kBorderTop = TMS9918::kBorderTop;
         const int   kFullWidth = TMS9918::kFullWidth;
-        const ImU32 white  = TMS9918::kPalette[0x0F];
-        const ImU32 yellow = TMS9918::kPalette[0x0A];
+        const uint32_t white  = TMS9918::kPalette[0x0F];
+        const uint32_t yellow = TMS9918::kPalette[0x0A];
 
         const int splitRow = kBorderTop + 80;
         const uint32_t splitLeft  = snap.framebuffer[splitRow * kFullWidth + 4];                // L border
@@ -350,7 +350,7 @@ int main()
 
         static uint32_t active[256 * 192];
         vdp.copyActiveFramebuffer(active);
-        const ImU32 white = TMS9918::kPalette[0x0F];
+        const uint32_t white = TMS9918::kPalette[0x0F];
         mustBeTrue(active[80 * 256 + 113] == white,
                    "PhaseI: sprite still drawn on the split line — mode change latched to line end"); ++assertions;
         mustBeTrue(active[81 * 256 + 113] != white,

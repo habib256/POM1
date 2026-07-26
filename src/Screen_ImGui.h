@@ -33,8 +33,8 @@ public:
     // GLFW teardown so ~Screen_ImGui's delete doesn't run on a dead context.
     void releaseGL() { destroyScreenFramebuffer(); }
     void writeChar(char c);
-    void clear();
-    void resetDisplay();     // garbage screen → auto-clear → welcome (cold boot / hard reset)
+    void clear() override;
+    void resetDisplay() override;   // garbage screen → auto-clear → welcome (cold boot / hard reset)
     void setShowBanner(bool show) { showBanner = show; }
     void setCursorPosition(int x, int y);
 

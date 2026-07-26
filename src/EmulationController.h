@@ -24,9 +24,14 @@
 #include "M6502.h"
 #include "Memory.h"
 #include "RewindBuffer.h"
-#include "Screen_ImGui.h"
 #include "SnapshotPublisher.h"
-#include "TMS9918.h"   // TMS9918::DropDiagnostics for getTms9918DropDiagnostics()
+// The core controller depends on the display ABSTRACTION, never on
+// Screen_ImGui — including the latter pulled imgui.h into every consumer of
+// this header and made the emulation core depend on the UI toolkit, which the
+// rest of the architecture is careful not to do. Likewise the drop-diagnostics
+// POD instead of the whole TMS9918 chip model.
+#include "DisplayDevice.h"
+#include "Tms9918Diagnostics.h"
 
 // Mutex ordering: stateMutex > keyboard's internal keyMutex > publisher's
 // internal snapshotMutex. publisher.publish() is invoked while holding
@@ -63,7 +68,7 @@ private:
 class EmulationController
 {
 public:
-    explicit EmulationController(Screen_ImGui* screen);
+    explicit EmulationController(DisplayDevice* screen);
     ~EmulationController();
 
     void copySnapshot(EmulationSnapshot& out) const;
@@ -332,7 +337,7 @@ public:
     void dumpTms9918DropDiagnostics(std::FILE* out = nullptr, int topN = 16) const;
     // Returns a COPY of the live drop diagnostics for the UI inspector.
     // Locks stateMutex internally so the unordered_map snapshot is safe.
-    TMS9918::DropDiagnostics getTms9918DropDiagnostics() const;
+    pom1::Tms9918DropDiagnostics getTms9918DropDiagnostics() const;
     int getOutOfRangeAccessCount() const;
     void setOutOfRangeStrictMode(bool enable);
     bool isOutOfRangeStrictMode() const;
@@ -536,7 +541,7 @@ private:
     void rewindRestoreFrame(std::size_t pos);
 
 private:
-    Screen_ImGui* screen = nullptr;
+    DisplayDevice* screen = nullptr;
     std::unique_ptr<Memory> memory;
     std::unique_ptr<M6502> cpu;
 

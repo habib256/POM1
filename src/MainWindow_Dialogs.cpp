@@ -177,6 +177,125 @@ pom1::Texture* uploadPhotoTextureRgba(unsigned char* pixels, int w, int h)
 
 } // namespace
 
+// Shared fit-centre helper — takes a texture + dimensions and paints it
+// centred inside the current content region, scaled to fit while keeping
+// aspect ratio. Both Image-panel windows render identically; the only
+// differences are texture identity and the "not found" message.
+namespace {
+void drawFittedCenteredImage(pom1::Texture* tex, int texW, int texH)
+{
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    const float iw = static_cast<float>(texW);
+    const float ih = static_cast<float>(texH);
+    const float scale = std::min(avail.x / iw, avail.y / ih);
+    const float dw = std::max(1.0f, iw * scale);
+    const float dh = std::max(1.0f, ih * scale);
+    const float offX = std::max(0.0f, (avail.x - dw) * 0.5f);
+    if (offX > 0.0f) {
+        ImGui::Dummy(ImVec2(offX, 0.0f));
+        ImGui::SameLine(0.0f, 0.0f);
+    }
+    auto* r = pom1::renderer();
+    if (!r || !tex) return;
+    ImGui::Image(r->asImTextureID(tex), ImVec2(dw, dh));
+}
+} // namespace
+
+
+// ── Simple photo windows (Help → Photos) ────────────────────────────────
+// One table + one generic renderer, replacing eight near-identical
+// ensure<X>Texture() / render<X>PhotoWindow() pairs. See the PhotoWindowDef
+// comment in MainWindow_ImGui.h for why.
+const std::array<MainWindow_ImGui::PhotoWindowDef,
+                 MainWindow_ImGui::kPhotoWindowCount>&
+MainWindow_ImGui::photoWindowDefs()
+{
+    // Order must match the PhotoWindowId enum — indexed, not searched.
+    static const std::array<PhotoWindowDef, kPhotoWindowCount> kDefs = {{
+        {"Woz & Jobs (1976)", kWozJobsPhotoFile,
+         "Woz & Jobs photo", 180, 220, &MainWindow_ImGui::showWozJobsPhoto},
+        {"Apple-1 Demo Session (1976)", kWozJobsRectPhotoFile,
+         "Apple-1 Demo Session photo", 180, 140, &MainWindow_ImGui::showWozJobsRectPhoto},
+        // P-LAB lab photo (Parmigiani.jpg) — companion to the live "P-LAB
+        // Graphic Card (TMS9918)" viewer window. The title says "(Photo)" to
+        // tell the two apart.
+        {"P-LAB TMS9918 Card (Photo)", kTmsBoardPhotoFile,
+         "P-LAB TMS9918 board photo", 200, 200, &MainWindow_ImGui::showTmsBoardPhoto},
+        // Uncle Bernie's real GEN2 release bench — companion to the live
+        // "Uncle Bernie's GEN2 HGR Graphic Card" viewer.
+        {"GEN2 Video Workbench (Photo)", kGen2WorkbenchPhotoFile,
+         "GEN2 workbench photo", 200, 200, &MainWindow_ImGui::showGen2WorkbenchPhoto},
+        // Steve Wozniak portrait — companion to the Woz & Jobs photos and the
+        // Woz Monitor / ACI hardware references.
+        {"Steve Wozniak (Photo)", kWozPhotoFile,
+         "Steve Wozniak photo", 180, 200, &MainWindow_ImGui::showWozPhoto},
+        {"Apple-1 (Copson) Photo", kCopsonApple1PhotoFile,
+         "Copson Apple-1 photo", 200, 160, &MainWindow_ImGui::showCopsonApple1Photo},
+        {"Apple-1 Happy Woz (Photo)", kHappyWozPhotoFile,
+         "Happy Woz Apple-1 photo", 200, 160, &MainWindow_ImGui::showHappyWozPhoto},
+        {"P-LAB TMS9918 Board (Photo)", kPlabTms9918PhotoFile,
+         "P-LAB TMS9918 board photo", 200, 160, &MainWindow_ImGui::showPlabTms9918Photo},
+    }};
+    return kDefs;
+}
+
+void MainWindow_ImGui::ensurePhotoTexture(int id)
+{
+    PhotoWindowState& st = photoState_[static_cast<size_t>(id)];
+    if (st.tex != nullptr || st.loadTried)
+        return;
+    st.loadTried = true;
+    const PhotoWindowDef& def = photoWindowDefs()[static_cast<size_t>(id)];
+
+    const std::string path = find_pic_file_path(def.file);
+    if (path.empty()) {
+        pom1::log().warn("Images",
+            std::string(def.label) + " not found (expected pic/" + def.file + ")");
+        return;
+    }
+
+    int w = 0, h = 0, channels = 0;
+    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
+    if (!pixels || w <= 0 || h <= 0) {
+        if (pixels) stbi_image_free(pixels);
+        pom1::log().warn("Images",
+            std::string("Could not decode ") + def.label + ": " + path);
+        return;
+    }
+
+    st.tex    = uploadPhotoTextureRgba(pixels, w, h);
+    st.width  = w;
+    st.height = h;
+}
+
+void MainWindow_ImGui::renderPhotoWindow(int id)
+{
+    ensurePhotoTexture(id);
+    const PhotoWindowDef&  def = photoWindowDefs()[static_cast<size_t>(id)];
+    const PhotoWindowState& st = photoState_[static_cast<size_t>(id)];
+
+    applyPendingLayout(def.title);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(def.minW, def.minH),
+                                        ImVec2(FLT_MAX, FLT_MAX));
+    if (ImGui::Begin(def.title, &(this->*def.show))) {
+        if (st.tex != nullptr && st.width > 0 && st.height > 0) {
+            drawFittedCenteredImage(st.tex, st.width, st.height);
+        } else {
+            ImGui::TextWrapped("%s not found (expected pic/%s).",
+                               def.label, def.file);
+        }
+    }
+    ImGui::End();
+}
+
+void MainWindow_ImGui::renderSimplePhotoWindows()
+{
+    for (int i = 0; i < kPhotoWindowCount; ++i) {
+        if (this->*photoWindowDefs()[static_cast<size_t>(i)].show)
+            renderPhotoWindow(i);
+    }
+}
+
 void MainWindow_ImGui::ensureAboutPhotoTexture()
 {
     if (aboutPhotoTexture != 0 || aboutPhotoLoadTried)
@@ -255,168 +374,6 @@ void MainWindow_ImGui::ensureApple50LogoTexture()
     apple50LogoTexture = uploadPhotoTextureRgba(pixels, w, h);
     apple50LogoWidth = w;
     apple50LogoHeight = h;
-}
-
-void MainWindow_ImGui::ensureWozJobsPhotoTexture()
-{
-    if (wozJobsPhotoTexture != 0 || wozJobsPhotoLoadTried)
-        return;
-    wozJobsPhotoLoadTried = true;
-
-    const std::string path = find_pic_file_path(kWozJobsPhotoFile);
-    if (path.empty()) {
-        pom1::log().warn("Images",
-            std::string("Woz & Jobs photo not found (expected pic/") + kWozJobsPhotoFile + ")");
-        return;
-    }
-
-    int w = 0, h = 0, channels = 0;
-    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
-    if (!pixels || w <= 0 || h <= 0) {
-        if (pixels) stbi_image_free(pixels);
-        pom1::log().warn("Images", "Could not decode Woz & Jobs photo: " + path);
-        return;
-    }
-
-    wozJobsPhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
-    wozJobsPhotoWidth = w;
-    wozJobsPhotoHeight = h;
-}
-
-void MainWindow_ImGui::ensureWozJobsRectPhotoTexture()
-{
-    if (wozJobsRectPhotoTexture != 0 || wozJobsRectPhotoLoadTried)
-        return;
-    wozJobsRectPhotoLoadTried = true;
-
-    const std::string path = find_pic_file_path(kWozJobsRectPhotoFile);
-    if (path.empty()) {
-        pom1::log().warn("Images",
-            std::string("Woz & Jobs (rect) photo not found (expected pic/") + kWozJobsRectPhotoFile + ")");
-        return;
-    }
-
-    int w = 0, h = 0, channels = 0;
-    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
-    if (!pixels || w <= 0 || h <= 0) {
-        if (pixels) stbi_image_free(pixels);
-        pom1::log().warn("Images", "Could not decode Woz & Jobs (rect) photo: " + path);
-        return;
-    }
-
-    wozJobsRectPhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
-    wozJobsRectPhotoWidth = w;
-    wozJobsRectPhotoHeight = h;
-}
-
-// Shared fit-centre helper — takes a texture + dimensions and paints it
-// centred inside the current content region, scaled to fit while keeping
-// aspect ratio. Both Image-panel windows render identically; the only
-// differences are texture identity and the "not found" message.
-namespace {
-void drawFittedCenteredImage(pom1::Texture* tex, int texW, int texH)
-{
-    const ImVec2 avail = ImGui::GetContentRegionAvail();
-    const float iw = static_cast<float>(texW);
-    const float ih = static_cast<float>(texH);
-    const float scale = std::min(avail.x / iw, avail.y / ih);
-    const float dw = std::max(1.0f, iw * scale);
-    const float dh = std::max(1.0f, ih * scale);
-    const float offX = std::max(0.0f, (avail.x - dw) * 0.5f);
-    if (offX > 0.0f) {
-        ImGui::Dummy(ImVec2(offX, 0.0f));
-        ImGui::SameLine(0.0f, 0.0f);
-    }
-    auto* r = pom1::renderer();
-    if (!r || !tex) return;
-    ImGui::Image(r->asImTextureID(tex), ImVec2(dw, dh));
-}
-} // namespace
-
-void MainWindow_ImGui::renderWozJobsPhotoWindow()
-{
-    ensureWozJobsPhotoTexture();
-
-    applyPendingLayout("Woz & Jobs (1976)");
-    ImGui::SetNextWindowSizeConstraints(ImVec2(180, 220), ImVec2(FLT_MAX, FLT_MAX));
-    if (ImGui::Begin("Woz & Jobs (1976)", &showWozJobsPhoto)) {
-        if (wozJobsPhotoTexture != 0 && wozJobsPhotoWidth > 0 && wozJobsPhotoHeight > 0) {
-            drawFittedCenteredImage(wozJobsPhotoTexture, wozJobsPhotoWidth, wozJobsPhotoHeight);
-        } else {
-            ImGui::TextWrapped(
-                "Woz & Jobs photo not found (expected pic/%s).", kWozJobsPhotoFile);
-        }
-    }
-    ImGui::End();
-}
-
-void MainWindow_ImGui::renderWozJobsRectPhotoWindow()
-{
-    ensureWozJobsRectPhotoTexture();
-
-    applyPendingLayout("Apple-1 Demo Session (1976)");
-    ImGui::SetNextWindowSizeConstraints(ImVec2(180, 140), ImVec2(FLT_MAX, FLT_MAX));
-    if (ImGui::Begin("Apple-1 Demo Session (1976)", &showWozJobsRectPhoto)) {
-        if (wozJobsRectPhotoTexture != 0 && wozJobsRectPhotoWidth > 0 && wozJobsRectPhotoHeight > 0) {
-            drawFittedCenteredImage(wozJobsRectPhotoTexture, wozJobsRectPhotoWidth, wozJobsRectPhotoHeight);
-        } else {
-            ImGui::TextWrapped(
-                "Apple-1 Demo Session photo not found (expected pic/%s).", kWozJobsRectPhotoFile);
-        }
-    }
-    ImGui::End();
-}
-
-void MainWindow_ImGui::ensureTmsBoardPhotoTexture()
-{
-    if (tmsBoardPhotoTexture != 0 || tmsBoardPhotoLoadTried)
-        return;
-    tmsBoardPhotoLoadTried = true;
-
-    const std::string path = find_pic_file_path(kTmsBoardPhotoFile);
-    if (path.empty()) {
-        pom1::log().warn("Images",
-            std::string("P-LAB TMS9918 board photo not found (expected pic/") + kTmsBoardPhotoFile + ")");
-        return;
-    }
-
-    int w = 0, h = 0, channels = 0;
-    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
-    if (!pixels || w <= 0 || h <= 0) {
-        if (pixels) stbi_image_free(pixels);
-        pom1::log().warn("Images", "Could not decode P-LAB TMS9918 board photo: " + path);
-        return;
-    }
-
-    tmsBoardPhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
-    tmsBoardPhotoWidth = w;
-    tmsBoardPhotoHeight = h;
-}
-
-void MainWindow_ImGui::ensureGen2WorkbenchPhotoTexture()
-{
-    if (gen2WorkbenchPhotoTexture != 0 || gen2WorkbenchPhotoLoadTried)
-        return;
-    gen2WorkbenchPhotoLoadTried = true;
-
-    const std::string path = find_pic_file_path(kGen2WorkbenchPhotoFile);
-    if (path.empty()) {
-        pom1::log().warn("Images",
-            std::string("GEN2 workbench photo not found (expected pic/") + kGen2WorkbenchPhotoFile + ")");
-        return;
-    }
-
-    int w = 0, h = 0, channels = 0;
-    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
-    if (!pixels || w <= 0 || h <= 0) {
-        if (pixels) stbi_image_free(pixels);
-        pom1::log().warn("Images", "Could not decode GEN2 workbench photo: " + path);
-        return;
-    }
-
-    gen2WorkbenchPhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
-    gen2WorkbenchPhotoWidth = w;
-    gen2WorkbenchPhotoHeight = h;
 }
 
 void MainWindow_ImGui::ensureKeyboardPhotoTexture()
@@ -674,180 +631,6 @@ void MainWindow_ImGui::sendKeyboardPhotoKey(int index)
     keyboardPhotoCtrl = false;
 }
 
-void MainWindow_ImGui::ensureWozPhotoTexture()
-{
-    if (wozPhotoTexture != 0 || wozPhotoLoadTried)
-        return;
-    wozPhotoLoadTried = true;
-
-    const std::string path = find_pic_file_path(kWozPhotoFile);
-    if (path.empty()) {
-        pom1::log().warn("Images",
-            std::string("Steve Wozniak photo not found (expected pic/") + kWozPhotoFile + ")");
-        return;
-    }
-
-    int w = 0, h = 0, channels = 0;
-    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
-    if (!pixels || w <= 0 || h <= 0) {
-        if (pixels) stbi_image_free(pixels);
-        pom1::log().warn("Images", "Could not decode Steve Wozniak photo: " + path);
-        return;
-    }
-
-    wozPhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
-    wozPhotoWidth = w;
-    wozPhotoHeight = h;
-}
-
-void MainWindow_ImGui::renderWozPhotoWindow()
-{
-    ensureWozPhotoTexture();
-
-    // Steve Wozniak portrait (Woz.png) — companion to the Woz & Jobs photos
-    // and the Woz Monitor / ACI hardware references.
-    applyPendingLayout("Steve Wozniak (Photo)");
-    ImGui::SetNextWindowSizeConstraints(ImVec2(180, 200), ImVec2(FLT_MAX, FLT_MAX));
-    if (ImGui::Begin("Steve Wozniak (Photo)", &showWozPhoto)) {
-        if (wozPhotoTexture != 0 && wozPhotoWidth > 0 && wozPhotoHeight > 0) {
-            drawFittedCenteredImage(wozPhotoTexture, wozPhotoWidth, wozPhotoHeight);
-        } else {
-            ImGui::TextWrapped(
-                "Steve Wozniak photo not found (expected pic/%s).", kWozPhotoFile);
-        }
-    }
-    ImGui::End();
-}
-
-void MainWindow_ImGui::ensureCopsonApple1PhotoTexture()
-{
-    if (copsonApple1PhotoTexture != 0 || copsonApple1PhotoLoadTried)
-        return;
-    copsonApple1PhotoLoadTried = true;
-
-    const std::string path = find_pic_file_path(kCopsonApple1PhotoFile);
-    if (path.empty()) {
-        pom1::log().warn("Images",
-            std::string("Copson Apple-1 photo not found (expected pic/") + kCopsonApple1PhotoFile + ")");
-        return;
-    }
-
-    int w = 0, h = 0, channels = 0;
-    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
-    if (!pixels || w <= 0 || h <= 0) {
-        if (pixels) stbi_image_free(pixels);
-        pom1::log().warn("Images", "Could not decode Copson Apple-1 photo: " + path);
-        return;
-    }
-
-    copsonApple1PhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
-    copsonApple1PhotoWidth = w;
-    copsonApple1PhotoHeight = h;
-}
-
-void MainWindow_ImGui::renderCopsonApple1PhotoWindow()
-{
-    ensureCopsonApple1PhotoTexture();
-
-    applyPendingLayout("Apple-1 (Copson) Photo");
-    ImGui::SetNextWindowSizeConstraints(ImVec2(200, 160), ImVec2(FLT_MAX, FLT_MAX));
-    if (ImGui::Begin("Apple-1 (Copson) Photo", &showCopsonApple1Photo)) {
-        if (copsonApple1PhotoTexture != 0 && copsonApple1PhotoWidth > 0 && copsonApple1PhotoHeight > 0) {
-            drawFittedCenteredImage(copsonApple1PhotoTexture, copsonApple1PhotoWidth, copsonApple1PhotoHeight);
-        } else {
-            ImGui::TextWrapped(
-                "Copson Apple-1 photo not found (expected pic/%s).", kCopsonApple1PhotoFile);
-        }
-    }
-    ImGui::End();
-}
-
-void MainWindow_ImGui::ensureHappyWozPhotoTexture()
-{
-    if (happyWozPhotoTexture != 0 || happyWozPhotoLoadTried)
-        return;
-    happyWozPhotoLoadTried = true;
-
-    const std::string path = find_pic_file_path(kHappyWozPhotoFile);
-    if (path.empty()) {
-        pom1::log().warn("Images",
-            std::string("Happy Woz Apple-1 photo not found (expected pic/") + kHappyWozPhotoFile + ")");
-        return;
-    }
-
-    int w = 0, h = 0, channels = 0;
-    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
-    if (!pixels || w <= 0 || h <= 0) {
-        if (pixels) stbi_image_free(pixels);
-        pom1::log().warn("Images", "Could not decode Happy Woz Apple-1 photo: " + path);
-        return;
-    }
-
-    happyWozPhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
-    happyWozPhotoWidth = w;
-    happyWozPhotoHeight = h;
-}
-
-void MainWindow_ImGui::renderHappyWozPhotoWindow()
-{
-    ensureHappyWozPhotoTexture();
-
-    applyPendingLayout("Apple-1 Happy Woz (Photo)");
-    ImGui::SetNextWindowSizeConstraints(ImVec2(200, 160), ImVec2(FLT_MAX, FLT_MAX));
-    if (ImGui::Begin("Apple-1 Happy Woz (Photo)", &showHappyWozPhoto)) {
-        if (happyWozPhotoTexture != 0 && happyWozPhotoWidth > 0 && happyWozPhotoHeight > 0) {
-            drawFittedCenteredImage(happyWozPhotoTexture, happyWozPhotoWidth, happyWozPhotoHeight);
-        } else {
-            ImGui::TextWrapped(
-                "Happy Woz Apple-1 photo not found (expected pic/%s).", kHappyWozPhotoFile);
-        }
-    }
-    ImGui::End();
-}
-
-void MainWindow_ImGui::ensurePlabTms9918PhotoTexture()
-{
-    if (plabTms9918PhotoTexture != 0 || plabTms9918PhotoLoadTried)
-        return;
-    plabTms9918PhotoLoadTried = true;
-
-    const std::string path = find_pic_file_path(kPlabTms9918PhotoFile);
-    if (path.empty()) {
-        pom1::log().warn("Images",
-            std::string("P-LAB TMS9918 board photo not found (expected pic/") + kPlabTms9918PhotoFile + ")");
-        return;
-    }
-
-    int w = 0, h = 0, channels = 0;
-    unsigned char* pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
-    if (!pixels || w <= 0 || h <= 0) {
-        if (pixels) stbi_image_free(pixels);
-        pom1::log().warn("Images", "Could not decode P-LAB TMS9918 board photo: " + path);
-        return;
-    }
-
-    plabTms9918PhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
-    plabTms9918PhotoWidth = w;
-    plabTms9918PhotoHeight = h;
-}
-
-void MainWindow_ImGui::renderPlabTms9918PhotoWindow()
-{
-    ensurePlabTms9918PhotoTexture();
-
-    applyPendingLayout("P-LAB TMS9918 Board (Photo)");
-    ImGui::SetNextWindowSizeConstraints(ImVec2(200, 160), ImVec2(FLT_MAX, FLT_MAX));
-    if (ImGui::Begin("P-LAB TMS9918 Board (Photo)", &showPlabTms9918Photo)) {
-        if (plabTms9918PhotoTexture != 0 && plabTms9918PhotoWidth > 0 && plabTms9918PhotoHeight > 0) {
-            drawFittedCenteredImage(plabTms9918PhotoTexture, plabTms9918PhotoWidth, plabTms9918PhotoHeight);
-        } else {
-            ImGui::TextWrapped(
-                "P-LAB TMS9918 board photo not found (expected pic/%s).", kPlabTms9918PhotoFile);
-        }
-    }
-    ImGui::End();
-}
-
 void MainWindow_ImGui::ensurePR40MechPhotoTexture()
 {
     if (pr40MechPhotoTexture != 0 || pr40MechPhotoLoadTried)
@@ -872,45 +655,6 @@ void MainWindow_ImGui::ensurePR40MechPhotoTexture()
     pr40MechPhotoTexture = uploadPhotoTextureRgba(pixels, w, h);
     pr40MechPhotoWidth = w;
     pr40MechPhotoHeight = h;
-}
-
-void MainWindow_ImGui::renderTmsBoardPhotoWindow()
-{
-    ensureTmsBoardPhotoTexture();
-
-    // P-LAB lab photo (Parmigiani.jpg) — companion to the "P-LAB Graphic Card
-    // (TMS9918)" viewer window (live VDP framebuffer). The title calls out
-    // "(Photo)" to distinguish the two.
-    applyPendingLayout("P-LAB TMS9918 Card (Photo)");
-    ImGui::SetNextWindowSizeConstraints(ImVec2(200, 200), ImVec2(FLT_MAX, FLT_MAX));
-    if (ImGui::Begin("P-LAB TMS9918 Card (Photo)", &showTmsBoardPhoto)) {
-        if (tmsBoardPhotoTexture != 0 && tmsBoardPhotoWidth > 0 && tmsBoardPhotoHeight > 0) {
-            drawFittedCenteredImage(tmsBoardPhotoTexture, tmsBoardPhotoWidth, tmsBoardPhotoHeight);
-        } else {
-            ImGui::TextWrapped(
-                "P-LAB TMS9918 board photo not found (expected pic/%s).", kTmsBoardPhotoFile);
-        }
-    }
-    ImGui::End();
-}
-
-void MainWindow_ImGui::renderGen2WorkbenchPhotoWindow()
-{
-    ensureGen2WorkbenchPhotoTexture();
-
-    // Uncle Bernie's real GEN2 release bench (Gen2_Video_Workbench.jpg) —
-    // companion to the live "Uncle Bernie's GEN2 HGR Graphic Card" viewer.
-    applyPendingLayout("GEN2 Video Workbench (Photo)");
-    ImGui::SetNextWindowSizeConstraints(ImVec2(200, 200), ImVec2(FLT_MAX, FLT_MAX));
-    if (ImGui::Begin("GEN2 Video Workbench (Photo)", &showGen2WorkbenchPhoto)) {
-        if (gen2WorkbenchPhotoTexture != 0 && gen2WorkbenchPhotoWidth > 0 && gen2WorkbenchPhotoHeight > 0) {
-            drawFittedCenteredImage(gen2WorkbenchPhotoTexture, gen2WorkbenchPhotoWidth, gen2WorkbenchPhotoHeight);
-        } else {
-            ImGui::TextWrapped(
-                "GEN2 workbench photo not found (expected pic/%s).", kGen2WorkbenchPhotoFile);
-        }
-    }
-    ImGui::End();
 }
 
 namespace {

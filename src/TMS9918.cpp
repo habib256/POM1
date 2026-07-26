@@ -98,28 +98,39 @@ const char* slotTableName(const int16_t* data)
     return "?";
 }
 
+// Packed little-endian RGBA, byte-for-byte what ImGui's IM_COL32 produces —
+// which is what this palette used to be written with. Spelled out locally so
+// the VDP model owns its own pixel format instead of borrowing a UI toolkit's
+// macro: TMS9918.h is now ImGui-free (see Tms9918Diagnostics.h), and a chip
+// emulation pulling in imgui.h for a colour constant was the last thing
+// keeping the UI in the emulation core's include graph.
+constexpr uint32_t rgba(uint32_t r, uint32_t g, uint32_t b, uint32_t a)
+{
+    return r | (g << 8) | (b << 16) | (a << 24);
+}
+
 } // namespace
 
 // --------------------------------------------------------------------------
-// TMS9918A standard color palette (RGBA via IM_COL32)
+// TMS9918A standard color palette (packed RGBA)
 // --------------------------------------------------------------------------
-const ImU32 TMS9918::kPalette[16] = {
-    IM_COL32(  0,   0,   0,   0),   //  0  Transparent
-    IM_COL32(  0,   0,   0, 255),   //  1  Black
-    IM_COL32( 33, 200,  66, 255),   //  2  Medium Green
-    IM_COL32( 94, 220, 120, 255),   //  3  Light Green
-    IM_COL32( 84,  85, 237, 255),   //  4  Dark Blue
-    IM_COL32(125, 118, 252, 255),   //  5  Light Blue
-    IM_COL32(212,  82,  77, 255),   //  6  Dark Red
-    IM_COL32( 66, 235, 245, 255),   //  7  Cyan
-    IM_COL32(252,  85,  84, 255),   //  8  Medium Red
-    IM_COL32(255, 121, 120, 255),   //  9  Light Red
-    IM_COL32(212, 193,  84, 255),   // 10  Dark Yellow
-    IM_COL32(230, 206, 128, 255),   // 11  Light Yellow
-    IM_COL32( 33, 176,  59, 255),   // 12  Dark Green
-    IM_COL32(201,  91, 186, 255),   // 13  Magenta
-    IM_COL32(204, 204, 204, 255),   // 14  Grey
-    IM_COL32(255, 255, 255, 255),   // 15  White
+const uint32_t TMS9918::kPalette[16] = {
+    rgba(  0,   0,   0,   0),   //  0  Transparent
+    rgba(  0,   0,   0, 255),   //  1  Black
+    rgba( 33, 200,  66, 255),   //  2  Medium Green
+    rgba( 94, 220, 120, 255),   //  3  Light Green
+    rgba( 84,  85, 237, 255),   //  4  Dark Blue
+    rgba(125, 118, 252, 255),   //  5  Light Blue
+    rgba(212,  82,  77, 255),   //  6  Dark Red
+    rgba( 66, 235, 245, 255),   //  7  Cyan
+    rgba(252,  85,  84, 255),   //  8  Medium Red
+    rgba(255, 121, 120, 255),   //  9  Light Red
+    rgba(212, 193,  84, 255),   // 10  Dark Yellow
+    rgba(230, 206, 128, 255),   // 11  Light Yellow
+    rgba( 33, 176,  59, 255),   // 12  Dark Green
+    rgba(201,  91, 186, 255),   // 13  Magenta
+    rgba(204, 204, 204, 255),   // 14  Grey
+    rgba(255, 255, 255, 255),   // 15  White
 };
 
 // --------------------------------------------------------------------------
@@ -737,7 +748,7 @@ void TMS9918::renderToBuffer(uint32_t* pixels, const Snapshot& snap)
     // intact for any direct callers but routes the snapshot entry
     // through the line-raw path.
     const uint8_t backdropIdx = snap.regs[7] & 0x0F;
-    const ImU32   backdrop    = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
+    const uint32_t   backdrop    = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
 
     for (int i = 0; i < kScreenWidth * kScreenHeight; ++i) pixels[i] = backdrop;
 
@@ -784,7 +795,7 @@ void TMS9918::renderToBuffer(uint32_t* pixels, const Snapshot& snap)
 void TMS9918::renderToBufferWithBorder(uint32_t* pixels, const Snapshot& snap)
 {
     const uint8_t backdropIdx = snap.regs[7] & 0x0F;
-    const ImU32   border      = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
+    const uint32_t   border      = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
 
     // Fill the entire 288×216 surface with the border colour first; the
     // active 256×192 rect is overwritten below.
@@ -816,7 +827,7 @@ void TMS9918::renderToBufferWithBorder(uint32_t* pixels, const Snapshot& snap)
 
 void TMS9918::renderGfxILineRaw(int line, uint32_t* lineBuf,
                                 const uint8_t* vram, const uint8_t* regs,
-                                uint16_t vramMask, ImU32 backdrop)
+                                uint16_t vramMask, uint32_t backdrop)
 {
     const uint16_t nameBase    = (uint16_t)(regs[2] & 0x0F) << 10;
     const uint16_t colorBase   = (uint16_t)regs[3]          << 6;
@@ -828,8 +839,8 @@ void TMS9918::renderGfxILineRaw(int line, uint32_t* lineBuf,
         const uint8_t  colorByte = vram[(colorBase + (name >> 3))    & vramMask];
         const uint8_t  fgIdx     = (colorByte >> 4) & 0x0F;
         const uint8_t  bgIdx     =  colorByte       & 0x0F;
-        const ImU32    fg        = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
-        const ImU32    bg        = (bgIdx == 0) ? backdrop : kPalette[bgIdx];
+        const uint32_t    fg        = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
+        const uint32_t    bg        = (bgIdx == 0) ? backdrop : kPalette[bgIdx];
         const uint16_t patAddr   = (patternBase + (uint16_t)name * 8 + lineInRow) & vramMask;
         const uint8_t  pat       = vram[patAddr];
         for (int bit = 0; bit < 8; ++bit)
@@ -839,7 +850,7 @@ void TMS9918::renderGfxILineRaw(int line, uint32_t* lineBuf,
 
 void TMS9918::renderGfxIILineRaw(int line, uint32_t* lineBuf,
                                  const uint8_t* vram, const uint8_t* regs,
-                                 uint16_t vramMask, ImU32 backdrop)
+                                 uint16_t vramMask, uint32_t backdrop)
 {
     const uint16_t nameBase    = (uint16_t)(regs[2] & 0x0F) << 10;
     const uint16_t colorBase   = (uint16_t)(regs[3] & 0x80) << 6;
@@ -858,8 +869,8 @@ void TMS9918::renderGfxIILineRaw(int line, uint32_t* lineBuf,
         const uint8_t  colorByte  = vram[colAddr & vramMask];
         const uint8_t  fgIdx      = (colorByte >> 4) & 0x0F;
         const uint8_t  bgIdx      =  colorByte       & 0x0F;
-        const ImU32    fg         = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
-        const ImU32    bg         = (bgIdx == 0) ? backdrop : kPalette[bgIdx];
+        const uint32_t    fg         = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
+        const uint32_t    bg         = (bgIdx == 0) ? backdrop : kPalette[bgIdx];
         for (int bit = 0; bit < 8; ++bit)
             lineBuf[col * 8 + bit] = (pat & (0x80 >> bit)) ? fg : bg;
     }
@@ -867,7 +878,7 @@ void TMS9918::renderGfxIILineRaw(int line, uint32_t* lineBuf,
 
 void TMS9918::renderTextLineRaw(int line, uint32_t* lineBuf,
                                 const uint8_t* vram, const uint8_t* regs,
-                                uint16_t vramMask, ImU32 backdrop)
+                                uint16_t vramMask, uint32_t backdrop)
 {
     // Text mode: 240 pixels wide centred in 256 with ASYMMETRIC borders
     // per the TMS9918A datasheet and meisei vdp.c:475-510:
@@ -881,8 +892,8 @@ void TMS9918::renderTextLineRaw(int line, uint32_t* lineBuf,
     const uint16_t patternBase = (uint16_t)(regs[4] & 0x07) << 11;
     const uint8_t  fgIdx       = (regs[7] >> 4) & 0x0F;
     const uint8_t  bgIdx       =  regs[7]       & 0x0F;
-    const ImU32    fg          = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
-    const ImU32    bg          = (bgIdx == 0) ? backdrop : kPalette[bgIdx];
+    const uint32_t    fg          = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
+    const uint32_t    bg          = (bgIdx == 0) ? backdrop : kPalette[bgIdx];
     const int row       = line / 8;
     const int lineInRow = line % 8;
     for (int col = 0; col < 40; ++col) {
@@ -903,11 +914,11 @@ void TMS9918::renderTextLineRaw(int line, uint32_t* lineBuf,
 // dvik/joyrex's "scr5.rom" / Illusions demo.
 // --------------------------------------------------------------------------
 void TMS9918::renderTextBarsLineRaw(int line, uint32_t* lineBuf,
-                                    const uint8_t* regs, ImU32 backdrop)
+                                    const uint8_t* regs, uint32_t backdrop)
 {
     (void)line;                                  // pattern is identical every line
     const uint8_t fgIdx = (regs[7] >> 4) & 0x0F;
-    const ImU32   tc    = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
+    const uint32_t   tc    = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
     for (int x = 0; x < 40; ++x) {
         const int base = 6 + x * 6;              // 6-px left border per text mode
         lineBuf[base]     = tc;
@@ -921,7 +932,7 @@ void TMS9918::renderTextBarsLineRaw(int line, uint32_t* lineBuf,
 
 void TMS9918::renderMulticolorLineRaw(int line, uint32_t* lineBuf,
                                       const uint8_t* vram, const uint8_t* regs,
-                                      uint16_t vramMask, ImU32 backdrop)
+                                      uint16_t vramMask, uint32_t backdrop)
 {
     const uint16_t nameBase    = (uint16_t)(regs[2] & 0x0F) << 10;
     const uint16_t patternBase = (uint16_t)(regs[4] & 0x07) << 11;
@@ -933,8 +944,8 @@ void TMS9918::renderMulticolorLineRaw(int line, uint32_t* lineBuf,
         const uint8_t  colorByte = vram[(patternBase + (uint16_t)name * 8 + patRow) & vramMask];
         const uint8_t  leftIdx   = (colorByte >> 4) & 0x0F;
         const uint8_t  rightIdx  =  colorByte       & 0x0F;
-        const ImU32    leftCol   = (leftIdx  == 0) ? backdrop : kPalette[leftIdx];
-        const ImU32    rightCol  = (rightIdx == 0) ? backdrop : kPalette[rightIdx];
+        const uint32_t    leftCol   = (leftIdx  == 0) ? backdrop : kPalette[leftIdx];
+        const uint32_t    rightCol  = (rightIdx == 0) ? backdrop : kPalette[rightIdx];
         for (int px = 0; px < 4; ++px) lineBuf[col * 8 + px]     = leftCol;
         for (int px = 0; px < 4; ++px) lineBuf[col * 8 + 4 + px] = rightCol;
     }
@@ -970,7 +981,7 @@ void TMS9918::renderSpritesLineRaw(int line, uint32_t* lineBuf,
         const int      y        = (int)vram[attrAddr] - ((vram[attrAddr] > 0xD0) ? 256 : 0) + 1;
         const uint8_t  color    = vram[(attrAddr + 3) & vramMask];
         if ((color & 0x0F) == 0) continue;        // transparent — skip pixel paint
-        const ImU32    sprColor = kPalette[color & 0x0F];
+        const uint32_t    sprColor = kPalette[color & 0x0F];
         int            x        = vram[(attrAddr + 1) & vramMask];
         if (color & 0x80) x -= 32;
         uint8_t patName = vram[(attrAddr + 2) & vramMask];
@@ -1172,7 +1183,7 @@ void TMS9918::renderCloneSpritesLineRaw(int line, uint32_t* lineBuf,
         // renderSpritesLineRaw, just with yc in place of (line - y).
         const uint8_t color = vram[(attrAddr + 3) & vramMask];
         if ((color & 0x0F) == 0) continue;     // transparent
-        const ImU32 sprColor = kPalette[color & 0x0F];
+        const uint32_t sprColor = kPalette[color & 0x0F];
         int x = vram[(attrAddr + 1) & vramMask];
         if (color & 0x80) x -= 32;
         uint8_t patName = vram[(attrAddr + 2) & vramMask];
@@ -1217,7 +1228,7 @@ void TMS9918::renderLineToTemp(int line, uint32_t* lineBuf, uint8_t latchR0, uin
     // splits, Grauw/ARTRAG; Étape 2), so a mid-line R0/R1 mode/blank write only
     // takes effect on the NEXT line.
     const uint8_t backdropIdx = regs[7] & 0x0F;
-    const ImU32   backdrop    = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
+    const uint32_t   backdrop    = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
     for (int i = 0; i < kScreenWidth; ++i) lineBuf[i] = backdrop;
 
     if ((latchR1 & 0x40) == 0) return;            // display blanked (latched) → backdrop only
@@ -1269,7 +1280,7 @@ void TMS9918::commitActiveSegment(int line, int xStart, int xEnd, const uint32_t
     std::memcpy(&framebuffer[dstRow * kFullWidth + kBorderLeft + xStart],
                 &lineBuf[xStart], (size_t)(xEnd - xStart) * sizeof(uint32_t));
     const uint8_t backdropIdx = regs[7] & 0x0F;
-    const ImU32   border      = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
+    const uint32_t   border      = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
     uint32_t* row = &framebuffer[dstRow * kFullWidth];
     if (xStart == 0)
         for (int x = 0; x < kBorderLeft; ++x) row[x] = border;
@@ -1398,7 +1409,7 @@ void TMS9918::syncSpriteScanToBeam(int inFlightCycles)
 void TMS9918::paintTopBorder()
 {
     const uint8_t backdropIdx = regs[7] & 0x0F;
-    const ImU32   border      = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
+    const uint32_t   border      = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
     for (int row = 0; row < kBorderTop; ++row)
         for (int x = 0; x < kFullWidth; ++x)
             framebuffer[row * kFullWidth + x] = border;
@@ -1408,7 +1419,7 @@ void TMS9918::paintTopBorder()
 void TMS9918::paintBottomBorder()
 {
     const uint8_t backdropIdx = regs[7] & 0x0F;
-    const ImU32   border      = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
+    const uint32_t   border      = (backdropIdx == 0) ? kPalette[1] : kPalette[backdropIdx];
     for (int row = kBorderTop + kScreenHeight; row < kFullHeight; ++row)
         for (int x = 0; x < kFullWidth; ++x)
             framebuffer[row * kFullWidth + x] = border;
@@ -1432,7 +1443,7 @@ void TMS9918::rebuildFramebufferFromVram()
 // --------------------------------------------------------------------------
 // Graphics Mode I — 32x24 tiles, 256 patterns, 32 color groups
 // --------------------------------------------------------------------------
-void TMS9918::renderGraphicsI(uint32_t* pixels, const Snapshot& s, ImU32 backdrop)
+void TMS9918::renderGraphicsI(uint32_t* pixels, const Snapshot& s, uint32_t backdrop)
 {
     uint16_t nameBase    = (uint16_t)(s.regs[2] & 0x0F) << 10;
     uint16_t colorBase   = (uint16_t) s.regs[3] << 6;
@@ -1446,8 +1457,8 @@ void TMS9918::renderGraphicsI(uint32_t* pixels, const Snapshot& s, ImU32 backdro
             uint8_t colorByte = s.vram[(colorBase + (name >> 3)) & mask];
             uint8_t fgIdx = (colorByte >> 4) & 0x0F;
             uint8_t bgIdx =  colorByte       & 0x0F;
-            ImU32 fg = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
-            ImU32 bg = (bgIdx == 0) ? backdrop : kPalette[bgIdx];
+            uint32_t fg = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
+            uint32_t bg = (bgIdx == 0) ? backdrop : kPalette[bgIdx];
 
             uint16_t patAddr = (patternBase + (uint16_t)name * 8) & mask;
 
@@ -1455,7 +1466,7 @@ void TMS9918::renderGraphicsI(uint32_t* pixels, const Snapshot& s, ImU32 backdro
                 uint8_t pat = s.vram[(patAddr + line) & mask];
                 int py = row * 8 + line;
                 for (int bit = 0; bit < 8; bit++) {
-                    ImU32 color = (pat & (0x80 >> bit)) ? fg : bg;
+                    uint32_t color = (pat & (0x80 >> bit)) ? fg : bg;
                     if (color != backdrop)
                         pixels[py * kScreenWidth + (col * 8 + bit)] = color;
                 }
@@ -1467,7 +1478,7 @@ void TMS9918::renderGraphicsI(uint32_t* pixels, const Snapshot& s, ImU32 backdro
 // --------------------------------------------------------------------------
 // Graphics Mode II — full bitmap, per-row colors
 // --------------------------------------------------------------------------
-void TMS9918::renderGraphicsII(uint32_t* pixels, const Snapshot& s, ImU32 backdrop)
+void TMS9918::renderGraphicsII(uint32_t* pixels, const Snapshot& s, uint32_t backdrop)
 {
     uint16_t nameBase = (uint16_t)(s.regs[2] & 0x0F) << 10;
     const uint16_t mask = vramMaskForRegs(s.regs.data(), s.siliconStrictMode);
@@ -1494,12 +1505,12 @@ void TMS9918::renderGraphicsII(uint32_t* pixels, const Snapshot& s, ImU32 backdr
 
                 uint8_t fgIdx = (colorByte >> 4) & 0x0F;
                 uint8_t bgIdx =  colorByte       & 0x0F;
-                ImU32 fg = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
-                ImU32 bg = (bgIdx == 0) ? backdrop : kPalette[bgIdx];
+                uint32_t fg = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
+                uint32_t bg = (bgIdx == 0) ? backdrop : kPalette[bgIdx];
 
                 int py = row * 8 + line;
                 for (int bit = 0; bit < 8; bit++) {
-                    ImU32 color = (pat & (0x80 >> bit)) ? fg : bg;
+                    uint32_t color = (pat & (0x80 >> bit)) ? fg : bg;
                     if (color != backdrop)
                         pixels[py * kScreenWidth + (col * 8 + bit)] = color;
                 }
@@ -1511,14 +1522,14 @@ void TMS9918::renderGraphicsII(uint32_t* pixels, const Snapshot& s, ImU32 backdr
 // --------------------------------------------------------------------------
 // Text Mode — 40x24 characters, 6-pixel wide glyphs
 // --------------------------------------------------------------------------
-void TMS9918::renderText(uint32_t* pixels, const Snapshot& s, ImU32 backdrop)
+void TMS9918::renderText(uint32_t* pixels, const Snapshot& s, uint32_t backdrop)
 {
     uint16_t nameBase    = (uint16_t)(s.regs[2] & 0x0F) << 10;
     uint16_t patternBase = (uint16_t)(s.regs[4] & 0x07) << 11;
     const uint16_t mask = vramMaskForRegs(s.regs.data(), s.siliconStrictMode);
 
     uint8_t fgIdx = (s.regs[7] >> 4) & 0x0F;
-    ImU32 fg = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
+    uint32_t fg = (fgIdx == 0) ? backdrop : kPalette[fgIdx];
 
     // Text mode: 240 pixels wide with an ASYMMETRIC border — 6-px left, 10-px
     // right — matching the TMS9918A datasheet and the live renderTextLineRaw
@@ -1544,7 +1555,7 @@ void TMS9918::renderText(uint32_t* pixels, const Snapshot& s, ImU32 backdrop)
 // --------------------------------------------------------------------------
 // Multicolor Mode — 64x48 color blocks
 // --------------------------------------------------------------------------
-void TMS9918::renderMulticolor(uint32_t* pixels, const Snapshot& s, ImU32 backdrop)
+void TMS9918::renderMulticolor(uint32_t* pixels, const Snapshot& s, uint32_t backdrop)
 {
     uint16_t nameBase    = (uint16_t)(s.regs[2] & 0x0F) << 10;
     uint16_t patternBase = (uint16_t)(s.regs[4] & 0x07) << 11;
@@ -1566,13 +1577,13 @@ void TMS9918::renderMulticolor(uint32_t* pixels, const Snapshot& s, ImU32 backdr
                 int baseX = col * 8;
 
                 if (leftIdx != 0) {
-                    ImU32 lc = kPalette[leftIdx];
+                    uint32_t lc = kPalette[leftIdx];
                     for (int dy = 0; dy < 4; dy++)
                         for (int dx = 0; dx < 4; dx++)
                             pixels[(baseY + dy) * kScreenWidth + (baseX + dx)] = lc;
                 }
                 if (rightIdx != 0) {
-                    ImU32 rc = kPalette[rightIdx];
+                    uint32_t rc = kPalette[rightIdx];
                     for (int dy = 0; dy < 4; dy++)
                         for (int dx = 0; dx < 4; dx++)
                             pixels[(baseY + dy) * kScreenWidth + (baseX + 4 + dx)] = rc;
@@ -1638,7 +1649,7 @@ void TMS9918::renderSprites(uint32_t* pixels, const Snapshot& s)
         for (int k = nVisible - 1; k >= 0; k--) {
             const auto& spr = sprites[visible[k]];
             if (spr.color == 0) continue; // visually transparent — but still in slot count
-            ImU32 sprColor = kPalette[spr.color];
+            uint32_t sprColor = kPalette[spr.color];
 
             uint8_t patName = spr.name;
             if (doubleSize) patName &= 0xFC;

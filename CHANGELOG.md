@@ -10,6 +10,143 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — architecture: one card registry, and the core is UI-free again
+
+- **`Memory::cardSlots()` replaces four hand-synced lists.** Adding a card used
+  to mean editing, in lockstep and in one file, the FLAGS bitmap pack, the FLAGS
+  unpack, the per-card section write order and the read-dispatch vector — and
+  `snapshot_smoke` carried a *fifth* copy of the card list, so the test meant to
+  catch a forgotten card would itself have been the thing forgotten. All five
+  are now one ordered table. The collapse is safe because the four orders
+  already agreed once the flag-only rows (SID Special Edition, cassette audio,
+  silicon-strict, GEN2 attach) are interleaved at their historical positions, so
+  the on-disk format is unchanged.
+- The 8-byte section-name truncation — a latent collision trap that already bit
+  `A1-IO/RTC` once — is now a **compile-time** `static_assert` instead of a
+  single runtime test. And because a save and a load written by the same table
+  always agree with each other, no round-trip assertion could catch a reordered
+  row; `snapshot_smoke` therefore gained an explicit **section-order pin** that
+  names the on-disk sequence.
+- **Snapshot I/O moved out of `Memory.cpp`** into `MemorySnapshot.cpp` (2569 →
+  2157 lines). Pure translation-unit split: still `Memory` member functions, no
+  friendship, no API change. The two ROM-reload magic numbers (`D8 58` at
+  `$FF00`, `A9 00` at `$8000`) are now behind named predicates
+  (`wozMonitorPresent()` / `sdCardOsPresent()`).
+- **`EmulationController` no longer reaches ImGui.** It held a `Screen_ImGui*`
+  and included `TMS9918.h` for a POD counter block, so `imgui.h` landed in every
+  consumer of the "core" controller's header. It now depends on the
+  `DisplayDevice` abstraction that was already injected via
+  `Memory::setDisplayDevice` (which gained `clear()` / `resetDisplay()`), and on
+  a split-out `pom1::Tms9918DropDiagnostics`. Chasing the last edge also made
+  **`TMS9918.h` itself ImGui-free**: its colour constants were `ImU32` (a plain
+  `unsigned int`) and the palette used `IM_COL32`, so a chip emulation was
+  pulling in a UI toolkit for a colour literal. Verified with `-MM`: zero ImGui
+  headers reachable from `EmulationController.h`.
+
+### Changed — UI: photo windows are table-driven (and three leaks are gone)
+
+- Eight Help → Photos windows differing only in title, file and size floor each
+  carried an `ensure<X>Texture()` + `render<X>PhotoWindow()` pair plus four
+  members: **−351 lines and −32 members**, replaced by one `PhotoWindowDef`
+  table and one generic renderer. Window titles are unchanged byte-for-byte, so
+  saved per-preset layouts still bind.
+- Collapsing the teardown into a loop fixed a real bug: the Copson, Happy-Woz
+  and P-LAB-TMS9918 textures were **never destroyed** by `releaseGLResources()`
+  — three of eleven hand-written `drop()` calls had simply been forgotten. That
+  is precisely the failure mode the table shape prevents.
+
+### Added — tests for four modules that had none (74 → 78)
+
+- **`disassembler_smoke`** — for every non-control-flow opcode, executes it and
+  compares the CPU's real PC advance against the disassembler's `instrLen`. Two
+  independent implementations encode that length, and a disagreement makes the
+  Debug Console render a byte stream shifted from the one being executed. This
+  pins the undocumented-multi-byte-opcode invariant (CLAUDE.md › M6502) that
+  nothing covered: `symbols_smoke` calls the disassembler 16 times but never
+  looks at `instrLen`.
+- **`a1io_rtc_smoke`** — injected fixed clock via `setOverrideTime()` (stable in
+  any time zone), analog/digital input channels, 65C22 VIA register file, reset.
+- **`terminal_card_smoke`** and **`wifi_modem_smoke`** — both "desktop-only"
+  cards tested headlessly, because the parts that hold logic need no socket.
+  Writing them surfaced two things worth knowing: `TerminalCard::reset()`
+  **binds localhost:6502**, so the test deliberately never calls it (it would
+  fight a running POM1 or a parallel ctest job); and the 65C51 data register is
+  paced at the emulated baud rate by `advanceCycles()`, so a drain loop must
+  tick the clock between reads.
+- `CliDispatcher` remains untested: `parseCli()` is pure, but its TU includes
+  `MainWindow_ImGui.h` for two static preset accessors, so linking a unit test
+  pulls in the whole UI. Decoupling it is now its own TODO item — it also
+  unblocks the external `presets.json` work.
+
+### Fixed — Windows: one self-contained `POM1.exe`, no DLL (issue #34)
+
+- **POM1 no longer ships any DLL next to the executable, and no longer needs the
+  Visual C++ Redistributable.** Since the 1.9.2 ZIP started deploying the VC++
+  runtime app-local (commit `3d4ec54`), POM1 failed to start on some machines
+  with `GLFW error 65542` — *"WGL: The driver does not appear to support
+  OpenGL"* — on a fully up-to-date RTX 4070 Ti Super, while 1.9.0 worked. That
+  message names the wrong culprit: GLFW emits it from `choosePixelFormat()`
+  whenever the enumeration yields no non-generic pixel format, which is what a
+  **failed ICD load** looks like from the outside. The real cause was DLL search
+  order — Windows resolves from the application directory *first*, so the
+  vendor's OpenGL ICD (`nvoglv64.dll`, which uses the STL) picked up our
+  `msvcp140.dll` 14.44 while `msvcp140_1.dll` still came from System32 at the
+  installed redist's version; the `msvcp140*` family is versioned in lockstep,
+  so the mix stopped the ICD from loading.
+- Fixed by linking the **CRT statically** (`POM1_WIN_STATIC_RUNTIME`, ON by
+  default → `CMAKE_MSVC_RUNTIME_LIBRARY` set before the first target is created,
+  so libresidfp and every test executable inherit `/MT` too) and **GLFW
+  statically** (vcpkg `x64-windows-static`, whose triplet already carries
+  `VCPKG_CRT_LINKAGE=static`). "No redist" *and* "no app-local DLL" together
+  leave no other option: `vcruntime140`/`msvcp140` are not in-box on Win10/11,
+  and no runtime trick recovers the in-between case. `/MT` absorbs the UCRT as
+  well, so the `api-ms-win-crt-*` imports disappear. The ZIP gets *smaller*.
+- The packaging script and the release workflow now assert the **opposite** of
+  what they asserted through 1.9.4: zero DLL in the package root, plus a
+  `dumpbin /dependents` check that the import table names no CRT and no GLFW.
+  The bug itself is not reproducible in CI (no NVIDIA GPU on the runners), so
+  the guarantee is structural.
+- Accepted cost, recorded deliberately: `/MT` freezes the CRT, so a UCRT or
+  vcruntime CVE needs a POM1 rebuild instead of an automatic redist update.
+  POM1's network surface is small but non-zero (TerminalCard `:6502`, WiFiModem
+  TCP). The other classic static-CRT hazards do not apply — POM1 loads no
+  plugin, so there is no second heap and no CRT object crossing a module
+  boundary.
+- **The GLFW version is now pinned, in `vcpkg.json` at the repo root.** Both the
+  release job and `setup_pom1.bat` used to run `vcpkg install
+  glfw3:x64-windows-static`, which resolves against whatever baseline the runner
+  image's vcpkg checkout happens to sit at — so a runner refresh could swap the
+  statically-linked GLFW without a single line of POM1 changing. The manifest's
+  `builtin-baseline` (vcpkg release `2026.06.24`, commit `cd61e1e2`) plus an
+  explicit `overrides` entry now fix it at **glfw3 3.4#1**, the same discipline
+  the bionic AppImage image applies with `GLFW_VER` + SHA256, and without adding
+  a second dependency mechanism (no `FetchContent`). Both call sites lose the
+  package argument — vcpkg *rejects* one in manifest mode — and the CMake
+  toolchain picks the manifest up on its own at configure time.
+
+### Added — actionable diagnostic when POM1 cannot open a window
+
+- **`glfwInit()` and `glfwCreateWindow()` failures now explain themselves**
+  instead of returning `-1` in silence. This is what made issue #34 last a
+  month: the user could see the GLFW one-liner, but it blamed the graphics
+  driver, so he reinstalled NVIDIA drivers that were never the problem. POM1
+  now latches the last GLFW error code + text and prints a report naming the
+  real causes in order of likelihood — app-local DLL shadowing the ICD's CRT
+  first on Windows, then missing/absent vendor driver or an RDP/VM session,
+  then a pre-3.2 GPU — together with the facts already in hand (requested
+  context, GLFW build string). On Windows the same report also goes to a
+  `MessageBoxW`, for the user who launched from Explorer and watched the
+  console flash away.
+- One **free** retry was added on the desktop-GL path: if the core-profile
+  request is refused, POM1 retries once without pinning the core profile, since
+  some virtualised and older ICDs refuse core outright yet hand out a 3.2+
+  compatibility context where `#version 150` is still valid. Deliberately the
+  only fallback — going below 3.2 would mean maintaining GLSL 130 variants of
+  both hardcoded `#version 150` sites, and the real sub-3.2 path already exists
+  as the `-DPOM1_GLES=ON` tier. In the failure mode of #34 no fallback could
+  have helped anyway: the ICD never loaded, so every context request failed
+  identically.
+
 ### Added — OpenGL ES 3.0 tier + Raspberry Pi package
 
 - **`cmake -DPOM1_GLES=ON` builds against OpenGL ES 3.0 / GLSL ES 300** instead

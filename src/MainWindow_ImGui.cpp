@@ -150,27 +150,20 @@ void MainWindow_ImGui::destroyPom1()
     drop(appIconTexture);
     appIconWidth = appIconHeight = 0;
     appIconLoadTried = false;
-    drop(wozJobsPhotoTexture);
-    wozJobsPhotoWidth = wozJobsPhotoHeight = 0;
-    wozJobsPhotoLoadTried = false;
-    drop(wozJobsRectPhotoTexture);
-    wozJobsRectPhotoWidth = wozJobsRectPhotoHeight = 0;
-    wozJobsRectPhotoLoadTried = false;
-    drop(tmsBoardPhotoTexture);
-    tmsBoardPhotoWidth = tmsBoardPhotoHeight = 0;
-    tmsBoardPhotoLoadTried = false;
-    drop(gen2WorkbenchPhotoTexture);
-    gen2WorkbenchPhotoWidth = gen2WorkbenchPhotoHeight = 0;
-    gen2WorkbenchPhotoLoadTried = false;
+    // Table-driven photo windows: one loop covers all eight. The previous
+    // hand-written list silently omitted three of them (Copson, Happy Woz,
+    // P-LAB TMS9918), leaking those textures on every renderer teardown.
+    for (PhotoWindowState& ps : photoState_) {
+        drop(ps.tex);
+        ps.width = ps.height = 0;
+        ps.loadTried = false;
+    }
     drop(pr40MechPhotoTexture);
     pr40MechPhotoWidth = pr40MechPhotoHeight = 0;
     pr40MechPhotoLoadTried = false;
     drop(keyboardPhotoTexture);
     keyboardPhotoWidth = keyboardPhotoHeight = 0;
     keyboardPhotoLoadTried = false;
-    drop(wozPhotoTexture);
-    wozPhotoWidth = wozPhotoHeight = 0;
-    wozPhotoLoadTried = false;
 }
 
 // Fire every deferred card plug queued by applyMachineConfig() immediately,
@@ -752,15 +745,9 @@ void MainWindow_ImGui::render()
     if (showTutorialKrusader) renderTutorialKrusaderWindow();
     if (showTutorialIECCard) renderTutorialIECCardWindow();
     if (iecCardEnabled && showIECCard) renderIECCardWindow();
-    if (showWozJobsPhoto) renderWozJobsPhotoWindow();
-    if (showWozJobsRectPhoto) renderWozJobsRectPhotoWindow();
-    if (showTmsBoardPhoto) renderTmsBoardPhotoWindow();
-    if (showGen2WorkbenchPhoto) renderGen2WorkbenchPhotoWindow();
+    // The eight simple photo windows are table-driven (see photoWindowDefs()).
+    renderSimplePhotoWindows();
     if (showKeyboardPhoto) renderKeyboardPhotoWindow();
-    if (showWozPhoto) renderWozPhotoWindow();
-    if (showCopsonApple1Photo) renderCopsonApple1PhotoWindow();
-    if (showHappyWozPhoto) renderHappyWozPhotoWindow();
-    if (showPlabTms9918Photo) renderPlabTms9918PhotoWindow();
     if (showScreenConfig) renderScreenConfigDialog();
     if (showCrtSettings) renderCrtSettingsWindow();
     if (showMemoryConfig) renderMemoryConfigDialog();

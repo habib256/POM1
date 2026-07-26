@@ -37,8 +37,9 @@ Apple-1 to a full "POM1 Multiplexing Fantasy" with every card plugged.
 
 Quick start
 -----------
-Run POM1.exe from this folder (do not move the exe alone).
-Keep glfw3.dll next to the exe - it is required to start the app.
+Run POM1.exe from this folder (do not move the exe alone - it reads roms\,
+software\, fonts\ and the rest by relative path). The exe itself is fully
+self-contained: no DLL, no runtime to install.
 
 Use the Hardware menu (or toolbar) to enable expansion cards, the Presets
 menu to jump between machine configurations, and File > Load Memory to
@@ -89,11 +90,8 @@ Keyboard shortcuts
 
 Contents
 --------
-  POM1.exe        Main program
-  glfw3.dll             GLFW (OpenGL window)
-  vcruntime140.dll      Microsoft Visual C++ runtime, bundled app-local so
-  vcruntime140_1.dll    POM1 starts on a freshly installed Windows with no
-  msvcp140.dll          Visual C++ Redistributable to install
+  POM1.exe              Main program - one self-contained executable
+                        (GLFW and the Visual C++ runtime are linked in)
   fonts\                Font Awesome (toolbar icons)
   pic\                  About dialog photo (schlumberger-2-apple-1.jpg)
   roms\                 Apple 1 and expansion ROMs
@@ -117,14 +115,13 @@ Contents
 
 Requirements
 ------------
-Windows 10 or 11, 64-bit. Nothing to install: the Visual C++ runtime POM1 needs
-(vcruntime140 / msvcp140) ships next to POM1.exe, and the cc65 toolchain (cc65\)
-is bundled too - so POM1 runs and the DevBench compiles asm AND C out of the box
-on a base Windows, offline, with no PowerShell or extra download.
+Windows 10 or 11, 64-bit, with working OpenGL 3.2 drivers (any GPU driver from
+the vendor provides this; a bare Microsoft display adapter does not).
 
-If you ever still see a VCRUNTIME/MSVCP error (e.g. after moving the exe out of
-its folder), install the Visual C++ Redistributable (x64):
-https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist
+Nothing to install. POM1.exe links the Visual C++ runtime and GLFW statically,
+so there is no DLL beside it and no Visual C++ Redistributable to download; the
+cc65 toolchain (cc65\) is bundled too, so the DevBench compiles asm AND C out of
+the box, offline, with no PowerShell or extra download.
 
 
 License & credits

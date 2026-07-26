@@ -23,6 +23,46 @@ if(MSVC)
     add_compile_options(/Zc:__cplusplus)
 endif()
 
+# ── Windows: static C runtime (/MT) ──────────────────────────────────────
+# POM1 ships as a folder of data + ONE self-contained executable: no DLL next
+# to the exe, and no Visual C++ Redistributable to install. On Windows that is
+# not a preference, it is the only way out of a real bug (issue #34).
+#
+# vcruntime140.dll / msvcp140.dll are NOT in-box on Win10/11 (unlike the UCRT),
+# so /MD leaves exactly two options, and both were tried:
+#   * /MD with no DLL beside the exe → requires the VC++ Redistributable.
+#   * /MD with the DLLs beside the exe (what 1.9.2 shipped, commit 3d4ec54) →
+#     Windows resolves DLLs from the application directory FIRST, so the
+#     vendor's OpenGL ICD (nvoglv64.dll, which uses the STL) picked up OUR
+#     msvcp140.dll 14.44 while msvcp140_1.dll still came from System32 at the
+#     installed redist's version. The msvcp140* family is versioned in lockstep
+#     (exports/ordinals), so mixing is invalid → the ICD failed to load → the
+#     pixel-format enumeration returned only the generic Microsoft format and
+#     GLFW reported the misleading "WGL: The driver does not appear to support
+#     OpenGL" (error 65542) on an up-to-date RTX 4070 Ti Super.
+# No runtime trick recovers the in-between case: SetDefaultDllDirectories()
+# runs only after our own static imports have already pulled the CRT in, and a
+# LoadLibrary by name returns the module that is already loaded whatever its
+# path. "No redist" AND "no app-local DLL" therefore imply a static CRT.
+# Bonus: /MT absorbs the UCRT too, so the api-ms-win-crt-* imports disappear.
+#
+# The cost is deliberate: /MT freezes the CRT, so a UCRT/vcruntime CVE needs a
+# POM1 rebuild + release instead of an automatic redist update. POM1's network
+# surface is small but non-zero (TerminalCard :6502, WiFiModem TCP). The other
+# classic static-CRT hazards do not apply — POM1 loads no plugin, so there is
+# no second heap and no CRT object crossing a module boundary.
+#
+# This MUST stay above add_subdirectory()/add_executable(): CMAKE_MSVC_RUNTIME_
+# LIBRARY is read when each target is CREATED, so setting it later would leave
+# libresidfp and the test executables on /MD. CMP0091 is already NEW (we ask
+# for CMake 3.16), so no CMAKE_CXX_FLAGS surgery is needed.
+option(POM1_WIN_STATIC_RUNTIME
+       "Windows: link the C runtime statically (/MT) so POM1.exe needs no DLL" ON)
+if(MSVC AND POM1_WIN_STATIC_RUNTIME)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    message(STATUS "POM1: static MSVC runtime (/MT) — POM1.exe ships with no app-local DLL")
+endif()
+
 # Default to Release if the user didn't pick a config (single-config generators
 # only — multi-config like VS / Xcode pick at build time and ignore this).
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
@@ -168,6 +208,7 @@ set(SOURCES
     ${POM1_SRC_DIR}/MainWindow_ImGui.cpp
     ${POM1_SRC_DIR}/M6502.cpp
     ${POM1_SRC_DIR}/Memory.cpp
+    ${POM1_SRC_DIR}/MemorySnapshot.cpp
     ${POM1_SRC_DIR}/MemoryViewer_ImGui.cpp
     ${POM1_SRC_DIR}/Pom1HgrPaintHost.cpp
     ${POM1_SRC_DIR}/Pom1TmsPaintHost.cpp
@@ -771,7 +812,14 @@ else()
     # Windows-specific
     if(WIN32)
         # comdlg32 = GetOpenFileNameW / GetSaveFileNameW (NativeFileDialog).
-        target_link_libraries(${PROJECT_NAME} opengl32 ws2_32 comdlg32)
+        # gdi32 + shell32 + user32 are what a STATIC GLFW pulls in (pixel-format
+        # selection, drag-and-drop, window management) — the vcpkg
+        # x64-windows-static config exports them on the `glfw` target, but they
+        # are named here too so a hand-built static GLFW also links. user32 also
+        # carries the MessageBoxW that main_imgui.cpp uses to report a failed
+        # window creation to a user who launched from Explorer.
+        target_link_libraries(${PROJECT_NAME}
+            opengl32 ws2_32 comdlg32 gdi32 shell32 user32)
     endif()
 
     # macOS: the NSOpenPanel / NSSavePanel calls live in NativeFileDialog_Mac.mm.

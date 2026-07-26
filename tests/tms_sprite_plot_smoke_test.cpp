@@ -129,7 +129,7 @@ int main()
         for (const auto& c : corners)
             assert(pixelAt(fb, sx + c.x, sy + c.y) == TMS9918::kPalette[colour]);
         // Sprite centre (unset) shows the backdrop (index 1 → black per renderer).
-        const ImU32 bd = TMS9918::kPalette[1];
+        const uint32_t bd = TMS9918::kPalette[1];
         assert(pixelAt(fb, sx + 7, sy + 7) == bd);
     }
 

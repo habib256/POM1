@@ -82,55 +82,14 @@ mkdir "%OUTDIR%" || exit /b 1
 echo Copie de l'executable...
 copy /Y "%EXE%" "%OUTDIR%\POM1.exe" >nul || exit /b 1
 
-REM GLFW via vcpkg (triplet dynamique) : glfw3.dll doit etre a cote de l'exe
-set "GLFW_DLL_SRC="
-set "TRIPLET=x64-windows"
-set "VPKGINST="
-set "ISDBG=0"
-if not "%EXE:\Debug\=%"=="%EXE%" set "ISDBG=1"
+REM POM1.exe est autonome : CRT statique (/MT, cf. POM1_WIN_STATIC_RUNTIME dans
+REM CMakeLists.txt) et GLFW statique (triplet vcpkg x64-windows-static). Aucune
+REM DLL n'est copiee a cote de l'exe — c'est un invariant, verifie plus bas.
+REM Historique : le package 1.9.2 posait glfw3.dll + vcruntime140/msvcp140 a
+REM cote de l'exe, et cette DLL app-local empechait l'ICD OpenGL du vendeur de
+REM se charger (issue #34). Ne PAS re-introduire de copie de DLL ici.
 
-if exist "build\CMakeCache.txt" (
-    for /f "usebackq tokens=2 delims==" %%i in (`findstr /B /C:"VCPKG_TARGET_TRIPLET:" "build\CMakeCache.txt" 2^>nul`) do set "TRIPLET=%%i"
-    for /f "usebackq tokens=2 delims==" %%i in (`findstr /B /C:"VCPKG_INSTALLED_DIR:" "build\CMakeCache.txt" 2^>nul`) do set "VPKGINST=%%i"
-)
-set "TRIPLET=!TRIPLET: =!"
-
-if defined VCPKG_ROOT (
-    if "!ISDBG!"=="1" (
-        if exist "!VCPKG_ROOT!\installed\!TRIPLET!\debug\bin\glfw3.dll" set "GLFW_DLL_SRC=!VCPKG_ROOT!\installed\!TRIPLET!\debug\bin\glfw3.dll"
-    )
-    if not defined GLFW_DLL_SRC if exist "!VCPKG_ROOT!\installed\!TRIPLET!\bin\glfw3.dll" set "GLFW_DLL_SRC=!VCPKG_ROOT!\installed\!TRIPLET!\bin\glfw3.dll"
-)
-
-if not defined GLFW_DLL_SRC if defined VPKGINST (
-    if "!ISDBG!"=="1" (
-        if exist "!VPKGINST!\!TRIPLET!\debug\bin\glfw3.dll" set "GLFW_DLL_SRC=!VPKGINST!\!TRIPLET!\debug\bin\glfw3.dll"
-    )
-    if not defined GLFW_DLL_SRC if exist "!VPKGINST!\!TRIPLET!\bin\glfw3.dll" set "GLFW_DLL_SRC=!VPKGINST!\!TRIPLET!\bin\glfw3.dll"
-)
-
-if not defined GLFW_DLL_SRC if exist "dist\POM1-Windows\glfw3.dll" (
-    set "GLFW_DLL_SRC=dist\POM1-Windows\glfw3.dll"
-)
-
-if not defined GLFW_DLL_SRC (
-    echo ERREUR: glfw3.dll introuvable pour le package.
-    echo   Definissez VCPKG_ROOT ^(racine vcpkg^), ou reconfigurez CMake avec le toolchain vcpkg
-    echo   pour que build\CMakeCache.txt contienne VCPKG_INSTALLED_DIR.
-    echo   Fichier attendu : ...\installed\!TRIPLET!\bin\glfw3.dll
-    echo   ^(build Debug : ...\debug\bin\glfw3.dll^)
-    rd /s /q "%OUTDIR%"
-    exit /b 1
-)
-
-echo Copie glfw3.dll ^(!GLFW_DLL_SRC!^)...
-copy /Y "!GLFW_DLL_SRC!" "%OUTDIR%\glfw3.dll" >nul || (
-    echo ERREUR: copie de glfw3.dll echouee.
-    rd /s /q "%OUTDIR%"
-    exit /b 1
-)
-
-REM ---- Optional signing (POM1.exe + glfw3.dll) -------------------------------
+REM ---- Optional signing (POM1.exe) ------------------------------------------
 set "SIGNTOOL="
 for /f "usebackq delims=" %%S in (`where signtool 2^>nul`) do (
     if not defined SIGNTOOL set "SIGNTOOL=%%S"
@@ -181,50 +140,14 @@ if "!DO_SIGN!"=="1" (
             rd /s /q "%OUTDIR%"
             exit /b 1
         )
-        "%SIGNTOOL%" sign !SIGNARGS! !CERTARGS! "%OUTDIR%\glfw3.dll" || (
-            echo ERREUR: echec signature glfw3.dll
-            rd /s /q "%OUTDIR%"
-            exit /b 1
-        )
 
         "%SIGNTOOL%" verify /pa /q "%OUTDIR%\POM1.exe" || (
             echo ERREUR: verification signature POM1.exe echouee
             rd /s /q "%OUTDIR%"
             exit /b 1
         )
-        "%SIGNTOOL%" verify /pa /q "%OUTDIR%\glfw3.dll" || (
-            echo ERREUR: verification signature glfw3.dll echouee
-            rd /s /q "%OUTDIR%"
-            exit /b 1
-        )
         echo Signature OK.
     )
-)
-
-REM ---- Runtime Microsoft Visual C++ (deploiement app-local) -----------------
-REM POM1.exe et glfw3.dll dependent du runtime VC++ (vcruntime140 / msvcp140).
-REM L'UCRT est in-box (Win10/11) mais PAS ces DLL : on les place a cote de l'exe
-REM (app-local, autorise par la licence du redistribuable) pour que POM1 demarre
-REM sur un Windows fraichement installe, sans VC++ Redistributable a installer.
-set "VCRT_DLLS=vcruntime140.dll vcruntime140_1.dll msvcp140.dll"
-set "VCRT_SRC="
-REM 1) Dossier redist exact du toolset MSVC (present en invite developpeur VS).
-if defined VCToolsRedistDir for /d %%D in ("%VCToolsRedistDir%x64\Microsoft.VC*.CRT") do (
-    if exist "%%D\vcruntime140.dll" set "VCRT_SRC=%%D"
-)
-REM 2) Repli : la copie installee dans System32 (>= version du toolset, compatible).
-if not defined VCRT_SRC if exist "%SystemRoot%\System32\vcruntime140.dll" set "VCRT_SRC=%SystemRoot%\System32"
-if defined VCRT_SRC (
-    echo Copie runtime VC++ ^(!VCRT_SRC!^)...
-    for %%F in (%VCRT_DLLS%) do (
-        if exist "!VCRT_SRC!\%%F" (
-            copy /Y "!VCRT_SRC!\%%F" "%OUTDIR%\%%F" >nul
-        ) else (
-            echo AVERTISSEMENT: %%F absente de !VCRT_SRC! — POM1 pourra exiger le VC++ Redistributable.
-        )
-    )
-) else (
-    echo AVERTISSEMENT: runtime VC++ introuvable — POM1 pourra exiger le VC++ Redistributable sur un Windows nu.
 )
 
 echo Copie fonts\ ...
@@ -343,6 +266,26 @@ if "!CC65_OK!"=="0" (
         echo AVERTISSEMENT: bundle cc65 incomplet — DevBench limite au Woz-hex.
     )
 )
+
+REM ---- Invariant : ZERO DLL a la racine du package --------------------------
+REM POM1.exe est lie /MT (CRT statique) + GLFW statique, il ne doit donc rester
+REM aucune DLL a cote de l'exe. C'est l'inverse exact de ce que le package 1.9.2
+REM verifiait, et c'est le coeur du correctif de l'issue #34 : une DLL posee ici
+REM est resolue AVANT System32 par le chargeur Windows, y compris pour les DLL
+REM chargees plus tard par des tiers (l'ICD OpenGL du vendeur), ce qui melangeait
+REM les versions de la famille msvcp140* et empechait l'ICD de se charger.
+REM Test volontairement NON recursif : cc65\bin\*.exe est deja statique (15c78fb)
+REM et les sous-dossiers de donnees n'ont pas a etre contraints.
+set "STRAY_DLL="
+for /f "delims=" %%F in ('dir /b "%OUTDIR%\*.dll" 2^>nul') do set "STRAY_DLL=1"
+if defined STRAY_DLL (
+    echo ERREUR: des DLL subsistent a la racine du package — POM1.exe doit etre autonome.
+    dir /b "%OUTDIR%\*.dll"
+    echo   Verifiez POM1_WIN_STATIC_RUNTIME=ON et le triplet vcpkg x64-windows-static.
+    rd /s /q "%OUTDIR%"
+    exit /b 1
+)
+echo Invariant OK: aucune DLL a la racine du package.
 
 copy /Y "packaging\windows\README.txt" "%OUTDIR%\README.txt" >nul
 

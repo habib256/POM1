@@ -60,6 +60,7 @@
 #include <random>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -84,17 +85,27 @@ int main()
     //    within its first 8 bytes — and must not collide with a framework
     //    section. The A1-IO/RTC bug (9-char name, dropped on load) lived here;
     //    pin it so a future card with a colliding 8-char prefix fails loudly.
+    //
+    //    The card list is taken from Memory::cardSlots() — the single registry
+    //    — rather than restated here. This test used to carry its own copy,
+    //    which made it a FIFTH hand-synced list: a new card that its author
+    //    forgot to add was exactly the case the test was supposed to catch,
+    //    and it would have passed. The registry also proves 8-byte uniqueness
+    //    at compile time now; this remains as the runtime cross-check that the
+    //    live Peripheral::name()s match what the table claims.
     {
-        const std::string_view names[] = {
-            mem.getCassetteDevice().name(), mem.getTMS9918().name(),
-            mem.getSID().name(),            mem.getMicroSD().name(),
-            mem.getCFFA1().name(),          mem.getJukeBox().name(),
-            mem.getCodeTank().name(),       mem.getWiFiModem().name(),
-            mem.getTerminalCard().name(),   mem.getA1IO_RTC().name(),
-            mem.getPR40().name(),           mem.getGT6144().name(),
-            mem.getIECCard().name(),
-        };
-        const size_t n = sizeof(names) / sizeof(names[0]);
+        std::vector<std::string_view> names;
+        for (const Memory::CardSlot& s : Memory::cardSlots()) {
+            if (!s.card) continue;              // flag-only row, no section
+            const pom1::Peripheral* p = s.card(mem);
+            assert(p && "registry row names a card the Memory does not own");
+            assert(p->name() == std::string_view(s.name) &&
+                   "CardSlot::name disagrees with the live Peripheral::name()");
+            names.push_back(p->name());
+        }
+        assert(names.size() == 13 &&
+               "serialized-card count changed — update the section-order pin below");
+        const size_t n = names.size();
         for (size_t i = 0; i < n; ++i) {
             const std::string_view a = names[i].substr(0, pom1::kSectionNameLen);
             assert(a != "CPU" && a != "MEM" && a != "FLAGS" &&
@@ -110,6 +121,56 @@ int main()
                         pom1::kSectionNameLen);
                     return 1;
                 }
+            }
+        }
+    }
+
+    // ── Snapshot section ORDER invariant.
+    //    Memory::cardSlots() row order is load-bearing: it fixes the on-disk
+    //    section sequence, and it encodes real restore-ordering constraints
+    //    (IEC cascades onto microSD so it must follow it; GEN2 attaches last).
+    //    Reordering rows silently changes the format and can break restore,
+    //    which no round-trip assertion would catch — a save and a load written
+    //    by the same table always agree with each other. So pin the literal
+    //    sequence against the names as they appear on disk, i.e. truncated to
+    //    kSectionNameLen. This list is the format; changing it means bumping
+    //    the snapshot version deliberately.
+    {
+        const char* kExpectedOrder[] = {
+            "CPU", "MEM", "FLAGS",
+            "ACI", "TMS9918", "A1-SID", "microSD", "CFFA1", "Juke-Box",
+            "CodeTank", "Wi-Fi Mo", "Terminal", "A1-IO/RT", "PR-40",
+            "GT-6144", "IECCard",
+            "GEN2VID",
+            // no "SCREEN": this fixture attaches no display device.
+        };
+        M6502 orderCpu(&mem);
+        const std::vector<uint8_t> blob = mem.saveSnapshotToBuffer(&orderCpu);
+        assert(!blob.empty() && "snapshot buffer came back empty");
+
+        pom1::SnapshotReader rd(blob);
+        assert(rd.good());
+        std::vector<std::string> seen;
+        std::string  sectionName;
+        uint32_t     sectionLen = 0;
+        while (rd.nextSection(sectionName, sectionLen)) {
+            seen.push_back(sectionName);
+            rd.skipCurrentSection();
+        }
+        const size_t expectedCount = sizeof(kExpectedOrder) / sizeof(kExpectedOrder[0]);
+        if (seen.size() != expectedCount) {
+            std::fprintf(stderr, "snapshot section count %zu, expected %zu:\n",
+                         seen.size(), expectedCount);
+            for (const std::string& s : seen) std::fprintf(stderr, "  '%s'\n", s.c_str());
+            return 1;
+        }
+        for (size_t i = 0; i < expectedCount; ++i) {
+            if (seen[i] != kExpectedOrder[i]) {
+                std::fprintf(stderr,
+                    "snapshot section order changed at index %zu: got '%s', "
+                    "expected '%s' — this is an on-disk format change\n",
+                    i, seen[i].c_str(), kExpectedOrder[i]);
+                return 1;
             }
         }
     }

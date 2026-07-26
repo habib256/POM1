@@ -332,25 +332,53 @@ private:
     int appIconWidth = 0;
     int appIconHeight = 0;
     bool appIconLoadTried = false;
-    pom1::Texture* wozJobsPhotoTexture = nullptr;
-    int wozJobsPhotoWidth = 0;
-    int wozJobsPhotoHeight = 0;
-    bool wozJobsPhotoLoadTried = false;
+    // ── Simple photo windows (Help → Photos) ────────────────────────────
+    // Eight windows that differ only in title / file / size floor used to
+    // carry an ensure<X>Texture() + render<X>PhotoWindow() pair each, plus
+    // four members apiece — ~250 lines and 32 members of pure repetition.
+    // They are now one table (kPhotoWindows) + one generic renderer, with the
+    // per-window runtime state in photoState_. Only the `show` bools stay
+    // named members: the menu toggles them and the per-preset layout ini
+    // persists them by member, not by index.
+    //
+    // Collapsing the teardown into a loop also fixed a real leak: the Copson,
+    // Happy-Woz and P-LAB-TMS9918 textures were never destroyed by
+    // releaseGLResources() — three of eleven hand-written drop() calls had
+    // simply been forgotten, which is the failure mode this shape prevents.
+    enum PhotoWindowId {
+        kPhotoWozJobs = 0,
+        kPhotoWozJobsRect,
+        kPhotoTmsBoard,
+        kPhotoGen2Workbench,
+        kPhotoWoz,
+        kPhotoCopsonApple1,
+        kPhotoHappyWoz,
+        kPhotoPlabTms9918,
+        kPhotoWindowCount
+    };
+    struct PhotoWindowDef {
+        const char* title;   // ImGui window title, and the applyPendingLayout key
+        const char* file;    // filename under pic/
+        const char* label;   // human name for the log warning + "not found" text
+        float       minW;    // size floor passed to SetNextWindowSizeConstraints
+        float       minH;
+        bool MainWindow_ImGui::* show;
+    };
+    struct PhotoWindowState {
+        pom1::Texture* tex = nullptr;
+        int  width = 0;
+        int  height = 0;
+        bool loadTried = false;
+    };
+    static const std::array<PhotoWindowDef, kPhotoWindowCount>& photoWindowDefs();
+    std::array<PhotoWindowState, kPhotoWindowCount> photoState_{};
+    void ensurePhotoTexture(int id);
+    void renderPhotoWindow(int id);
+    void renderSimplePhotoWindows();   // the whole family, one call
+
     bool showWozJobsPhoto = false;
-    pom1::Texture* wozJobsRectPhotoTexture = nullptr;
-    int wozJobsRectPhotoWidth = 0;
-    int wozJobsRectPhotoHeight = 0;
-    bool wozJobsRectPhotoLoadTried = false;
     bool showWozJobsRectPhoto = false;
-    pom1::Texture* tmsBoardPhotoTexture = nullptr;
-    int tmsBoardPhotoWidth = 0;
-    int tmsBoardPhotoHeight = 0;
-    bool tmsBoardPhotoLoadTried = false;
     bool showTmsBoardPhoto = false;
-    pom1::Texture* gen2WorkbenchPhotoTexture = nullptr;
-    int gen2WorkbenchPhotoWidth = 0;
-    int gen2WorkbenchPhotoHeight = 0;
-    bool gen2WorkbenchPhotoLoadTried = false;
     bool showGen2WorkbenchPhoto = false;
     pom1::Texture* pr40MechPhotoTexture = nullptr;
     int pr40MechPhotoWidth = 0;
@@ -366,25 +394,9 @@ private:
     bool keyboardPhotoShift = false;
     bool keyboardPhotoCtrl = false;
     char keyboardPhotoLastKey = 0;  // last byte sent — REPT re-sends it.
-    pom1::Texture* wozPhotoTexture = nullptr;
-    int wozPhotoWidth = 0;
-    int wozPhotoHeight = 0;
-    bool wozPhotoLoadTried = false;
     bool showWozPhoto = false;
-    pom1::Texture* copsonApple1PhotoTexture = nullptr;
-    int copsonApple1PhotoWidth = 0;
-    int copsonApple1PhotoHeight = 0;
-    bool copsonApple1PhotoLoadTried = false;
     bool showCopsonApple1Photo = false;
-    pom1::Texture* happyWozPhotoTexture = nullptr;
-    int happyWozPhotoWidth = 0;
-    int happyWozPhotoHeight = 0;
-    bool happyWozPhotoLoadTried = false;
     bool showHappyWozPhoto = false;
-    pom1::Texture* plabTms9918PhotoTexture = nullptr;
-    int plabTms9918PhotoWidth = 0;
-    int plabTms9918PhotoHeight = 0;
-    bool plabTms9918PhotoLoadTried = false;
     bool showPlabTms9918Photo = false;
     bool showTMS9918 = false;
     bool tms9918Enabled = false;
@@ -595,25 +607,9 @@ private:
     void ensureAboutPhotoTexture();
     void ensureApple50LogoTexture();
     void ensureAppIconTexture();
-    void ensureWozJobsPhotoTexture();
-    void renderWozJobsPhotoWindow();
-    void ensureWozJobsRectPhotoTexture();
-    void renderWozJobsRectPhotoWindow();
-    void ensureTmsBoardPhotoTexture();
-    void renderTmsBoardPhotoWindow();
-    void ensureGen2WorkbenchPhotoTexture();
-    void renderGen2WorkbenchPhotoWindow();
     void ensureKeyboardPhotoTexture();
     void renderKeyboardPhotoWindow();
     void sendKeyboardPhotoKey(int keyIndex);
-    void ensureWozPhotoTexture();
-    void renderWozPhotoWindow();
-    void ensureCopsonApple1PhotoTexture();
-    void renderCopsonApple1PhotoWindow();
-    void ensureHappyWozPhotoTexture();
-    void renderHappyWozPhotoWindow();
-    void ensurePlabTms9918PhotoTexture();
-    void renderPlabTms9918PhotoWindow();
     void ensurePR40MechPhotoTexture();
     void renderSpecialThanksWindow();
     void renderHardwareReferenceWindow();
