@@ -499,6 +499,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
+          # This job deliberately does NOT check out the repo — it only needs
+          # the downloaded artifacts. But `gh release` infers the target repo
+          # from the git remote, so without a checkout every call died with
+          # "failed to run git: fatal: not a git repository" *after* building
+          # the staging dir and the checksums, i.e. the release for tag 1.9.4
+          # was never created even though all four packages built green.
+          # GH_REPO tells gh the repository explicitly, no checkout required.
+          GH_REPO: ${{ github.repository }}
         run: |
           set -eu
           # Flatten the per-job artifact dirs into one staging dir (clean basenames
