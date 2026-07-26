@@ -351,7 +351,25 @@ rm -f "$DMGPATH"
 SCRATCH="dist/POM1-scratch.dmg"
 rm -f "$SCRATCH"
 
-hdiutil create -quiet \
+# hdiutil is the flakiest thing in this script: on a busy CI runner
+# create/attach intermittently fails with "Resource temporarily unavailable"
+# or a device-busy error. It cost release 1.9.4 a full re-run — the build had
+# already passed every universal/self-contained gate and died only here.
+# Retry each hdiutil call a few times, and NOT with -quiet: when it does fail
+# for a real reason we need to see why, instead of a bare "exit 1".
+hdiutil_retry() {
+    local what="$1"; shift
+    local attempt
+    for attempt in 1 2 3; do
+        if hdiutil "$@"; then return 0; fi
+        echo "    hdiutil $what failed (attempt $attempt/3) — retrying…" >&2
+        sleep $((5 * attempt))
+    done
+    echo "ERROR: hdiutil $what failed after 3 attempts." >&2
+    return 1
+}
+
+hdiutil_retry create create \
     -volname "POM1 v${VERSION}" \
     -srcfolder "$DMG_STAGE" \
     -format UDRW \
@@ -364,16 +382,25 @@ hdiutil create -quiet \
 # on the actual Volumes line (the GUID-scheme + partition lines above are
 # empty in the third column). Filter for `/Volumes/` and grab the trailing
 # run — APFS vs HFS doesn't matter since we only care about the mount.
-ATTACH_OUT="$(hdiutil attach -nobrowse -readwrite -noverify \
-                              -noautoopen "$SCRATCH")"
-MOUNT="$(echo "$ATTACH_OUT" | awk -F '\t' '$3 ~ /^\/Volumes\// {print $3}' | tail -1)"
-if [[ -n "$MOUNT" && -e "$MOUNT/.VolumeIcon.icns" ]]; then
-    SetFile -a C "$MOUNT" 2>/dev/null || true
+ATTACH_LOG="dist/hdiutil-attach.log"
+# The volume icon is cosmetic — never let a flaky attach sink a release that
+# has already passed every correctness gate. Retry, then carry on without the
+# custom icon if the mount still refuses.
+if hdiutil_retry attach attach -nobrowse -readwrite -noverify \
+                               -noautoopen "$SCRATCH" >"$ATTACH_LOG" 2>&1; then
+    MOUNT="$(awk -F '\t' '$3 ~ /^\/Volumes\// {print $3}' "$ATTACH_LOG" | tail -1)"
+    if [[ -n "$MOUNT" && -e "$MOUNT/.VolumeIcon.icns" ]]; then
+        SetFile -a C "$MOUNT" 2>/dev/null || true
+    fi
+    [[ -n "$MOUNT" ]] && hdiutil detach -quiet "$MOUNT" || true
+else
+    echo "    WARNING: could not mount the scratch image — DMG ships without" >&2
+    echo "             the custom volume icon (cosmetic only)." >&2
 fi
-[[ -n "$MOUNT" ]] && hdiutil detach -quiet "$MOUNT" || true
+rm -f "$ATTACH_LOG"
 
 # Convert to the final compressed, read-only UDZO distributable.
-hdiutil convert -quiet -format UDZO -o "$DMGPATH" "$SCRATCH"
+hdiutil_retry convert convert -format UDZO -o "$DMGPATH" "$SCRATCH"
 rm -f "$SCRATCH"
 
 # Staging is consumed — clean up so `dist/` only carries the final DMG
