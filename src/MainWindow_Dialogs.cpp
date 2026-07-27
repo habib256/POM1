@@ -1688,7 +1688,8 @@ void MainWindow_ImGui::renderSoftwareReferenceWindow()
                 "POM1 reads two program formats, plus clipboard paste.");
             hwHeading("Formats");
             hwKeyValue("Raw .bin:", "Binary image loaded at the address you pick in the Load dialog.");
-            hwKeyValue("Woz hex dump (.txt):", "Apple-1 standard format. Supports comments (// # ;), continuation lines, T (turbo), R (run address) suffix.");
+            hwKeyValue("Woz hex dump (.txt/.hex/.apl/.mon):", "Apple-1 standard format - .apl is Uncle Bernie's canonical name for it. Supports comments (// # ;), continuation lines and the R (run address) suffix.");
+            hwKeyValue("TurboType (.tur):", "Uncle Bernie's fast-transfer file. POM1 writes memory directly, so the serial loader inside it is skipped; the file's own CRC check then verifies the image and starts the program. 'EE' on screen means the check failed.");
             hwKeyValue("Paste Code (Ctrl+V):", "Feeds the clipboard through the keyboard (up to 4096 chars) - perfect for pasting Woz hex listings.");
             hwHeading("Auto-plug on load");
             ImGui::TextWrapped(

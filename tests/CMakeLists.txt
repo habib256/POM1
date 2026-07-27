@@ -1392,6 +1392,55 @@ add_test(NAME hex_dump_multi_zone
          WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set_tests_properties(hex_dump_multi_zone PROPERTIES TIMEOUT 5)
 
+# hex_dump_extension_smoke -- which file extensions route to the Wozmon-hex
+# parser (.txt/.hex/.apl/.mon, src/HexDumpFile.h). Pins Uncle Bernie's canonical
+# .APL name against the regression where it fell through to the raw binary
+# loader, and pins .tur as REJECTED (different container, compressed payload).
+add_executable(test_hex_dump_extension
+    hex_dump_extension_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_hex_dump_extension PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_hex_dump_extension PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_hex_dump_extension PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_hex_dump_extension PRIVATE ws2_32)
+endif()
+
+add_test(NAME hex_dump_extension_smoke
+         COMMAND test_hex_dump_extension
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(hex_dump_extension_smoke PROPERTIES TIMEOUT 5)
+
+# hex_dump_turbotype_smoke -- load a real .TUR (Uncle Bernie's TurboType) and let
+# the file's OWN CRC-CCITT checker validate the injected image on the emulated
+# 6502. Pins the 'X' end-marker branch, which used to eat the run address.
+add_executable(test_hex_dump_turbotype
+    hex_dump_turbotype_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_hex_dump_turbotype PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_hex_dump_turbotype PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_hex_dump_turbotype PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_hex_dump_turbotype PRIVATE ws2_32)
+endif()
+
+add_test(NAME hex_dump_turbotype_smoke
+         COMMAND test_hex_dump_turbotype
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(hex_dump_turbotype_smoke PROPERTIES TIMEOUT 30)
+
 # -- M6502 PC-matched breakpoint smoke test -----------------------------------
 # Pins the M6502 single-PC breakpoint added with --break <addr> (CLI verb).
 # Halt-before-instruction semantics, clearBreakpoint resume, manual step-over,
