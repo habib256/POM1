@@ -7,6 +7,7 @@
 #include "CliDispatcher.h"
 
 #include "EmulationController.h"
+#include "HexDumpFile.h"
 #include "Logger.h"
 #include "MainWindow_ImGui.h"
 
@@ -630,17 +631,14 @@ void runLoad(const CliAction& a, EmulationController& emu)
 {
     std::string err;
     int bytes = 0;
-    // Extension-aware routing: .txt / .hex go through the Wozmon-hex parser
-    // so multi-zone dumps (e.g. games_chess Chess.txt = $0280 + $E000 blocks)
-    // load both zones from a single CLI invocation. The addr argument is
-    // informational for hex dumps — the file's own address prefixes win.
-    auto endsWith = [](const std::string& s, const std::string& suf) {
-        return s.size() >= suf.size() &&
-               std::equal(suf.rbegin(), suf.rend(), s.rbegin(),
-                          [](char a, char b){ return std::tolower((unsigned char)a) == std::tolower((unsigned char)b); });
-    };
-    bool isHex = endsWith(a.pathS, ".txt") || endsWith(a.pathS, ".hex");
-    if (isHex) {
+    // Extension-aware routing: Wozmon-hex extensions (.txt/.hex/.apl/.mon, see
+    // HexDumpFile.h) go through the hex parser so multi-zone dumps (e.g.
+    // games_chess Chess.txt = $0280 + $E000 blocks) load both zones from a
+    // single CLI invocation. The addr argument is informational for hex dumps —
+    // the file's own address prefixes win. Everything else is a raw binary; an
+    // unrecognised hex extension used to land here and write the file's ASCII
+    // text straight into RAM without an error, so keep this list central.
+    if (pom1::isHexDumpPath(a.pathS)) {
         uint16_t startAddr = 0;
         if (!emu.loadHexDump(a.pathS, startAddr, err, &bytes)) {
             pom1::log().error("CLI", "--load " + a.pathS + ": " + err);

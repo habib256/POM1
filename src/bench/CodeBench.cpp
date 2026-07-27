@@ -539,7 +539,10 @@ void CodeBench::render(const char* title, bool* open)
         {
             const std::string title = save ? "Save file" : "Open file";
             const std::string desc  = "Source / data files";
-            const std::string ext   = "c,h,s,asm,inc,bas,apf,int,hex,txt,md,json,cfg";
+            // apl/mon = Wozmon hex dumps under Uncle Bernie's canonical Apple-1
+            // names (POM1: HexDumpFile.h). Spelled literally, not pulled from a
+            // POM1 header — this module stays standalone for POM2.
+            const std::string ext   = "c,h,s,asm,inc,bas,apf,int,hex,txt,apl,mon,md,json,cfg";
             const std::string defName = save ? doc.title : std::string();
             std::string picked;
             if (host_->pickFilePath(save, title, desc, ext, browseDir_, defName, picked)) {

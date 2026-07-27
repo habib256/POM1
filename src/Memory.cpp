@@ -1146,8 +1146,14 @@ int Memory::loadHexDump(const char* filename, uint16_t &startAddress, int* bytes
                          std::istreambuf_iterator<char>());
     file.close();
 
-    // Supprimer les commentaires (//, #, ;) — en début de ligne ou inline
+    // Supprimer les commentaires (//, #, ;) — en début de ligne ou inline.
+    // `cleaned` joins the surviving lines WITHOUT a separator (the legacy
+    // parser's "merged data + address" branches exist precisely to undo that);
+    // `lines` keeps them apart for the TurboType parser, which needs the line
+    // structure to tell ":data" from "address:".
     std::string cleaned;
+    std::vector<std::string> lines;
+    bool turboFile = false;
     std::istringstream lineStream(content);
     std::string line;
     while (std::getline(lineStream, line)) {
@@ -1167,12 +1173,25 @@ int Memory::loadHexDump(const char* filename, uint16_t &startAddress, int* bytes
         commentPos = line.find('#');
         if (commentPos != std::string::npos) line = line.substr(0, commentPos);
         cleaned += line;
+
+        // Trim for the line-structured view; a lone "T" is TurboType's
+        // switch-to-turbo marker and the only thing that selects that parser.
+        const size_t b = line.find_first_not_of(" \t\r");
+        if (b == std::string::npos) continue;
+        const size_t e = line.find_last_not_of(" \t\r");
+        lines.push_back(line.substr(b, e - b + 1));
+        if (lines.back().size() == 1 && (lines.back()[0] == 'T' || lines.back()[0] == 't'))
+            turboFile = true;
     }
 
     unsigned int currentAddr = 0;
     uint16_t runAddr = 0;
     bool firstAddr = true;
     bool hasRunAddr = false;
+    // 'X' = TurboType end-of-stream. Past it the only thing a .TUR may still
+    // carry is the "AAAAR" run line, so stray hex after it must NOT be written
+    // as data (see the X branch below).
+    bool endMarkerSeen = false;
     int totalBytes = 0;
     int oddDigitsDropped = 0;
     size_t i = 0;
@@ -1185,22 +1204,144 @@ int Memory::loadHexDump(const char* filename, uint16_t &startAddress, int* bytes
         return 0;
     };
 
+    // Data-byte writer with zone tracking. Every byte written through this
+    // helper extends or starts a zone; address flips close the zone first.
+    // Shared by both parsers below.
+    auto writeByte = [&](uint8_t v) {
+        if (currentAddr >= 0x10000) return;
+        if (!zoneActive) {
+            zoneStart = static_cast<uint16_t>(currentAddr);
+            zoneActive = true;
+        }
+        mem[currentAddr] = v;
+        zoneLastAddr = currentAddr;
+        currentAddr++;
+        totalBytes++;
+    };
+    // Address flip, shared likewise. Sequential address lines that pick up
+    // exactly where the previous one left off stay in the SAME zone — closing
+    // on every address line would shred chess.txt into one zone per 8-byte row.
+    auto setAddr = [&](unsigned int newAddr) {
+        if (zoneActive && newAddr != currentAddr) closeZone();
+        currentAddr = newAddr;
+        if (firstAddr) {
+            startAddress = static_cast<uint16_t>(currentAddr);
+            firstAddr = false;
+        }
+    };
+
+    if (turboFile) {
+        // ------------------------------------------------------------------
+        // TurboType (.TUR) — LINE-STRUCTURED parse.
+        //
+        // The legacy parser below concatenates every line and then recovers
+        // boundaries heuristically ("a hex token before ':' is an address").
+        // That rule is exactly inverted in a turbo stream, where ':' OPENS a
+        // data line instead of closing an address:
+        //
+        //     0300                                  <- address, own line, no ':'
+        //     :D8A2FF9AA92A851A204604A97C8518A9     <- 16 bytes, ':' first
+        //     :05851920AD0320CB03D00EA9AF8518A9
+        //
+        // Concatenated, each 32-digit data run is followed by the next line's
+        // ':' — so the legacy rule split off its last four digits as an
+        // address and scattered the program across memory (the 15 Puzzle's
+        // $0300 block landed in 60+ zones at $18A9, $4159, $F460, ...).
+        //
+        // Keeping the lines apart makes every case unambiguous, and it also
+        // handles the autotyped WOZMON prologue without needing the merge
+        // hacks at all. Only files carrying a lone "T" line take this path,
+        // so the ~100 bundled dumps keep their exact legacy behaviour.
+        // ------------------------------------------------------------------
+        auto emitData = [&](const std::string& s, size_t from) {
+            std::string digits;
+            for (size_t k = from; k < s.size(); ++k)
+                if (isHex(s[k])) digits.push_back(s[k]);
+            if (digits.size() % 2 != 0) oddDigitsDropped++;
+            for (size_t j = 0; j + 1 < digits.size(); j += 2)
+                writeByte(static_cast<uint8_t>((hexVal(digits[j]) << 4) | hexVal(digits[j + 1])));
+        };
+
+        for (const std::string& s : lines) {
+            const char c0 = s[0];
+            // Bare markers: 'T' switches the SENDER to turbo mode, 'X' ends
+            // the stream. Neither carries an operand — the run address that
+            // follows 'X' is its own "AAAAR" line.
+            if (s.size() == 1 && (c0 == 'T' || c0 == 't')) continue;
+            if (s.size() == 1 && (c0 == 'X' || c0 == 'x')) { endMarkerSeen = true; continue; }
+            // ":data" — turbo block line, or a WOZMON continuation line.
+            if (c0 == ':') { if (!endMarkerSeen) emitData(s, 1); continue; }
+
+            size_t p = 0;
+            while (p < s.size() && isHex(s[p])) p++;
+            if (p == 0) continue;                       // not a line we understand
+            const unsigned int tok =
+                static_cast<unsigned int>(strtol(s.substr(0, p).c_str(), nullptr, 16));
+
+            if (p < s.size() && (s[p] == 'R' || s[p] == 'r')) {
+                runAddr = static_cast<uint16_t>(tok);   // "AAAAR" — last one wins
+                hasRunAddr = true;
+                continue;
+            }
+            if (p < s.size() && s[p] == ':') {          // WOZMON "AAAA: HH HH ..."
+                setAddr(tok);
+                if (!endMarkerSeen) emitData(s, p + 1);
+                continue;
+            }
+            if (p == s.size()) { setAddr(tok); continue; }  // bare address line
+        }
+        closeZone();
+        if (hasRunAddr) startAddress = runAddr;
+        if (bytesLoaded) *bytesLoaded = totalBytes;
+        if (totalBytes > 0) markAllPagesDirty();
+        {
+            std::ostringstream oss;
+            oss << "TurboType dump loaded: "
+                << std::filesystem::path(filename).filename().string()
+                << " (" << std::dec << totalBytes << " bytes, run at 0x"
+                << std::hex << startAddress << ")";
+            pom1::log().info("Mem", oss.str());
+        }
+        if (oddDigitsDropped > 0) {
+            std::ostringstream oss;
+            oss << "TurboType dump " << std::filesystem::path(filename).filename().string()
+                << ": " << std::dec << oddDigitsDropped
+                << " odd-length hex run(s) — trailing nibble(s) dropped.";
+            pom1::log().warn("Mem", oss.str());
+        }
+        return firstAddr && !hasRunAddr ? 1 : 0;
+    }
+
     while (i < cleaned.size()) {
         char c = cleaned[i];
 
         // Sauter espaces
         if (c == ' ' || c == '\t' || c == '\n' || c == '\r') { i++; continue; }
 
-        // 'T' prefix (turbo) — sauter le T, traiter comme une adresse
+        // 'T' = TurboType mode switch, on its own line between the autotyped
+        // WOZMON prologue and the first turbo block. A bare marker: skip it and
+        // let the "AAAA:" that follows parse as an address.
         if ((c == 'T' || c == 't') && i + 1 < cleaned.size() && isHex(cleaned[i + 1])) {
             i++; continue;
         }
 
-        // 'X' marker (fin de bloc turbo) — sauter X + adresse hex
+        // 'X' = TurboType end-of-stream marker, likewise on its own line. It is
+        // a BARE marker — skip only the X itself.
+        //
+        // This used to also swallow the hex run behind it, which silently ate
+        // the run address of every real .TUR: the files end
+        //
+        //     X
+        //     015ER
+        //
+        // so "015E" was consumed as if it belonged to the X and the orphaned
+        // "R" fell through to the unknown-character branch. The load then
+        // reported the PREVIOUS R (the "0100R" that starts the serial receiver
+        // on real hardware) and POM1 jumped into the transfer loader, which
+        // sits waiting for a stream that direct injection never sends.
         if ((c == 'X' || c == 'x') && i + 1 < cleaned.size() && isHex(cleaned[i + 1])) {
-            i++;
-            while (i < cleaned.size() && isHex(cleaned[i])) i++;
-            continue;
+            endMarkerSeen = true;
+            i++; continue;
         }
 
         // ':' continuation — les données hex suivent
@@ -1218,20 +1359,7 @@ int Memory::loadHexDump(const char* filename, uint16_t &startAddress, int* bytes
             size_t peek = i;
             while (peek < cleaned.size() && (cleaned[peek] == ' ' || cleaned[peek] == '\t' || cleaned[peek] == '\r' || cleaned[peek] == '\n')) peek++;
 
-            // Inline data-byte writer with zone tracking. Every byte written
-            // through this helper extends or starts a zone; address-prefix
-            // flips below close the zone before resetting currentAddr.
-            auto writeByte = [&](uint8_t v) {
-                if (currentAddr >= 0x10000) return;
-                if (!zoneActive) {
-                    zoneStart = static_cast<uint16_t>(currentAddr);
-                    zoneActive = true;
-                }
-                mem[currentAddr] = v;
-                zoneLastAddr = currentAddr;
-                currentAddr++;
-                totalBytes++;
-            };
+            // (writeByte / setAddr are the shared helpers defined above.)
 
             if (i < cleaned.size() && (cleaned[i] == 'R' || cleaned[i] == 'r')) {
                 // Handle merged data+run: e.g. "FFE2B3R" = data FF, run E2B3
@@ -1272,22 +1400,20 @@ int Memory::loadHexDump(const char* filename, uint16_t &startAddress, int* bytes
                     }
                     hexStr = hexStr.substr(dataLen);
                 }
-                // Address line: only close the current zone when the new
-                // address is a real jump. Sequential address lines that
-                // pick up exactly where the previous line left off
-                // (e.g. "0288:" after 8 bytes from "0280:") stay in the
-                // same zone — closing on every address line would shred
+                // Address line. setAddr keeps a sequential address line
+                // (e.g. "0288:" right after 8 bytes from "0280:") inside the
+                // SAME zone — closing on every address line would shred
                 // chess.txt into one zone per 8-byte row.
-                uint16_t newAddr = (uint16_t)strtol(hexStr.c_str(), nullptr, 16);
-                if (zoneActive && newAddr != currentAddr) closeZone();
-                currentAddr = newAddr;
-                if (firstAddr) {
-                    startAddress = currentAddr;
-                    firstAddr = false;
-                }
+                setAddr((unsigned int)strtol(hexStr.c_str(), nullptr, 16));
                 i = peek + 1; // skip the ':'
                 continue;
             }
+
+            // Past the 'X' end-of-stream marker there is no more data — only a
+            // possible run line, and that took the 'R' branch above. Dropping
+            // the token here (rather than writing it) keeps a trailing
+            // address-shaped word from landing in RAM at currentAddr.
+            if (endMarkerSeen) continue;
 
             // Data bytes — parse in pairs. A lone trailing nibble would
             // otherwise be silently dropped, so track it for the summary

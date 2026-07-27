@@ -5,6 +5,7 @@
 #include "LogoProgramLoader.h"              // logo::compile — LOGO proc-table injector
 #include "BasicTokeniserInteger.h"          // ibasic::compile — Integer BASIC tokeniser ($E000)
 #include "BasicCompilerApplesoft.h"         // basicnative::compile — native standalone 6502
+#include "HexDumpFile.h"          // pom1::isHexDumpExtension — .txt/.hex/.apl/.mon
 #include "MainWindow_ImGui.h"     // mw_ members (friend) + EmulationController
 #include "MainWindow_Internal.h"  // kMachinePresets / BasicType (ACI program-output presets)
 #include "NativeFileDialog.h"     // OS-native file picker for Open/Save source
@@ -1997,7 +1998,8 @@ int Pom1BenchHost::targetForPath(const std::string& path) const
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
     const std::string ext = fs::path(p).extension().string();
-    if (ext == ".hex" || ext == ".txt") return 6;      // Wozmon hex quick-load
+    // .txt/.hex/.apl/.mon — HexDumpFile.h owns the list.
+    if (pom1::isHexDumpExtension(ext)) return 6;       // Wozmon hex quick-load
 
     // BASIC source. ".apf" = Applesoft (tokenised). The interpreter follows the
     // path: a TMS9918 path -> Applesoft TMS9918 (11), a GEN2/HGR path -> Applesoft

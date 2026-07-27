@@ -7,6 +7,7 @@
 // loaded file's directory hints at a card (Graphic HGR/, Graphic TMS9918/,
 // Apple-1_TMS_CC65/, Graphic gt-6144/, NET/, a1io_rtc/, sdcard/).
 
+#include "HexDumpFile.h"
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
 #include "NativeFileDialog.h"
@@ -66,14 +67,23 @@ std::string resolveMemoryDefaultDir(const std::string& base, const std::string& 
 }
 
 // "name.bin" → "bin" (lowercase). Empty when there's no extension.
-std::string lowerExt(const std::string& path)
+std::string lowerExt(const std::string& path) { return pom1::lowerExtension(path); }
+
+// Filter entry covering every Wozmon-hex extension (.txt/.hex/.apl/.mon —
+// HexDumpFile.h owns the list). Built at call time so adding an extension there
+// is enough; the label is generated so it can never drift from the list.
+pom1::FileFilter hexDumpFilter()
 {
-    auto dot = path.find_last_of('.');
-    if (dot == std::string::npos) return std::string();
-    std::string ext = path.substr(dot + 1);
-    std::transform(ext.begin(), ext.end(), ext.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    return ext;
+    pom1::FileFilter f;
+    std::string label = "Hex dump / Woz monitor (";
+    for (int i = 0; i < pom1::kHexDumpExtensionCount; ++i) {
+        if (i) label += ", ";
+        label += "*.";
+        label += pom1::kHexDumpExtensions[i];
+        f.extensions.push_back(pom1::kHexDumpExtensions[i]);
+    }
+    f.description = label + ")";
+    return f;
 }
 }
 
@@ -112,10 +122,15 @@ void MainWindow_ImGui::loadMemory()
     // browser's <input type=file> can't fill a server-side filesystem path,
     // so the existing MEMFS browser is the only option there).
     if (pom1::NativeFileDialog::isAvailable()) {
+        pom1::FileFilter hexOnly = hexDumpFilter();
+        pom1::FileFilter all;
+        all.description = "Apple-1 memory dumps (*.bin, *.txt, *.hex, *.apl, *.mon)";
+        all.extensions = hexOnly.extensions;
+        all.extensions.insert(all.extensions.begin(), "bin");
         std::vector<pom1::FileFilter> filters = {
-            { "Apple-1 memory dumps (*.bin, *.txt)", {"bin", "txt"} },
+            all,
             { "Binary (*.bin)", {"bin"} },
-            { "Hex dump / Woz monitor (*.txt)", {"txt"} },
+            hexOnly,
         };
         std::string defDir = resolveMemoryDefaultDir(
             resolveDataDir({"software", "../software", "../../software"}),
@@ -143,7 +158,8 @@ void MainWindow_ImGui::loadMemory()
             showLoadDialog = true;
             return;
         }
-        // Hex dump (.txt) carries its own address; load it straight away.
+        // Hex dump (.txt/.hex/.apl/.mon) carries its own address; load it
+        // straight away.
         loadDlg.fileType = 1;
         performMemoryLoad(picked, 1, 0);
         return;
@@ -432,8 +448,14 @@ void MainWindow_ImGui::renderLoadDialog()
                             if (name[0] != '.')
                                 loadDlg.dirList.push_back(name);
                         } else if (entry.is_regular_file()) {
-                            std::string ext = entry.path().extension().string();
-                            if (ext == ".txt" || ext == ".bin")
+                            // Same extension set as the native picker's filters
+                            // (HexDumpFile.h) + .bin. Keeping these in sync
+                            // matters: this browser is the ONLY picker on WASM
+                            // and on Linux without zenity/kdialog, so anything
+                            // missing here is invisible rather than merely
+                            // unfiltered.
+                            const std::string ext = entry.path().extension().string();
+                            if (pom1::isHexDumpExtension(ext) || ext == ".bin")
                                 loadDlg.fileList.push_back(entry.path().filename().string());
                         }
                     }
@@ -472,10 +494,7 @@ void MainWindow_ImGui::renderLoadDialog()
                     std::string fullPath = (std::filesystem::path(loadDlg.currentDir) / f).string();
                     strncpy(loadDlg.filePath, fullPath.c_str(), sizeof(loadDlg.filePath) - 1);
                     loadDlg.filePath[sizeof(loadDlg.filePath) - 1] = '\0';
-                    if (f.size() > 4 && f.substr(f.size() - 4) == ".bin")
-                        loadDlg.fileType = 0;
-                    else
-                        loadDlg.fileType = 1;
+                    loadDlg.fileType = (pom1::lowerExtension(f) == "bin") ? 0 : 1;
                 }
             }
             ImGui::EndChild();
@@ -496,7 +515,7 @@ void MainWindow_ImGui::renderLoadDialog()
 
             ImGui::RadioButton("Binary (.bin)", &loadDlg.fileType, 0);
             ImGui::SameLine();
-            ImGui::RadioButton("Hex dump (.txt)", &loadDlg.fileType, 1);
+            ImGui::RadioButton("Hex dump (.txt/.apl)", &loadDlg.fileType, 1);
         }
 
         if (loadDlg.fileType == 0) {
@@ -829,7 +848,11 @@ void MainWindow_ImGui::renderSaveDialog()
                 if (saveFormat == 0)
                     filters.push_back({"Binary (*.bin)", {"bin"}});
                 else
-                    filters.push_back({"Hex dump (*.txt)", {"txt"}});
+                    // "txt" stays first so it remains the extension appended to
+                    // a bare filename (NativeFileDialog uses filters.front()),
+                    // matching the bundled corpus; .apl/.mon are offered for
+                    // users writing to Uncle Bernie's convention directly.
+                    filters.push_back(hexDumpFilter());
                 std::string defDir = resolveMemoryDefaultDir(
                     resolveDataDir({"software", "../software", "../../software"}),
                     memoryContextSubdir());
