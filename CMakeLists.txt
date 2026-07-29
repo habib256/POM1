@@ -153,34 +153,58 @@ set(IMGUI_SOURCES
 )
 if(POM1_USE_METAL)
     # ── per-texture-sampler workaround on Metal ────────────────────────
-    # imgui_impl_metal.mm hardcodes a single `constexpr sampler` with
-    # min_filter::linear + mag_filter::linear inside its fragment shader.
-    # That shader is compiled into the pipeline state at init time, so
-    # the sampler can't be swapped per draw call from outside the backend,
-    # and PomRenderer's Filter::Nearest contract has no way through.
-    #
     # POM1's emulated framebuffers (HGR / TMS9918 / GT6144 + the Apple-1
     # glyph atlas + the paint-editor canvases) are pixel-art and need
-    # nearest sampling; ImGui's font + photo textures need linear. The
-    # GL backend solves this per-texture via glTexParameteri. On Metal,
-    # without a per-cmd sampler hook in upstream ImGui, the most pragmatic
-    # fix is to flip the inline sampler from linear → nearest at build
-    # time and accept that fonts/photos lose bilinear smoothing at
-    # non-integer zooms. (At 1× and integer multiples the visual
-    # difference is invisible.) Patch is configure-time + pure-CMake so
-    # it works on every macOS host without `sed`/`patch` portability
-    # headaches; rerunning cmake re-applies the patch if upstream imgui
-    # is updated.
+    # nearest sampling; ImGui's font + photo textures would prefer linear.
+    # The GL backend solves this per-texture via glTexParameteri; the Metal
+    # backend binds ONE MTLSamplerState for the whole frame, which
+    # PomRenderer's Filter::Nearest contract has no way through.
+    #
+    # Historically (≤ v1.92.7) the sampler was a `constexpr sampler` frozen
+    # inside the fragment shader, and this patch rewrote the MSL source.
+    # Since v1.92.8 upstream builds TWO MTLSamplerStates (linear + nearest)
+    # and exposes them as standard draw callbacks
+    # (ImGuiPlatformIO::DrawCallback_SetSamplerNearest, #9378) — but the
+    # frame still *starts* bound to the linear one, and picking per image
+    # would mean threading AddCallback() through every texture draw site in
+    # POM1. So the patch now flips the descriptor that builds the "linear"
+    # state to nearest: both states end up nearest, which is byte-for-byte
+    # the behaviour POM1 has shipped on macOS all along. Fonts/photos lose
+    # bilinear smoothing at non-integer zooms; at 1× and integer multiples
+    # the difference is invisible.
+    #
+    # Patch is configure-time + pure-CMake so it works on every macOS host
+    # without `sed`/`patch` portability headaches; rerunning cmake
+    # re-applies it. If upstream ever renames these lines the guard below
+    # turns the silent un-patch (blurry pixel art, no build error) into a
+    # loud configure warning.
     set(IMGUI_METAL_ORIG    "${IMGUI_DIR}/backends/imgui_impl_metal.mm")
     set(IMGUI_METAL_PATCHED "${CMAKE_CURRENT_BINARY_DIR}/imgui_impl_metal.patched.mm")
     if(EXISTS "${IMGUI_METAL_ORIG}")
         file(READ "${IMGUI_METAL_ORIG}" _imgui_metal_src)
+        set(_imgui_metal_orig_src "${_imgui_metal_src}")
+        # v1.92.8+ : the samplerStateLinear descriptor. The nearest descriptor
+        # a few lines below already reads ...FilterNearest, so these two
+        # unconditional replaces only ever touch the linear one.
+        string(REPLACE "MTLSamplerMinMagFilterLinear" "MTLSamplerMinMagFilterNearest"
+                       _imgui_metal_src "${_imgui_metal_src}")
+        string(REPLACE "MTLSamplerMipFilterLinear" "MTLSamplerMipFilterNearest"
+                       _imgui_metal_src "${_imgui_metal_src}")
+        # ≤ v1.92.7 : the inline MSL sampler (kept so an older pinned imgui
+        # still builds with correct filtering).
         string(REPLACE "min_filter::linear, mag_filter::linear"
                        "min_filter::nearest, mag_filter::nearest"
                        _imgui_metal_src "${_imgui_metal_src}")
         string(REPLACE "mip_filter::linear"
                        "mip_filter::nearest"
                        _imgui_metal_src "${_imgui_metal_src}")
+        if(_imgui_metal_src STREQUAL _imgui_metal_orig_src)
+            message(WARNING
+                "imgui_impl_metal.mm: nearest-sampler patch matched NOTHING — "
+                "upstream layout changed. macOS will render emulated framebuffers "
+                "with bilinear filtering (blurry pixel art) until the patterns in "
+                "CMakeLists.txt are updated.")
+        endif()
         file(WRITE "${IMGUI_METAL_PATCHED}" "${_imgui_metal_src}")
     endif()
     list(APPEND IMGUI_SOURCES "${IMGUI_METAL_PATCHED}")
@@ -238,6 +262,7 @@ set(SOURCES
     ${POM1_SRC_DIR}/Disassembler6502.cpp
     ${POM1_SRC_DIR}/Symbols.cpp
     ${POM1_SRC_DIR}/MainWindow_Layout.cpp
+    ${POM1_SRC_DIR}/MainWindow_Dock.cpp
     ${POM1_SRC_DIR}/MainWindow_Presets.cpp
     ${POM1_SRC_DIR}/MainWindow_Menu.cpp
     ${POM1_SRC_DIR}/MainWindow_Dialogs.cpp

@@ -867,7 +867,7 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
                 "$2000-$200F  A1-IO VIA 65C22 (when A1-IO & RTC is plugged)\n"
                 "$2000-$3FFF  GEN2 HGR page 1 framebuffer (8 KB - when GEN2 HGR is plugged)\n"
                 "$4000-$5FFF  GEN2 HGR page 2 framebuffer / User RAM\n"
-                "$6000-$7FFF  Applesoft Lite SD ROM (microSD preset only)\n"
+                "$6000-$7FFF  Applesoft Lite in microSD card RAM (microSD preset only)\n"
                 "$8000-$9FFF  SD CARD OS ROM (microSD)\n"
                 "$9000-$AFDF  CFFA1 firmware ROM (when CFFA1 plugged)\n"
                 "$A000-$A00F  microSD VIA 65C22\n"
@@ -1679,7 +1679,7 @@ void MainWindow_ImGui::renderSoftwareReferenceWindow()
             hwHeading("Choices");
             hwKeyValue("Integer BASIC:", "$E000-$EFFF (4 KB). Original Apple-1 BASIC. Cold start: E000R.");
             hwKeyValue("Applesoft Lite (CFFA1):", "$E000-$FFFF. Ships with the CFFA1 preset, covers the full ROM range.");
-            hwKeyValue("Applesoft Lite (microSD):", "$6000-$7FFF. SD1.3 build aligned with the SD1.3 sdcard.rom firmware. Cold start: 6000R.");
+            hwKeyValue("Applesoft Lite (microSD):", "$6000-$7FFF, in the card's OWN RAM — not a ROM: the card's only EEPROM is the 8 KB SD CARD OS at $8000-$9FFF, and the SD CARD OS loads Applesoft from the memory card. SD1.3 build aligned with the SD1.3 sdcard.rom firmware. Cold start: 6000R, warm: 6003R (keeps the BASIC program in RAM).");
             hwKeyValue("Loader:", "Settings -> Memory Options to swap them at runtime.");
         }
 
@@ -2095,7 +2095,7 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
                         if (r.name.find("Applesoft") != std::string::npos) return true;
                         return r.start == 0x6000 && r.end == 0x7FFF;
                     }), loadedRoms.end());
-                loadedRoms.push_back({"Applesoft Lite (P-LAB microSD)", 0x6000, 0x7FFF});
+                loadedRoms.push_back({"Applesoft Lite (loaded in card RAM)", 0x6000, 0x7FFF});
                 if (!hasRange(loadedRoms, 0xE000, 0xEFFF))
                     loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
                 if (!hasRange(loadedRoms, 0xFF00, 0xFFFF))

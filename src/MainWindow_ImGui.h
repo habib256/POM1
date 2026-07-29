@@ -601,6 +601,20 @@ private:
     void renderMenuBar();
     void renderToolbar();
     void renderStatusBar();
+
+    // Docking (MainWindow_Dock.cpp) --------------------------------------
+    // Host window + DockSpace occupying everything between the toolbar band
+    // and the status bar band. Called once per frame from render(), BEFORE
+    // any dockable window's Begin(), and returns the dockspace node id.
+    ImGuiID renderDockSpace();
+    // Builds the factory dock layout (Apple 1 screen central, video cards to
+    // its right, inspectors right/bottom) into `dockspaceId`. Only invoked
+    // when the incoming layout carries no [Docking][Data] for that node —
+    // i.e. a fresh profile, a legacy pre-docking ini, or a layout reset.
+    void buildDefaultDockLayout(ImGuiID dockspaceId);
+    // Set by applyMachineConfig / the layout reset so the next
+    // renderDockSpace() re-runs buildDefaultDockLayout even if a node exists.
+    bool wantDockLayoutRebuild = false;
     
     // Dialog functions
     void renderAboutDialog();

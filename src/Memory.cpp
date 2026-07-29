@@ -1020,7 +1020,16 @@ int Memory::loadApplesoftLiteCFFA1(void)
 
 int Memory::loadApplesoftLiteSDCard(void)
 {
-    int ret = loadROM("applesoft-lite-microsd.rom", 0x6000, 0x2000, "Applesoft Lite (P-LAB microSD)");
+    // NOT a ROM window despite the loadROM() helper: on the real P-LAB card the
+    // only EEPROM is the 8 KB SD CARD OS at $8000-$9FFF (manual §6.3). Applesoft
+    // Lite is a file the SD CARD OS loads into the card's own RAM expansion at
+    // $6000-$7FFF — hence `6000R` = "cold start (needed at least once)" and
+    // `6003R` = warm start "it does not destroy the BASIC program in RAM".
+    // POM1 pre-seeds those bytes so the user doesn't have to load it on every
+    // boot, exactly like the $E000 Integer BASIC bank; writes are NOT blocked
+    // (memWrite only protects $FF00+ and the ACI PROM), so the emulated
+    // behaviour already matches the card. Only the label had to be honest.
+    int ret = loadROM("applesoft-lite-microsd.rom", 0x6000, 0x2000, "Applesoft Lite (loaded in card RAM)");
     if (ret != 0) return ret;
     // The microSD build requires Woz Monitor at $FF00 for the SD OS to link
     // to. Reload it only when it was overwritten (typical case: user just

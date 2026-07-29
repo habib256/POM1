@@ -48,7 +48,7 @@ if defined VCPKG_ROOT (
 REM Download Dear ImGui if not present
 if not exist "imgui" (
     echo Downloading Dear ImGui...
-    git clone --depth 1 https://github.com/ocornut/imgui.git
+    git clone --depth 1 --branch v1.92.9-docking https://github.com/ocornut/imgui.git
     echo.
 ) else (
     echo Dear ImGui already present.

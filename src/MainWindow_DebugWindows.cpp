@@ -741,7 +741,10 @@ void MainWindow_ImGui::renderMemoryMapGridWindow()
             dl->AddRect(p, ImVec2(p.x + 12, p.y + 12), IM_COL32(180, 180, 180, 255));
             ImGui::Dummy(ImVec2(16, 14));
             ImGui::SameLine();
-            ImGui::Text("$%04X-$%04X %s", regions[i].start, regions[i].end, regions[i].label);
+            // Wrapped, not Text(): in a narrow dock node the stretch column
+            // clips a plain Text() mid-entry ("…SD CARD OS ROM (8KB EEPROI").
+            // Inside a table, TextWrapped wraps at the COLUMN edge.
+            ImGui::TextWrapped("$%04X-$%04X %s", regions[i].start, regions[i].end, regions[i].label);
         }
         // Always show User RAM and Unmapped at the end
         {
@@ -752,9 +755,9 @@ void MainWindow_ImGui::renderMemoryMapGridWindow()
             ImGui::Dummy(ImVec2(16, 14));
             ImGui::SameLine();
             if (fullRam)
-                ImGui::Text("$0000-$FFFF User RAM (64 KB)");
+                ImGui::TextWrapped("$0000-$FFFF User RAM (64 KB)");
             else
-                ImGui::Text("$0000-$%04X User RAM (%d KB)", (uint32_t)(ramCeiling32 - 1), presetRamKB);
+                ImGui::TextWrapped("$0000-$%04X User RAM (%d KB)", (uint32_t)(ramCeiling32 - 1), presetRamKB);
         }
         if (!fullRam) {
             ImVec2 p = ImGui::GetCursorScreenPos();

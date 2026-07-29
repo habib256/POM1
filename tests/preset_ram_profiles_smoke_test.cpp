@@ -226,6 +226,20 @@ int main(int argc, char** argv)
                     failures.push_back(name + " (GEN2) has " + std::to_string(ramKB)
                                        + " KB RAM, expected 48 (Bernie Q9)");
                 }
+            } else if (lowerName.find("microsd") != std::string::npos) {
+                // The P-LAB microSD Storage Card is itself a RAM expansion, not
+                // just storage. Its manual (Doc. Rev. 1.1, §3 + §6.1 "Expanded
+                // RAM allocation") states the board "brings the computer to
+                // 32 kB contiguous RAM" from $0000 to $7FFF with its three
+                // allocation jumpers fitted — on top of the motherboard's 4 KB
+                // at $0000-$0FFF — plus the 4 KB at $E000-$EFFF, 36 KB total.
+                // So this preset runs 32 KB, not the Parmigiani 8 KB dual-bank.
+                // (Removing the jumpers punches holes for other cards; that is
+                // the Replica-1 configuration, not the Apple-1 one POM1 models.)
+                if (ramKB != 32) {
+                    failures.push_back(name + " (microSD) has " + std::to_string(ramKB)
+                                       + " KB RAM, expected 32 (manual §6.1)");
+                }
             } else if (ramKB != 8) {
                 failures.push_back(name + " has " + std::to_string(ramKB) + " KB RAM");
             }

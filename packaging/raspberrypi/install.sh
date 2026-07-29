@@ -67,7 +67,7 @@ sudo apt install -y \
 # ---- 2. Dear ImGui (dépendance de build, non vendorée) --------------------
 echo "--- 2/5 Dear ImGui ---"
 if [ ! -d "${REPO_ROOT}/imgui" ]; then
-    git clone --depth 1 --branch v1.92.7 https://github.com/ocornut/imgui.git "${REPO_ROOT}/imgui"
+    git clone --depth 1 --branch v1.92.9-docking https://github.com/ocornut/imgui.git "${REPO_ROOT}/imgui"
 else
     echo "  déjà présent (${REPO_ROOT}/imgui)"
 fi

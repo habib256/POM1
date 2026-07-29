@@ -583,7 +583,7 @@ void MainWindow_ImGui::render()
         std::vector<MemoryViewer_ImGui::RomRegion> mvRoms;
         mvRoms.reserve(loadedRoms.size());
         for (const auto& r : loadedRoms)
-            mvRoms.push_back({r.start, r.end});
+            mvRoms.push_back({r.start, r.end, r.name});
         memoryViewer->setLoadedRoms(mvRoms);
     }
 
@@ -629,6 +629,12 @@ void MainWindow_ImGui::render()
 
     // Barre d'outils sous le menu
     renderToolbar();
+
+    // Hôte de docking : occupe toute la bande entre la barre d'outils et la
+    // barre de statut. DOIT être soumis avant le premier Begin() d'une fenêtre
+    // ancrable — tout ce qui suit dans render() en dépend (voir
+    // MainWindow_Dock.cpp).
+    renderDockSpace();
 
     // Fenêtre de l'écran (centrale)
     // Au premier frame, dimensionner selon l'écran Apple 1 (40x24 * scale)

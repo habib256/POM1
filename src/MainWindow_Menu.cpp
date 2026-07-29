@@ -229,6 +229,21 @@ void MainWindow_ImGui::renderMenuBar()
                         "Wipe every preset's saved layout (all ini/imgui_preset_NN.ini\n"
                         "+ preset_NN.size), re-seed the factory defaults, and reset the\n"
                         "active preset's windows now. Other presets revert on next load.");
+                ImGui::Separator();
+                if (ImGui::MenuItem("Docking only")) {
+                    wantDockLayoutRebuild = true;
+                    setStatusMessage("Dock layout reset to factory arrangement", 2.5f);
+                }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip(
+                        "Rebuild ONLY the docked workspace, from the built-in arrangement\n"
+                        "(Apple 1 raster centre, card framebuffers + editors right,\n"
+                        "inspectors far right, consoles bottom). Floating windows, the\n"
+                        "open/closed set and the OS window size are left untouched —\n"
+                        "unlike the two entries above.\n"
+                        "NOTE: this is the CODE default, not this preset's shipped\n"
+                        "arrangement. To get that one back, use \"This preset\" above —\n"
+                        "it re-seeds the curated ini_defaults/ layout.");
                 ImGui::EndMenu();
             }
             ImGui::Separator();
@@ -887,9 +902,11 @@ void MainWindow_ImGui::renderToolbar()
     ImGui::SetNextWindowPos(ImVec2(0, menuBarHeight));
     ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x, toolbarHeight));
 
+    // NoDocking : la barre d'outils délimite le DockSpace, elle ne doit jamais
+    // pouvoir y être avalée (cf. MainWindow_Dock.cpp).
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                              ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
-                             ImGuiWindowFlags_NoSavedSettings;
+                             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking;
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 4));
     if (ImGui::Begin("##Toolbar", nullptr, flags)) {
@@ -1598,9 +1615,10 @@ void MainWindow_ImGui::renderStatusBar()
     ImGui::SetNextWindowPos(ImVec2(0, io.DisplaySize.y - 25));
     ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x, 25));
 
+    // NoDocking : même raison que la barre d'outils — elle borne le DockSpace.
     ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                                    ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
-                                   ImGuiWindowFlags_NoSavedSettings;
+                                   ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking;
 
     if (ImGui::Begin("##StatusBar", nullptr, window_flags)) {
         // Côté gauche: message de statut

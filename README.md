@@ -78,7 +78,7 @@ Two zero-effort ways to start — no toolchain, no build:
 ```bash
 git clone https://github.com/habib256/pom1.git
 cd POM1
-./setup_pom1.sh                    # fetch Dear ImGui + install deps (one-time)
+./setup_pom1.sh                    # fetch Dear ImGui (docking branch) + deps (one-time)
 cd build && cmake .. && make
 cd .. && ./run_emulator.sh
 ```
@@ -163,6 +163,8 @@ The keyboard is **TTL-faithful** — no autorepeat by default, like the real ASC
 
 One click in the **Presets** menu (or `--preset N`) reconfigures the whole machine — RAM, BASIC and cards. Per-preset window layouts persist under `ini/imgui_preset_NN.ini`.
 
+The UI is a **dockable workspace**: the Apple-1 raster sits in the centre, expansion-card screens and the editors/Bench share a panel to its right, inspectors get a right-hand column and consoles a bottom strip. Drag any window by its tab to re-split, tab or float it — the arrangement is saved per preset and restored when you come back. Settings → *Reset Windows Layout → Docking only* puts the workspace back to the factory arrangement without touching your floating windows.
+
 | # | Preset | RAM | BASIC | Cards |
 |:-:|:-------|:---:|:------|:------|
 | 0 | **Apple-1 CC65 Development Bench** 🛠 | 8 KB | Integer cassette | ACI |
@@ -173,7 +175,7 @@ One click in the **Presets** menu (or `--preset N`) reconfigures the whole machi
 | 5 | **Apple-1 + SWTPC GT-6144 (1976)** | 8 KB | — | ACI, GT-6144, PR-40 |
 | 6 | **Replica-1 with ACI & Krusader (Briel 2003)** | 8 KB | — | ACI, Krusader |
 | 7 | **Replica-1 with CFFA1 & Applesoft Lite (Dreher 2007)** | 8 KB | Applesoft Lite | CFFA1 |
-| 8 | **P-LAB microSD & Applesoft Lite (Apr 2022)** | 8 KB | Applesoft Lite | microSD |
+| 8 | **P-LAB microSD & Applesoft Lite (Apr 2022)** | 32 KB | Applesoft Lite | microSD |
 | 9 | **P-LAB Apple-1 with TMS9918 + CodeTank** | 8 KB | — | TMS9918, CodeTank |
 | 10 | **P-LAB Multiplexing Fantasy** | 64 KB | Integer | A1-SID, TMS9918 + CodeTank, I/O & RTC, Wi-Fi, Terminal |
 | 11 | **Uncle Bernie's GEN2 HGR Color (Apr 2026)** | 48 KB | — | GEN2 HGR, ACI |

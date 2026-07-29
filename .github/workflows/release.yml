@@ -32,7 +32,7 @@ permissions:
 
 env:
   POM1_REQUIRE_CC65: "1"   # every packager must end with a verified asm+C cc65 bundle
-  IMGUI_TAG: v1.92.7       # pinned Dear ImGui release (matches ci.yml)
+  IMGUI_TAG: v1.92.9-docking       # pinned Dear ImGui release (matches ci.yml)
 
 jobs:
   # ---------------------------------------------------- normalize version ----

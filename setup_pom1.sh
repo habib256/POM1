@@ -35,8 +35,8 @@ fi
 
 # Télécharger Dear ImGui
 if [ ! -d "imgui" ]; then
-    echo "Téléchargement de Dear ImGui (v1.92.7, version testée par POM1)..."
-    git clone --depth 1 --branch v1.92.7 https://github.com/ocornut/imgui.git
+    echo "Téléchargement de Dear ImGui (v1.92.9-docking, version testée par POM1)..."
+    git clone --depth 1 --branch v1.92.9-docking https://github.com/ocornut/imgui.git
     echo "Dear ImGui téléchargé avec succès !"
 else
     echo "Dear ImGui déjà présent."

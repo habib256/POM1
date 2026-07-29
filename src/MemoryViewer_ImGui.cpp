@@ -662,10 +662,14 @@ MemoryViewer_ImGui::RegionInfo MemoryViewer_ImGui::resolveRegion(int address) co
             return { "Juke-Box ROM", ImVec4(0.47f, 0.31f, 0.71f, 1.0f) };
     }
 
-    // Preset / user-loaded ROM overlays (e.g. Applesoft Lite $6000-$7FFF)
+    // Preset / user-loaded overlays. Named rather than lumped under a generic
+    // "Loaded ROM": not all of them are ROM — the microSD card's Applesoft Lite
+    // at $6000-$7FFF sits in the card's own RAM (the SD CARD OS loads it there;
+    // the card's only EEPROM is the 8 KB at $8000-$9FFF).
     for (const auto& rom : romRegions) {
         if (address >= rom.start && address <= rom.end)
-            return { "Loaded ROM", ImVec4(1.0f, 1.0f, 0.31f, 1.0f) };
+            return { rom.name.empty() ? "Loaded ROM" : rom.name.c_str(),
+                     ImVec4(1.0f, 1.0f, 0.31f, 1.0f) };
     }
 
     // $E000-$EFFF on real Apple-1 is RAM (Integer BASIC was distributed on
