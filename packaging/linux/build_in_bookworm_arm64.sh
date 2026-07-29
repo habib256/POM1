@@ -51,7 +51,7 @@ tools/build_cc65_bundle.sh --out dist/cc65-bundle
 
 # --- Dear ImGui (pinned; matches every other release job) --------------------
 rm -rf imgui
-git clone --depth 1 --branch "${IMGUI_TAG:-v1.92.7}" https://github.com/ocornut/imgui.git
+git clone --depth 1 --branch "${IMGUI_TAG:-v1.92.9-docking}" https://github.com/ocornut/imgui.git
 
 # --- Build POM1, GLES tier ---------------------------------------------------
 #     -static-libstdc++/-static-libgcc for the same reason as the bionic job:

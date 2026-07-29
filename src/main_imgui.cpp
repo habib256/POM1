@@ -1043,7 +1043,18 @@ int main(int argc, char* argv[])
     // La navigation manette, elle, ne rentre jamais en conflit avec le clavier
     // Apple 1 — toujours active (no-op sans manette branchée).
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
-    // io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // Disponible seulement dans la branche docking
+    // Docking (branche `docking` de Dear ImGui, épinglée v1.92.9-docking par
+    // setup_pom1.sh / la CI). Toute l'UI POM1 vit dans un DockSpace plein
+    // cadre construit par MainWindow_ImGui::renderDockSpace(), entre la barre
+    // d'outils et la barre de statut. Le multi-viewport (fenêtres détachées
+    // hors de la fenêtre OS) reste VOLONTAIREMENT désactivé : WASM ne le
+    // supporte pas et le backend Metal maison (PomRenderer_Metal.mm + son
+    // CAMetalLayer + le CRT stack par slot) devrait gérer des viewports
+    // secondaires — deux chemins divergents pour un gain marginal.
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    // Ancrage sans maintenir SHIFT (le défaut ImGui) : POM1 réserve SHIFT au
+    // clavier Apple 1 émulé, et l'ancrage doit rester une action souris pure.
+    io.ConfigDockingWithShift = false;
     // Disable ImGui's automatic imgui.ini load/save. POM1 manages per-preset
     // ini files under ini/imgui_preset_NN.ini manually via
     // MainWindow_ImGui::savePresetLayout / loadPresetLayout — called on

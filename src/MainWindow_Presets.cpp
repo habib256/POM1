@@ -260,13 +260,16 @@ const MachineConfig kMachinePresets[] = {
     },
     {
         "P-LAB Apple-1 with microSD & Applesoft Lite (April 2022)",
-        "P-LAB microSD Storage Card, Applesoft Lite. 8 KB dual-bank RAM "
-        "(4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF — Parmigiani's standard). "
-        "Applesoft Lite is a separate ROM at $6000-$7FFF (cold/warm: "
-        "6000R / 6003R); the $E000-$EFFF high bank stays free RAM.",
+        "P-LAB microSD Storage Card, Applesoft Lite. 32 KB contiguous RAM at "
+        "$0000-$7FFF: the card carries its OWN memory expansion on top of the "
+        "motherboard's 4 KB at $0000-$0FFF (manual §6.1, three jumpers fitted), "
+        "plus the 4 KB at $E000-$EFFF — 36 KB total. Applesoft Lite is not a "
+        "ROM: the SD CARD OS loads it from the card into that RAM at "
+        "$6000-$7FFF (cold/warm: 6000R / 6003R). The card's only EEPROM is the "
+        "8 KB SD CARD OS at $8000-$9FFF; 65C22 at $A000.",
         false, true, false, false, false, false, false,
         /*pr40*/ false,
-        false, false, false, 8, BasicType::ApplesoftLite,
+        false, false, false, 32, BasicType::ApplesoftLite,
         /*sidSE*/ false,
         /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
@@ -898,7 +901,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
                     } else {
                         emulation->unloadBasic();
                     }
-                    loadedRoms.push_back({"Applesoft Lite (P-LAB microSD)", 0x6000, 0x7FFF});
+                    loadedRoms.push_back({"Applesoft Lite (loaded in card RAM)", 0x6000, 0x7FFF});
                     if (ok && emulation->reloadWozMonitor(error))
                         loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
                 }
@@ -1025,7 +1028,10 @@ void MainWindow_ImGui::renderProfileChooser()
     ImGui::Begin("##ProfileChooser", nullptr,
                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBringToFrontOnFocus |
-                 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar);
+                 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar |
+                 // Écran de boot plein cadre : jamais ancrable (le DockSpace
+                 // n'est de toute façon pas soumis tant qu'il est affiché).
+                 ImGuiWindowFlags_NoDocking);
 
     const float winW = ImGui::GetWindowWidth();
     // Three side-by-side columns (Machines / Create / Development). Clamp to the

@@ -24,7 +24,7 @@ jobs:
                                   libgles2-mesa-dev libegl1-mesa-dev
 
       - name: Fetch Dear ImGui (pinned to the tested release)
-        run: git clone --depth 1 --branch v1.92.7 https://github.com/ocornut/imgui.git
+        run: git clone --depth 1 --branch v1.92.9-docking https://github.com/ocornut/imgui.git
 
       - name: Build POM1
         run: |

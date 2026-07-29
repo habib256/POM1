@@ -31,7 +31,7 @@ tools/build_cc65_bundle.sh --out dist/cc65-bundle
 #     imgui version — a pinned github.com tag is far more reliable than the
 #     bionic apt mirrors this rework was built to escape.
 rm -rf imgui
-git clone --depth 1 --branch "${IMGUI_TAG:-v1.92.7}" https://github.com/ocornut/imgui.git
+git clone --depth 1 --branch "${IMGUI_TAG:-v1.92.9-docking}" https://github.com/ocornut/imgui.git
 
 # --- Build POM1 --------------------------------------------------------------
 #     -static-libstdc++/-static-libgcc so the ONLY libc-family floor the AppImage

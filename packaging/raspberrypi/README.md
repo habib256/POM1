@@ -21,7 +21,7 @@ Le script (idempotent, à lancer en utilisateur normal — **pas** en `sudo`) :
 
 1. installe les paquets (build + une session X minimale : `xinit`,
    `matchbox-window-manager`, `unclutter`) ;
-2. récupère Dear ImGui (`v1.92.7`) s'il manque ;
+2. récupère Dear ImGui (`v1.92.9-docking`) s'il manque ;
 3. compile `build/POM1` ;
 4. active la **connexion automatique** en console sur `tty1` ;
 5. écrit `~/.xinitrc` (matchbox plein écran + boucle POM1) et le déclencheur

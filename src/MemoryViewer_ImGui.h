@@ -66,7 +66,10 @@ public:
         symbols.loadApple1Defaults();
     }
 
-    struct RomRegion { uint16_t start, end; };
+    // `name` mirrors MainWindow_ImGui::RomRegion::name so the region banner can
+    // print the real label instead of a generic "Loaded ROM" — it matters for
+    // $6000-$7FFF, which is card RAM holding Applesoft Lite, not a ROM.
+    struct RomRegion { uint16_t start, end; std::string name; };
     void setLoadedRoms(const std::vector<RomRegion>& roms) { romRegions = roms; }
 
 private:
