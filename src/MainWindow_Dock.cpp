@@ -113,8 +113,8 @@ ImGuiID MainWindow_ImGui::renderDockSpace()
     // The host window fills the viewport minus the two fixed bands. Both are
     // laid out from the same constants renderToolbar()/renderStatusBar() use,
     // so the three stay glued together whatever the font/theme scale.
-    const float topBand    = ImGui::GetFrameHeight() + kToolbarBandHeight;
-    const float bottomBand = kStatusBarBandHeight;
+    const float topBand    = ImGui::GetFrameHeight() + uiPx(kToolbarBandHeight);
+    const float bottomBand = uiPx(kStatusBarBandHeight);
     const float hostH      = std::max(1.0f, vp->Size.y - topBand - bottomBand);
 
     ImGui::SetNextWindowPos(ImVec2(vp->Pos.x, vp->Pos.y + topBand));

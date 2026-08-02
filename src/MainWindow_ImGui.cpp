@@ -19,10 +19,13 @@
 #include <sstream>
 #include <string>
 
+// ImGuiWindow / GetCurrentContext() — live window extent for the WASM canvas;
+// ScaleWindowsInViewport + ImGuiViewportP for the interface-zoom rescale.
+#include "imgui_internal.h"
+
 #if POM1_IS_WASM
 #include <emscripten.h>
 #include <emscripten/html5.h>
-#include "imgui_internal.h"   // ImGuiWindow / GetCurrentContext() — live window extent for the canvas
 #endif
 
 namespace {
@@ -505,6 +508,19 @@ void MainWindow_ImGui::render()
         uiSettingsLoaded_ = true;
         loadUiSettings();
     }
+    // Follow the monitor's content scale (window dragged to a HiDPI screen, OS
+    // scale changed). No-op unless it actually moved — see setUiDpiScale.
+    syncUiDpiScale();
+    // A zoom change queued a window-rect rescale; apply it here, before the
+    // first Begin() of the frame, the same point at which ImGui applies its own
+    // DPI rescale. Floating windows follow the zoom; docked ones are re-laid by
+    // their node anyway (splitters keep their share of the dockspace).
+    if (std::fabs(uiPendingWindowScale_ - 1.0f) > 0.001f) {
+        ImGui::ScaleWindowsInViewport(
+            static_cast<ImGuiViewportP*>(ImGui::GetMainViewport()),
+            uiPendingWindowScale_);
+        uiPendingWindowScale_ = 1.0f;
+    }
 #if !POM1_IS_WASM
     // Track the WINDOWED rect while neither maximized, fullscreen nor
     // iconified — savePresetLayout persists this rect (plus the flags), so a
@@ -646,10 +662,10 @@ void MainWindow_ImGui::render()
         ImVec2 charSize = ImGui::CalcTextSize("M");
         ImGui::PopFont();
         const ImVec2 cell = Screen_ImGui::computeApple1CellDimensions(charSize);
-        float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale + kApple1ImGuiWinPadW;
-        float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale + kApple1ImGuiWinPadH;
-        const float toolbarBottom = ImGui::GetFrameHeight() + kToolbarBandHeight;
-        ImGui::SetNextWindowPos(ImVec2(10, toolbarBottom + kGapBelowToolbarBeforeApple1),
+        float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale + uiPx(kApple1ImGuiWinPadW);
+        float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale + uiPx(kApple1ImGuiWinPadH);
+        const float toolbarBottom = ImGui::GetFrameHeight() + uiPx(kToolbarBandHeight);
+        ImGui::SetNextWindowPos(ImVec2(10, toolbarBottom + uiPx(kGapBelowToolbarBeforeApple1)),
                                 ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize(ImVec2(sw, sh), ImGuiCond_FirstUseEver);
         firstFrame = false;
@@ -662,7 +678,7 @@ void MainWindow_ImGui::render()
     // Resize Apple 1 screen window on fullscreen transitions
     if (fullscreen != wasFullscreen) {
         ImGuiIO& fsio = ImGui::GetIO();
-        const float toolbarBottom = ImGui::GetFrameHeight() + kToolbarBandHeight;
+        const float toolbarBottom = ImGui::GetFrameHeight() + uiPx(kToolbarBandHeight);
         if (fullscreen) {
             // Defer resize by 1 frame so GLFW has updated DisplaySize
             fullscreenResizePending = 2;
@@ -672,9 +688,9 @@ void MainWindow_ImGui::render()
             ImVec2 charSize = ImGui::CalcTextSize("M");
             ImGui::PopFont();
             const ImVec2 cell = Screen_ImGui::computeApple1CellDimensions(charSize);
-            float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale + kApple1ImGuiWinPadW;
-            float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale + kApple1ImGuiWinPadH;
-            ImGui::SetNextWindowPos(ImVec2(10, toolbarBottom + kGapBelowToolbarBeforeApple1));
+            float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale + uiPx(kApple1ImGuiWinPadW);
+            float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale + uiPx(kApple1ImGuiWinPadH);
+            ImGui::SetNextWindowPos(ImVec2(10, toolbarBottom + uiPx(kGapBelowToolbarBeforeApple1)));
             ImGui::SetNextWindowSize(ImVec2(sw, sh));
         }
         wasFullscreen = fullscreen;
@@ -683,7 +699,7 @@ void MainWindow_ImGui::render()
         fullscreenResizePending--;
         if (fullscreenResizePending == 0) {
             ImGuiIO& fsio = ImGui::GetIO();
-            const float toolbarBottom = ImGui::GetFrameHeight() + kToolbarBandHeight;
+            const float toolbarBottom = ImGui::GetFrameHeight() + uiPx(kToolbarBandHeight);
             ImGui::SetNextWindowPos(ImVec2(0, toolbarBottom));
             ImGui::SetNextWindowSize(ImVec2(fsio.DisplaySize.x, fsio.DisplaySize.y - toolbarBottom));
         }

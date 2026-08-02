@@ -1133,20 +1133,22 @@ int main(int argc, char* argv[])
     }
 
     // HiDPI: on Linux (X11) and Windows, GLFW does not auto-scale the framebuffer,
-    // so on a high-DPI monitor the UI font renders tiny (users had to poke
-    // io.FontGlobalScale by hand). Seed it from the monitor's content scale
-    // (glfwGetWindowContentScale, GLFW 3.3+). Skipped on macOS — Retina is handled
-    // by io.DisplayFramebufferScale, so scaling here would double the size — and on
-    // WASM, where the browser owns devicePixelRatio. Overridable at runtime in
-    // Display Settings (auto toggle + manual slider).
+    // so on a high-DPI monitor the UI renders tiny. Read the monitor's content
+    // scale (glfwGetWindowContentScale, GLFW 3.3+) and hand it to MainWindow
+    // below — it multiplies it by the user's Interface zoom and scales the whole
+    // UI (geometry AND fonts) in applyUiTheme(). Skipped on macOS — Retina is
+    // handled by io.DisplayFramebufferScale, so scaling here would double the
+    // size — and on WASM, where the browser owns devicePixelRatio. Overridable
+    // at runtime in Settings ▸ UI Theme ▸ Interface zoom.
+    float bootContentScale = 1.0f;
 #if !defined(__APPLE__) && !POM1_IS_WASM
     {
         float xs = 1.0f, ys = 1.0f;
         glfwGetWindowContentScale(window, &xs, &ys);
         if (xs > 1.01f) {
-            io.FontGlobalScale = xs > 3.0f ? 3.0f : xs;
-            fprintf(stderr, "[POM1] HiDPI: monitor content scale %.2f -> UI font scale %.2f\n",
-                    xs, io.FontGlobalScale);
+            bootContentScale = xs > 3.0f ? 3.0f : xs;
+            fprintf(stderr, "[POM1] HiDPI: monitor content scale %.2f -> UI scale %.2f\n",
+                    xs, bootContentScale);
         }
     }
 #endif
@@ -1166,6 +1168,9 @@ int main(int argc, char* argv[])
 
     // Create main application
     MainWindow_ImGui mainWindow;
+    // Before anything renders: the first render() frame loads ini/ui.settings
+    // and applies the theme, which bakes zoom × DPI into the style.
+    mainWindow.setUiDpiScale(bootContentScale);
     if (plan.presetIndex >= 0)
         mainWindow.setDefaultPresetIndex(plan.presetIndex);
     if (plan.terminalOverride)

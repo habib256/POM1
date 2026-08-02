@@ -20,6 +20,8 @@
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -527,19 +529,66 @@ bool NativeFileDialog::saveFile(GLFWwindow* /*parent*/,
 //    above; on macOS those live in NativeFileDialog_Mac.mm but link the same). ─
 namespace pom1 {
 
-// User preference (Settings → "Use native OS file dialogs"). Default true:
-// native dialogs on. When false, isAvailable() reports false even where a
-// native picker exists, so every Load/Save flow uses the in-process ImGui
-// browser (instant, no NSOpenPanel/XPC cold-start). Plain global — only ever
-// touched from the UI thread.
-namespace { bool s_nativeEnabled = true; }
+// User preference (Settings → "Native OS file dialogs"), persisted in
+// ini/ui.settings as `native_dialogs`. When false, isAvailable() reports false
+// even where a native picker exists, so every Load/Save flow uses the
+// in-process ImGui browser (instant, no NSOpenPanel/XPC cold-start).
+// Plain global — only ever touched from the UI thread.
+namespace {
 
-void NativeFileDialog::setEnabled(bool enabled) { s_nativeEnabled = enabled; }
-bool NativeFileDialog::isEnabled() { return s_nativeEnabled; }
+#if defined(__linux__) && !POM1_IS_WASM
+// A Raspberry Pi announces itself in the device tree, e.g.
+// "Raspberry Pi 400 Rev 1.1". Read once — the file is a few dozen bytes.
+bool runningOnRaspberryPi()
+{
+    static const bool pi = []() {
+        std::ifstream f("/proc/device-tree/model", std::ios::binary);
+        if (!f) return false;
+        std::string model((std::istreambuf_iterator<char>(f)),
+                          std::istreambuf_iterator<char>());
+        return model.find("Raspberry Pi") != std::string::npos;
+    }();
+    return pi;
+}
+#endif
+
+// Compiled default. Native pickers everywhere EXCEPT the Raspberry Pi, where
+// the ImGui browser is the default: the kiosk session (packaging/raspberrypi)
+// runs a bare matchbox WM with no GTK/KDE desktop behind it, so a forked
+// zenity/kdialog pays a multi-second cold start on an SD card, can land behind
+// the fullscreen window, and may not be installed at all. POM1's in-process
+// browser is instant and always there. Both the native GLES build tier
+// (-DPOM1_GLES=ON, documented as "Raspberry Pi & co") and a runtime device-tree
+// probe select it, because the Pi kiosk installer builds with plain `cmake`.
+// A saved `native_dialogs` in ini/ui.settings always wins over this.
+bool defaultNativeEnabled()
+{
+#if POM1_IS_WASM
+    return false;                       // no native backend at all
+#elif POM1_GL_ES
+    return false;                       // native GLES tier = Raspberry Pi & co
+#elif defined(__linux__)
+    return !runningOnRaspberryPi();
+#else
+    return true;
+#endif
+}
+
+bool& nativeEnabledFlag()
+{
+    static bool v = defaultNativeEnabled();
+    return v;
+}
+
+} // namespace
+
+void NativeFileDialog::setEnabled(bool enabled) { nativeEnabledFlag() = enabled; }
+bool NativeFileDialog::isEnabled() { return nativeEnabledFlag(); }
+bool NativeFileDialog::defaultEnabled() { return defaultNativeEnabled(); }
 
 bool NativeFileDialog::isAvailable()
 {
-    return s_nativeEnabled && platformAvailable();
+    return nativeEnabledFlag() && platformAvailable();
 }
 
 bool NativeFileDialog::pickFiltered(GLFWwindow* parent,

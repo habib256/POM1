@@ -79,6 +79,11 @@ public:
     static void applyHeadlessConfig(EmulationController& emu, int presetIndex);
     void setDefaultPresetIndex(int index) { defaultPresetIndex = index; }
     void setTerminalCardOverride(bool enable) { terminalCardOverride = enable; }
+    /// Monitor content scale from the windowing system (1.0 = 96 dpi). Seeded
+    /// by main_imgui right after the GLFW backend is up and refreshed by
+    /// syncUiDpiScale(); multiplied by the user's Interface zoom to scale the
+    /// whole UI. Ignored while Settings ▸ "Auto (follow monitor DPI)" is off.
+    void setUiDpiScale(float scale);
     void setTelemetryPortOverride(int port) { telemetryPortOverride = port; }
     void setTelemetryLogPath(const std::string& p) { telemetryLogPath = p; }
     // Preload a cassette file right after the initial preset applies, and/or
@@ -520,14 +525,25 @@ private:
     bool oorStrictModeEnabled = false;
     bool fullscreen = false;
 
-    // HiDPI UI font scaling (Display Settings). Auto = follow the monitor's
-    // content scale each frame the dialog is open; otherwise use the manual
-    // slider. Both drive ImGui::GetIO().FontGlobalScale, which main_imgui seeds
-    // from the monitor DPI at boot (desktop non-macOS). uiHiDpiInit_ latches the
-    // manual value to the boot scale on first Display-Settings open.
-    bool uiHiDpiAuto_ = true;
-    float uiHiDpiManualScale_ = 1.0f;
-    bool uiHiDpiInit_ = false;
+    // ── Interface zoom ────────────────────────────────────────────────────
+    // uiScale_ is the USER zoom (Settings ▸ Interface zoom, persisted
+    // `ui_scale`); uiDpiScale_ is the monitor content scale reported by the
+    // windowing system, applied only while uiHiDpiAuto_ is on. The effective
+    // zoom is their product and it scales the WHOLE interface — ImGui geometry
+    // via ImGuiStyle::ScaleAllSizes(), fonts via FontScaleMain/FontScaleDpi,
+    // POM1's own toolbar/status bands via detail::uiPx(). Everything goes
+    // through applyUiTheme(), which rebuilds the style from scratch because
+    // ScaleAllSizes() is cumulative.
+    bool  uiHiDpiAuto_ = true;
+    float uiScale_     = 1.0f;
+    float uiDpiScale_  = 1.0f;
+    // Ratio by which the FLOATING windows still have to be rescaled, applied at
+    // the top of the next render(). ScaleAllSizes only scales the style, not
+    // window rects — without this a floating window keeps its old pixel size
+    // and clips its now-larger contents. 1.0 = nothing pending. Only an
+    // explicit zoom/DPI change queues a ratio: at boot the geometry restored
+    // from ini/ was already saved at the current zoom.
+    float uiPendingWindowScale_ = 1.0f;
 
     // ── Global (not per-preset) UI settings — ini/ui.settings ──────────────
     // Theme + HiDPI scale choice persist across sessions and presets. Loaded
@@ -540,6 +556,14 @@ private:
     void applyUiTheme(int theme);
     void loadUiSettings();
     void saveUiSettings();
+
+    /// Set the user zoom (clamped to detail::kUiScaleMin..Max) and re-apply the
+    /// theme. Does nothing when the value is unchanged — re-theming every frame
+    /// would rebuild the whole style for nothing.
+    void setUiScale(float scale);
+    /// Poll the windowing system's content scale and re-apply the theme when it
+    /// moved (monitor change, OS scale change). No-op while Auto is off.
+    void syncUiDpiScale();
 
     // ── Layout autosave state (maybeAutosaveLayout) ────────────────────────
     float layoutDirtyForSeconds_ = -1.0f;  // <0 = clean, else time since last change

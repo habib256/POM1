@@ -274,6 +274,37 @@ void MainWindow_ImGui::renderMenuBar()
                         saveUiSettings();
                     }
                 }
+
+                // Zoom lives with the theme because it IS part of the theme
+                // apply: one style rebuild scales colours, geometry and fonts
+                // together (applyUiTheme in MainWindow_Presets.cpp). Docked
+                // panels follow — the dockspace and the two bands that frame it
+                // are laid out from the same scaled constants.
+                ImGui::SeparatorText("Interface zoom");
+                int pct = static_cast<int>(uiScale_ * 100.0f + 0.5f);
+                ImGui::SetNextItemWidth(uiPx(180.0f));
+                if (ImGui::SliderInt("##uiscale", &pct,
+                                     static_cast<int>(kUiScaleMin * 100.0f),
+                                     static_cast<int>(kUiScaleMax * 100.0f), "%d %%"))
+                    setUiScale(static_cast<float>(pct) / 100.0f);
+                if (ImGui::IsItemDeactivatedAfterEdit())
+                    saveUiSettings();
+                auto zoomStep = [&](const char* label, float delta) {
+                    if (ImGui::MenuItem(label)) {
+                        setUiScale(uiScale_ + delta);
+                        saveUiSettings();
+                    }
+                };
+                zoomStep("Zoom in",  +kUiScaleStep * 2.0f);
+                zoomStep("Zoom out", -kUiScaleStep * 2.0f);
+                if (ImGui::MenuItem("Reset to 100 %")) {
+                    setUiScale(1.0f);
+                    saveUiSettings();
+                }
+                if (uiHiDpiAuto_ && uiDpiScale_ > 1.005f)
+                    ImGui::TextDisabled("Monitor scale %.0f %% - effective %.0f %%",
+                                        uiDpiScale_ * 100.0f,
+                                        uiScale_ * uiDpiScale_ * 100.0f);
                 ImGui::EndMenu();
             }
             ImGui::Separator();
@@ -325,17 +356,23 @@ void MainWindow_ImGui::renderMenuBar()
                 bool nativeDialogs = pom1::NativeFileDialog::isEnabled();
                 if (ImGui::MenuItem("Native OS file dialogs", nullptr, &nativeDialogs)) {
                     pom1::NativeFileDialog::setEnabled(nativeDialogs);
+                    saveUiSettings();   // persists as `native_dialogs` in ini/ui.settings
                     setStatusMessage(nativeDialogs
                                          ? "File dialogs: native OS picker"
                                          : "File dialogs: fast in-process browser", 2.5f);
                 }
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip(
-                        "On (default): Load/Save use the OS-native file picker (Finder /\n"
+                        "On: Load/Save use the OS-native file picker (Finder /\n"
                         "Explorer / zenity) - integrated, but slower to appear (separate\n"
                         "sandboxed process, cold-start lag on first open).\n"
                         "Off: POM1's instant in-process browser. Applies to every Load/Save\n"
-                        "(memory, tape, snapshot, DevBench, Paint editors).");
+                        "(memory, tape, snapshot, DevBench, Paint editors).\n"
+                        "%s",
+                        pom1::NativeFileDialog::defaultEnabled()
+                            ? "Default on this machine: ON (native picker)."
+                            : "Default on this machine: OFF - Raspberry Pi / kiosk build,\n"
+                              "where the in-process browser is the reliable choice.");
             }
 #endif
             ImGui::Separator();
@@ -897,7 +934,7 @@ void MainWindow_ImGui::renderToolbar()
 {
     ImGuiIO& io = ImGui::GetIO();
     float menuBarHeight = ImGui::GetFrameHeight();
-    float toolbarHeight = kToolbarBandHeight;
+    float toolbarHeight = uiPx(kToolbarBandHeight);
 
     ImGui::SetNextWindowPos(ImVec2(0, menuBarHeight));
     ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x, toolbarHeight));
@@ -908,11 +945,14 @@ void MainWindow_ImGui::renderToolbar()
                              ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
                              ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking;
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 4));
+    // Padding + button size are authored at 100 % like the band height above:
+    // PushStyleVar takes a raw pixel value, so the interface zoom has to be
+    // applied by hand or the buttons stay 28×24 inside a band that grew.
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, uiPx(ImVec2(8, 4)));
     if (ImGui::Begin("##Toolbar", nullptr, flags)) {
 
         ImVec4 activeColor(0.2f, 0.4f, 0.8f, 1.0f);
-        ImVec2 btnSize(28, 24);
+        ImVec2 btnSize = uiPx(ImVec2(28, 24));
         auto plugJukeBoxFromToolbar = [&]() {
             jukeBoxChipMode = JukeBox::ChipMode::Flash;
             cffa1Enabled = false;
@@ -1612,8 +1652,11 @@ void MainWindow_ImGui::renderStatusBar()
 {
     // Barre de statut simple en bas de l'écran
     ImGuiIO& io = ImGui::GetIO();
-    ImGui::SetNextWindowPos(ImVec2(0, io.DisplaySize.y - 25));
-    ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x, 25));
+    // Same band the dockspace reserves at the bottom (MainWindow_Dock.cpp) —
+    // scaled by the interface zoom so the two never drift apart.
+    const float statusBand = uiPx(kStatusBarBandHeight);
+    ImGui::SetNextWindowPos(ImVec2(0, io.DisplaySize.y - statusBand));
+    ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x, statusBand));
 
     // NoDocking : même raison que la barre d'outils — elle borne le DockSpace.
     ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |

@@ -10,6 +10,49 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — interface zoom (the whole UI, docking included)
+
+- **Settings ▸ UI Theme ▸ Interface zoom** (also in Display Settings): a 75 –
+  250 % slider plus Zoom in / Zoom out / Reset that scales the **entire**
+  interface — Dear ImGui widget geometry (padding, rounding, scrollbars, item
+  spacing) **and** fonts **and** POM1's own toolbar / status bands, so the
+  dockspace and the two bars that frame it keep their proportions. Technique
+  lifted from POM2's `Pom2Theme`: `applyUiTheme()` now rebuilds the style from a
+  **default-constructed** `ImGuiStyle` on every call, because
+  `ImGuiStyle::ScaleAllSizes()` is *cumulative* — re-applying a zoom on a live
+  style compounds the padding. Fonts scale through `style.FontScaleMain` (user
+  zoom) × `style.FontScaleDpi` (monitor scale), the 1.92 dynamic-font path, so
+  nothing is re-rasterised and no backend texture is rebuilt mid-session.
+- The band constants POM1 owns (`kToolbarBandHeight`, `kStatusBarBandHeight`, …)
+  are authored at 100 % and multiplied at the point of use by the new
+  `detail::uiPx()`; `ScaleAllSizes` knows nothing about them, and left unscaled
+  they would let the dockspace overlap a toolbar whose contents had grown.
+- Changing the zoom also rescales floating window rects once
+  (`ScaleWindowsInViewport`, applied at the top of the next `render()` like
+  ImGui's own DPI path) so a panel doesn't clip its now-larger contents. Docked
+  panels keep their share of the dockspace.
+- **HiDPI is now one factor of that product** instead of a separate font-only
+  slider: `io.FontGlobalScale` is gone (obsolete since ImGui 1.92), the monitor
+  content scale is polled each frame (`syncUiDpiScale`) so moving the window to
+  another monitor re-scales live, and "Auto (follow monitor DPI)" simply decides
+  whether that factor counts. Persisted as `ui_scale` in `ini/ui.settings`; a
+  pre-existing manual `hidpi_scale` migrates into it.
+
+### Changed — Raspberry Pi defaults to POM1's in-process file browser
+
+- `NativeFileDialog` now has a per-platform **compiled default**
+  (`defaultEnabled()`): native pickers on desktop Linux / macOS / Windows,
+  **off on a Raspberry Pi** — the kiosk session (`packaging/raspberrypi`) runs a
+  bare matchbox WM with no GTK/KDE desktop behind it, so a forked
+  zenity/kdialog pays a multi-second cold start on an SD card, can land behind
+  the fullscreen window, and may not be installed at all. Detected both from the
+  native GLES tier (`-DPOM1_GLES=ON`) and at runtime from
+  `/proc/device-tree/model`, because the Pi installer builds with a plain
+  `cmake`.
+- The Settings toggle is now **persisted** (`native_dialogs` in
+  `ini/ui.settings`) instead of being session-only, so a Pi user who wants the
+  native picker gets it back on every launch — and vice versa on the desktop.
+
 ### Changed — architecture: one card registry, and the core is UI-free again
 
 - **`Memory::cardSlots()` replaces four hand-synced lists.** Adding a card used

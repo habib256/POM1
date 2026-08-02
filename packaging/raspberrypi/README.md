@@ -51,6 +51,28 @@ que des fonctions présentes dès la 3.1, tout rend correctement.
 > vers `3,1` sans `GLFW_OPENGL_CORE_PROFILE`, puis recompiler. À n'utiliser que
 > si la surcharge Mesa ne suffit pas.
 
+## Dialogues de fichiers : navigateur ImGui par défaut
+
+Sur Raspberry Pi, **POM1 utilise son propre navigateur de fichiers intégré**
+(instantané, dessiné dans la fenêtre) au lieu du sélecteur natif GTK/KDE. La
+borne tourne sous `matchbox` sans bureau derrière : un `zenity` forké met
+plusieurs secondes à démarrer depuis la carte SD, peut s'ouvrir *derrière* la
+fenêtre plein écran, et n'est parfois même pas installé.
+
+La détection est double — palier GLES natif (`cmake -DPOM1_GLES=ON`) **et**
+sonde `/proc/device-tree/model` au démarrage — parce que `install.sh` compile
+avec un `cmake` sans option. Pour repasser au sélecteur du système (Pi avec un
+bureau complet, `zenity` installé) : *Settings ▸ Native OS file dialogs*. Le
+choix est mémorisé (`native_dialogs` dans `ini/ui.settings`).
+
+## Zoom de l'interface (écran de TV, 4K, petits écrans)
+
+*Settings ▸ UI Theme ▸ Interface zoom* (curseur 75–250 %, ou *Zoom in* /
+*Zoom out* / *Reset to 100 %*) agrandit **toute** l'interface : polices,
+marges, boutons, barre d'outils, barre de statut et panneaux dockés. Utile sur
+un téléviseur où l'on est loin de l'écran. Mémorisé dans `ini/ui.settings`
+(`ui_scale`).
+
 ## Son (écouter les cassettes)
 
 L'audio (miniaudio) sort par HDMI ou la prise jack selon la config du Pi.
