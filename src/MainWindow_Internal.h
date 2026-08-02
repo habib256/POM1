@@ -47,6 +47,36 @@ inline constexpr float kTMS9918DefaultPixelScale   = 3.0f;
 inline constexpr float kVideoCardMinPixelScale     = 0.25f;
 
 // ---------------------------------------------------------------------------
+// Interface zoom — Settings ▸ Interface zoom (user) × monitor content scale.
+//
+// `MainWindow_ImGui::applyUiTheme()` hands the whole ImGuiStyle to
+// `ImGuiStyle::ScaleAllSizes()`, which covers every ImGui-owned size (padding,
+// rounding, scrollbars, item spacing) and the fonts via FontScaleMain /
+// FontScaleDpi. It does NOT know about the band constants above — those are
+// POM1's own chrome, authored at 100 %. Multiply them through `uiPx()` at the
+// point of use or the toolbar/status bands stay 34/25 px tall while their
+// contents grow, and the dockspace ends up overlapping them.
+// ---------------------------------------------------------------------------
+
+/// Zoom currently applied by applyUiTheme() (user zoom × monitor DPI).
+/// 1.0 until the first apply, so pre-theme callers are safe.
+float uiScaleTotal();
+/// Published by applyUiTheme(); nothing else should call this.
+void  setUiScaleTotal(float s);
+
+/// Scale a pixel constant authored at 100 % by the live interface zoom.
+inline float  uiPx(float px)  { return px * uiScaleTotal(); }
+inline ImVec2 uiPx(ImVec2 v)  { const float s = uiScaleTotal();
+                                return ImVec2(v.x * s, v.y * s); }
+
+/// Clamp bounds for the user zoom control — shared by the Settings menu, the
+/// Display Settings slider and the ui.settings loader, so a hand-edited
+/// `ui_scale` can never produce an unusable UI.
+inline constexpr float kUiScaleMin  = 0.75f;
+inline constexpr float kUiScaleMax  = 2.50f;
+inline constexpr float kUiScaleStep = 0.05f;
+
+// ---------------------------------------------------------------------------
 // Layout / drawing helpers — defined in MainWindow_Layout.cpp.
 // ---------------------------------------------------------------------------
 

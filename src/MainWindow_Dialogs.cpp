@@ -1871,50 +1871,51 @@ void MainWindow_ImGui::renderScreenConfigDialog()
         }
 
         ImGui::Spacing();
-        ImGui::Text("UI Scale (HiDPI)");
+        ImGui::Text("Interface zoom");
         ImGui::Separator();
         {
-            ImGuiIO& io = ImGui::GetIO();
-            float detected = 1.0f;
-#if !POM1_IS_WASM
-            if (window) {
-                float xs = 1.0f, ys = 1.0f;
-                glfwGetWindowContentScale(window, &xs, &ys);
-                if (xs > 0.1f) detected = xs;
+            // Zoom scales the WHOLE interface — fonts AND widget geometry
+            // (padding, rounding, scrollbars) AND POM1's own toolbar/status
+            // bands — not just the font as it did before 1.9.5. Everything goes
+            // through applyUiTheme(); see MainWindow_Presets.cpp.
+            // Percent rather than a raw multiplier: "125 %" is the unit every
+            // other desktop app uses for this control.
+            int pct = static_cast<int>(uiScale_ * 100.0f + 0.5f);
+            ImGui::SetNextItemWidth(uiPx(220.0f));
+            if (ImGui::SliderInt("##uiscale", &pct,
+                                 static_cast<int>(kUiScaleMin * 100.0f),
+                                 static_cast<int>(kUiScaleMax * 100.0f), "%d %%"))
+                setUiScale(static_cast<float>(pct) / 100.0f);
+            if (ImGui::IsItemDeactivatedAfterEdit())
+                saveUiSettings();   // save once when the drag ends, not per pixel
+
+            auto zoomStep = [&](const char* label, float delta) {
+                if (ImGui::Button(label)) {
+                    setUiScale(uiScale_ + delta);
+                    saveUiSettings();
+                }
+                ImGui::SameLine();
+            };
+            zoomStep(" - ", -kUiScaleStep * 2.0f);
+            zoomStep(" + ", +kUiScaleStep * 2.0f);
+            if (ImGui::Button("Reset to 100 %")) {
+                setUiScale(1.0f);
+                saveUiSettings();
             }
-#endif
-            // Clamp to the slider's own range so Auto mode (which drives
-            // io.FontGlobalScale = detected directly) and the manual latch can
-            // never push the font past what the slider can represent — a >300%
-            // monitor would otherwise scale the UI past the boot-time 3.0 cap.
-            detected = std::clamp(detected, 0.75f, 3.0f);
-            // Latch the manual slider to whatever scale main_imgui seeded from the
-            // monitor DPI at boot, the first time this dialog opens.
-            if (!uiHiDpiInit_) {
-                uiHiDpiManualScale_ = io.FontGlobalScale > 0.1f ? io.FontGlobalScale : 1.0f;
-                uiHiDpiInit_ = true;
-            }
+
             if (ImGui::Checkbox("Auto (follow monitor DPI)", &uiHiDpiAuto_)) {
-                if (uiHiDpiAuto_) uiHiDpiManualScale_ = detected;
-                saveUiSettings();   // persists across sessions (ini/ui.settings)
+                syncUiDpiScale();       // pick the live scale up when re-enabled
+                applyUiTheme(uiTheme_); // …and drop it when disabled
+                saveUiSettings();       // persists across sessions (ini/ui.settings)
             }
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Scale the whole UI font by the monitor's content scale.\n"
-                                  "Turn off to pin a fixed scale with the slider.\n"
-                                  "The choice is remembered across sessions.");
-            if (uiHiDpiAuto_) {
-                io.FontGlobalScale = detected;   // live-follow while the dialog is open
-                ImGui::BeginDisabled();
-                float shown = detected;
-                ImGui::SliderFloat("UI font scale", &shown, 0.75f, 3.0f, "%.2f×");
-                ImGui::EndDisabled();
-            } else {
-                if (ImGui::SliderFloat("UI font scale", &uiHiDpiManualScale_, 0.75f, 3.0f, "%.2f×"))
-                    io.FontGlobalScale = uiHiDpiManualScale_;
-                if (ImGui::IsItemDeactivatedAfterEdit())
-                    saveUiSettings();   // save once when the drag ends, not per pixel
+                ImGui::SetTooltip("Multiply the zoom above by the monitor's content scale,\n"
+                                  "so the UI keeps its physical size on a HiDPI display.\n"
+                                  "Turn off to use the zoom alone. Remembered across sessions.");
+            if (uiHiDpiAuto_ && uiDpiScale_ > 1.005f) {
+                ImGui::TextDisabled("Monitor scale: %.0f %% (from the OS) - effective UI scale %.0f %%",
+                                    uiDpiScale_ * 100.0f, uiScale_ * uiDpiScale_ * 100.0f);
             }
-            ImGui::TextDisabled("Detected monitor scale: %.2f×", detected);
         }
 
 #if !POM1_IS_WASM

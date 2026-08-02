@@ -40,9 +40,17 @@ public:
 
     /// User preference: when false, isAvailable() reports false even on a
     /// platform that has a native picker, so the (faster) in-process ImGui
-    /// browser is used everywhere. Default true. Wired to a Settings checkbox.
+    /// browser is used everywhere. Wired to a Settings checkbox and persisted
+    /// in ini/ui.settings (`native_dialogs`); the compiled starting value is
+    /// defaultEnabled().
     static void setEnabled(bool enabled);
     static bool isEnabled();
+
+    /// Compiled default for the preference above: true on desktop
+    /// Linux/macOS/Windows, FALSE on the Raspberry Pi (kiosk build: bare
+    /// matchbox WM, no GTK/KDE desktop, SD-card cold start — the in-process
+    /// ImGui browser is the sane default there) and under WASM.
+    static bool defaultEnabled();
 
     /// Show an open-file dialog. Returns true and writes the selected path
     /// into `outPath` on success; false on cancel, error, or when no native

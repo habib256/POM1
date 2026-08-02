@@ -14,6 +14,7 @@
 #include "CodeBench.h"   // codeBench_->loadStarterForTargetIfClean() in DevBench presets
 #include "Pom1BenchHost.h" // benchHost_->targetFor / selectTargetExplicit for the chooser's language launch
 #include "ProcessUtil.h" // bench::executableDir() for exe-relative ini_defaults/
+#include "NativeFileDialog.h" // `native_dialogs` preference lives in ini/ui.settings
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -27,6 +28,7 @@
 #endif
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -485,12 +487,12 @@ void MainWindow_ImGui::defaultOsWindowSize(int presetIndex, int& outW, int& outH
     ImGui::PopFont();
     const ImVec2 cell = Screen_ImGui::computeApple1CellDimensions(charSize);
     const float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale
-                     + kApple1ImGuiWinPadW;
+                     + uiPx(kApple1ImGuiWinPadW);
     const float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale
-                     + kApple1ImGuiWinPadH;
+                     + uiPx(kApple1ImGuiWinPadH);
     const ImVec2 extent = computePresetLayoutExtent(cfg, ImVec2(sw, sh));
     const float rightPad  = 10.0f;
-    const float bottomPad = kStatusBarBandHeight + kApple1WindowDecorationSlop;
+    const float bottomPad = uiPx(kStatusBarBandHeight + kApple1WindowDecorationSlop);
     int glfwW = static_cast<int>(sw) + kApple1GlfwExtraW;
     int glfwH = static_cast<int>(std::ceil(sh + apple1LayoutVerticalChrome()));
     if (extent.x > 0.0f && extent.y > 0.0f) {
@@ -529,9 +531,9 @@ void MainWindow_ImGui::computeWasmCanvasSize(int presetIndex, int& outW, int& ou
     ImGui::PopFont();
     const ImVec2 cell = Screen_ImGui::computeApple1CellDimensions(charSize);
     const float sw = cell.x * Screen_ImGui::kApple1Columns * screen->scale
-                     + kApple1ImGuiWinPadW;
+                     + uiPx(kApple1ImGuiWinPadW);
     const float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale
-                     + kApple1ImGuiWinPadH;
+                     + uiPx(kApple1ImGuiWinPadH);
     const ImVec2 extent = computePresetLayoutExtent(cfg, ImVec2(sw, sh));
 
     // Base = Apple-1 screen window + chrome (same as the old per-frame path).
@@ -2308,19 +2310,33 @@ void MainWindow_ImGui::saveActivePresetLayoutNow()
 // HiDPI mode + manual scale. Tiny key=value file, rewritten on every change.
 // On WASM it lives under the IDBFS ini/ mount like the preset layouts.
 // ---------------------------------------------------------------------------
+// Interface theme + zoom. Both live here because they are ONE operation:
+// ImGuiStyle::ScaleAllSizes() is cumulative (it multiplies the live values and
+// folds the factor into the style), so applying a zoom twice on a live style
+// compounds — padding doubles, then quadruples. Rebuilding the style from a
+// default-constructed one on every call makes applyUiTheme() idempotent for a
+// given (theme, uiScale_, uiDpiScale_) triple, which is what lets the zoom
+// slider re-apply on every nudge. Technique borrowed from POM2's Pom2Theme.
+//
+// Fonts are NOT re-rasterised: Dear ImGui 1.92's dynamic font system scales
+// through style.FontScaleMain (user zoom) and style.FontScaleDpi (monitor
+// scale) at draw time, so no atlas rebuild / backend texture refresh is needed
+// when the scale changes mid-session.
 void MainWindow_ImGui::applyUiTheme(int theme)
 {
     uiTheme_ = theme < 0 ? 0 : (theme > 2 ? 2 : theme);
-    ImGuiStyle& style = ImGui::GetStyle();
+
+    // Rebuild from pristine — see the note above.
+    ImGuiStyle style = ImGuiStyle();
     switch (uiTheme_) {
     case 1:
-        ImGui::StyleColorsLight();
+        ImGui::StyleColorsLight(&style);
         style.FrameBorderSize = 0.0f;
         break;
     case 2: {
         // High contrast: dark base pushed to pure black/white with visible
         // borders — for low-vision use, not aesthetics.
-        ImGui::StyleColorsDark();
+        ImGui::StyleColorsDark(&style);
         ImVec4* c = style.Colors;
         c[ImGuiCol_Text]           = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
         c[ImGuiCol_TextDisabled]   = ImVec4(0.80f, 0.80f, 0.80f, 1.00f);
@@ -2342,10 +2358,62 @@ void MainWindow_ImGui::applyUiTheme(int theme)
         break;
     }
     default:
-        ImGui::StyleColorsDark();
+        ImGui::StyleColorsDark(&style);
         style.FrameBorderSize = 0.0f;
         break;
     }
+
+    // ── Zoom ──────────────────────────────────────────────────────────────
+    // Geometry takes the full product; the fonts take the two factors
+    // separately (ImGui multiplies them at draw time). The DPI half is off
+    // while the user has unticked "Auto (follow monitor DPI)".
+    uiScale_ = std::clamp(uiScale_, kUiScaleMin, kUiScaleMax);
+    const float dpi = uiHiDpiAuto_ ? std::clamp(uiDpiScale_, 0.5f, 4.0f) : 1.0f;
+    style.ScaleAllSizes(uiScale_ * dpi);
+    style.FontScaleMain = uiScale_;
+    style.FontScaleDpi  = dpi;
+
+    ImGui::GetStyle() = style;
+    // Publish for POM1's own chrome constants (toolbar / status bands), which
+    // ScaleAllSizes knows nothing about — see detail::uiPx().
+    setUiScaleTotal(uiScale_ * dpi);
+}
+
+void MainWindow_ImGui::setUiScale(float scale)
+{
+    const float v = std::clamp(scale, kUiScaleMin, kUiScaleMax);
+    if (std::fabs(v - uiScale_) < 0.0005f) return;
+    uiPendingWindowScale_ *= v / uiScale_;
+    uiScale_ = v;
+    applyUiTheme(uiTheme_);
+}
+
+void MainWindow_ImGui::setUiDpiScale(float scale)
+{
+    // Guard against a windowing system reporting 0 (or something absurd) — a
+    // zero scale would collapse every padding and hide the font.
+    const float v = (scale > 0.1f && scale < 8.0f) ? scale : 1.0f;
+    if (std::fabs(v - uiDpiScale_) < 0.0005f) return;
+    const float prev = uiDpiScale_;
+    uiDpiScale_ = v;
+    if (uiHiDpiAuto_) {
+        // Not at boot: the very first seed arrives before any window exists, so
+        // the ratio applies to nothing and the ini geometry stays untouched.
+        uiPendingWindowScale_ *= v / prev;
+        applyUiTheme(uiTheme_);
+    }
+}
+
+void MainWindow_ImGui::syncUiDpiScale()
+{
+#if !defined(__APPLE__) && !POM1_IS_WASM
+    // macOS scales through the framebuffer (io.DisplayFramebufferScale) and the
+    // browser owns devicePixelRatio, so only the X11/Wayland/Win32 path polls.
+    if (!uiHiDpiAuto_ || !window) return;
+    float xs = 1.0f, ys = 1.0f;
+    glfwGetWindowContentScale(window, &xs, &ys);
+    setUiDpiScale(xs);
+#endif
 }
 
 void MainWindow_ImGui::loadUiSettings()
@@ -2355,7 +2423,11 @@ void MainWindow_ImGui::loadUiSettings()
     std::string line;
     int   theme = uiTheme_;
     int   hidpiAuto = uiHiDpiAuto_ ? 1 : 0;
-    float hidpiScale = uiHiDpiManualScale_;
+    // `hidpi_scale` is the pre-zoom key: a MANUAL font-only scale, meaningful
+    // only when hidpi_auto=0. It seeds `ui_scale` when the newer key is absent
+    // so a user who had pinned 1.50× keeps their size, now applied to the whole
+    // interface instead of the fonts alone.
+    float uiScale = -1.0f, hidpiScale = -1.0f;
     // Settings-file generation. Files written before 1.9.4 carry no
     // `settings_version` key; see the migration at the end of this function.
     int   settingsVersion = 0;
@@ -2370,7 +2442,12 @@ void MainWindow_ImGui::loadUiSettings()
             else if (key == "theme")       theme      = std::stoi(val);
             else if (key == "hidpi_auto")  hidpiAuto  = std::stoi(val);
             else if (key == "hidpi_scale") hidpiScale = std::stof(val);
+            else if (key == "ui_scale")    uiScale    = std::stof(val);
             else if (key == "idle_throttle") uiIdleThrottle_ = (std::stoi(val) != 0);
+            // Absent key → keep the per-platform compiled default (ImGui browser
+            // on the Raspberry Pi, native picker elsewhere).
+            else if (key == "native_dialogs")
+                pom1::NativeFileDialog::setEnabled(std::stoi(val) != 0);
             else if (key == "crt_enabled")     crtEffects.enabled = (std::stoi(val) != 0);
             else if (key == "crt_brightness")  c.brightness        = std::stof(val);
             else if (key == "crt_contrast")    c.contrast          = std::stof(val);
@@ -2411,14 +2488,14 @@ void MainWindow_ImGui::loadUiSettings()
                                "to the 1.9.4 defaults (on, barrel 0.025)");
     }
 
-    applyUiTheme(theme);
     uiHiDpiAuto_ = (hidpiAuto != 0);
-    if (hidpiScale >= 0.75f && hidpiScale <= 3.0f)
-        uiHiDpiManualScale_ = hidpiScale;
-    if (!uiHiDpiAuto_) {
-        ImGui::GetIO().FontGlobalScale = uiHiDpiManualScale_;
-        uiHiDpiInit_ = true;   // don't let the dialog re-latch over the file
-    }
+    // Pick the zoom BEFORE the theme apply — applyUiTheme() bakes it into the
+    // style, and re-applying is a full style rebuild.
+    if (uiScale < 0.0f && !uiHiDpiAuto_ && hidpiScale > 0.0f)
+        uiScale = hidpiScale;              // pre-1.9.5 manual font scale
+    if (uiScale > 0.0f)
+        uiScale_ = std::clamp(uiScale, kUiScaleMin, kUiScaleMax);
+    applyUiTheme(theme);
 }
 
 void MainWindow_ImGui::saveUiSettings()
@@ -2431,8 +2508,9 @@ void MainWindow_ImGui::saveUiSettings()
     f << "settings_version=1\n"
       << "theme=" << uiTheme_ << '\n'
       << "hidpi_auto=" << (uiHiDpiAuto_ ? 1 : 0) << '\n'
-      << "hidpi_scale=" << uiHiDpiManualScale_ << '\n'
-      << "idle_throttle=" << (uiIdleThrottle_ ? 1 : 0) << '\n';
+      << "ui_scale=" << uiScale_ << '\n'
+      << "idle_throttle=" << (uiIdleThrottle_ ? 1 : 0) << '\n'
+      << "native_dialogs=" << (pom1::NativeFileDialog::isEnabled() ? 1 : 0) << '\n';
     // Universal CRT effect stack — master toggle + shader knob set.
     const pom1::CrtParams& c = crtEffects.params;
     f << "crt_enabled="     << (crtEffects.enabled ? 1 : 0) << '\n'

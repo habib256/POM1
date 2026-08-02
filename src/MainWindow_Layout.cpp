@@ -15,10 +15,27 @@
 
 namespace pom1::mainwindow::detail {
 
+namespace {
+// Live interface zoom (user × DPI). Written once per applyUiTheme(), read all
+// over the UI thread — no synchronisation needed, ImGui is single-threaded.
+float g_uiScaleTotal = 1.0f;
+} // namespace
+
+float uiScaleTotal() { return g_uiScaleTotal; }
+
+void setUiScaleTotal(float s)
+{
+    g_uiScaleTotal = (s > 0.1f && s < 8.0f) ? s : 1.0f;
+}
+
 float apple1LayoutVerticalChrome()
 {
-    return ImGui::GetFrameHeight() + kMainMenuBarHeightExtra + kToolbarBandHeight +
-           kGapBelowToolbarBeforeApple1 + kStatusBarBandHeight + kApple1WindowDecorationSlop;
+    // GetFrameHeight() already carries the font/padding scale; the four band
+    // constants are authored at 100 % and need uiPx().
+    return ImGui::GetFrameHeight()
+           + uiPx(kMainMenuBarHeightExtra + kToolbarBandHeight +
+                  kGapBelowToolbarBeforeApple1 + kStatusBarBandHeight +
+                  kApple1WindowDecorationSlop);
 }
 
 ImVec2 layoutFitVideoViewport(ImVec2 avail, float nativeW, float nativeH, float& pixelScaleOut)
