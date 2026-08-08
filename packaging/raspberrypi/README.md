@@ -131,6 +131,14 @@ que c'est exactement ce qu'attend `pom1-session.sh` — POM1 résout ses donnée
 par rapport au répertoire courant. Les scripts de borne voyagent dedans, donc
 l'arbre déballé sait s'installer lui-même via `install_kiosk.sh`.
 
+Il est **autoportant** : il est dérivé de l'AppDir de linuxdeploy, donc il
+embarque ses bibliothèques dans `lib/` et le binaire porte le RUNPATH
+`$ORIGIN/../lib`. C'est indispensable — **Pi OS Lite n'installe pas `libglfw3`**,
+et un paquet dont tout l'intérêt est de ne rien compiler sur la borne ne peut pas
+exiger un `apt install` pour démarrer. La CI le prouve en lançant le tar.gz sur
+un runner où `libglfw3` n'est **pas** installée, et le script échoue si le
+RUNPATH attendu a disparu.
+
 ⚠ Ces paquets **ne remplacent pas** l'AppImage de release
 `POM1-<ver>-aarch64.AppImage`, qui reste **générique** (Pi 3 → Pi 5) là où
 celle-ci est compilée pour **un seul cœur**. D'où le tag `pi400`/`pi5`/`pi3`

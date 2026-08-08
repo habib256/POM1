@@ -42,6 +42,17 @@ Recette portée de NeoST (`.github/workflows/pi-borne.yml` +
   `pom1-session.sh` ; les scripts de borne voyagent dedans, donc l'arbre déballé
   s'installe lui-même. Le tag machine dans le nom évite qu'un paquet homonyme
   écrase l'AppImage générique de release dans le dossier d'artefacts aplati.
+- **Le tar.gz est dérivé de l'AppDir, pas du binaire nu** — et c'est la CI qui
+  l'a imposé : la première version expédiait `build/POM1` tel quel et le paquet
+  mourait au lancement sur `libglfw.so.3: cannot open shared object file`. Pi OS
+  Lite n'installe pas `libglfw3`, et un paquet dont tout l'intérêt est de ne rien
+  compiler sur la borne ne peut pas exiger un `apt install` pour démarrer.
+  linuxdeploy avait déjà rassemblé les bibliothèques et réécrit le RUNPATH en
+  `$ORIGIN/../lib` pour l'AppImage : on réutilise le même AppDir (binaire dans
+  `build/`, bibliothèques dans `lib/`, `$ORIGIN/..` retombant sur la racine
+  déballée). Le script **échoue** si ce RUNPATH a disparu, et la CI lance le
+  tar.gz sur un runner où `libglfw3` n'est pas installée — ce qui rend
+  l'autoportance vérifiée plutôt que supposée.
 - **Garde-fous du PGO conservés** : les deux passes partagent le même répertoire
   de build (GCC nomme les `.gcda` d'après le chemin absolu de l'objet, et
   `-Wno-missing-profile` rendrait l'échec totalement muet), et le build **échoue**

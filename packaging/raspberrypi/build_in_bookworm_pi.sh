@@ -194,45 +194,7 @@ case "$MCPU" in
 esac
 VERSION="${POM1_VERSION:-$(cat "$ROOT/VERSION")}"
 
-# --- Paquet 1 : tar.gz pour la borne sans bureau -----------------------------
-# Arborescence = celle du DÉPÔT, pas un $PREFIX FHS : pom1-session.sh fait
-# `cd $POM1_ROOT` puis lance `$POM1_ROOT/build/POM1`, et POM1 résout roms/,
-# software/, cassettes/, sdcard/, fonts/, pic/ par rapport au répertoire courant.
-# Déballé par `tar -xzf … -C /home/pi/POM1`, l'unité systemd démarre sans une
-# seule variable à surcharger.
-STAGE="dist/$PKG_TAG"
-rm -rf "$STAGE" && mkdir -p "$STAGE/build" dist
-install -m 755 "$BIN" "$STAGE/build/POM1"
-
-# CODETANKDEV.rom : cartouche de flash du DevBench, générée et jamais commitée.
-python3 tools/build_codetank_rom.py --rom dev >/dev/null
-
-# Même liste de données que l'AppImage (build_appimage.sh) — tout ce que
-# cherchent les sondes relatives au cwd.
-for d in roms fonts software sketchs pic cassettes sdcard cfcard disks ini_defaults; do
-    [ -d "$d" ] && cp -r "$d" "$STAGE/$d"
-done
-# cc65 sous build/ : le DevBench sonde <exe>/cc65/bin en premier, et l'exe est
-# build/POM1. dev/ à la racine (cfgs ld65 + runtimes, résolus depuis le cwd).
-cp -r dist/cc65-bundle/cc65 "$STAGE/build/cc65"
-cp -r dev "$STAGE/dev"
-tools/verify_cc65_bundle.sh "$STAGE/build/cc65" || {
-    [ "${POM1_REQUIRE_CC65:-0}" = "1" ] && \
-        { echo "ERREUR : POM1_REQUIRE_CC65=1 mais le bundle cc65 est incomplet"; exit 1; }
-    echo "[borne] AVERTISSEMENT : bundle cc65 incomplet"
-}
-# Les scripts de borne voyagent avec le paquet : install_kiosk.sh calcule sa
-# racine en remontant de deux niveaux, donc l'arbre déballé s'installe lui-même.
-mkdir -p "$STAGE/packaging"
-cp -r packaging/raspberrypi "$STAGE/packaging/raspberrypi"
-cp VERSION "$STAGE/VERSION"
-
-TGZ="dist/pom1-${PKG_TAG}-aarch64.tar.gz"
-tar -czf "$TGZ" -C "$STAGE" .
-echo "[borne] OK : $TGZ"
-ls -lh "$TGZ"
-
-# --- Paquet 2 : AppImage (MÊME build, aucune recompilation) ------------------
+# --- Paquet 1 : AppImage (elle produit l'AppDir dont vit le tar.gz) ----------
 # POM1_VERSION porte le tag : build_appimage.sh nomme sa sortie
 # POM1-<VERSION>-<arch>.AppImage, on obtient donc POM1-<ver>-pi400-aarch64 —
 # distinct du POM1-<ver>-aarch64 générique de la release.
@@ -244,3 +206,61 @@ POM1_VERSION="${VERSION}-${PKG_TAG}" \
 POM1_CC65_BUNDLE="$ROOT/dist/cc65-bundle/cc65" \
     packaging/linux/build_appimage.sh
 ls -lh dist/*.AppImage
+
+# --- Paquet 2 : tar.gz pour la borne sans bureau -----------------------------
+# ⚠ DÉRIVÉ DE L'AppDir, PAS du binaire nu. La première version de ce script
+# copiait `build/POM1` tel quel et le paquet mourait au lancement sur
+# « libglfw.so.3: cannot open shared object file » : Pi OS Lite n'installe pas
+# libglfw3, et un paquet dont tout l'intérêt est de ne RIEN compiler sur la borne
+# ne peut pas exiger un `apt install` pour démarrer. linuxdeploy a déjà fait le
+# travail pour l'AppImage — il a rassemblé les bibliothèques dans usr/lib et
+# réécrit le RUNPATH du binaire en `$ORIGIN/../lib`. On réutilise ce même AppDir :
+# binaire dans build/, bibliothèques dans lib/, et `$ORIGIN/..` retombe
+# exactement sur la racine de l'arbre déballé.
+APPDIR="build-appimage/AppDir"
+test -d "$APPDIR/usr/share/POM1" || { echo "ERREUR : AppDir absent — build_appimage.sh a-t-il tourné ?"; exit 1; }
+
+# Contrôle du RUNPATH : sans lui le tar.gz repartirait chercher ses libs dans
+# /usr/lib et on retomberait sur l'échec ci-dessus, mais SUR LA BORNE.
+RPATH=$(readelf -d "$APPDIR/usr/bin/POM1" | grep -E 'RUNPATH|RPATH' || true)
+echo "[borne] RUNPATH du binaire empaqueté : ${RPATH:-<aucun>}"
+grep -q '\$ORIGIN/../lib' <<<"$RPATH" \
+    || { echo "ERREUR : le binaire de l'AppDir n'a pas le RUNPATH \$ORIGIN/../lib — le tar.gz ne trouverait pas ses bibliothèques"; exit 1; }
+
+STAGE="dist/$PKG_TAG"
+rm -rf "$STAGE" && mkdir -p "$STAGE/build" dist
+install -m 755 "$APPDIR/usr/bin/POM1" "$STAGE/build/POM1"
+cp -r "$APPDIR/usr/lib" "$STAGE/lib"          # $ORIGIN/../lib depuis build/POM1
+
+# Arborescence de données = celle du DÉPÔT, pas un $PREFIX FHS : pom1-session.sh
+# fait `cd $POM1_ROOT` puis lance `$POM1_ROOT/build/POM1`, et POM1 résout roms/,
+# software/, cassettes/, sdcard/, fonts/, pic/ par rapport au répertoire courant.
+# Déballé par `tar -xzf … -C /home/pi/POM1`, l'unité systemd démarre sans une
+# seule variable à surcharger. (L'AppDir les a déjà toutes, CODETANKDEV.rom
+# généré compris — inutile de recopier depuis le dépôt.)
+for d in roms fonts software sketchs pic cassettes sdcard cfcard disks ini_defaults dev; do
+    [ -d "$APPDIR/usr/share/POM1/$d" ] && cp -r "$APPDIR/usr/share/POM1/$d" "$STAGE/$d"
+done
+# cc65 sous build/ : le DevBench sonde <exe>/cc65/bin en premier, et l'exe est
+# build/POM1.
+if [ -d "$APPDIR/usr/share/POM1/cc65" ]; then
+    cp -r "$APPDIR/usr/share/POM1/cc65" "$STAGE/build/cc65"
+    tools/verify_cc65_bundle.sh "$STAGE/build/cc65" || {
+        [ "${POM1_REQUIRE_CC65:-0}" = "1" ] && \
+            { echo "ERREUR : POM1_REQUIRE_CC65=1 mais le bundle cc65 est incomplet"; exit 1; }
+        echo "[borne] AVERTISSEMENT : bundle cc65 incomplet"
+    }
+elif [ "${POM1_REQUIRE_CC65:-0}" = "1" ]; then
+    echo "ERREUR : POM1_REQUIRE_CC65=1 mais aucun cc65 dans l'AppDir"; exit 1
+fi
+
+# Les scripts de borne voyagent avec le paquet : install_kiosk.sh calcule sa
+# racine en remontant de deux niveaux, donc l'arbre déballé s'installe lui-même.
+mkdir -p "$STAGE/packaging"
+cp -r packaging/raspberrypi "$STAGE/packaging/raspberrypi"
+cp VERSION "$STAGE/VERSION"
+
+TGZ="dist/pom1-${PKG_TAG}-aarch64.tar.gz"
+tar -czf "$TGZ" -C "$STAGE" .
+echo "[borne] OK : $TGZ"
+ls -lh "$TGZ"

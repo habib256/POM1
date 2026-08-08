@@ -136,7 +136,7 @@ jobs:
           # ⚠ pas de `tar | grep -q` sous pipefail : grep ferme le tube tôt →
           # « tar: stdout: write error » et faux négatif.
           LIST=$(tar tzf "$TGZ")
-          for f in ./build/POM1 ./roms/WozMonitor.rom ./roms/XACI.rom \
+          for f in ./build/POM1 ./lib/ ./roms/WozMonitor.rom ./roms/XACI.rom \
                    ./software/ ./cassettes/ ./build/cc65/bin/ca65 \
                    ./packaging/raspberrypi/install_kiosk.sh; do
             printf '%s\n' "$LIST" | grep -q "^$f" \
@@ -171,6 +171,9 @@ jobs:
           # Le tar.gz se déballe et tourne DEPUIS SA RACINE, comme sur la borne.
           rm -rf /tmp/borne && mkdir -p /tmp/borne
           tar -xzf "$TGZ" -C /tmp/borne
+          # Aucune libglfw3 n'est installée sur le runner : si ceci passe, le
+          # paquet est bien autoportant (RUNPATH $ORIGIN/../lib + lib/ embarqué)
+          # et la borne Pi OS Lite n'aura aucun `apt install` à faire.
           OUT=$(cd /tmp/borne && ./build/POM1 --list-presets)
           grep -q "Multiplexing Fantasy" <<<"$OUT" \
             || { echo "ERREUR : le tar.gz ne liste pas les presets"; echo "$OUT"; exit 1; }
