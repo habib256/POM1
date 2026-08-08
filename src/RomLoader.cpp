@@ -34,6 +34,7 @@ bool RomLoader::reloadApplesoftLiteSDCard(Memory& m, std::string& e) { return re
 bool RomLoader::reloadWozMonitor         (Memory& m, std::string& e) { return reloadRom(m, e, &Memory::loadWozMonitor); }
 bool RomLoader::reloadKrusader           (Memory& m, std::string& e) { return reloadRom(m, e, &Memory::loadKrusader); }
 bool RomLoader::reloadAciRom             (Memory& m, std::string& e) { return reloadRom(m, e, &Memory::loadAciRom); }
+bool RomLoader::reloadExtendedAciRom     (Memory& m, std::string& e) { return reloadRom(m, e, &Memory::loadExtendedAciRom); }
 bool RomLoader::reloadCFFA1Rom           (Memory& m, std::string& e) { return reloadRom(m, e, &Memory::loadCFFA1Rom); }
 bool RomLoader::reloadSDCardRom          (Memory& m, std::string& e) { return reloadRom(m, e, &Memory::loadSDCardRom); }
 bool RomLoader::reloadJukeBoxRom         (Memory& m, std::string& e) { return reloadRom(m, e, &Memory::loadJukeBoxRom); }

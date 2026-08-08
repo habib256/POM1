@@ -954,6 +954,37 @@ add_test(NAME aci_tape_loading
          WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set_tests_properties(aci_tape_loading PROPERTIES TIMEOUT 30)
 
+# -- Uncle Bernie's Extended ACI ($C500) smoke test ---------------------------
+# Part A pins the card (mapping, write-protect, ACI cascade both ways); part B
+# plays his own extended-format codebrk.aiff through the pulse path and types
+# `C500R` + `RX RX`, asserting the game loads AND autostarts. Also the only
+# gate on POM1's hand-rolled AIFF reader — miniaudio has no AIFF backend, and
+# AIFF is what Uncle Bernie's ACIace synthesiser emits.
+add_executable(test_extended_aci
+    extended_aci_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_extended_aci PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_extended_aci PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_extended_aci PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_extended_aci PRIVATE ws2_32)
+endif()
+
+# Runs from the source root so roms/XACI.rom + roms/ACI.rom + roms/basic.rom
+# resolve through the usual probe paths (Memory::initMemory needs them at
+# construction).
+add_test(NAME extended_aci_smoke
+         COMMAND test_extended_aci
+                 "${CMAKE_SOURCE_DIR}/cassettes/codebrk.aiff"
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(extended_aci_smoke PROPERTIES TIMEOUT 60)
+
 # -- ACI tape saving round-trip test ------------------------------------------
 # Drives the ACI WRITE routine (Wozmon `<from>.<to>W`), saves the resulting
 # pulse capture to both .aci and .wav, reloads each in a fresh Memory, and

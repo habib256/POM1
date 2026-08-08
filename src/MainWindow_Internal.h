@@ -177,6 +177,13 @@ struct MachineConfig {
     // an SN7406 inverter. Backed by a virtual 1541 mounted from
     // disks/iec/dev8.d64. Daughterboard only — requires microSD enabled.
     bool iecCard;
+    // Uncle Bernie's Extended ACI — the $C500-$C5FF page of the improved
+    // Gen-2 cassette interface (Applefritter, august 2026). Daughter page of
+    // the ACI's own PROM pair, so it cannot exist without `aci`: enabling it
+    // cascade-plugs the ACI (see Memory::setExtendedACIEnabled) and unplugging
+    // the ACI cascade-unplugs it. Off on every historical preset — it is an
+    // aftermarket upgrade, not 1976 hardware — and on for POM1 Fantasy.
+    bool extendedAci;
     MachineWindowPlacement layout[8];
     int layoutCount;
 };

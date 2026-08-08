@@ -218,6 +218,11 @@ private:
     bool loadAciTape(const std::string& path);
     bool saveAciTape(const std::string& path) const;
     bool loadWavTape(const std::string& path);
+    // Hand-rolled AIFF/AIFF-C PCM reader — miniaudio has no AIFF backend and
+    // AIFF is what Uncle Bernie's ACIace tape synthesiser emits, so extended-
+    // ACI recordings would otherwise be unloadable. See the .cpp for the
+    // supported subset.
+    bool loadAiffTape(const std::string& path);
     bool saveWavTape(const std::string& path) const;
     // Decodes MP3 / Ogg Vorbis / FLAC via miniaudio's ma_decoder, feeds
     // the resulting mono PCM into pcmToDurations, and commits via

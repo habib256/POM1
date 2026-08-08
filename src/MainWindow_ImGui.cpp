@@ -184,6 +184,9 @@ void MainWindow_ImGui::finalizePendingCardPlugs()
     const bool runCassettePreload = pendingCassetteAudioActive;
     if (pendingCassetteAudioActive)  emulation->activateCassetteAudioSource();
     if (pendingAciEnable)            emulation->setACIEnabled(true);
+    // After the ACI: setExtendedACIEnabled cascade-plugs it anyway, but
+    // ordering it this way keeps the log readable (card, then daughter page).
+    if (pendingExtendedAciEnable)    emulation->setExtendedACIEnabled(true);
     // Preload the cassette AFTER the ACI plug-in above, not before.
     // loadTape() checks CassetteDevice::aciActive to pick the pulse path
     // (ACI plugged → program tape) vs the audio-stream path (ACI unplugged
@@ -257,6 +260,7 @@ void MainWindow_ImGui::finalizePendingCardPlugs()
     }
     pendingCassetteAudioActive = false;
     pendingAciEnable           = false;
+    pendingExtendedAciEnable   = false;
     pendingMicroSDEnable       = false;
     pendingCffa1Enable         = false;
     pendingSidEnable           = false;
@@ -326,7 +330,14 @@ void MainWindow_ImGui::applyBootCliOverrides()
     for (const auto& o : cardOverrides) {
         switch (o.card) {
             case pom1::CliCard::Aci:
-                aciEnabled = o.enable; pendingAciEnable = o.enable; break;
+                aciEnabled = o.enable; pendingAciEnable = o.enable;
+                // The extended page ships plugged wherever the ACI is, and
+                // Memory cascades it off with the card. Overrides are applied
+                // in command-line order, so a later `--disable xaci` still
+                // wins and leaves a stock Woz ACI.
+                extendedAciEnabled = o.enable;
+                pendingExtendedAciEnable = o.enable;
+                break;
             case pom1::CliCard::Sid:
                 sidEnabled = o.enable; pendingSidEnable = o.enable;
                 if (o.enable) { sidSpecialEditionEnabled = false; pendingSidSEEnable = false; }
@@ -412,6 +423,13 @@ void MainWindow_ImGui::applyBootCliOverrides()
             case pom1::CliCard::GT6144:
                 gt6144Enabled = o.enable; pendingGT6144Enable = o.enable;
                 if (!o.enable) emulation->setGT6144Enabled(false);
+                break;
+            case pom1::CliCard::ExtendedAci:
+                extendedAciEnabled = o.enable; pendingExtendedAciEnable = o.enable;
+                // Daughterboard rule: the extended page rides the ACI's PROM
+                // socket, so --enable xaci implies --enable aci.
+                if (o.enable) { aciEnabled = true; pendingAciEnable = true; }
+                else emulation->setExtendedACIEnabled(false);
                 break;
             case pom1::CliCard::IEC:
                 iecCardEnabled = o.enable; pendingIECCardEnable = o.enable;
@@ -583,6 +601,7 @@ void MainWindow_ImGui::render()
         memoryViewer->setWiFiModemEnabled(wifiModemEnabled);
         memoryViewer->setTerminalCardEnabled(terminalCardEnabled);
         memoryViewer->setACIEnabled(aciEnabled);
+        memoryViewer->setExtendedACIEnabled(extendedAciEnabled);
         memoryViewer->setJukeBoxEnabled(jukeBoxEnabled);
         if (jukeBoxEnabled) {
             memoryViewer->setJukeBoxState(
@@ -854,7 +873,11 @@ void MainWindow_ImGui::render()
     }
     if (showSfxEditor) {
         // The beeper previews through the ACI speaker — make sure it's plugged.
-        if (!aciEnabled) { aciEnabled = true; emulation->setACIEnabled(true); }
+        // The extended page rides along, as everywhere else the ACI is plugged.
+        if (!aciEnabled) {
+            aciEnabled = true; emulation->setACIEnabled(true);
+            extendedAciEnabled = true; emulation->setExtendedACIEnabled(true);
+        }
         // On open, eject any mp3/ogg audio-stream tape: a stream tape owns the
         // audio callback, so the 1-bit pulse preview would be silent while it
         // plays. One-shot on the rising edge (no per-frame lock).

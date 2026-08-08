@@ -4,7 +4,7 @@
 
 ### *The 1976 personal computer revolution, faithfully reborn — with 50 years of expansion cards bolted on.*
 
-🎂 **Celebrating 50 years of Apple (1976 → 2026)** with the most complete Apple 1 emulator ever shipped: 13 one-click machine presets, 16 expansion cards, 60+ ready-to-run programs — a 1976 SWTPC GT-6144 graphics card sitting next to a 2026 Wi-Fi modem.
+🎂 **Celebrating 50 years of Apple (1976 → 2026)** with the most complete Apple 1 emulator ever shipped: 13 one-click machine presets, 17 expansion cards, 60+ ready-to-run programs — a 1976 SWTPC GT-6144 graphics card sitting next to a 2026 Wi-Fi modem.
 
 **Two colour graphics cards, one graphics BASIC.** Paint in colour on **Uncle Bernie's GEN2 HGR Card** (280×192) *and* the **P-LAB TMS9918** (256×192 + 32 sprites) — then drive *both* from an **Apple-1 Applesoft** whose Apple II graphics commands (`HGR` · `HPLOT` · `HCOLOR`) run the **same listing** on either card.
 
@@ -183,7 +183,7 @@ The UI is a **dockable workspace**: the Apple-1 raster sits in the centre, expan
 | 11 | **Uncle Bernie's GEN2 HGR Color (Apr 2026)** | 48 KB | — | GEN2 HGR, ACI |
 | 12 | **POM1 Multiplexing Fantasy (2026)** ⭐ | 64 KB | Applesoft Lite | ACI, microSD, A1-SID, Wi-Fi, Terminal |
 
-⭐ = default. 🛠 **Development benches (0–2)** are the profiles the in-app **DevBench** loads per machine; each mirrors an existing preset (CC65 = *ACI & BASIC cassette*, TMS9918 = *TMS9918 + CodeTank*, GEN2 = *GEN2 HGR Color*). The **A1-SID, I/O & RTC, Wi-Fi Modem, Juke-Box and IEC** cards have no dedicated preset — plug them from the **Hardware** menu, or via `--enable {sid,rtc,wifi,jukebox,iec}`. Preset details (RAM banking, the GEN2 "54 KB" expansion, Parmigiani's one-board rule) → [`CLAUDE.md`](CLAUDE.md).
+⭐ = default. 🛠 **Development benches (0–2)** are the profiles the in-app **DevBench** loads per machine; each mirrors an existing preset (CC65 = *ACI & BASIC cassette*, TMS9918 = *TMS9918 + CodeTank*, GEN2 = *GEN2 HGR Color*). The **A1-SID, I/O & RTC, Wi-Fi Modem, Juke-Box and IEC** cards have no dedicated preset — plug them from the **Hardware** menu, or via `--enable {sid,rtc,wifi,jukebox,iec}`. The **Extended ACI** needs no preset either: it ships plugged wherever the ACI is, *except* on the two historically faithful 1976 machines (presets 4 and 5) — and on the CC65 bench, which mirrors preset 4 exactly. Untick it in **Hardware** to get the stock card back anywhere else. Preset details (RAM banking, the GEN2 "54 KB" expansion, Parmigiani's one-board rule) → [`CLAUDE.md`](CLAUDE.md).
 
 ---
 
@@ -193,7 +193,8 @@ The **core machine** is an authentic 40×24 display (`charmap.rom` bitmap, three
 
 | Card | Year | Highlights |
 |---|---:|---|
-| 📼 **ACI cassette** | 1976 | `.aci`/`.wav`/`.mp3`/`.ogg`, procedural deck widget, smart jaquette via `tapeinfo.txt` |
+| 📼 **ACI cassette** | 1976 | `.aci`/`.wav`/`.aiff`/`.mp3`/`.ogg`, procedural deck widget, smart jaquette via `tapeinfo.txt` |
+| 📼 **[Uncle Bernie's Extended ACI](https://www.applefritter.com/content/uncle-bernies-improved-apple-1-cassette-interface)** | 2026 | Second PROM page at `$C500-$C5FF` on the cassette card. Apple-II checksums + **extended format** (headers carry the load address, equal addresses = autostart): `C500R` then `RX RX`, no load range to type |
 | 🎨 **SWTPC GT-6144** | 1976 | First commercial Apple 1 graphics card. 64×96 mono, $98.50, demoed by Woz in *Interface Age*. Power-on bistable noise reseeds on every plug |
 | 🖨️ **SWTPC PR-40** | 1976 | Steve Jobs' Oct-76 *Interface Age* mod — every char on `$D012` also prints on a 40-col matrix printer. Mixed/PrintOnly DPDT switch |
 | 💾 **Briel Krusader** | 2003 | Vince Briel's monitor extension |
@@ -216,6 +217,8 @@ Bus-window exclusions are enforced (one P-LAB card at a time, per Parmigiani's r
 <summary><b>📖 Card deep-dives</b> — addresses, modes, quirks</summary>
 
 **SWTPC GT-6144** *(1976)* — first commercial Apple-1 graphics card, $98.50, demoed by Woz in *Interface Age*. **64×96** mono framebuffer on 6× Intel 2102 SRAM, write-only I/O at `$D00A`. 4-phase command protocol; visible bistable SRAM noise on every plug-in. `software/Graphic gt-6144/` ships Game-of-Life + demos.
+
+**Uncle Bernie's Extended ACI** *(2026)* — his improved Gen-2 cassette interface. The card is unchanged silicon (same `$C000` flip-flop, same `$C081` comparator); what is new is a **second 256-byte PROM page at `$C500-$C5FF`** beside Woz's untouched `$C100` firmware. `C500R` relocates the stock ACI ROM into the stack page and re-vectors it, adding Apple-II-style checksums and the **extended format**: 8-byte from/to headers, equal addresses meaning autostart. So a tape carries its own load address — `C500R` then `RX RX` loads and runs it, `<from>.<to>WX` writes one. Recordings stay readable on a stock ACI or an Apple-II (subtract 8 from each `<from>`, skip the autostart block). Bundled demo: `cassettes/codebrk.aiff`, Uncle Bernie's Codebreaker, in the `.aiff` format his **ACIace** synthesiser emits. Plug from **Hardware → Woz ACI ▸ Uncle Bernie's Extended ACI**, or `--enable xaci`.
 
 **Uncle Bernie's GEN2 HGR** — **280×192** HIRES, Apple II-compatible memory at `$2000-$3FFF`, **NTSC artifact colour**. Auto-loads `software/Graphic HGR/GEN2.HGR.BIN`; includes [HGR Maze](sketchs/gen2/game_maze/HGR_Maze.asm). Details → [`doc/GEN2_RELEASE.md`](doc/GEN2_RELEASE.md).
 

@@ -626,6 +626,8 @@ MemoryViewer_ImGui::RegionInfo MemoryViewer_ImGui::resolveRegion(int address) co
         return { "ACI I/O", ImVec4(1.0f, 0.50f, 0.31f, 1.0f) };
     if (aciEnabled && address >= 0xC100 && address <= 0xC1FF)
         return { "ACI ROM", ImVec4(1.0f, 0.70f, 0.31f, 1.0f) };
+    if (extendedAciEnabled && address >= 0xC500 && address <= 0xC5FF)
+        return { "Extended ACI ROM", ImVec4(1.0f, 0.82f, 0.45f, 1.0f) };
 
     // Cards mapped lower in the address space
     if (wifiModemEnabled && address >= 0xB000 && address <= 0xB003)
@@ -883,6 +885,7 @@ bool MemoryViewer_ImGui::isROM(int address)
     if (address >= 0xFF00) return true;
     if (address >= 0xE000 && address <= 0xEFFF) return true;
     if (aciEnabled && address >= 0xC100 && address <= 0xC1FF) return true;
+    if (extendedAciEnabled && address >= 0xC500 && address <= 0xC5FF) return true;
     if (microSDEnabled && address >= 0x8000 && address <= 0x9FFF) return true;
     return false;
 }

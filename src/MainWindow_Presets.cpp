@@ -92,8 +92,10 @@ const MachineConfig kMachinePresets[] = {
         "Development bench for cc65 (C / 6502 asm) Apple-1 text programs. Same "
         "machine config as 'Apple-1 with ACI & BASIC cassette': 8 KB dual-bank RAM "
         "(4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF), ACI, Integer BASIC ready to "
-        "load from cassette, WOZ Monitor. The in-app DevBench loads this profile "
-        "for the Apple-1 asm/C targets.",
+        "load from cassette, WOZ Monitor. Stock Woz ACI, no $C500 extended page: "
+        "this bench mirrors the historical October-1976 profile it builds for "
+        "(preset_ram_profiles_smoke pins that mirror). The in-app DevBench loads "
+        "this profile for the Apple-1 asm/C targets.",
         false, false, false, false, false, false, false,
         /*pr40*/ false,
         false, false, /*aci*/ true, /*ramKB*/ 8, BasicType::IntegerCassette,
@@ -102,6 +104,7 @@ const MachineConfig kMachinePresets[] = {
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         /*iecCard*/ false,
+        /*extendedAci*/ false,
         {
             {"Apple 1 Screen", {10, 61}, {843, 701}},
         }, 1
@@ -122,6 +125,7 @@ const MachineConfig kMachinePresets[] = {
         /*codeTankRom*/ "roms/codetank/Codetank_ARCADE.rom",
         /*gt6144*/ false,
         /*iecCard*/ false,
+        /*extendedAci*/ false,
         {
             {"Apple 1 Screen",               {10,  61}, {843, 701}},
             {"P-LAB Graphic Card (TMS9918)", {858, 61}, {338, 300}},
@@ -142,6 +146,7 @@ const MachineConfig kMachinePresets[] = {
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         /*iecCard*/ false,
+        /*extendedAci*/ true,
         {
             {"Apple 1 Screen",                       {10,  61}, {843, 701}},
             {"Uncle Bernie's GEN2 HGR Graphic Card", {858, 60}, {338, 264}},
@@ -159,6 +164,7 @@ const MachineConfig kMachinePresets[] = {
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         /*iecCard*/ false,
+        /*extendedAci*/ false,
         // Right column carries two 1976-era photos of Woz + Jobs with
         // the Apple-1 — the portrait (standing Woz, seated Jobs) on
         // top and the landscape demo-session shot below. Fitting
@@ -184,6 +190,7 @@ const MachineConfig kMachinePresets[] = {
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         /*iecCard*/ false,
+        /*extendedAci*/ false,
         {
             {"Apple 1 Screen",           {10,  61},  {843, 701}},
             {"Tutorial: Cassette (ACI)", {858, 61},  {338, 223}},
@@ -208,6 +215,7 @@ const MachineConfig kMachinePresets[] = {
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ true,
         /*iecCard*/ false,
+        /*extendedAci*/ false,
         {
             {"Apple 1 Screen",                 {10,  61},  {843, 701}},
             // 4:3 content lives inside whatever size we give the window;
@@ -231,6 +239,7 @@ const MachineConfig kMachinePresets[] = {
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         /*iecCard*/ false,
+        /*extendedAci*/ true,
         {
             {"Apple 1 Screen",        {10,  61},  {843, 701}},
             {"Tutorial: Krusader",    {858, 61},  {338, 223}},
@@ -251,6 +260,7 @@ const MachineConfig kMachinePresets[] = {
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         /*iecCard*/ false,
+        /*extendedAci*/ false,
         {
             // CFFA1 has no dedicated window (transparent storage); pair
             // the storage tutorial with the BASIC tutorial since the
@@ -277,6 +287,7 @@ const MachineConfig kMachinePresets[] = {
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         /*iecCard*/ false,
+        /*extendedAci*/ false,
         {
             // microSD is also transparent storage — no dedicated panel.
             // Show both the storage tutorial and the Applesoft one since
@@ -305,6 +316,7 @@ const MachineConfig kMachinePresets[] = {
         /*codeTankRom*/ "roms/codetank/Codetank_ARCADE.rom",
         /*gt6144*/ false,
         /*iecCard*/ false,
+        /*extendedAci*/ false,
         {
             // Factory layout matches ini_defaults/imgui_preset_09.ini (also
             // seeded as build/ini/ when pre-generating preset layouts).
@@ -332,6 +344,7 @@ const MachineConfig kMachinePresets[] = {
         /*codeTankRom*/ "roms/codetank/Codetank_ARCADE.rom",
         /*gt6144*/ false,
         /*iecCard*/ false,
+        /*extendedAci*/ false,
         {
             // P-LAB Fantasy departs from the tutorial+peripheral template:
             // the right column stacks three cards so the user can see
@@ -370,6 +383,7 @@ const MachineConfig kMachinePresets[] = {
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         /*iecCard*/ false,
+        /*extendedAci*/ true,
         {
             {"Apple 1 Screen",                       {10,  61},  {843, 701}},
             {"Uncle Bernie's GEN2 HGR Graphic Card", {858, 60},  {338, 180}},
@@ -394,6 +408,7 @@ const MachineConfig kMachinePresets[] = {
         /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
         /*gt6144*/ false,
         /*iecCard*/ false,
+        /*extendedAci*/ true,
         {
             // Positions / sizes match the shipped POM1 Fantasy screenshot
             // so the first launch (no saved ini/imgui_preset_12.ini yet)
@@ -740,6 +755,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // kCardEnableDeferFrames frames later from render() once the CPU
     // has been executing for ~200 ms.
     aciEnabled               = cfg.aci;
+    extendedAciEnabled       = cfg.extendedAci;
     graphicsCardEnabled      = cfg.graphicsCard;
     emulation->setHgrFramebufferAttached(graphicsCardEnabled);
     showGraphicsCard         = false;
@@ -833,6 +849,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // re-plugged — CassetteDevice exists independently of the ACI and
     // produces the audible tape output through the mixer.
     pendingAciEnable            = cfg.aci;
+    pendingExtendedAciEnable    = cfg.extendedAci;
     pendingMicroSDEnable        = cfg.microSD;
     pendingCffa1Enable          = cfg.cffa1;
     pendingSidEnable            = cfg.sid;
@@ -1491,6 +1508,7 @@ void MainWindow_ImGui::applyHeadlessConfig(EmulationController& emu, int presetI
     emu.setPR40Enabled(cfg.pr40Printer);
     emu.setGT6144Enabled(cfg.gt6144);
     emu.setACIEnabled(cfg.aci);
+    emu.setExtendedACIEnabled(cfg.extendedAci);
 #if !POM1_IS_WASM
     emu.setTerminalCardEnabled(cfg.terminalCard);
 #endif

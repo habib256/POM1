@@ -583,6 +583,7 @@ static void applyHeadlessCardOverride(EmulationController& emu, pom1::CliCard ca
         case CC::CodeTank:     emu.setCodeTankEnabled(on); break;
         case CC::Pr40:         emu.setPR40Enabled(on); break;
         case CC::GT6144:       emu.setGT6144Enabled(on); break;
+        case CC::ExtendedAci:  emu.setExtendedACIEnabled(on); break;
         case CC::IEC:          emu.setIECCardEnabled(on); break;
         case CC::Krusader:     { std::string e; if (on) emu.reloadKrusader(e); } break;
     }

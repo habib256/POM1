@@ -34,6 +34,7 @@ public:
     void setWiFiModemEnabled(bool enabled) { wifiModemEnabled = enabled; }
     void setTerminalCardEnabled(bool enabled) { terminalCardEnabled = enabled; }
     void setACIEnabled(bool enabled) { aciEnabled = enabled; }
+    void setExtendedACIEnabled(bool enabled) { extendedAciEnabled = enabled; }
     void setJukeBoxEnabled(bool enabled) { jukeBoxEnabled = enabled; }
     void setJukeBoxState(uint8_t page, uint8_t subPage, uint8_t pgCount,
                          JukeBox::Jumper jmp, JukeBox::ChipMode chip) {
@@ -93,6 +94,7 @@ private:
     bool wifiModemEnabled = false;
     bool terminalCardEnabled = false;
     bool aciEnabled = true;
+    bool extendedAciEnabled = false;
     bool jukeBoxEnabled = false;
     uint8_t jbCurrentPage = 0;
     uint8_t jbCurrentSubPage = 0;

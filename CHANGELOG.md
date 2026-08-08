@@ -10,6 +10,71 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — Uncle Bernie's Extended ACI : la 2ᵉ page PROM `$C500` de son ACI Gen-2
+
+Code fourni par Uncle Bernie (`xaci.zip`, Applefritter, août 2026) et installé
+tel quel : `roms/XACI.rom`, 256 octets, plus le repli compilé `kExtendedAciRom`
+dans `Memory.cpp` — un build depuis les sources sans le fichier ROM démarre
+quand même.
+
+- **Ce n'est pas une carte de plus sur le bus, c'est une PROM de plus sur l'ACI.**
+  Aucun MMIO nouveau : la carte reste le flip-flop `$C000` et le comparateur
+  `$C081` de Woz. Ce qui change tient dans une page de ROM à `$C500-$C5FF`,
+  à côté du firmware `$C100` laissé **intact**. D'où la règle fille, calquée sur
+  CodeTank/TMS9918 : brancher la page étendue branche l'ACI en cascade,
+  débrancher l'ACI l'emporte avec elle (`Memory::setExtendedACIEnabled`).
+- **Ce que fait `C500R`** — et pourquoi la page est intouchable : elle recopie la
+  ROM ACI `$C100-$C1FF` dans la **page de pile** `$0100-$01FF`, patche les
+  branchements `R`/`W` de la copie vers un `RTS` (c'est la page étendue, pas le
+  firmware de Woz, qui décide de ce qu'est une lecture/écriture), puis réoriente
+  les deux `JSR $C1F1` vers `$C5F1`. Ce dernier patch porte deux choses à la
+  fois : il installe l'accumulateur de **checksum façon Apple-II**, et il met à
+  la retraite la queue `$01F1-$01FF` de la copie — soit exactement les octets
+  dont le code relogé a besoin comme pile (SP démarre à `$FF`). Retirer l'un ou
+  l'autre et le firmware écrase sa propre pile.
+- **Format étendu** : en-têtes de 8 octets portant les adresses from/to, adresses
+  égales = autostart. La bande porte donc son adresse de chargement — `C500R`
+  puis `RX RX` charge *et* démarre, `<from>.<to>WX` enregistre. Rétrocompatible :
+  un ACI d'origine ou un Apple-II relit la même bande en soustrayant 8 à chaque
+  `<from>` et en sautant le bloc d'autostart.
+- **Décodage AIFF ajouté** (`CassetteDevice::loadAiffTape`). Non négociable :
+  miniaudio ne décode pas l'AIFF, et l'AIFF est ce qu'émet **ACIace**, le
+  synthétiseur de bandes d'Uncle Bernie — sans lui aucune bande au format étendu
+  n'était chargeable. Lecteur IFF big-endian écrit à la main (COMM/SSND, taux
+  d'échantillonnage en flottant étendu 80 bits, PCM 8/16/24/32 + AIFF-C
+  `sowt`/`fl32`). Deux pièges traités : le PCM AIFF est **signé à toutes les
+  largeurs**, y compris 8 bits (celui du WAV est non signé), et `.aiff` prend le
+  chemin *pulse* inconditionnellement comme `.aci` — c'est de la **donnée**
+  cassette, jamais de la musique de platine, et le mode flux ne porterait aucune
+  transition pour `$C081`.
+- **Exposition** : entrée « └ Uncle Bernie's Extended ACI ($C500) » sous l'ACI
+  dans le menu Hardware (avec la séquence de touches en infobulle), `--enable
+  xaci` (alias `extended-aci`, `aci2`), région dans les deux barres de carte
+  mémoire, ombrage ROM dans l'inspecteur, champ `extendedAci` dans
+  `MachineConfig`. **Branchée d'office partout où l'ACI l'est** — presets 2, 6, 11,
+  12, et tout branchement manuel de l'ACI (menu Hardware, pastille de la
+  barre d'outils, `--enable aci`, le branchement de secours de l'éditeur SFX)
+  l'amène avec lui. **Deux exceptions assumées** : les presets **4** (« ACI &
+  BASIC cassette », octobre 1976) et **5** (« SWTPC GT-6144 », 1976) gardent un
+  ACI de Woz d'origine — ce sont les machines historiquement fidèles, et une
+  PROM de 2026 n'y a pas sa place. Décocher la page seule redonne partout
+  ailleurs une carte d'origine. Le **bench CC65 (preset 0) suit son modèle** et
+  reste donc lui aussi en ACI d'origine : `preset_ram_profiles_smoke` exige que
+  chaque banc reproduise exactement la machine pour laquelle il compile, et il a
+  attrapé la divergence dès le premier passage. `Memory` reste de la mécanique
+  pure : `setACIEnabled(true)` n'auto-branche **pas** la page, sans quoi le
+  branchement différé de l'ACI viendrait défaire un `--disable xaci` explicite.
+- **Bande de démo livrée** : `cassettes/codebrk.aiff` — le Codebreaker d'Uncle
+  Bernie, tel qu'il le distribue.
+- **Test `extended_aci_smoke`** : partie A, la carte (mapping `$C500`,
+  protection en écriture, cascade ACI dans les deux sens, RAM ordinaire quand la
+  page est absente) ; partie B, le firmware de bout en bout — `codebrk.aiff`
+  joué à travers la vraie extraction de pulses, `C500R` puis `RX RX` tapés au
+  clavier émulé, et la bannière du jeu attendue sur `$D012`. Rien n'est injecté :
+  les octets ne peuvent apparaître que par décodage AIFF → passages par zéro →
+  `$C081` → firmware étendu relogé en page 1. C'est aussi le **seul** garde-fou
+  du lecteur AIFF.
+
 ### Added — borne Raspberry Pi : les optimisations de NeoST portées dans POM1
 
 Reprise de la campagne « borne » de NeoST (`packaging/raspberry/`,

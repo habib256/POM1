@@ -52,6 +52,7 @@ enum class CliCard : uint8_t {
     Pr40,          // SWTPC PR-40 printer (Jobs 1976 Interface Age hack)
     GT6144,        // SWTPC GT-6144 graphic terminal (1976)
     IEC,           // P-LAB IEC daughterboard on microSD (cascade-enables microSD)
+    ExtendedAci,   // Uncle Bernie's extended ACI PROM page $C500 (cascade-enables ACI)
 };
 
 /// One deferred action consumed by the Phase-C runner after the
