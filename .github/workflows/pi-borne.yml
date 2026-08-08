@@ -1,0 +1,201 @@
+# =============================================================================
+#  Binaires de la BORNE Raspberry Pi — compilation à la demande.
+#
+#  Recette portée de NeoST (.github/workflows/pi-borne.yml).
+#
+#  POURQUOI un workflow séparé de `release.yml` :
+#   · il est déclenché À LA MAIN (workflow_dispatch), quand on prépare une borne,
+#     pas à chaque tag ;
+#   · il produit des binaires compilés pour UN cœur précis (-mcpu=cortex-a72 pour
+#     Pi 4 / Pi 400), là où la release publie une AppImage aarch64 GÉNÉRIQUE qui
+#     doit tourner du Pi 3 au Pi 5. Deux formats issus du MÊME build, sans
+#     recompilation : une AppImage `POM1-<ver>-pi400-aarch64.AppImage` (Pi OS
+#     AVEC bureau : un fichier cliquable) et un tar.gz `pom1-pi400-aarch64.tar.gz`
+#     (borne SANS bureau : pas de FUSE, déballé dans /home/pi/POM1) ;
+#   · il compile en DEUX PASSES guidées par profil (PGO) puis avec LTO —
+#     l'entraînement tourne ICI, sur le runner ARM64, donc le Pi n'en paie rien
+#     (contrairement à `build_native_pi.sh --pgo`, qui fait payer les deux passes
+#     au Pi lui-même : plusieurs heures sur un Pi 400) ;
+#   · il ne touche pas au pipeline de release — le casser n'empêche pas de publier.
+#
+#  Le build a lieu DANS un conteneur debian:bookworm, pas sur le runner :
+#  Raspberry Pi OS EST bookworm (glibc 2.36), et le runner ubuntu-24.04-arm
+#  estamperait GLIBC_2.39 — le binaire ne démarrerait sur aucun Pi. Le script
+#  vérifie ce plancher et échoue s'il est dépassé.
+#
+#  Récupérer les paquets :
+#      gh run download <run-id> -n pom1-borne-aarch64
+# =============================================================================
+name: Borne Raspberry Pi (aarch64, -mcpu ciblé)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mcpu:
+        description: "Cœur cible : cortex-a72 (Pi 4 / Pi 400), cortex-a76 (Pi 5), cortex-a53 (Pi 3)"
+        required: true
+        default: cortex-a72
+        type: choice
+        options: [cortex-a72, cortex-a76, cortex-a53]
+      pgo:
+        description: "Compilation guidée par profil (décocher = passe unique, build rapide)"
+        required: false
+        default: true
+        type: boolean
+  # `workflow_dispatch` n'est utilisable QUE si le fichier existe sur la branche
+  # par défaut — or on ne veut pas imposer ce workflow à `main` pour préparer une
+  # borne. D'où ce déclencheur sur la branche de préparation elle-même : y
+  # pousser suffit à obtenir les binaires.
+  push:
+    branches: [borne-raspberry]
+    paths:
+      - 'src/**'
+      - 'CMakeLists.txt'
+      - 'packaging/raspberrypi/**'
+      - 'packaging/linux/build_appimage.sh'
+      - '.github/workflows/pi-borne.yml'
+
+jobs:
+  borne:
+    runs-on: ubuntu-24.04-arm
+    # 120 et non 60 : depuis le PGO le job fait DEUX compilations complètes
+    # (instrumentée puis guidée par profil, cette dernière avec LTO) plus le
+    # parcours d'entraînement entre les deux, et POM1 compile ~90 TU C++17.
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      # Identité du build reportée dans le NOM du paquet. Courte et rattachable :
+      # sans elle, tous les paquets d'une même version seraient homonymes et on ne
+      # saurait pas quelle borne porte quel commit.
+      - name: Identité du build
+        id: id
+        run: |
+          echo "ver=$(cat VERSION)+$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "mcpu=${{ inputs.mcpu || 'cortex-a72' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build borne dans un conteneur bookworm arm64 (GLES, -mcpu, PGO+LTO)
+        env:
+          POM1_MCPU: ${{ steps.id.outputs.mcpu }}
+          POM1_VERSION: ${{ steps.id.outputs.ver }}
+          # ⚠ Ne PAS écrire `inputs.pgo == false` tout court : sur le déclencheur
+          # `push` l'entrée n'existe pas, et GitHub compare de façon lâche en
+          # convertissant en nombre — `null == false` devient `0 == 0`, donc VRAI.
+          # Le PGO serait silencieusement désactivé sur toute la branche de
+          # préparation, et la borne sortirait sans le gain qui justifie ce
+          # workflow. On garde donc la comparaison sous le seul déclencheur qui
+          # définit l'entrée.
+          POM1_PGO: ${{ (github.event_name == 'workflow_dispatch' && inputs.pgo == false) && '0' || '1' }}
+          POM1_REQUIRE_CC65: '1'
+          IMGUI_TAG: v1.92.9-docking
+        run: |
+          docker run --rm -v "$PWD":/work -w /work \
+            -e POM1_MCPU -e POM1_VERSION -e POM1_PGO -e POM1_REQUIRE_CC65 -e IMGUI_TAG \
+            debian:bookworm \
+            bash /work/packaging/raspberrypi/build_in_bookworm_pi.sh
+
+      # Contrôles qui doivent échouer ICI, pas sur la borne. Le script en fait
+      # déjà côté binaire (AArch64, plancher glibc, pas de libGL de bureau) ; on
+      # vérifie ici ce qui relève de l'EMPAQUETAGE.
+      - name: Vérifier les deux paquets (nom, runtime ET_EXEC, données, cc65)
+        run: |
+          set -euo pipefail
+          APP=$(ls dist/*.AppImage | head -1)
+          TGZ=$(ls dist/pom1-pi*-aarch64.tar.gz | head -1)
+          echo "AppImage : $APP"
+          echo "tar.gz   : $TGZ"
+
+          # Le nom doit porter le tag machine : le dossier d'artefacts est plat,
+          # un paquet homonyme de l'AppImage générique de release s'y écraserait.
+          case "$APP" in
+            *-pi400-aarch64.AppImage|*-pi5-aarch64.AppImage|*-pi3-aarch64.AppImage) ;;
+            *) echo "ERREUR : $APP ne porte pas le tag machine"; exit 1 ;;
+          esac
+
+          # Même contrat ET_EXEC + magie que les autres AppImage : le runtime
+          # `continuous` d'AppImageKit est ET_DYN côté ARM et AppImageLauncher le
+          # rejette en « type -1 ».
+          TYPE=$(readelf -h "$APP" | awk -F'[ :]+' '/^ *Type:/ {print $3; exit}')
+          test "$TYPE" = "EXEC" || { echo "ERREUR : runtime $TYPE ≠ EXEC"; exit 1; }
+          MAGIC=$(xxd -s 8 -l 3 -p "$APP")
+          test "$MAGIC" = "414902" || { echo "ERREUR : magie $MAGIC ≠ 414902"; exit 1; }
+
+          "$APP" --appimage-extract >/dev/null
+          readelf -h squashfs-root/usr/bin/POM1 | grep -q AArch64 \
+            || { echo "ERREUR : POM1 n'est pas AArch64"; exit 1; }
+          for f in roms/WozMonitor.rom roms/ACI.rom roms/XACI.rom cc65/bin/ca65 cc65/bin/cl65; do
+            test -s "squashfs-root/usr/share/POM1/$f" \
+              || { echo "ERREUR : $f absent de l'AppImage"; exit 1; }
+          done
+          rm -rf squashfs-root
+
+          # tar.gz borne : l'arborescence doit être celle qu'attend
+          # pom1-session.sh (cd $POM1_ROOT puis build/POM1), données comprises.
+          # ⚠ pas de `tar | grep -q` sous pipefail : grep ferme le tube tôt →
+          # « tar: stdout: write error » et faux négatif.
+          LIST=$(tar tzf "$TGZ")
+          for f in ./build/POM1 ./roms/WozMonitor.rom ./roms/XACI.rom \
+                   ./software/ ./cassettes/ ./build/cc65/bin/ca65 \
+                   ./packaging/raspberrypi/install_kiosk.sh; do
+            printf '%s\n' "$LIST" | grep -q "^$f" \
+              || { echo "ERREUR : $f absent du tar.gz"; exit 1; }
+          done
+          echo "OK : AppImage + tar.gz complets"
+
+      - name: Installer les libs GLES/X pour le lancement à blanc
+        run: |
+          set -eu
+          # Les DT_NEEDED sont résolus à l'exec, avant que main n'atteigne
+          # --list-presets : elles doivent exister même si aucun contexte n'est
+          # créé. GLESv2/EGL et non libGL — c'est tout l'intérêt de ce paquet.
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libgles2 libegl1 libglx0 \
+            libx11-6 libxext6 libxrandr2 libxinerama1 libxcursor1 libxi6
+
+      # Le runner est ARM64 : les binaires s'exécutent réellement ici. C'est le
+      # seul contrôle qui prouve que -mcpu n'a pas produit d'instruction absente
+      # du cœur… et surtout que le binaire DÉMARRE.
+      - name: Lancement à blanc des deux paquets (--list-presets)
+        run: |
+          set -euo pipefail
+          APP=$(ls dist/*.AppImage | head -1)
+          TGZ=$(ls dist/pom1-pi*-aarch64.tar.gz | head -1)
+
+          OUT=$("$APP" --appimage-extract-and-run --list-presets)
+          grep -q "Multiplexing Fantasy" <<<"$OUT" \
+            || { echo "ERREUR : l'AppImage ne liste pas les presets"; echo "$OUT"; exit 1; }
+
+          # Le tar.gz se déballe et tourne DEPUIS SA RACINE, comme sur la borne.
+          rm -rf /tmp/borne && mkdir -p /tmp/borne
+          tar -xzf "$TGZ" -C /tmp/borne
+          OUT=$(cd /tmp/borne && ./build/POM1 --list-presets)
+          grep -q "Multiplexing Fantasy" <<<"$OUT" \
+            || { echo "ERREUR : le tar.gz ne liste pas les presets"; echo "$OUT"; exit 1; }
+          echo "OK : les deux paquets démarrent"
+
+      - name: Résumé
+        run: |
+          set -euo pipefail
+          APP=$(ls dist/*.AppImage | head -1)
+          TGZ=$(ls dist/pom1-pi*-aarch64.tar.gz | head -1)
+          {
+            echo "### Paquets borne prêts — \`-mcpu=${{ steps.id.outputs.mcpu }}\`, PGO+LTO"
+            echo ''
+            echo "Build \`${{ steps.id.outputs.ver }}\`"
+            echo ''
+            echo "| Paquet | Taille | Pour quoi |"
+            echo "|---|---|---|"
+            echo "| \`$(basename "$APP")\` | $(du -h "$APP" | cut -f1) | Pi OS **avec bureau** — un fichier, cliquable |"
+            echo "| \`$(basename "$TGZ")\` | $(du -h "$TGZ" | cut -f1) | borne **sans bureau** — \`tar -xzf … -C /home/pi/POM1\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: pom1-borne-aarch64
+          path: |
+            dist/pom1-pi*-aarch64.tar.gz
+            dist/*.AppImage
+          if-no-files-found: error

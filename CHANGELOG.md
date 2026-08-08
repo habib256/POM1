@@ -10,6 +10,51 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — CI « Borne Raspberry Pi » : binaires taillés pour un cœur (PGO + LTO)
+
+Recette portée de NeoST (`.github/workflows/pi-borne.yml` +
+`packaging/raspberry/build_in_bookworm_pi.sh`), adaptée à POM1.
+
+- **Pourquoi un workflow séparé de `release.yml`** : la release publie une
+  AppImage aarch64 **générique**, qui doit tourner du Pi 3 au Pi 5. La borne, elle,
+  ne tourne que sur SON Pi — on peut donc compiler `-mcpu=cortex-a72` (Pi 4 /
+  Pi 400) et laisser GCC utiliser le vrai modèle de coût du cœur. Déclenché à la
+  main (`workflow_dispatch`, choix du cœur a72/a76/a53) ou par un push sur la
+  branche `borne-raspberry` ; casser ce workflow n'empêche pas de publier.
+- **Le PGO déménage du Pi vers le runner.** `build_native_pi.sh --pgo` faisait
+  payer deux compilations complètes + le parcours d'entraînement **au Pi
+  lui-même** — plusieurs heures sur un Pi 400, avec l'OOM-killer au lien LTO.
+  Le même travail sur un runner ARM64 est gratuit. Sur NeoST, d'où vient la
+  recette : PGO seul −20 %, PGO+LTO −34 % de temps CPU à code identique.
+- **Build dans un conteneur `debian:bookworm`, pas sur le runner** : Raspberry Pi
+  OS *est* bookworm (glibc 2.36), alors que `ubuntu-24.04-arm` estamperait
+  `GLIBC_2.39` et le binaire ne démarrerait sur aucun Pi. Le script vérifie ce
+  plancher, l'architecture AArch64, et qu'aucun **libGL de bureau** n'a été lié
+  (sur un Pi c'est le rastériseur logiciel : en dépendre serait une régression
+  silencieuse à 2 images/s plutôt qu'une erreur de lien). Le conteneur tourne
+  nativement — pas de QEMU.
+- **Deux paquets issus du MÊME build**, sans recompilation : une AppImage
+  `POM1-<ver>-pi400-aarch64.AppImage` (Pi OS avec bureau) et un tar.gz
+  `pom1-pi400-aarch64.tar.gz` pour la borne **sans bureau** — une AppImage v2
+  réclame libfuse2, absent de Pi OS Lite, et la borne devrait l'extraire à chaque
+  démarrage pour rien. L'arborescence du tar.gz est celle du dépôt
+  (`build/POM1` + `roms/`, `software/`…) parce que c'est exactement ce qu'attend
+  `pom1-session.sh` ; les scripts de borne voyagent dedans, donc l'arbre déballé
+  s'installe lui-même. Le tag machine dans le nom évite qu'un paquet homonyme
+  écrase l'AppImage générique de release dans le dossier d'artefacts aplati.
+- **Garde-fous du PGO conservés** : les deux passes partagent le même répertoire
+  de build (GCC nomme les `.gcda` d'après le chemin absolu de l'objet, et
+  `-Wno-missing-profile` rendrait l'échec totalement muet), et le build **échoue**
+  si aucun profil n'a été collecté pour `M6502`, `Memory`, `GraphicsCard` et
+  `TMS9918` — un parcours d'entraînement muet donnerait un placebo.
+- **Piège d'expression GitHub refermé** : `inputs.pgo == false` seul aurait
+  désactivé le PGO en silence sur le déclencheur `push` (l'entrée n'existe pas,
+  et la comparaison lâche convertit `null == false` en `0 == 0`, donc vrai). La
+  comparaison est gardée sous `github.event_name == 'workflow_dispatch'`.
+- Les deux paquets sont **réellement lancés** sur le runner ARM64
+  (`--list-presets`, le tar.gz depuis sa racine déballée) : c'est le seul contrôle
+  qui prouve que `-mcpu` n'a pas produit d'instruction absente du cœur.
+
 ### Added — Uncle Bernie's Extended ACI : la 2ᵉ page PROM `$C500` de son ACI Gen-2
 
 Code fourni par Uncle Bernie (`xaci.zip`, Applefritter, août 2026) et installé
