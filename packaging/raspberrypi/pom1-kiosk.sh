@@ -1,42 +1,29 @@
-#!/bin/bash
-# ---------------------------------------------------------------------------
-# pom1-kiosk.sh — lanceur POM1 pour le mode borne (kiosk) sur Raspberry Pi 400.
+#!/bin/sh
+# =============================================================================
+#  pom1-kiosk.sh — Point d'entrée du service systemd : démarre un X NU.
 #
-# Rôle :
-#   1. Poser les surcharges Mesa nécessaires au GPU VideoCore VI / V3D du Pi.
-#   2. Se placer à la racine du dépôt (POM1 résout roms/, software/, fonts/,
-#      cassettes/, sdcard/, pic/ par rapport au répertoire courant).
-#   3. Lancer le binaire ./build/POM1.
+#  « X nu » = un serveur X SANS gestionnaire de fenêtres et SANS compositeur.
+#  C'est le cœur du gain sur un Pi : sur un bureau (labwc/wayfire/mutter), chaque
+#  trame de POM1 est recopiée une fois de plus par le compositeur avant
+#  d'atteindre l'écran. Sans WM, la fenêtre plein écran de POM1 (--fullscreen)
+#  est page-flippée directement par KMS.
 #
-# Le script se localise tout seul : il déduit la racine du dépôt à partir de
-# son propre chemin (packaging/raspberrypi/ → ../../). Aucun chemin en dur, il
-# marche quel que soit l'endroit où le dépôt est cloné.
+#  Le plein écran vient donc de POM1 lui-même et non plus d'un
+#  `matchbox-window-manager` qui maximise la fenêtre. Si jamais --fullscreen
+#  posait problème sur une installation, POM1_WM="matchbox" dans
+#  /etc/pom1-kiosk.conf remet l'ancien montage (cf. pom1-session.sh).
 #
-# --- Le piège OpenGL du Pi -------------------------------------------------
-# POM1 (src/main_imgui.cpp) demande un contexte OpenGL 3.2 « Core ». Le pilote
-# Mesa/V3D du Pi 4/400 n'expose en OpenGL desktop que la version 3.1 : sans
-# surcharge, la création de la fenêtre échoue. MESA_GL_VERSION_OVERRIDE fait
-# remonter la version rapportée à 3.3 et laisse passer la requête 3.2 Core ;
-# ImGui n'utilise que des fonctionnalités présentes dès 3.1, donc tout rend
-# correctement. GLSL est figé à 150 (ce que POM1 compile côté desktop).
-# ---------------------------------------------------------------------------
+#  -keeptty    : le service fournit déjà /dev/tty1 (TTYPath=), X ne doit pas en
+#                ouvrir un autre — sinon il rate son VT et sort sur « no screens ».
+#  -novtswitch : la borne ne doit pas pouvoir basculer sur une console texte.
+#  -nocursor   : pas de pointeur (unclutter devient inutile).
+#
+#  (c) 2000-2026 VERHILLE Arnaud — projet POM1.
+# =============================================================================
+set -eu
 
-set -euo pipefail
+[ -r /etc/pom1-kiosk.conf ] && . /etc/pom1-kiosk.conf
+POM1_ROOT="${POM1_ROOT:-/home/pi/POM1}"
 
-# Surcharges Mesa — indispensables sur le GPU V3D du Pi (cf. en-tête ci-dessus).
-export MESA_GL_VERSION_OVERRIDE="${MESA_GL_VERSION_OVERRIDE:-3.3}"
-export MESA_GLSL_VERSION_OVERRIDE="${MESA_GLSL_VERSION_OVERRIDE:-150}"
-
-# Racine du dépôt = deux niveaux au-dessus de ce script.
-SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-
-BIN="${REPO_ROOT}/build/POM1"
-if [ ! -x "${BIN}" ]; then
-    echo "ERREUR : ${BIN} introuvable. Lance d'abord packaging/raspberrypi/install.sh." >&2
-    exit 1
-fi
-
-# POM1 doit tourner depuis la racine (chemins de données relatifs au cwd).
-cd "${REPO_ROOT}"
-exec "${BIN}" "$@"
+exec /usr/bin/startx "$POM1_ROOT/packaging/raspberrypi/pom1-session.sh" -- \
+     :0 vt1 -keeptty -novtswitch -nolisten tcp -nocursor

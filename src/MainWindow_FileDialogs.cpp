@@ -521,20 +521,20 @@ void MainWindow_ImGui::renderLoadDialog()
         if (loadDlg.fileType == 0) {
             ImGui::Text("Address (hex):");
             ImGui::SameLine();
-            ImGui::SetNextItemWidth(80);
+            ImGui::SetNextItemWidth(uiPx(80.0f));
             ImGui::InputText("##address", loadDlg.addressStr, sizeof(loadDlg.addressStr),
                              ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
         }
 
         ImGui::Spacing();
-        if (ImGui::Button("Load", ImVec2(120, 0))) {
+        if (ImGui::Button("Load", uiPx(ImVec2(120, 0)))) {
             uint16_t addr = 0;
             if (loadDlg.fileType == 0)
                 addr = (uint16_t)strtol(loadDlg.addressStr, nullptr, 16);
             performMemoryLoad(loadDlg.filePath, loadDlg.fileType, addr);
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+        if (ImGui::Button("Cancel", uiPx(ImVec2(120, 0)))) {
             showLoadDialog = false;
             loadDlg.reset();
         }
@@ -547,9 +547,10 @@ void MainWindow_ImGui::loadTape()
 #if !POM1_IS_WASM
     if (pom1::NativeFileDialog::isAvailable()) {
         std::vector<pom1::FileFilter> filters = {
-            { "Cassette tapes (*.aci, *.wav, *.ogg, *.mp3, *.flac)",
-              {"aci", "wav", "ogg", "mp3", "flac"} },
+            { "Cassette tapes (*.aci, *.wav, *.aiff, *.ogg, *.mp3, *.flac)",
+              {"aci", "wav", "aiff", "aif", "ogg", "mp3", "flac"} },
             { "ACI pulse dump (*.aci)", {"aci"} },
+            { "ACIace program tape (*.aiff)", {"aiff", "aif"} },
             { "Audio (*.wav, *.ogg, *.mp3, *.flac)",
               {"wav", "ogg", "mp3", "flac"} },
         };
@@ -585,7 +586,8 @@ void MainWindow_ImGui::renderLoadTapeDialog()
     ImGui::SetNextWindowSize(ImVec2(560, 440), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Load Tape", &showLoadTapeDialog)) {
         ImGui::TextWrapped("Load an Apple-1 cassette image or audio tape. Supported formats: "
-                           ".aci (exact pulse dump), .wav, .ogg, .mp3, .flac.");
+                           ".aci (exact pulse dump), .aiff (Uncle Bernie's ACIace), .wav, .ogg, "
+                           ".mp3, .flac.");
 
         if (!loadTapeDlg.filesScanned) {
             if (loadTapeDlg.cassettesRoot.empty()) {
@@ -610,8 +612,8 @@ void MainWindow_ImGui::renderLoadTapeDialog()
                         std::string ext = entry.path().extension().string();
                         std::transform(ext.begin(), ext.end(), ext.begin(),
                                        [](unsigned char c) { return std::tolower(c); });
-                        if (ext == ".aci" || ext == ".wav" || ext == ".ogg" ||
-                            ext == ".mp3" || ext == ".flac")
+                        if (ext == ".aci" || ext == ".wav" || ext == ".aiff" || ext == ".aif" ||
+                            ext == ".ogg" || ext == ".mp3" || ext == ".flac")
                             loadTapeDlg.fileList.push_back(entry.path().filename().string());
                     }
                 }
@@ -715,7 +717,10 @@ void MainWindow_ImGui::renderLoadTapeDialog()
             std::string selExt = std::filesystem::path(sel).extension().string();
             std::transform(selExt.begin(), selExt.end(), selExt.begin(),
                            [](unsigned char c) { return std::tolower(c); });
-            const bool isAci   = (selExt == ".aci");
+            // .aiff joins .aci on the "always a program tape" side — see
+            // CassetteDevice::loadTape.
+            const bool isAci   = (selExt == ".aci" || selExt == ".aiff" ||
+                                  selExt == ".aif");
             const bool isAudio = (selExt == ".wav" || selExt == ".ogg" ||
                                   selExt == ".mp3" || selExt == ".flac");
             if (isAci) {
@@ -729,12 +734,12 @@ void MainWindow_ImGui::renderLoadTapeDialog()
                     "Next load: AUDIO STREAM — raw playback through the deck speaker.");
             } else if (!sel.empty()) {
                 ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.35f, 1.0f),
-                    "Unsupported extension. Expected .aci/.wav/.ogg/.mp3/.flac.");
+                    "Unsupported extension. Expected .aci/.wav/.aiff/.ogg/.mp3/.flac.");
             }
         }
 
         ImGui::Spacing();
-        if (ImGui::Button("Load Tape", ImVec2(120, 0))) {
+        if (ImGui::Button("Load Tape", uiPx(ImVec2(120, 0)))) {
             std::string error;
             if (emulation->loadTape(loadTapeDlg.filePath, error)) {
                 emulation->copySnapshot(uiSnapshot);
@@ -747,17 +752,17 @@ void MainWindow_ImGui::renderLoadTapeDialog()
             }
         }
         ImGui::SameLine();
-        if (ImGui::Button("Rewind", ImVec2(120, 0))) {
+        if (ImGui::Button("Rewind", uiPx(ImVec2(120, 0)))) {
             emulation->rewindTape();
             emulation->copySnapshot(uiSnapshot);
             setStatusMessage("Tape rewound", 2.0f);
         }
         ImGui::SameLine();
-        if (ImGui::Button("Refresh", ImVec2(120, 0))) {
+        if (ImGui::Button("Refresh", uiPx(ImVec2(120, 0)))) {
             loadTapeDlg.rescan();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(100, 0))) {
+        if (ImGui::Button("Cancel", uiPx(ImVec2(100, 0)))) {
             showLoadTapeDialog = false;
         }
     }
@@ -818,13 +823,13 @@ void MainWindow_ImGui::renderSaveDialog()
 
         ImGui::Spacing();
         ImGui::Text("Address range (hex):");
-        ImGui::SetNextItemWidth(80);
+        ImGui::SetNextItemWidth(uiPx(80.0f));
         ImGui::InputText("##startaddr", startStr, sizeof(startStr),
                          ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
         ImGui::SameLine();
         ImGui::Text("-");
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(80);
+        ImGui::SetNextItemWidth(uiPx(80.0f));
         ImGui::InputText("##endaddr", endStr, sizeof(endStr),
                          ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
 
@@ -834,7 +839,7 @@ void MainWindow_ImGui::renderSaveDialog()
         ImGui::Text("Size: %d bytes (%d pages)", size, (size + 255) / 256);
 
         ImGui::Spacing();
-        if (ImGui::Button("Save", ImVec2(120, 0)) && size > 0) {
+        if (ImGui::Button("Save", uiPx(ImVec2(120, 0))) && size > 0) {
             // Resolve the target file path. On non-WASM with a native picker
             // available we pop GetSaveFileNameW / NSSavePanel / zenity so the
             // user picks the destination directory + filename in their OS's
@@ -886,7 +891,7 @@ void MainWindow_ImGui::renderSaveDialog()
             }
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+        if (ImGui::Button("Cancel", uiPx(ImVec2(120, 0)))) {
             showSaveDialog = false;
         }
     }
@@ -1072,7 +1077,7 @@ void MainWindow_ImGui::renderLoadSnapshotDialog()
         ImGui::Spacing();
         const bool hasFile = snapshotDlg.filename[0] != '\0';
         ImGui::BeginDisabled(!hasFile);
-        if (ImGui::Button("Load", ImVec2(120, 0))) {
+        if (ImGui::Button("Load", uiPx(ImVec2(120, 0)))) {
             std::string err;
             if (emulation->loadSnapshot(snapshotDlg.filename, err)) {
                 emulation->copySnapshot(uiSnapshot);
@@ -1087,7 +1092,7 @@ void MainWindow_ImGui::renderLoadSnapshotDialog()
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+        if (ImGui::Button("Cancel", uiPx(ImVec2(120, 0)))) {
             showLoadSnapshotDialog = false;
             snapshotDlg.reset();
         }
@@ -1127,7 +1132,7 @@ void MainWindow_ImGui::renderSaveSnapshotDialog()
         ImGui::Spacing();
         const bool hasFilename = snapshotDlg.filename[0] != '\0';
         ImGui::BeginDisabled(!hasFilename || snapshotDlg.snapshotsRoot.empty());
-        if (ImGui::Button("Save", ImVec2(120, 0))) {
+        if (ImGui::Button("Save", uiPx(ImVec2(120, 0)))) {
             // Compose absolute path. If the user left a bare filename (the
             // common case via the timestamped default), stick it inside
             // snapshots/. Auto-suffix .snap when missing so accidental
@@ -1151,7 +1156,7 @@ void MainWindow_ImGui::renderSaveSnapshotDialog()
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+        if (ImGui::Button("Cancel", uiPx(ImVec2(120, 0)))) {
             showSaveSnapshotDialog = false;
             snapshotDlg.reset();
         }
@@ -1212,7 +1217,7 @@ void MainWindow_ImGui::renderSaveTapeDialog()
         ImGui::Text("Audio backend: %s", uiSnapshot.cassetteAudioAvailable ? "active" : "unavailable");
 
         ImGui::Spacing();
-        if (ImGui::Button("Save Tape", ImVec2(120, 0))) {
+        if (ImGui::Button("Save Tape", uiPx(ImVec2(120, 0)))) {
             std::string error;
             if (emulation->saveTape(saveTapeDlg.filePath, error)) {
                 emulation->copySnapshot(uiSnapshot);
@@ -1225,13 +1230,13 @@ void MainWindow_ImGui::renderSaveTapeDialog()
             }
         }
         ImGui::SameLine();
-        if (ImGui::Button("Clear Capture", ImVec2(120, 0))) {
+        if (ImGui::Button("Clear Capture", uiPx(ImVec2(120, 0)))) {
             emulation->clearTapeCapture();
             emulation->copySnapshot(uiSnapshot);
             setStatusMessage("Cassette capture cleared", 2.0f);
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+        if (ImGui::Button("Cancel", uiPx(ImVec2(120, 0)))) {
             showSaveTapeDialog = false;
         }
     }

@@ -1,21 +1,27 @@
 #!/bin/bash
 # ===========================================================================
-# install.sh — Installe POM1 en mode BORNE (kiosk) sur un Raspberry Pi 400.
+# install.sh — Installe POM1 en mode BORNE (kiosk) sur un Raspberry Pi.
 #
-# Cible : Raspberry Pi OS Bookworm 64-bit.
-# Effet : au démarrage, le Pi se connecte tout seul et lance POM1 en plein
-#         écran, sans bureau. Rien d'autre. Cassettes / programmes / éditeurs
-#         d'images sont accessibles depuis les menus de POM1.
+# Cible : Raspberry Pi OS Bookworm 64-bit (Pi 4 / 400 / 5).
+# Effet : au démarrage, le Pi lance POM1 en plein écran, sans bureau. Rien
+#         d'autre. Cassettes / programmes / éditeurs d'images restent
+#         accessibles depuis les menus de POM1.
+#
+# Ce script est l'ORCHESTRATEUR ; le travail est réparti :
+#     build_native_pi.sh   compile (palier GLES, -mcpu du cœur réel, PGO)
+#     install_kiosk.sh     durcit le système et pose le service systemd
 #
 # À lancer DEPUIS le Pi, une seule fois, avec le dépôt déjà cloné :
 #     cd /chemin/vers/POM1
-#     ./packaging/raspberrypi/install.sh
+#     ./packaging/raspberrypi/install.sh              # build + borne
+#     ./packaging/raspberrypi/install.sh --pgo        # + profil (long, +10-20 %)
+#     ./packaging/raspberrypi/install.sh --no-kiosk   # compiler seulement
 #
-# Idempotent : on peut le relancer sans casse. Ne PAS lancer en root (sudo est
-# appelé au coup par coup en interne) — il configure l'utilisateur courant.
+# Idempotent. Ne PAS lancer en root (sudo est appelé au coup par coup) — il
+# configure l'utilisateur courant comme utilisateur de la borne.
 #
 # Pour SORTIR de la borne plus tard : Ctrl+Alt+F2 (autre console) ou ssh, puis
-#     ./packaging/raspberrypi/install.sh --disable-kiosk
+#     ./packaging/raspberrypi/install.sh --uninstall
 # ===========================================================================
 
 set -euo pipefail
@@ -29,43 +35,57 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 KIOSK_USER="$(id -un)"
-LAUNCHER="${SCRIPT_DIR}/pom1-kiosk.sh"
 
-ARCH="$(uname -m)"
-if [ "${ARCH}" != "aarch64" ] && [ "${1:-}" != "--force" ]; then
-    echo "Attention : architecture '${ARCH}' (attendu aarch64 = Raspberry Pi OS 64-bit)."
-    echo "Relance avec --force pour ignorer ce contrôle."
-    [ "${1:-}" = "--disable-kiosk" ] || exit 1
+DO_KIOSK=1
+BUILD_ARGS=()
+KIOSK_ARGS=()
+UNINSTALL=0
+FORCE=0
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --uninstall|--disable-kiosk) UNINSTALL=1 ;;
+        --no-kiosk)                  DO_KIOSK=0 ;;
+        --pgo)                       BUILD_ARGS+=(--pgo) ;;
+        --desktop-gl)                BUILD_ARGS+=(--desktop-gl) ;;
+        --keep-wifi)                 KIOSK_ARGS+=(--keep-wifi) ;;
+        --keep-audio-server)         KIOSK_ARGS+=(--keep-audio-server) ;;
+        --force)                     FORCE=1; KIOSK_ARGS+=(--force) ;;
+        *) echo "Option inconnue : $1" >&2; exit 1 ;;
+    esac
+    shift
+done
+
+if [ "$UNINSTALL" = 1 ]; then
+    exec sudo "${SCRIPT_DIR}/install_kiosk.sh" --uninstall --user "${KIOSK_USER}"
 fi
 
-# ---- Désinstallation du mode borne (option) -------------------------------
-if [ "${1:-}" = "--disable-kiosk" ]; then
-    echo "Désactivation du mode borne pour ${KIOSK_USER}…"
-    rm -f "${HOME}/.xinitrc"
-    # Retirer le déclencheur startx du profil de connexion.
-    if [ -f "${HOME}/.bash_profile" ]; then
-        sed -i '/# >>> POM1 kiosk >>>/,/# <<< POM1 kiosk <<</d' "${HOME}/.bash_profile"
-    fi
-    echo "Repasse le démarrage en mode normal via : sudo raspi-config  (System Options > Boot / Auto Login)."
-    echo "Fait. Redémarre pour retrouver un démarrage classique."
-    exit 0
+ARCH="$(uname -m)"
+if [ "${ARCH}" != "aarch64" ] && [ "$FORCE" = 0 ]; then
+    echo "Attention : architecture '${ARCH}' (attendu aarch64 = Raspberry Pi OS 64-bit)."
+    echo "Relance avec --force pour ignorer ce contrôle."
+    exit 1
 fi
 
 echo "=== Installation POM1 borne — utilisateur '${KIOSK_USER}', dépôt '${REPO_ROOT}' ==="
 
-# ---- 1. Dépendances -------------------------------------------------------
-echo "--- 1/5 Installation des paquets (build + session X minimale) ---"
+# ---- 1. Dépendances de compilation ----------------------------------------
+# Les paquets de la session X (xinit, xserver-xorg-core…) sont installés par
+# install_kiosk.sh, qui sait lesquels prendre SANS recommandations (sinon
+# xserver-xorg-core tire une partie du bureau, serveur de son compris).
+#
+# libgles2-mesa-dev + libegl1-mesa-dev : palier GLES 3.0, le chemin que le
+# pilote V3D du Pi implémente réellement (cf. build_native_pi.sh).
+echo "--- 1/4 Paquets de compilation ---"
 sudo apt update
 sudo apt install -y \
     git cmake pkg-config build-essential \
-    libglfw3-dev libgl1-mesa-dev mesa-utils \
+    libglfw3-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev mesa-utils \
     libasound2-dev \
-    cc65 \
-    xserver-xorg xinit x11-xserver-utils \
-    matchbox-window-manager unclutter
+    cc65
 
 # ---- 2. Dear ImGui (dépendance de build, non vendorée) --------------------
-echo "--- 2/5 Dear ImGui ---"
+echo "--- 2/4 Dear ImGui ---"
 if [ ! -d "${REPO_ROOT}/imgui" ]; then
     git clone --depth 1 --branch v1.92.9-docking https://github.com/ocornut/imgui.git "${REPO_ROOT}/imgui"
 else
@@ -73,78 +93,30 @@ else
 fi
 
 # ---- 3. Compilation -------------------------------------------------------
-echo "--- 3/5 Compilation de POM1 (cela peut prendre plusieurs minutes sur le Pi) ---"
-mkdir -p "${REPO_ROOT}/build"
-cmake -S "${REPO_ROOT}" -B "${REPO_ROOT}/build"
-cmake --build "${REPO_ROOT}/build" --target pom1_imgui -j"$(nproc)"
-chmod +x "${LAUNCHER}"
+echo "--- 3/4 Compilation (plusieurs minutes ; --pgo : ~2× plus, et ça les vaut) ---"
+"${SCRIPT_DIR}/build_native_pi.sh" ${BUILD_ARGS[@]+"${BUILD_ARGS[@]}"}
 
 if [ ! -x "${REPO_ROOT}/build/POM1" ]; then
     echo "ERREUR : la compilation n'a pas produit build/POM1." >&2
     exit 1
 fi
 
-# Vérif OpenGL — informatif : montre ce que le pilote V3D rapporte.
-echo "  OpenGL rapporté par Mesa (avec la surcharge borne) :"
-MESA_GL_VERSION_OVERRIDE=3.3 glxinfo 2>/dev/null | grep -iE "OpenGL (renderer|version)" | sed 's/^/    /' || \
-    echo "    (glxinfo indisponible hors session X — sans importance)"
-
-# ---- 4. Autologin console sur tty1 ----------------------------------------
-echo "--- 4/5 Connexion automatique en console (tty1) ---"
-if command -v raspi-config >/dev/null 2>&1; then
-    # B2 = console + autologin. La session X est démarrée depuis .bash_profile.
-    sudo raspi-config nonint do_boot_behaviour B2
-else
-    # Repli générique : override systemd du getty tty1.
-    sudo mkdir -p /etc/systemd/system/getty@tty1.service.d
-    sudo tee /etc/systemd/system/getty@tty1.service.d/autologin.conf >/dev/null <<EOF
-[Service]
-ExecStart=
-ExecStart=-/sbin/agetty --autologin ${KIOSK_USER} --noclear %I \$TERM
-EOF
-    sudo systemctl daemon-reload
+# ---- 4. Mode borne --------------------------------------------------------
+if [ "$DO_KIOSK" = 0 ]; then
+    echo ""
+    echo "=== Compilation terminée (mode borne non installé, --no-kiosk) ==="
+    echo "  Lancer : cd ${REPO_ROOT} && ./build/POM1"
+    exit 0
 fi
 
-# ---- 5. Démarrage de X + POM1 à la connexion ------------------------------
-echo "--- 5/5 Écriture de ~/.xinitrc et du déclencheur startx ---"
-
-# .xinitrc : session X minimale = matchbox plein écran + boucle POM1.
-cat > "${HOME}/.xinitrc" <<EOF
-#!/bin/sh
-# Généré par packaging/raspberrypi/install.sh — mode borne POM1.
-xset s off
-xset s noblank
-xset -dpms
-command -v unclutter >/dev/null 2>&1 && unclutter -idle 1 &
-matchbox-window-manager -use_titlebar no &
-while true; do
-    "${LAUNCHER}"
-    sleep 1
-done
-EOF
-chmod +x "${HOME}/.xinitrc"
-
-# .bash_profile : lancer startx uniquement sur tty1 et hors X déjà lancé.
-PROFILE="${HOME}/.bash_profile"
-touch "${PROFILE}"
-if ! grep -q "# >>> POM1 kiosk >>>" "${PROFILE}"; then
-    cat >> "${PROFILE}" <<'EOF'
-
-# >>> POM1 kiosk >>>
-if [ -z "${DISPLAY:-}" ] && [ "$(tty)" = "/dev/tty1" ]; then
-    exec startx
-fi
-# <<< POM1 kiosk <<<
-EOF
-fi
+echo "--- 4/4 Mode borne (X nu + service systemd) ---"
+sudo "${SCRIPT_DIR}/install_kiosk.sh" --user "${KIOSK_USER}" ${KIOSK_ARGS[@]+"${KIOSK_ARGS[@]}"}
 
 echo ""
 echo "=== Terminé ! ==="
 echo "Au prochain redémarrage, le Pi démarrera directement dans POM1, plein écran."
 echo ""
 echo "  Redémarrer maintenant : sudo reboot"
+echo "  Réglages de la borne  : /etc/pom1-kiosk.conf (profil, latence audio…)"
 echo "  Sortir de la borne    : Ctrl+Alt+F2 (ou ssh), puis"
-echo "                          ${SCRIPT_DIR}/install.sh --disable-kiosk"
-echo ""
-echo "Son : si tu n'entends pas les cassettes, choisis la sortie audio avec"
-echo "      'sudo raspi-config' (System Options > Audio) et teste 'speaker-test -t wav -c2'."
+echo "                          ${SCRIPT_DIR}/install.sh --uninstall"

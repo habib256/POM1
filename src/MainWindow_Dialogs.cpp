@@ -1856,17 +1856,11 @@ void MainWindow_ImGui::renderScreenConfigDialog()
                 emscripten_exit_fullscreen();
             }
 #else
-            if (window) {
-                if (fullscreen) {
-                    glfwGetWindowPos(window, &windowedPosX, &windowedPosY);
-                    glfwGetWindowSize(window, &windowedWidth, &windowedHeight);
-                    GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-                    const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-                    glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
-                } else {
-                    glfwSetWindowMonitor(window, nullptr, windowedPosX, windowedPosY, windowedWidth, windowedHeight, 0);
-                }
-            }
+            // Unticking is the escape hatch out of a --fullscreen kiosk: drop
+            // the CLI force first, or render() would put the window straight
+            // back on the monitor next frame.
+            if (!fullscreen) cliForcedFullscreen_ = false;
+            setOsFullscreen(fullscreen);   // re-asserts the flag it was given
 #endif
         }
 
@@ -2181,13 +2175,13 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
             ImGui::Text("Are you sure you want to clear all memory?");
             ImGui::Separator();
 
-            if (ImGui::Button("Yes", ImVec2(120, 0))) {
+            if (ImGui::Button("Yes", uiPx(ImVec2(120, 0)))) {
                 emulation->clearMemory();
                 setStatusMessage("Memory cleared", 2.0f);
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("No", ImVec2(120, 0))) {
+            if (ImGui::Button("No", uiPx(ImVec2(120, 0)))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();

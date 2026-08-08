@@ -1799,7 +1799,10 @@ void MainWindow_ImGui::savePresetLayout(int idx)
         }
         g.havePos    = true;
         g.maximized  = maxed;
-        g.fullscreen = fullscreen;
+        // A CLI --fullscreen (kiosk) must not rewrite the profile's saved
+        // layout: the next plain launch would come up fullscreen for no
+        // visible reason. Only the Settings checkbox persists.
+        g.fullscreen = fullscreen && !cliForcedFullscreen_;
         if (g.w > 0 && g.h > 0) saveSizeFile(idx, g);
     }
 #endif
@@ -2602,6 +2605,37 @@ void MainWindow_ImGui::writeStartupChooser(bool showChooser)
         if (f) f << "chooser=1\n";
     }
     syncIniToIdbfs();
+}
+
+// ---------------------------------------------------------------------------
+// OS-level fullscreen (Settings ▸ Fullscreen and CLI --fullscreen).
+//
+// Kept in one place because the two entry points must agree on the windowed
+// rect bookkeeping: glfwSetWindowMonitor() forgets it, so leaving fullscreen
+// needs the position/size captured on the way in.
+// ---------------------------------------------------------------------------
+void MainWindow_ImGui::setOsFullscreen(bool on)
+{
+#if POM1_IS_WASM
+    (void)on;   // browser fullscreen goes through the Emscripten API instead
+#else
+    if (!window) return;
+    if (on) {
+        GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+        const GLFWvidmode* mode = monitor ? glfwGetVideoMode(monitor) : nullptr;
+        if (!monitor || !mode) return;   // headless X / no monitor: stay windowed
+        if (glfwGetWindowMonitor(window) == nullptr) {
+            glfwGetWindowPos(window, &windowedPosX, &windowedPosY);
+            glfwGetWindowSize(window, &windowedWidth, &windowedHeight);
+        }
+        glfwSetWindowMonitor(window, monitor, 0, 0,
+                             mode->width, mode->height, mode->refreshRate);
+    } else {
+        glfwSetWindowMonitor(window, nullptr, windowedPosX, windowedPosY,
+                             windowedWidth, windowedHeight, 0);
+    }
+    fullscreen = on;
+#endif
 }
 
 // ---------------------------------------------------------------------------

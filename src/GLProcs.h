@@ -56,6 +56,12 @@ typedef ptrdiff_t GLintptr;
 #ifndef GL_CLAMP_TO_EDGE
 #define GL_CLAMP_TO_EDGE        0x812F
 #endif
+// GL 2.0 query, same absence for the same reason. OpenGLShader.cpp reads it
+// through glGetString() (GL 1.0, always declared) to pick the GLSL dialect it
+// compiles the CRT shaders with.
+#ifndef GL_SHADING_LANGUAGE_VERSION
+#define GL_SHADING_LANGUAGE_VERSION 0x8B8C
+#endif
 
 // ── Shader / program objects (GL 2.0) ─────────────────────────────────────
 typedef GLuint (APIENTRY* PFNGLCREATESHADERPROC)(GLenum type);

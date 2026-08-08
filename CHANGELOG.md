@@ -10,6 +10,65 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — borne Raspberry Pi : les optimisations de NeoST portées dans POM1
+
+Reprise de la campagne « borne » de NeoST (`packaging/raspberry/`,
+`docs/PERFORMANCE.md`), poste par poste, adaptée à POM1.
+
+- **Le préambule GLSL n'est plus figé.** `OpenGLShader.cpp` déduit le dialecte de
+  `GL_SHADING_LANGUAGE_VERSION` puis essaie **150 → 140 → 130** en compilant
+  réellement chaque candidat (`#version 300 es` sur un contexte GLES) ; le
+  backend ImGui reçoit le même traitement (`PomRenderer_GL.cpp`,
+  `imguiGlslVersion`). Motif : le V3D des Raspberry Pi (Mesa) plafonne à GLSL
+  **1.40** et rejetait les shaders CRT — « GLSL 1.50 is not supported. Supported
+  versions are: 1.10, 1.20, 1.30, 1.40, 1.00 ES, 3.00 ES » — alors que leur corps
+  n'utilise que des constructions **1.30** (`in`/`out`, `texture()`, `fwidth()`).
+  La cascade est un filet et pas une coquetterie : un pilote peut annoncer une
+  version et la refuser dans *ce* contexte, seule la compilation tranche. Les
+  échecs intermédiaires sont muets et `errorOut` est vidé en cas de succès, sinon
+  le panneau CRT afficherait « shader indisponible » avec une pile prête.
+  Diagnostic systématique : `[CRT] GLSL 140 (driver: 1.40)`.
+- **Création de contexte en cascade** (`main_imgui.cpp`) : 3.2 core → 3.2 → 3.1 →
+  3.0. Le repli sous 3.2 était refusé tant que `#version 150` était codé en dur à
+  deux endroits ; ce n'est plus le cas. Le Pi (GL 3.1 max en desktop) ouvre donc
+  une fenêtre sans la rustine `MESA_GL_VERSION_OVERRIDE=3.3`. Validé sous Mesa
+  llvmpipe avec versions forcées : 1.40 → 140 (cas Pi), 1.30 → 130, image rendue
+  à travers la pile CRT dans les deux cas ; le palier natif `-DPOM1_GLES=ON`
+  compile et tourne de bout en bout (`[CRT] GLSL 300 es`).
+- **`--audio-latency MS`** (borné [20, 250], défaut inchangé ≈17 ms) : miniaudio
+  garde 3 périodes et les allonge. Le défaut est calibré pour un bureau ; sur un
+  Pi chargé la miss se produit dans l'ordonnanceur et se traduit par un
+  grésillement continu que rien côté émulateur ne corrige.
+- **`--fullscreen`** : plein écran d'emblée, **ré-imposé après chaque changement
+  de profil** (chaque `loadPresetLayout` restaure sa propre géométrie). C'est ce
+  qui permet à la borne de tourner sur un **X nu**, sans le moindre gestionnaire
+  de fenêtres — une recopie de trame en moins. Non persisté dans
+  `ini/preset_NN.size` : un drapeau de ligne de commande ne doit pas réécrire une
+  disposition enregistrée.
+- **`packaging/raspberrypi/` refait** sur le modèle NeoST :
+  `build_native_pi.sh` (palier GLES par défaut, `-mcpu` déduit de
+  `/proc/device-tree/model` et non `-mcpu=native`, `-j` calé sur la RAM, `--pgo`
+  en deux passes, `-DPOM1_LTO=OFF` sous 2 Go), `pgo_train.sh` (13 charges
+  headless : Woz Monitor, Integer BASIC, GEN2 HGR, TMS9918, microSD, CFFA1),
+  `install_kiosk.sh` (X nu sur le VT 1 par une unité systemd modèle, purge des
+  serveurs de son → miniaudio parle à ALSA en direct avec détection HDMI par
+  l'ELD, gouverneur `performance`, `irqaffinity=0`, Bluetooth/Wi-Fi/swap coupés,
+  boot silencieux, `--uninstall` qui rend `config.txt`/`cmdline.txt`), plus
+  `pom1-kiosk.sh` / `pom1-session.sh` / `pom1-kiosk@.service`.
+  ⚠ Deux pièges refermés dans les scripts plutôt que dans un ticket : miniaudio
+  demande `SCHED_FIFO` pour son thread ALSA et **échoue silencieusement** sans
+  `LimitRTPRIO=` (thread audio préemptible → underruns), et les deux passes du
+  PGO doivent **partager le même répertoire de build** (GCC nomme les `.gcda`
+  d'après le chemin absolu de l'objet ; `-Wno-missing-profile`, indispensable
+  pour les objets d'interface non entraînés, rend l'échec totalement muet) —
+  d'où le contrôle qui **échoue** si `M6502`, `Memory` ou `GraphicsCard` n'ont
+  pas de profil.
+  ⚠ Non porté : le mode enceinte Bluetooth de NeoST (PipeWire + A2DP), qui
+  réintroduirait le serveur de son qu'on vient de retirer — marche à suivre dans
+  le README du dossier. Scripts **non encore rejoués sur un Pi réel**.
+- **`option(POM1_LTO)`** (ON par défaut) : échappatoire pour les machines dont le
+  lien LTO se fait tuer par l'OOM-killer (`cc1plus: fatal error: Killed`).
+
 ### Added — interface zoom (the whole UI, docking included)
 
 - **Settings ▸ UI Theme ▸ Interface zoom** (also in Display Settings): a 75 –
@@ -31,6 +90,29 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
   (`ScaleWindowsInViewport`, applied at the top of the next `render()` like
   ImGui's own DPI path) so a panel doesn't clip its now-larger contents. Docked
   panels keep their share of the dockspace.
+- **Correctif (août 2026) — boîtes figées autour d'un glyphe qui, lui, zoome.**
+  Reste du même piège que `kToolbarBandHeight` : une taille en pixels passée à
+  `ImGui::Button` est authored à 100 %, alors que la police à l'intérieur suit le
+  zoom. Trois symptômes, une cause. **(a)** Les boutons `x1`/`x2` de la barre
+  d'outils gardaient une hauteur de 24 px pendant que leurs voisins grandissaient
+  — d'où des boutons qui « perdaient leur forme » ; ils prennent maintenant
+  `btnSize` (et une largeur plancher égale, donc le rapport tient). **(b)** La
+  pastille de teinte du moniteur, carrée par construction, restait 22×22 →
+  `uiPx()`. **(c)** Dans le lecteur de cassette, les six icônes d'en-tête étaient
+  **coupées** dès ~150 % : boîte fixe de 38×38 pour un glyphe dessiné à
+  `1,45 × police zoomée`. Le module étant réutilisable tel quel (POM2), il lit le
+  zoom dans `ImGuiStyle` (`FontScaleMain × FontScaleDpi`, ce que publie
+  `applyUiTheme()`) plutôt que d'inclure un en-tête de POM1 — même produit,
+  aucune dépendance ajoutée — avec un plancher `police × 1,45 + padding` qui fait
+  **grandir la boîte** au lieu de rogner l'icône. Les paires VOL+/VOL− dérivent
+  désormais de cette taille déjà zoomée, et la contrainte de taille minimale de
+  la fenêtre suit, sinon le plancher ne contenait plus sa propre rangée de
+  boutons. Vérifié par capture à 100 / 200 / 250 %. Même traitement pour les
+  largeurs figées des boutons de dialogue (`Save`/`Cancel`/`Load Tape`…, 17
+  sites) et les champs d'adresse hexa de Save Memory.
+  ⚠ Reste ouvert, autre cause : au-delà de ~200 % la **rangée d'outils dépasse
+  la largeur de la fenêtre** et sa fin devient inatteignable (il n'y a ni
+  défilement ni repli). Ce n'est plus un problème de rapport mais de place.
 - **HiDPI is now one factor of that product** instead of a separate font-only
   slider: `io.FontGlobalScale` is gone (obsolete since ImGui 1.92), the monitor
   content scale is polled each frame (`syncUiDpiScale`) so moving the window to

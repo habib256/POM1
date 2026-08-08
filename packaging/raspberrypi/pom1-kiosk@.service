@@ -1,0 +1,42 @@
+[Unit]
+# =============================================================================
+#  pom1-kiosk@.service — La borne POM1 : de la mise sous tension à l'Apple-1.
+#
+#  Conflicts=getty@tty1 : on PREND le VT 1 au getty. Sans ça, deux processus se
+#  disputent /dev/tty1 et X sort sur « Cannot open virtual console 1 ».
+#  Les getty 2-6 restent volontairement actifs : Ctrl+Alt+F2 est la porte de
+#  service de l'exploitant (à retirer si le public a un clavier complet).
+# =============================================================================
+Description=POM1 — borne Apple-1 (kiosk plein écran)
+After=systemd-user-sessions.service sound.target
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+User=%i
+PAMName=login
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+ExecStart=/usr/local/bin/pom1-kiosk.sh
+
+# Un plantage de l'émulateur ne doit JAMAIS laisser la borne sur un écran noir.
+Restart=always
+RestartSec=2
+
+# miniaudio demande SCHED_FIFO pour son thread de sortie ALSA
+# (src/third_party/miniaudio : pthread_attr_setschedpolicy(SCHED_FIFO)). Sans
+# LimitRTPRIO, l'appel ÉCHOUE SILENCIEUSEMENT et le thread audio reste en
+# SCHED_OTHER : il se fait préempter par n'importe quoi et le tampon part en
+# underrun — précisément le « son qui craque » d'une borne chargée.
+LimitRTPRIO=99
+LimitMEMLOCK=infinity
+# Priorité du reste du processus (thread d'émulation, rendu GL). -5 et pas -20 :
+# à -20 le processus peut affamer les threads noyau de l'USB/HDMI.
+Nice=-5
+
+[Install]
+WantedBy=multi-user.target

@@ -311,6 +311,20 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
             plan.executionSpeed = cpf;
             continue;
         }
+        if (arg == "--audio-latency") {
+            if (!needArg(i, "--audio-latency")) return std::nullopt;
+            int ms = 0;
+            if (!parseIntPositive(argv[++i], ms) || ms < 20 || ms > 250) {
+                logAndFail("--audio-latency expects milliseconds in [20, 250]");
+                return std::nullopt;
+            }
+            plan.audioLatencyMs = ms;
+            continue;
+        }
+        if (arg == "--fullscreen") {
+            plan.fullscreen = true;
+            continue;
+        }
         if (arg == "--telemetry-port") {
             if (!needArg(i, "--telemetry-port")) return std::nullopt;
             int port = 0;

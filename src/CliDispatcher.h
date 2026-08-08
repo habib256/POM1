@@ -117,6 +117,15 @@ struct CliPlan {
     bool                               cpuMax = false;
     bool                               headless = false;   // --headless: run with no GLFW window (CI / scripted; default 64K machine, no preset/card layout)
     std::optional<int>                 executionSpeed;     // cycles/frame
+    // --audio-latency MS: output cushion in ms, [20,250] (default ~17 ms).
+    // Raise it on a box that can't always refill the ring in time — a
+    // Raspberry Pi kiosk above all. See AudioDevice::setPreferredLatencyMs.
+    std::optional<int>                 audioLatencyMs;
+    // --fullscreen: open the OS window fullscreen on the primary monitor,
+    // whatever the preset layout says. Lets a kiosk session run a BARE X
+    // server (no window manager at all) — one less compositor/WM copy per
+    // frame, which is what the Pi 400 is short of.
+    bool                               fullscreen = false;
     std::optional<int>                 telemetryPort;      // --telemetry-port N: open the dev telemetry side channel on localhost:N (1-65535)
     std::string                        telemetryLogPath;   // --telemetry-log PATH: tee the outbound frame stream to a file (golden-trace); implies enabling the port
     // --dump-gen2-frame / --dump-tms-frame PATH: headless one-shot — render the

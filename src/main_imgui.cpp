@@ -849,6 +849,12 @@ int main(int argc, char* argv[])
     if (!parsedPlan) return 1;
     pom1::CliPlan plan = std::move(*parsedPlan);
 
+    // --audio-latency: must land BEFORE any AudioDevice exists (Memory owns it,
+    // and Memory is built by the EmulationController inside runHeadless() /
+    // MainWindow_ImGui below).
+    if (plan.audioLatencyMs)
+        AudioDevice::setPreferredLatencyMs(*plan.audioLatencyMs);
+
 #if !POM1_IS_WASM
     // Headless: no window, no GL — go straight to the emulator driver. Must run
     // before glfwInit so a display-less CI box never touches GLFW.
@@ -938,7 +944,7 @@ int main(int argc, char* argv[])
     GLFWwindow* window = glfwCreateWindow(1274, 801, kWindowTitle, NULL, NULL);
 
 #if !POM1_IS_WASM && !defined(__APPLE__) && !POM1_GL_ES
-    // One free retry, desktop-GL only: ask for 3.2 without pinning the CORE
+    // Retry chain, desktop-GL only. First ask for 3.2 without pinning the CORE
     // profile. Some old and most virtualised ICDs (VMware, VirtualBox, older
     // Intel) refuse a core-profile request outright yet happily hand out a 3.2+
     // compatibility context — where `#version 150` is still valid, so nothing
@@ -946,21 +952,37 @@ int main(int argc, char* argv[])
     // yields a legacy 2.1 context that GLSL 150 could not run on, and on the
     // GLES tier, which never asks for a profile in the first place.
     //
-    // This is deliberately the ONLY fallback. A retry chain below 3.2 is not
-    // free: `#version 150` is hardcoded in two places (the ImGui backend here
-    // and OpenGLShader.cpp:188 for the CRT stack) and needs a GL >= 3.2
-    // context, so going lower means maintaining GLSL 130 shader variants. The
-    // real sub-3.2 path already exists as a separate build: -DPOM1_GLES=ON.
-    // And in the failure mode of issue #34 no fallback could have helped at
+    // Then, still nothing, walk DOWN to 3.1 and 3.0. That used to be refused on
+    // the grounds that `#version 150` was hardcoded in two places — it no longer
+    // is: the ImGui preamble is stepped down to what the driver reports
+    // (PomRenderer_GL.cpp, imguiGlslVersion) and the CRT stack tries a 150 → 140
+    // → 130 cascade (OpenGLShader.cpp). Both shader sets only need GLSL 1.30
+    // constructs, so a 3.0 context runs POM1 as-is. What this buys concretely:
+    // Mesa's V3D on a **Raspberry Pi** exposes desktop GL 3.1 / GLSL 1.40 and
+    // nothing above, so before this chain POM1 simply failed to open a window
+    // there unless the launcher lied to it (MESA_GL_VERSION_OVERRIDE=3.3).
+    // The purpose-built path is still -DPOM1_GLES=ON (real GLES 3.0 via EGL);
+    // this is the safety net for a plain `cmake` build on such a box.
+    // In the failure mode of issue #34, note, no fallback could have helped at
     // all — the ICD never loaded, so every context request failed identically.
     if (window == NULL) {
-        fprintf(stderr, "POM1: core-profile context refused, retrying without "
-                        "the core-profile constraint...\n");
+        static const struct { int major, minor; const char* what; } kFallbacks[] = {
+            { 3, 2, "OpenGL 3.2 (no core-profile constraint)" },
+            { 3, 1, "OpenGL 3.1" },
+            { 3, 0, "OpenGL 3.0" },
+        };
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_FALSE);
-        window = glfwCreateWindow(1274, 801, kWindowTitle, NULL, NULL);
-        if (window != NULL)
-            fprintf(stderr, "POM1: got a non-core OpenGL 3.2 context.\n");
+        for (const auto& fb : kFallbacks) {
+            fprintf(stderr, "POM1: retrying with %s...\n", fb.what);
+            glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, fb.major);
+            glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, fb.minor);
+            window = glfwCreateWindow(1274, 801, kWindowTitle, NULL, NULL);
+            if (window != NULL) {
+                fprintf(stderr, "POM1: got a %s context.\n", fb.what);
+                break;
+            }
+        }
     }
 #endif
 
@@ -1187,6 +1209,8 @@ int main(int argc, char* argv[])
         mainWindow.setSaveTapePath(plan.saveTapePath);
     if (plan.cpuMax)
         mainWindow.setCpuMaxSpeedOnBoot(true);
+    if (plan.fullscreen)
+        mainWindow.requestCliFullscreen();
     if (plan.executionSpeed)
         mainWindow.setInitialExecutionSpeed(*plan.executionSpeed);
     if (!plan.cardOverrides.empty())

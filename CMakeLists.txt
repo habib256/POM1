@@ -78,6 +78,11 @@ endif()
 # support IPO (e.g. some Emscripten variants) don't fail the configure step.
 include(CheckIPOSupported)
 check_ipo_supported(RESULT POM1_IPO_SUPPORTED OUTPUT POM1_IPO_ERROR)
+# Escape hatch for small machines: the LTO link wants ~1.5 GB and gets
+# OOM-killed on a 1-2 GB Raspberry Pi ("cc1plus: fatal error: Killed signal
+# terminated program"). packaging/raspberrypi/build_native_pi.sh flips this off
+# below 2 GB, and PGO's instrumented first pass turns it off too.
+option(POM1_LTO "Link-time optimization on non-Debug builds" ON)
 
 # Vendored libresidfp (cycle-accurate SID emulation, GPL-2.0). See
 # src/third_party/libresidfp/CMakeLists.txt for the source list.
@@ -433,7 +438,7 @@ endif()
 # keeps its internal `pom1_imgui` name for build-script stability.
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "POM1")
 
-if(POM1_IPO_SUPPORTED)
+if(POM1_IPO_SUPPORTED AND POM1_LTO)
     # Enable IPO/LTO only for non-Debug configs. CMake handles the right flag
     # per compiler (-flto for gcc/clang, /GL + /LTCG for MSVC).
     set_property(TARGET ${PROJECT_NAME} PROPERTY
@@ -442,6 +447,8 @@ if(POM1_IPO_SUPPORTED)
                  INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
     set_property(TARGET ${PROJECT_NAME} PROPERTY
                  INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL     TRUE)
+elseif(NOT POM1_LTO)
+    message(STATUS "POM1: LTO disabled (-DPOM1_LTO=OFF)")
 else()
     message(STATUS "IPO/LTO not supported by this toolchain: ${POM1_IPO_ERROR}")
 endif()

@@ -66,6 +66,23 @@ public:
     /// Called from the audio callback — mixes all sources into output.
     void mixSources(float* output, int frameCount);
 
+    /// Size the output buffer for `ms` milliseconds of cushion instead of the
+    /// ~17 ms default (256 frames × 3 periods at 44.1 kHz).
+    ///
+    /// The default is deliberately tight — on a desktop it keeps key clicks and
+    /// SID notes in step with the picture. It is *too* tight on a machine that
+    /// cannot always refill the ring in time: on a Raspberry Pi kiosk the
+    /// symptom is continuous crackle, and no amount of emulator tuning fixes it
+    /// because the miss happens in the OS scheduler. 100-150 ms of cushion
+    /// trades imperceptible extra delay for silence between the drop-outs.
+    /// (Ported from NeoST's `--audio-latency`, same lesson on the same box.)
+    ///
+    /// Must be called BEFORE the device is constructed (Memory owns it) — i.e.
+    /// from main(), right after the CLI is parsed. Clamped to [20, 250] ms;
+    /// 0 restores the built-in default. No effect on WASM, where the browser
+    /// owns the buffer size.
+    static void setPreferredLatencyMs(int ms);
+
 private:
     bool initAudio();
     void shutdownAudio();
