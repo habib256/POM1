@@ -39,8 +39,16 @@
 #ifndef GL_CLAMP_TO_EDGE
 #define GL_CLAMP_TO_EDGE 0x812F
 #endif
+// Same story for the GL 2.0 query imguiGlslVersion() needs: absent from the
+// Windows 1.1 header, and glGetString() itself has been there since 1.0.
+#ifndef GL_SHADING_LANGUAGE_VERSION
+#define GL_SHADING_LANGUAGE_VERSION 0x8B8C
+#endif
+
+#include "Logger.h"
 
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <vector>
 
@@ -51,6 +59,45 @@ namespace pom1 {
 // `w`, `h`; the Metal field stays zero-init.
 
 namespace {
+
+/// Lower the ImGui backend's `#version` preamble to what the driver actually
+/// supports, never above what the caller asked for.
+///
+/// main_imgui.cpp asks for `#version 150` on desktop GL because that is what a
+/// 3.2 core context speaks. Some stacks hand out a usable 3.x context whose
+/// GLSL tops out lower — Mesa's V3D on the **Raspberry Pi** caps desktop GLSL
+/// at **1.40** — and there ImGui's own shaders (which only need 1.30
+/// constructs, exactly like POM1's CRT shaders, see OpenGLShader.cpp) would
+/// fail to compile for the sake of a hardcoded number. Probing here keeps every
+/// gl* call inside this file, as the renderer seam requires.
+///
+/// GLES preambles ("#version 300 es") and the null the Metal path passes are
+/// returned untouched — this only ever steps *down* a desktop dialect.
+const char* imguiGlslVersion(const char* requested)
+{
+    if (!requested || std::strstr(requested, "es") != nullptr) return requested;
+
+    const char* sl = reinterpret_cast<const char*>(
+        glGetString(GL_SHADING_LANGUAGE_VERSION));
+    if (!sl) return requested;
+    // A desktop-GL build can still land on a GLES context (driver handing out
+    // GLES through EGL): "OpenGL ES GLSL ES 3.00" — let ImGui auto-detect.
+    if (std::strstr(sl, "ES ") != nullptr) return "#version 300 es";
+
+    int major = 0, minor = 0;
+    if (std::sscanf(sl, "%d.%d", &major, &minor) != 2) return requested;
+    if (minor < 10) minor *= 10;                 // "4.6" ≡ "4.60"
+    const int driver = major * 100 + minor;      // 1.40 → 140
+    int want = 150;
+    std::sscanf(requested, "#version %d", &want);
+    if (driver >= want || driver <= 0) return requested;
+
+    // Fixed literals: ImGui keeps the pointer for the lifetime of the backend.
+    if (driver >= 140) return "#version 140";
+    if (driver >= 130) return "#version 130";
+    return "#version 120";   // last resort: ImGui's legacy path
+}
+
 
 class GlRenderer final : public PomRenderer {
 public:
@@ -124,7 +171,15 @@ public:
 
     bool initImGuiBackend(const char* glslVersion) override
     {
-        return ImGui_ImplOpenGL3_Init(glslVersion);
+        const char* effective = imguiGlslVersion(glslVersion);
+        if (effective != glslVersion && glslVersion && effective) {
+            const char* sl = reinterpret_cast<const char*>(
+                glGetString(GL_SHADING_LANGUAGE_VERSION));
+            pom1::log().info("GL", std::string("ImGui shaders: ") + effective +
+                                   " instead of " + glslVersion +
+                                   " (driver: " + (sl ? sl : "?") + ")");
+        }
+        return ImGui_ImplOpenGL3_Init(effective);
     }
 
     void shutdownImGuiBackend() override

@@ -98,7 +98,10 @@ Open work on the **emulator** only. Shipped work → `[CHANGELOG.md](CHANGELOG.m
 
 ### Packaging, distribution & démarrage
 
-> **Livré** → `[CHANGELOG.md](CHANGELOG.md)` : l'**exe Windows autonome** (CRT + GLFW statiques, zéro DLL, issue #34) et le **pin de GLFW via `vcpkg.json`** (`builtin-baseline` vcpkg `2026.06.24` + `overrides` → glfw3 3.4#1 ; les deux sites d'appel passent en mode manifeste, sans argument de paquet).
+> **Livré** → `[CHANGELOG.md](CHANGELOG.md)` : l'**exe Windows autonome** (CRT + GLFW statiques, zéro DLL, issue #34), le **pin de GLFW via `vcpkg.json`** (`builtin-baseline` vcpkg `2026.06.24` + `overrides` → glfw3 3.4#1 ; les deux sites d'appel passent en mode manifeste, sans argument de paquet), et la **borne Raspberry Pi refaite sur le modèle NeoST** (`packaging/raspberrypi/` : X nu + service systemd + `--fullscreen`, `--audio-latency`, `build_native_pi.sh --pgo`, cascade GLSL 150→140→130 + contexte 3.2→3.0).
+
+- [ ] **Rejouer la borne Pi sur un Pi réel** `[S · solid]` — les scripts `packaging/raspberrypi/` sont portés de NeoST et validés en local (compilation GLES de bout en bout, cascade GLSL forcée sous llvmpipe, helpers `config.txt`/`cmdline.txt` testés en bac à sable), mais **jamais exécutés sur un Pi**. À vérifier sur place : `[CRT] GLSL …` dans `journalctl -u pom1-kiosk@pi`, absence de craquement audio à `POM1_AUDIO_LATENCY=120`, plein écran sans WM, et `--uninstall` qui rend bien `config.txt`/`cmdline.txt`.
+- [ ] **CI borne Pi (artefact `cortex-a72` avec PGO)** `[M · nice]` — NeoST entraîne son PGO sur un runner ARM64 (`pi-borne.yml`) pour éviter ~1 h de compilation sur le Pi ; POM1 n'a que l'AppImage aarch64 générique du job de release.
 
 ### Refactors architecturaux (audit juillet 2026)
 

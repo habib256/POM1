@@ -1008,10 +1008,16 @@ void MainWindow_ImGui::renderToolbar()
             setStatusMessage("P-LAB CodeTank unplugged", 2.0f);
         };
 #if !POM1_IS_WASM
+        // x1/x2 are text buttons, so their WIDTH follows the (zoomed) font;
+        // their height must therefore be zoomed too — a raw 24.0f here left
+        // them shorter than every neighbouring btnSize button as soon as the
+        // interface zoom moved off 100 %, which is exactly the "buttons stop
+        // keeping their shape" symptom. Same rule as kToolbarBandHeight: a
+        // constant authored at 100 % goes through uiPx() at the point of use.
         const float mhzBtnPadX = ImGui::GetStyle().FramePadding.x * 2.0f;
         const float mhzBtnW =
             std::max(ImGui::CalcTextSize("x1").x, ImGui::CalcTextSize("x2").x) + mhzBtnPadX;
-        const ImVec2 mhzBtnSize(mhzBtnW, 24.0f);
+        const ImVec2 mhzBtnSize(std::max(mhzBtnW, btnSize.x), btnSize.y);
 #endif
 
         // --- Chargement (premier) ---
@@ -1365,9 +1371,9 @@ void MainWindow_ImGui::renderToolbar()
         }
 
         // --- Séparateur ---
-        ImGui::SameLine(0, 12);
+        ImGui::SameLine(0, uiPx(12));
         ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
-        ImGui::SameLine(0, 12);
+        ImGui::SameLine(0, uiPx(12));
 
         // --- Resets groupés ---
         // Clear Screen — physical button (CLS): wipes the 40x24 buffer and
@@ -1392,9 +1398,9 @@ void MainWindow_ImGui::renderToolbar()
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Hard Reset (Ctrl+F5)");
 
         // --- Séparateur ---
-        ImGui::SameLine(0, 12);
+        ImGui::SameLine(0, uiPx(12));
         ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
-        ImGui::SameLine(0, 12);
+        ImGui::SameLine(0, uiPx(12));
 
 #if !POM1_IS_WASM
         // --- Vitesse CPU (x1 / x2 / Max) - masqué en WASM (rythme imposé par le navigateur)
@@ -1441,9 +1447,9 @@ void MainWindow_ImGui::renderToolbar()
         }
         ImGui::SetWindowFontScale(1.0f);
 
-        ImGui::SameLine(0, 12);
+        ImGui::SameLine(0, uiPx(12));
         ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
-        ImGui::SameLine(0, 12);
+        ImGui::SameLine(0, uiPx(12));
 #endif
 
         // --- Fenêtres toggle ---
@@ -1488,20 +1494,23 @@ void MainWindow_ImGui::renderToolbar()
         }
 
         // --- Séparateur ---
-        ImGui::SameLine(0, 12);
+        ImGui::SameLine(0, uiPx(12));
         ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
-        ImGui::SameLine(0, 12);
+        ImGui::SameLine(0, uiPx(12));
 
         // --- Monitor phosphor tint: one swatch, click cycles Green → Brown → Monochrome ---
         {
-            const ImVec2 swatchSize(22.0f, 22.0f);
+            // Square by construction — and it must STAY square-and-in-scale
+            // with the icon buttons beside it, hence uiPx() (a raw 22×22 kept
+            // shrinking relative to its neighbours as the zoom went up).
+            const ImVec2 swatchSize = uiPx(ImVec2(22.0f, 22.0f));
             monitorTintCycleButton("##phosphor_cycle", swatchSize, screen.get());
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("%s phosphor - click to cycle tint", monitorTintLabel(screen->monitorMode));
             }
         }
 
-        ImGui::SameLine(0, 6);
+        ImGui::SameLine(0, uiPx(6));
 
         // --- Character mode: Font Awesome apple (charmap) / font (host) ---
         {
@@ -1525,9 +1534,9 @@ void MainWindow_ImGui::renderToolbar()
         }
 
         // --- Séparateur ---
-        ImGui::SameLine(0, 12);
+        ImGui::SameLine(0, uiPx(12));
         ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
-        ImGui::SameLine(0, 12);
+        ImGui::SameLine(0, uiPx(12));
 
         // --- Silicon profile toggle: ruler (Strict) / horse (Fantasy) -------
         //

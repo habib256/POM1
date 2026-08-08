@@ -632,6 +632,15 @@ void MainWindow_ImGui::render()
             applyBootConfig(kMachinePresetCount - 1); // default: POM1 Fantasy
         }
     }
+    // --fullscreen (kiosk). Enforced every frame rather than once at boot:
+    // applyBootConfig() → loadPresetLayout() restores whatever geometry the
+    // preset saved, and so does every later preset switch, either of which
+    // would drop a kiosk back into a small window on a black desktop.
+    // Unticking Settings ▸ Fullscreen clears the flag, so the escape hatch
+    // survives.
+    if (cliForcedFullscreen_ && !fullscreen)
+        setOsFullscreen(true);
+
     if (showProfileChooser) {
         renderProfileChooser();
         return;

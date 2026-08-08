@@ -524,6 +524,12 @@ private:
     // Armed/disarmed by the master Strict/Fantasy switch.
     bool oorStrictModeEnabled = false;
     bool fullscreen = false;
+    // --fullscreen (kiosk): keep the OS window fullscreen across preset
+    // switches, since every applyBootConfig()/loadPresetLayout() restores the
+    // geometry the preset saved. Cleared as soon as the user unticks Settings ▸
+    // Fullscreen, so the escape hatch still works, and NOT written back into
+    // the preset's .size file (a CLI flag must not rewrite a saved layout).
+    bool cliForcedFullscreen_ = false;
 
     // ── Interface zoom ────────────────────────────────────────────────────
     // uiScale_ is the USER zoom (Settings ▸ Interface zoom, persisted
@@ -737,7 +743,19 @@ private:
     // main_imgui.cpp) calls it from outside the class; desktop Ctrl+V uses it too.
 public:
     void pasteText(const char* text);
+
+    /// CLI `--fullscreen`: open (and stay) fullscreen on the primary monitor.
+    /// Call once, right after construction — render() applies it on the frame
+    /// after the boot preset has restored its own geometry, and re-applies it
+    /// if a later preset switch drops back to windowed.
+    void requestCliFullscreen() { cliForcedFullscreen_ = true; }
 private:
+    /// Move the OS window in/out of fullscreen on the primary monitor, keeping
+    /// the windowed rect in windowedPos*/windowed{Width,Height} so leaving
+    /// fullscreen lands where the user left it. No-op on WASM (the browser owns
+    /// fullscreen — see the Settings checkbox) and headless.
+    void setOsFullscreen(bool on);
+
     void quit();
     void reset();
     void hardReset();

@@ -112,6 +112,25 @@ inline ImVec2 P(ImVec2 p0, float s, float x, float y) {
 
 inline float S(float s, float v) { return v * s; }
 
+/// Interface zoom currently in force, read straight from ImGui.
+///
+/// The deck's chassis is drawn in design units and scaled by the window's
+/// content region, so it follows any zoom for free. Its **header row of icon
+/// buttons** does not: those are real ImGui buttons whose glyph is the live
+/// font — which the zoom scales — inside a box given in pixels. A constant
+/// 38×38 there meant the icons were simply CUT OFF past ~150 % zoom.
+///
+/// Deliberately taken from `ImGuiStyle` rather than POM1's `detail::uiPx()`:
+/// this widget includes no MainWindow header and must stay reusable as-is.
+/// POM1 publishes the very same product into the style — `FontScaleMain` =
+/// user zoom, `FontScaleDpi` = monitor scale (see `applyUiTheme()`).
+inline float uiZoom()
+{
+    const ImGuiStyle& st = ImGui::GetStyle();
+    const float z = st.FontScaleMain * st.FontScaleDpi;
+    return (z > 0.0f) ? z : 1.0f;
+}
+
 // Draw text at a given design-space position with automatic scaled font size.
 void drawText(ImDrawList* dl, ImVec2 p0, float s, float x, float y,
               float fontPx, ImU32 col, const char* text)
@@ -218,10 +237,14 @@ CassetteDeck_ImGui::render(const char* title,
     // by the caller (preset layout in applyPendingLayout, or the user's
     // saved imgui.ini state) so the window honors the shipped preset
     // dimensions rather than a widget-local default.
+    // Minimum and padding scale with the interface zoom too: left raw, the
+    // floor stopped fitting the (zoomed) header row of icon buttons, which
+    // is what pushed the deck itself out of the window.
+    const float z = uiZoom();
     ImGui::SetNextWindowSizeConstraints(
-        ImVec2(kDesignW * 0.55f + 28.0f, kDesignH * 0.55f + 40.0f),
+        ImVec2((kDesignW * 0.55f + 28.0f) * z, (kDesignH * 0.55f + 40.0f) * z),
         ImVec2(FLT_MAX, FLT_MAX));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12, 12));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12 * z, 12 * z));
     const bool visible = ImGui::Begin(title, &open, ImGuiWindowFlags_NoScrollbar);
     ImGui::PopStyleVar();
     if (!visible) {
@@ -250,7 +273,14 @@ CassetteDeck_ImGui::render(const char* title,
     // for the chassis / piano keys below.
     constexpr float kActionBtnSize = 38.0f;
     constexpr float kActionIconScale = 1.45f;
-    const ImVec2 actionSize(kActionBtnSize, kActionBtnSize);
+    // Square, and scaled by the interface zoom exactly like the glyph it
+    // frames — see uiZoom(). The floor keeps the box at least as big as the
+    // text it must contain, so an oversized font (or a theme with fat frame
+    // padding) grows the button instead of clipping the icon.
+    const float actionEdge = std::max(
+        kActionBtnSize * uiZoom(),
+        ImGui::GetFontSize() * kActionIconScale + ImGui::GetStyle().FramePadding.y * 2.0f);
+    const ImVec2 actionSize(actionEdge, actionEdge);
     ImGui::SetWindowFontScale(kActionIconScale);
     if (ImGui::Button(ICON_FA_FOLDER_OPEN "##DeckLoad", actionSize)) {
         out.requestLoadDialog = true;
@@ -317,9 +347,11 @@ CassetteDeck_ImGui::render(const char* title,
         volumeSynced_ = true;
     }
     ImGui::SameLine();
-    constexpr float kVolBtnW = kActionBtnSize;
-    constexpr float kVolBtnH = (kActionBtnSize - 4.0f) * 0.5f;  // 4 px gap between the two
-    const ImVec2 volSize(kVolBtnW, kVolBtnH);
+    // Same slot width as one transport button, half its height — derived
+    // from the ALREADY-ZOOMED actionSize so the pair keeps stacking exactly
+    // into one button's footprint at any interface zoom.
+    const ImVec2 volSize(actionSize.x,
+                         (actionSize.y - ImGui::GetStyle().ItemSpacing.y) * 0.5f);
     constexpr float kVolStep = 0.10f;
     constexpr float kVolMax  = 2.0f;
     ImGui::BeginGroup();

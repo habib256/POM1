@@ -90,6 +90,8 @@ sudo apt install libgles2-mesa-dev libegl1-mesa-dev
 cmake -S . -B build -DPOM1_GLES=ON && cmake --build build -j$(nproc)
 ```
 
+On the Pi, `packaging/raspberrypi/build_native_pi.sh` does that *and* compiles for the actual core (`-mcpu=cortex-a72/-a76`), sizes `-j` to the RAM and offers a two-pass profile-guided build (`--pgo`, worth 10-20 %). `packaging/raspberrypi/install.sh` adds the **arcade-cabinet mode**: power on → POM1 fullscreen on a bare X server, no desktop — see [`packaging/raspberrypi/README.md`](packaging/raspberrypi/README.md).
+
 #### 🪟 Windows
 
 Prereqs: [Visual Studio](https://visualstudio.microsoft.com/) (C++ workload), [CMake](https://cmake.org/download/), [Git](https://git-scm.com/download/win), [vcpkg](https://vcpkg.io/).
