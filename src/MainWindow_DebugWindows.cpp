@@ -516,6 +516,10 @@ std::vector<MainWindow_ImGui::MemRegion> MainWindow_ImGui::buildMemoryRegions()
         regions.push_back({ 0xC000, 0xC0FF, IM_COL32(255, 140, 80, 255), "ACI I/O" });
         regions.push_back({ 0xC100, 0xC1FF, IM_COL32(255, 190, 80, 255), "ACI ROM" });
     }
+    if (extendedAciEnabled) {
+        regions.push_back({ 0xC500, 0xC5FF, IM_COL32(255, 215, 120, 255),
+                            "Extended ACI ROM" });
+    }
     if (sidEnabled)
         regions.push_back({ 0xC800, 0xCFFF, IM_COL32(200, 100, 255, 255), "A1-SID I/O" });
     if (sidSpecialEditionEnabled)

@@ -187,6 +187,7 @@ public:
     int loadKrusader(void);
     int loadWozMonitor(void);
     int loadAciRom(void);
+    int loadExtendedAciRom(void);
 
     // ── ROM (re)load policy ─────────────────────────────────────────────
     // Both microSD boot paths avoid a redundant disk read by sniffing the
@@ -357,6 +358,20 @@ public:
     // with no cassette interface wired to the expansion connector.
     void setACIEnabled(bool b);
     bool isACIEnabled() const { return aciEnabled; }
+
+    // Uncle Bernie's EXTENDED ACI (improved Gen-2 cassette interface,
+    // Applefritter 2026): the second page of the 512x4 PROM pair, mapped at
+    // $C500-$C5FF next to Woz's untouched $C100 firmware. It adds Apple-II
+    // style checksums and the "extended format" (8-byte from/to headers,
+    // equal addresses = autostart) so a tape loads with `C500R` then
+    // `RX RX` instead of a hand-typed load range.
+    //
+    // Daughterboard rule, same shape as CodeTank/TMS9918: the page is on the
+    // cassette card, so enabling it cascade-plugs the ACI and unplugging the
+    // ACI cascade-unplugs it. No new MMIO — the extended firmware drives the
+    // very same $C000 flip-flop and $C081 comparator.
+    void setExtendedACIEnabled(bool b);
+    bool isExtendedACIEnabled() const { return extendedAciEnabled; }
 
     // Cassette audio source registration on the audio mixer. Separate from
     // setACIEnabled() because the audio output (speaker you hear) belongs
@@ -691,6 +706,7 @@ private :
     // that only recover when the user toggles them manually. See the
     // pendingCardEnableFrames rationale in MainWindow_ImGui.h.
     bool aciEnabled = false;
+    bool extendedAciEnabled = false;
     bool cassetteAudioActive = false;
     std::unique_ptr<TMS9918> tms9918;
     bool tms9918Enabled = false;

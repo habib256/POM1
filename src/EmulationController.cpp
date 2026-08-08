@@ -1172,6 +1172,14 @@ bool EmulationController::reloadAciRom(std::string& error)
     return ok;
 }
 
+bool EmulationController::reloadExtendedAciRom(std::string& error)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    bool ok = RomLoader::reloadExtendedAciRom(*memory, error);
+    publisher.publish(*memory, *cpu, runRequested.load());
+    return ok;
+}
+
 void EmulationController::clearMemory()
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -1341,6 +1349,19 @@ bool EmulationController::isACIEnabled() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     return memory->isACIEnabled();
+}
+
+void EmulationController::setExtendedACIEnabled(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setExtendedACIEnabled(enabled);
+    publisher.publish(*memory, *cpu, runRequested.load());
+}
+
+bool EmulationController::isExtendedACIEnabled() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->isExtendedACIEnabled();
 }
 
 void EmulationController::setSIDEnabled(bool enabled)

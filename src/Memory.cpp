@@ -73,6 +73,55 @@ constexpr uint8_t kAciRom[0x100] = {
     0x60,0xA5,0x26,0xC5,0x24,0xA5,0x27,0xE5,0x25,0xE6,0x26,0xD0,0x02,0xE6,0x27,0x60,
 };
 
+// Uncle Bernie's EXTENDED ACI page (256 B) — the second half of the 512x4
+// PROM pair on his improved Gen-2 cassette interface, mapped at $C500-$C5FF
+// (`xaci.bin`, Applefritter, august 2026). Compiled-in fallback if
+// `roms/XACI.rom` is missing.
+//
+// It carries NO new I/O: the card is still Woz's $C000 flip-flop + $C081
+// comparator. What the page does at `C500R` is relocate the stock ACI ROM
+// into the stack page and re-vector it:
+//
+//   $C503  copy $C100-$C1FF -> $0100-$01FF          (RAM copy, patchable)
+//   $C50D  $018B := $60 (RTS)                       (shared 'R'/'W' exit)
+//   $C512  $0136 := $54, $013A := $50               (retarget the ROM's
+//          'R' and 'W' BEQs at that RTS, so the extended page — not Woz's
+//          firmware — decides what a read/write means)
+//   $C51C  $0184 := $C5, $01B5 := $C5               (high bytes of the two
+//          `JSR $C1F1` calls -> `JSR $C5F1`)
+//   $C524  JSR $0100                                (reuse Woz's hex parser)
+//
+// The last patch is the load-bearing one twice over: $C5F1 replaces Woz's
+// "compare pointer to end address" helper with a checksum accumulator (the
+// Apple-II-style checksum byte that makes a tape readable on both machines),
+// AND it retires the RAM copy's own $01F1-$01FF tail — which is exactly the
+// handful of bytes the relocated code needs for its stack, since it runs
+// out of page 1 with SP starting at $FF.
+//
+// Format on tape: 8-byte headers carrying from/to addresses (equal
+// addresses = autostart), so `RX RX` loads a block without the operator
+// typing a load range. Backward compatible — an unmodified ACI or an
+// Apple-II reads the same recording by subtracting 8 from each <from>
+// address and skipping the autostart block.
+constexpr uint8_t kExtendedAciRom[0x100] = {
+    0xA2,0xFF,0x9A,0xE8,0xBD,0x00,0xC1,0x9D,0x00,0x01,0xE8,0xD0,0xF7,0xA9,0x60,0x8D,
+    0x8B,0x01,0xA9,0x54,0x8D,0x36,0x01,0xA9,0x50,0x8D,0x3A,0x01,0xA9,0xC5,0x8D,0x84,
+    0x01,0x8D,0xB5,0x01,0x20,0x00,0x01,0x48,0xA0,0xFF,0x84,0x2A,0x84,0x2C,0x84,0x2B,
+    0xC8,0xBD,0x01,0x02,0xC9,0xD8,0xD0,0x03,0xA0,0x80,0xE8,0xC8,0x84,0x2D,0x86,0x28,
+    0x68,0xC9,0xD2,0xF0,0x08,0x20,0x70,0x01,0x20,0x25,0x01,0xF0,0xDA,0x24,0x2D,0x10,
+    0x04,0xA9,0x06,0x85,0x24,0x20,0x8D,0x01,0xB0,0x05,0xA0,0x32,0x20,0xA4,0x01,0xA5,
+    0x2A,0xF0,0x05,0xA9,0xBF,0x4C,0x1C,0xFF,0x26,0x2D,0x90,0xDC,0xA2,0x03,0xB5,0x01,
+    0x95,0x24,0x55,0x03,0x95,0x03,0xCA,0x10,0xF5,0x05,0x04,0xD0,0xDD,0x6C,0x24,0x00,
+    0xBE,0xA0,0x0E,0xA6,0x2D,0x10,0x0A,0xA0,0x17,0xE0,0x88,0x90,0x09,0xF0,0x3E,0xA0,
+    0x0C,0x20,0xF1,0xC1,0x90,0x2E,0xE6,0x2D,0x90,0x17,0xE0,0x0C,0xF0,0x26,0xCA,0xD0,
+    0x06,0xA2,0x07,0xA9,0x0A,0xD0,0x08,0xCA,0xE0,0x88,0xD0,0x05,0xA9,0x0B,0x88,0x85,
+    0x2D,0x8A,0x29,0x0F,0xAA,0xB5,0x23,0x48,0xA2,0x00,0x41,0x26,0x45,0x2A,0x85,0x2A,
+    0x68,0x4C,0x7A,0x01,0xA0,0x13,0x24,0x2D,0x30,0x08,0xC8,0xD0,0x05,0xE6,0x2D,0x18,
+    0xA0,0x1A,0x4C,0x87,0x01,0x20,0xF1,0xC1,0xA0,0x32,0x90,0x12,0xA2,0x81,0xA9,0x01,
+    0x88,0x24,0x2D,0xF0,0x06,0xA2,0xA0,0xE6,0x2D,0x18,0x88,0x8E,0xB1,0x01,0x4C,0xB8,
+    0x01,0xA8,0x28,0xB0,0x02,0xA1,0x26,0x45,0x2A,0x85,0x2A,0x68,0x90,0x83,0xB0,0xD5,
+};
+
 } // namespace
 
 Memory::Memory()
@@ -497,6 +546,27 @@ void Memory::setACIEnabled(bool b)
     } else {
         std::fill_n(mem.begin() + 0xC100, 0x100, static_cast<uint8_t>(0));
         markPagesDirty(0xC100, 0x100);
+        // The extended page is the OTHER half of the same PROM pair — pulling
+        // the cassette card takes it with it (mirror of setCodeTankEnabled's
+        // TMS9918 daughterboard rule).
+        setExtendedACIEnabled(false);
+    }
+}
+
+void Memory::setExtendedACIEnabled(bool b)
+{
+    if (extendedAciEnabled == b) return;
+    extendedAciEnabled = b;
+    if (b) {
+        // Not a card of its own: Uncle Bernie's extended page is the second
+        // half of the 512x4 PROM pair sitting on the cassette interface, so
+        // it cannot exist without the ACI underneath it. Cascade-plug rather
+        // than silently mapping a page whose code JSRs into $C100.
+        setACIEnabled(true);
+        loadExtendedAciRom();
+    } else {
+        std::fill_n(mem.begin() + 0xC500, 0x100, static_cast<uint8_t>(0));
+        markPagesDirty(0xC500, 0x100);
     }
 }
 
@@ -636,6 +706,7 @@ void Memory::initMemory(){
     markAllPagesDirty();
     loadBasic();
     if (aciEnabled) loadAciRom();
+    if (extendedAciEnabled) loadExtendedAciRom();
     loadWozMonitor();
     loadSDCardRom();
     // microSDEnabled stays false here — MainWindow's applyMachineConfig
@@ -1073,6 +1144,22 @@ int Memory::loadAciRom(void)
     lastError.clear();
     pom1::log().info("Mem", "ACI ROM loaded from built-in fallback to 0xC100: " +
                             std::to_string(sizeof(kAciRom)) + " bytes");
+    return 0;
+}
+
+int Memory::loadExtendedAciRom(void)
+{
+    if (loadROM("XACI.rom", 0xC500, 0x100, "Extended ACI ROM") == 0) {
+        return 0;
+    }
+
+    for (size_t i = 0; i < sizeof(kExtendedAciRom); ++i) {
+        mem[0xC500 + i] = kExtendedAciRom[i];
+    }
+    markPagesDirty(0xC500, sizeof(kExtendedAciRom));
+    lastError.clear();
+    pom1::log().info("Mem", "Extended ACI ROM loaded from built-in fallback to 0xC500: " +
+                            std::to_string(sizeof(kExtendedAciRom)) + " bytes");
     return 0;
 }
 
@@ -1592,6 +1679,11 @@ void Memory::memWrite(uint16_t address, uint8_t value)
         if (address >= 0xFF00) return;
         // ACI ROM: 0xC100-0xC1FF — real 256-byte PROM on the ACI card.
         if (address >= 0xC100 && address <= 0xC1FF) return;
+
+        // Uncle Bernie's extended ACI page: 0xC500-0xC5FF — the other half
+        // of the same PROM pair, equally read-only. Guarded on its own flag
+        // so a machine without the Gen-2 cassette card keeps plain RAM here.
+        if (extendedAciEnabled && address >= 0xC500 && address <= 0xC5FF) return;
         // $E000-$EFFF is RAM on a real Apple 1: Apple BASIC is distributed
         // on cassette and loaded into RAM there by the Woz Monitor
         // (`E000.EFFR`). POM1 pre-seeds the RAM from basic.rom at boot so

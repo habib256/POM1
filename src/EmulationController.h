@@ -349,6 +349,7 @@ public:
     bool reloadWozMonitor(std::string& error);
     bool reloadKrusader(std::string& error);
     bool reloadAciRom(std::string& error);
+    bool reloadExtendedAciRom(std::string& error);
     bool reloadSDCardRom(std::string& error);
     void clearMemory();
 
@@ -372,6 +373,11 @@ public:
     // Apple Cassette Interface — unplug for the bare-4K preset.
     void setACIEnabled(bool enabled);
     bool isACIEnabled() const;
+    // Uncle Bernie's extended $C500 PROM page. Cascade-plugs the ACI (it is
+    // physically the other half of the ACI's PROM pair) — see
+    // Memory::setExtendedACIEnabled.
+    void setExtendedACIEnabled(bool enabled);
+    bool isExtendedACIEnabled() const;
 
     // CassetteDevice audio source registration on the mixer. Separate
     // from the ACI plug because the audible playback belongs to the tape

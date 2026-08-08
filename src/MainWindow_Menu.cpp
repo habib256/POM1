@@ -603,8 +603,36 @@ void MainWindow_ImGui::renderMenuBar()
             // --- 1976: original-era expansions ------------------------------
             if (ImGui::MenuItem("Woz ACI Cassette Interface (1976)", nullptr, &aciEnabled)) {
                 emulation->setACIEnabled(aciEnabled);
+                // The extended page ships plugged wherever the ACI is, so a
+                // manual plug brings it along; a manual unplug takes it away
+                // (Memory cascades that half itself — mirror it here so the
+                // checkmark doesn't lie until next frame). Unticking the page
+                // alone still leaves a stock Woz ACI.
+                extendedAciEnabled = aciEnabled;
+                emulation->setExtendedACIEnabled(aciEnabled);
                 setStatusMessage(aciEnabled ? "Woz ACI plugged" : "Woz ACI unplugged", 2.0f);
             }
+            if (ImGui::MenuItem("  \xe2\x94\x94 Uncle Bernie's Extended ACI ($C500)",
+                                nullptr, &extendedAciEnabled)) {
+                emulation->setExtendedACIEnabled(extendedAciEnabled);
+                // Cascade-plug, mirroring Memory::setExtendedACIEnabled.
+                if (extendedAciEnabled) aciEnabled = true;
+                setStatusMessage(extendedAciEnabled
+                    ? "Extended ACI plugged - C500R then RX RX to load an extended tape"
+                    : "Extended ACI unplugged", 4.0f);
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip(
+                    "Uncle Bernie's improved Gen-2 cassette interface (Applefritter).\n"
+                    "Second page of the ACI's 512x4 PROM pair, at $C500-$C5FF; Woz's\n"
+                    "$C100 firmware is left untouched. Adds Apple-II style checksums\n"
+                    "and the EXTENDED FORMAT: 8-byte from/to headers (equal addresses\n"
+                    "= autostart), so a tape loads without typing a load range.\n\n"
+                    "Load:  C500R  <return>   then   RX RX  <return>\n"
+                    "Save:  C500R  <return>   then   <from>.<to>WX  <return>\n"
+                    "Always type four hex digits per address.\n\n"
+                    "No new I/O - same $C000 flip-flop and $C081 comparator.\n"
+                    "Requires the Woz ACI (cascade-plugged).");
             if (ImGui::MenuItem("SWTPC GT-6144 Graphic Terminal (1976)", nullptr, &gt6144Enabled)) {
                 emulation->setGT6144Enabled(gt6144Enabled);
                 if (gt6144Enabled) showGT6144 = true;
@@ -1121,6 +1149,8 @@ void MainWindow_ImGui::renderToolbar()
         if (ImGui::Button("##cassetteToolbar", btnSize)) {
             aciEnabled = !aciEnabled;
             emulation->setACIEnabled(aciEnabled);
+            extendedAciEnabled = aciEnabled;   // ships plugged with the ACI
+            emulation->setExtendedACIEnabled(aciEnabled);
             setStatusMessage(aciEnabled ? "Woz ACI plugged" : "Woz ACI unplugged", 2.0f);
         }
         drawToolbarCassetteIcon(ImGui::GetWindowDrawList(),

@@ -303,6 +303,10 @@ private:
     bool showLoadDialog = false;
     bool showLoadTapeDialog = false;
     bool aciEnabled = true;   // Woz ACI cassette interface plugged (default on)
+    // Uncle Bernie's extended $C500 PROM page. POM1 ships it plugged
+    // wherever the ACI is, so it tracks aciEnabled's default; the two
+    // historical 1976 presets opt out via MachineConfig::extendedAci.
+    bool extendedAciEnabled = true;
     bool showCassetteDeck = false;     // Realistic procedural cassette deck
     bool showMemoryMapGrid = false;
     bool showMemoryBar = false;
@@ -956,6 +960,7 @@ private:
     bool pendingSidEnable = false;
     bool pendingSidSEEnable = false;
     bool pendingAciEnable = false;
+    bool pendingExtendedAciEnable = false;
     bool pendingMicroSDEnable = false;
     bool pendingCffa1Enable = false;
     bool pendingTms9918Enable = false;

@@ -25,6 +25,7 @@ public:
     static bool reloadWozMonitor         (Memory& mem, std::string& error);
     static bool reloadKrusader           (Memory& mem, std::string& error);
     static bool reloadAciRom             (Memory& mem, std::string& error);
+    static bool reloadExtendedAciRom     (Memory& mem, std::string& error);
     static bool reloadCFFA1Rom           (Memory& mem, std::string& error);
     static bool reloadSDCardRom          (Memory& mem, std::string& error);
     static bool reloadJukeBoxRom         (Memory& mem, std::string& error);

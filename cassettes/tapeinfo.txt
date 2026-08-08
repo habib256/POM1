@@ -4,6 +4,8 @@
 #
 # ACI load:   type the range in Woz Monitor, then C100R
 # BASIC load: start Integer BASIC (E000R), then type LOAD
+# XACI load:  extended format carries its own addresses — C500R, then RX RX
+#             (needs Uncle Bernie's Extended ACI plugged; Hardware menu)
 
 # Integer BASIC ROM
 BASIC.aci = E000.EFFF
@@ -11,3 +13,7 @@ BASIC.ogg = E000.EFFF
 
 # Demos
 APPLE50TH.ogg = 0280.0FFF
+
+# Uncle Bernie's extended format (8-byte from/to headers + autostart).
+# No load range to type — the tape carries its own.
+codebrk.aiff = C500R then RX RX
