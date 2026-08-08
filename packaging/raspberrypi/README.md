@@ -97,6 +97,46 @@ retard son/image, inhérents à l'A2DP).
   (symptôme : `cc1plus: fatal error: Killed signal terminated program`).
 - **`-j`** calé sur la RAM (une tâche par ~900 Mo), pas sur `nproc`.
 
+## Compiler la borne EN CI plutôt que sur le Pi
+
+`build_native_pi.sh --pgo` fait payer **deux compilations complètes plus le
+parcours d'entraînement au Pi lui-même** — plusieurs heures sur un Pi 400, avec
+le risque d'OOM-kill au lien LTO. Le workflow **« Borne Raspberry Pi »**
+(`.github/workflows/pi-borne.yml`, recette portée de NeoST) fait exactement le
+même travail sur un runner ARM64 de GitHub, où c'est gratuit :
+
+```bash
+gh workflow run "Borne Raspberry Pi (aarch64, -mcpu ciblé)" \
+   --ref main -f mcpu=cortex-a72          # Pi 4 / Pi 400
+gh run download <run-id> -n pom1-borne-aarch64
+```
+
+Le build tourne **dans un conteneur `debian:bookworm`** et non sur le runner :
+Raspberry Pi OS *est* bookworm (glibc 2.36), alors que `ubuntu-24.04-arm`
+estamperait `GLIBC_2.39` — le binaire ne démarrerait sur aucun Pi. Le script
+(`build_in_bookworm_pi.sh`) vérifie ce plancher et échoue s'il est dépassé. Le
+conteneur s'exécute nativement : pas de QEMU, pas de taxe d'émulation.
+
+Il en sort **deux paquets issus du même build**, sans recompilation :
+
+| Paquet | Pour quoi |
+|---|---|
+| `POM1-<ver>-pi400-aarch64.AppImage` | Pi OS **avec bureau** — un fichier cliquable |
+| `pom1-pi400-aarch64.tar.gz` | borne **sans bureau** — `tar -xzf … -C /home/pi/POM1` |
+
+Le tar.gz existe parce qu'une AppImage v2 réclame **libfuse2, absent de Pi OS
+Lite** : la borne devrait l'extraire à chaque démarrage pour rien. Son
+arborescence est celle du dépôt (`build/POM1` + `roms/`, `software/`, …) parce
+que c'est exactement ce qu'attend `pom1-session.sh` — POM1 résout ses données
+par rapport au répertoire courant. Les scripts de borne voyagent dedans, donc
+l'arbre déballé sait s'installer lui-même via `install_kiosk.sh`.
+
+⚠ Ces paquets **ne remplacent pas** l'AppImage de release
+`POM1-<ver>-aarch64.AppImage`, qui reste **générique** (Pi 3 → Pi 5) là où
+celle-ci est compilée pour **un seul cœur**. D'où le tag `pi400`/`pi5`/`pi3`
+dans le nom : le job `publish` d'une release aplatit tous les artefacts dans un
+même dossier, et deux paquets homonymes s'y écraseraient en silence.
+
 ## Le piège OpenGL du Pi (résolu dans le code)
 
 POM1 demandait un contexte **OpenGL 3.2 Core** et le GPU du Pi n'expose que la
