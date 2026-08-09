@@ -1,4 +1,4 @@
-POM1 v1.9.4 — Apple 1 Emulator (Windows package)
+POM1 v1.9.5 — Apple 1 Emulator (Windows package)
 =================================================
 
 Celebrating 50 years of Apple (1976-2026).
