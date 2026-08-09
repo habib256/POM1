@@ -1834,11 +1834,10 @@ void Memory::memWrite(uint16_t address, uint8_t value)
     //
     // Real hardware only latches a glyph into the 74LS164 shift register when
     // PB7 = 1 (the data-strobe bit), but POM1 stays deliberately permissive
-    // here: emulator-era demos (e.g. software/Apple-1_TMS_CC65/nino-democ.bin,
-    // whose banner calls the WOZ Monitor's ECHO with plain ASCII, bit 7 clear)
-    // print correctly on POM1 even though a real Apple-1 would keep the shift
-    // register silent. Gating on bit 7 would regress every legacy program that
-    // predates the strobe convention.
+    // here: emulator-era demos whose banner calls the WOZ Monitor's ECHO with
+    // plain ASCII (bit 7 clear) print correctly on POM1 even though a real
+    // Apple-1 would keep the shift register silent. Gating on bit 7 would
+    // regress every legacy program that predates the strobe convention.
     //
     // The reset sequence's `LDY #$7F / STY $D012` DOES still reach here: CRB
     // is seeded to its post-reset $A7 (see resetMemory), so that write lands

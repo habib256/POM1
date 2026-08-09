@@ -250,7 +250,21 @@ Bus-window exclusions are enforced (one P-LAB card at a time, per Parmigiani's r
 
 ## 🎮 Software Library
 
-`software/` ships **60+ ready-to-run programs** — load via *File → Load Memory*. Most come from [apple1software.com](https://apple1software.com/), the reference archive. Loading a file from a card-specific folder (`Graphic HGR/`, `Graphic TMS9918/`, `SOUND SID/`, `NET/`, …) auto-plugs the matching card and opens its window.
+`software/` ships **60+ ready-to-run programs** — load via *File → Load Memory*, or just **drag the file onto the window**. Most come from [apple1software.com](https://apple1software.com/), the reference archive. Loading a file from a card-specific folder (`Graphic HGR/`, `Graphic TMS9918/`, `SOUND SID/`, `NET/`, …) auto-plugs the matching card and opens its window.
+
+Drag-and-drop takes programs (`.txt` `.hex` `.apl` `.mon` `.tur` `.bin`), cassettes (`.aci` `.aiff` `.wav` `.mp3` `.ogg` `.flac`), snapshots (`.snap`) and 1541 disks (`.d64`) — each routed to exactly what the matching *File* menu entry would do. `.hex` covers **both** dialects: a Woz Monitor dump and a true Intel HEX file are told apart by their shape, not their name.
+
+### 🔤 Five BASICs, one socket
+
+| Interpreter | Where | Start |
+|---|---|---|
+| **Integer BASIC** (Woz, 1976) | `$E000` ROM | `E000R` |
+| **Microsoft BASIC 6502** — floating point | `$E000` ROM | `E000R` / warm `E003R` |
+| **EhBASIC 2.22** (Lee Davison) — floats, strings, `IF..THEN..ELSE`, `DO..UNTIL` | `$5000` in RAM | `5000R` / warm `5003R` |
+| **Applesoft Lite** | `$E000` (CFFA1) or `$6000` (microSD card RAM) | `E000R` / `6000R` |
+| **Applesoft for GEN2 HGR** | CodeTank cartridge | see DevBench |
+
+Integer BASIC and Microsoft BASIC share the `$E000` window, so flashing one evicts the other — one BASIC EPROM socket, exactly as on real hardware. Flash any of them from *Settings → Memory Settings → ROM Loading*. Both new arrivals are **rebuildable from source** ([`dev/msbasic/`](dev/msbasic/), [`dev/ehbasic/`](dev/ehbasic/)) — the Microsoft build even reproduces the published ROM byte for byte.
 
 ### 🃏 P-LAB CodeTank cartridge library
 
@@ -271,7 +285,7 @@ Plug the CodeTank daughterboard (preset 9 or *Hardware → CodeTank*), open *Fil
 | ♟️ **Chess** | Pure-asm chess inspired by [StewBC/cc65-Chess](https://github.com/StewBC/cc65-Chess) — text source ([asm](sketchs/apple1/game_chess/Chess.asm)). v0.1: HvH, full move-gen + check/mate. AI v1.2 |
 | 🏰 **LittleTower** | Text adventure ([asm](sketchs/apple1/game_little_tower/LittleTower-1.0.asm)) |
 | 🌙 **Lunar Lander** · 🔢 **2048** · 🔐 **Codebreaker** / 🧠 **Mastermind** · 🎲 **Shut the Box** · 🔵 **Peg Solitaire** · 🧩 **15-Puzzle** · 📝 **Worple** | Classics |
-| 🧬 **Game of Life** · 🎂 **30th** · 🐱 **ASCII Cat** · 🍺 **99 Bottles** | Demos |
+| 🧬 **Game of Life** · 🎂 **50th anniversary** · 🐱 **ASCII Cat** · 🍺 **99 Bottles** | Demos |
 | 🌀 **Maze** / **Maze 2** | Sidewinder ([asm](sketchs/apple1/game_maze_sidewinder/Maze_Sidewinder.asm)) and Recursive Backtracker ([asm](sketchs/apple1/game_maze_backtracker/Maze2_Backtracker.asm)) |
 | 🎨 **HGR Maze** | GEN2 HIRES maze generator ([asm](sketchs/gen2/game_maze/HGR_Maze.asm)) |
 | 🌌 **Mandelbrot** · 📊 **Cellular** · 🎨 **PasArt** | Fractal, 1D CA, parametric ASCII |
@@ -282,11 +296,6 @@ Plug the CodeTank daughterboard (preset 9 or *Hardware → CodeTank*), open *Fil
 🚀 Star Trek · 🃏 Blackjack · 🏛️ Hamurabi · 🌙 Lunar Lander Graphics · ⏱️ Stopwatch · 🔧 Resistor Calculator
 
 These are **Integer BASIC** listings (`software/Integer_basic/*.apl.txt`). Cold-start the interpreter once with `E000R`, then *File → Load Memory* → a `.apl.txt` (each ends with `E2B3R`, so it re-enters BASIC with the program intact), then type `RUN`.
-</details>
-
-<details><summary><b>🛠️ Dev tools</b></summary>
-
-👁️ Woz Monitor · 💻 Enhanced BASIC · 📘 fig-FORTH · 🔬 Disassembler · 🔨 A1 Assembler · ✍️ Typewriter · 🎉 Party
 </details>
 
 <details><summary><b>🎵 A1-SID music</b> (<code>software/SOUND SID/</code>)</summary>
