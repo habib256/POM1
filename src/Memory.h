@@ -629,6 +629,41 @@ private:
     int displayBusyCycles = 0;       // Cycles restants avant display ready
     int displayCharDelay = POM1_CPU_CLOCK_HZ / 60;    // 60 chars/sec à l'horloge CPU nominale
 
+    // ── PIA 6821 register banking ────────────────────────────────────────
+    // Each of the PIA's two ports exposes TWO registers behind one address,
+    // selected by bit 2 of that port's control register:
+    //
+    //   CRx bit 2 = 0  ->  the data address reads/writes the DATA DIRECTION
+    //                      register (1 = output pin, 0 = input pin)
+    //   CRx bit 2 = 1  ->  it reads/writes the peripheral (data) register
+    //
+    //   $D010 KBD / DDRA      $D011 CRA
+    //   $D012 DSP / DDRB      $D013 CRB
+    //
+    // RESET clears all four, so the DDRs are selected at power-on — which is
+    // exactly why the Woz Monitor opens with `LDY #$7F / STY $D012` (set
+    // DDRB: bits 0-6 output, bit 7 the DA input) and only then `LDA #$A7 /
+    // STA $D011 / STA $D013` to switch both ports to their data registers.
+    //
+    // POM1 used to model neither: $D013 fell through to plain RAM and $D012
+    // always read back the last glyph. Uncle Bernie's Codebreaker probes
+    // exactly this — CRB := 0, read $D012, expect $7F, restore CRB := $A7 —
+    // and printed "I WANT TO RUN ON A REAL APPLE-1 !" when the DDR came back
+    // wrong. Modelling it properly also RETIRES the old raw-$7F write filter:
+    // the Woz reset's `STY $D012` now legitimately lands in DDRB instead of
+    // reaching the display, so it can no longer paint a spurious '_'.
+    // Seeded to the POST-RESET values, matching resetMemory(). The member
+    // initialisers matter on their own: a Memory constructed and used without
+    // a resetMemory() (several test harnesses, and any embedder) must still
+    // present a PIA that software can print through.
+    uint8_t piaCrA  = 0xA7;   // $D011 control register A (keyboard side)
+    uint8_t piaCrB  = 0xA7;   // $D013 control register B (display side)
+    uint8_t piaDdrA = 0x00;   // keyboard port: all inputs on a real Apple-1
+    uint8_t piaDdrB = 0x7F;   // display port: what the Woz Monitor programs
+    /// True while the port's data (not direction) register is selected.
+    bool piaPortASelected() const { return (piaCrA & 0x04) != 0; }
+    bool piaPortBSelected() const { return (piaCrB & 0x04) != 0; }
+
 private :
 
     // Memory itself tab

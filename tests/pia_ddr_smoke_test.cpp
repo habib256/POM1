@@ -1,0 +1,142 @@
+// pia_ddr_smoke_test.cpp -- the PIA 6821's register banking ($D010-$D013).
+//
+// Each of the PIA's two ports hides TWO registers behind one address, selected
+// by bit 2 of that port's control register:
+//
+//     CRx bit 2 = 0  ->  the data address is the DATA DIRECTION register
+//     CRx bit 2 = 1  ->  it is the peripheral (data) register
+//
+//     $D010 KBD / DDRA      $D011 CRA
+//     $D012 DSP / DDRB      $D013 CRB
+//
+// POM1 modelled none of it: $D013 fell through to plain RAM and $D012 always
+// read back the last glyph written. Uncle Bernie's Codebreaker probes exactly
+// this to tell real hardware from an emulator --
+//
+//     STA $D013   ; CRB := $00, bank in the direction register
+//     LDA $D012   ; read DDRB
+//     LDX #$A7
+//     STX $D013   ; CRB := $A7, bank the data register back
+//     CMP #$7F    ; DDRB must be $7F, what the Woz Monitor programs
+//     BNE advert  ; else print "HEY ! I WANT TO RUN ON A REAL APPLE-1 !"
+//
+// -- and POM1 failed it. This test is that exact sequence, plus the invariants
+// the fix must not break.
+//
+// NOTE the seeded state: POM1 starts the PIA in its POST-reset condition
+// (CRA = CRB = $A7, DDRB = $7F) rather than the silicon's all-zero power-on
+// state. That is deliberate and load-bearing -- POM1 jumps straight into
+// programs (--run, DevBench Run, jumpTo) without executing the Monitor's reset
+// at $FF00, and with a zeroed CRB the Monitor's own ECHO would write its
+// characters into DDRB and then hang forever on its `BIT $D012 / BMI` as soon
+// as one with bit 7 set landed there. Every entry path must see the PIA that
+// software actually meets on a running machine.
+
+#include "TMS9918.h"      // IWYU pragma: keep
+#include "WiFiModem.h"    // IWYU pragma: keep
+#include "TerminalCard.h" // IWYU pragma: keep
+#include "A1IO_RTC.h"     // IWYU pragma: keep
+#include "PR40Printer.h"  // IWYU pragma: keep
+#include "DisplayDevice.h"
+#include "Memory.h"
+
+#include <cstdio>
+#include <string>
+
+namespace {
+
+class Cap : public DisplayDevice {
+public:
+    void onChar(char c) override { text.push_back(static_cast<char>(c & 0x7F)); }
+    std::string text;
+};
+
+int fail(const char* what) { std::fprintf(stderr, "  → %s\n", what); return 1; }
+
+} // namespace
+
+int main()
+{
+    Memory mem;
+    mem.initMemory();
+
+    // ---- 1. Codebreaker's probe, instruction for instruction ---------------
+    mem.memWrite(0xD013, 0x00);              // CRB := 0  -> DDRB banked in
+    const uint8_t ddrb = mem.memRead(0xD012);
+    mem.memWrite(0xD013, 0xA7);              // CRB := $A7 -> data register back
+    if (ddrb != 0x7F) {
+        std::fprintf(stderr,
+            "  → DDRB reads $%02X, expected $7F. Codebreaker (and anything else "
+            "probing the PIA) will conclude it is on an emulator.\n", ddrb);
+        return 1;
+    }
+
+    // ---- 2. $D013 is a register, not RAM -----------------------------------
+    // It used to fall through to the backing array, so it read back whatever
+    // was last written to it — which is ALSO what a stored CR does, hence the
+    // sharper check: the alias $D0F3 must reach the same register.
+    if (mem.memRead(0xD013) != 0xA7) return fail("CRB did not read back $A7");
+    mem.memWrite(0xD0F3, 0x00);              // PIA decodes only A0-A1
+    if (mem.memRead(0xD012) != 0x7F)
+        return fail("the $D0x3 alias does not reach CRB — A0-A1 decoding lost");
+    mem.memWrite(0xD013, 0xA7);
+
+    // ---- 3. The direction register is writable while banked in -------------
+    mem.memWrite(0xD013, 0x00);
+    mem.memWrite(0xD012, 0x3C);
+    if (mem.memRead(0xD012) != 0x3C) return fail("DDRB is not writable when banked in");
+    mem.memWrite(0xD012, 0x7F);              // put it back
+    mem.memWrite(0xD013, 0xA7);
+
+    // ---- 4. ...and a banked-in write must NOT reach the display ------------
+    Cap cap;
+    mem.setDisplayDevice(&cap);
+    mem.memWrite(0xD013, 0x00);
+    mem.memWrite(0xD012, 0x41);              // 'A' — a DDR program, not a glyph
+    mem.memWrite(0xD013, 0xA7);
+    if (!cap.text.empty())
+        return fail("a write to the DIRECTION register printed a character");
+    mem.memWrite(0xD012, 0x7F);              // restore DDRB via the data path?  no-op:
+    mem.memWrite(0xD013, 0x00);
+    mem.memWrite(0xD012, 0x7F);
+    mem.memWrite(0xD013, 0xA7);
+
+    // ---- 5. With the data register selected, the display still works -------
+    // The whole point of the seeded post-reset state: printing must work on a
+    // machine that never executed the Monitor's reset code.
+    cap.text.clear();
+    mem.memWrite(0xD012, 0xC8);              // 'H' with the strobe bit
+    mem.memWrite(0xD012, 0xC9);              // 'I'
+    if (cap.text != "HI") {
+        std::fprintf(stderr, "  → display wrote \"%s\", expected \"HI\"\n",
+                     cap.text.c_str());
+        return 1;
+    }
+    // The Monitor's reset-time `LDY #$7F / STY $D012` still must not paint.
+    cap.text.clear();
+    mem.memWrite(0xD012, 0x7F);
+    if (!cap.text.empty()) return fail("the raw-$7F reset write painted a glyph");
+
+    // ---- 6. Keyboard side untouched ----------------------------------------
+    // $D011 keeps its historical read semantics (bit 7 = key ready, nothing
+    // else): every Apple-1 program tests it with BIT/BPL, and returning the
+    // control bits too would change every read in the corpus for no caller.
+    mem.setDisplayDevice(nullptr);
+    if (mem.memRead(0xD011) != 0x00) return fail("$D011 should read $00 with no key");
+    mem.setKeyPressed('Z');
+    if (mem.memRead(0xD011) != 0x80) return fail("$D011 should read $80 with a key ready");
+    if (mem.memRead(0xD010) != 0xDA) return fail("$D010 should return 'Z' | $80");
+
+    // ---- 7. A reset restores the post-reset PIA ----------------------------
+    mem.memWrite(0xD013, 0x00);              // leave it banked the wrong way
+    mem.resetMemory();
+    if (mem.memRead(0xD013) != 0xA7)
+        return fail("resetMemory did not restore CRB to its post-reset $A7");
+    mem.memWrite(0xD013, 0x00);
+    if (mem.memRead(0xD012) != 0x7F)
+        return fail("resetMemory did not restore DDRB to $7F");
+
+    std::printf("pia_ddr_smoke: OK (DDRB reads $7F through the CRB bank, "
+                "$D013 is a register, display and keyboard unchanged)\n");
+    return 0;
+}

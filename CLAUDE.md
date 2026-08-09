@@ -108,8 +108,9 @@ One `.cpp/.h` pair per card under `src/`. Bus windows + priorities are listed in
 
 - `$D010` (KBD) — last key with bit 7 set; read clears strobe.
 - `$D011` (KBDCR) — bit 7 = 1 when key ready.
+- **PIA register banking** — each port hides TWO registers behind one address, selected by **bit 2 of its control register**: clear → the **data direction register**, set → the peripheral (data) register. `$D010` KBD/DDRA + `$D011` CRA; `$D012` DSP/DDRB + `$D013` CRB. **POM1 seeds the POST-reset state** (`CRA=CRB=$A7`, `DDRB=$7F`, `DDRA=$00`) rather than the silicon's all-zero power-on, and this is **load-bearing**: POM1 jumps straight into programs (`--run`, DevBench Run, `jumpTo`) without executing the Monitor's reset at `$FF00`, and a zeroed CRB leaves the DDRs banked in — the Monitor's own ECHO then writes its characters into DDRB and **hangs forever** on its `BIT $D012 / BMI` as soon as one with bit 7 set lands there (that is exactly what blanked the GEN2 golden frame while this was being built). `$D011` reads keep their historical semantics (bit 7 = key ready, nothing else) — every program tests it with BIT/BPL and modelling CRA read-back would change every read in the corpus for no caller. Pinned by **`pia_ddr_smoke`**; **`extended_aci_smoke`** part C is the end-to-end proof, since Uncle Bernie's Codebreaker probes DDRB (`CRB:=0` / read `$D012` / expect `$7F`) and prints *"I WANT TO RUN ON A REAL APPLE-1 !"* when an emulator gets it wrong.
 - `$D012` (DSP) — write triggers display callback + busy-counter except **raw `$7F`** (WOZ Monitor's reset-time `LDY #$7F / STY $D012` DDR setup would paint a spurious `_`). Real hardware latches only on PB7=1; POM1 is permissive so emulator-era demos calling WOZ ECHO with bit 7 clear still render. `$DF` via ECHO still yields `_`. TerminalCard + PR-40 sniffers get every write unfiltered.
-- PIA 6821 incomplete decoding aliases `$D0xx` → `$D010-$D012` by low 2 bits. `setKeyPressed` forces uppercase; `setKeyPressedRaw()` bypasses it (Terminal Card).
+- PIA 6821 incomplete decoding aliases `$D0xx` → `$D010-$D013` by low 2 bits (all **four** registers — `$D0x3` is CRB, not RAM). `setKeyPressed` forces uppercase; `setKeyPressedRaw()` bypasses it (Terminal Card).
 - **`Memory::configureResetVectors(addr)` only writes `$FFFC/$FFFD` (RES)**. NMI (`$FFFA/$FFFB`=$0F00) and IRQ (`$FFFE/$FFFF`=$0000) stay at the authentic WozMonitor.rom values so P-LAB programs installing an IRQ trampoline at `$0000` route correctly.
 
 ### Other gotchas
@@ -159,7 +160,8 @@ $CA00        Juke-Box Px/Sx bank-select latch (write-only; mutex with SID)
 $CC00-$CC1F  A1-AUDIO SE (excludes TMS9918)
 $CC00/$CC01  TMS9918 DATA / CTRL (priority 10, wins over A1-SID)
 $D00A        SWTPC GT-6144 command port (write-only; bus wins over PIA alias)
-$D010-$D012  KBD / KBDCR / DSP (alias $D0F0/F1/F2, $D030/31/32, …)
+$D010-$D013  KBD/DDRA · CRA · DSP/DDRB · CRB (alias $D0F0-F3, $D030-33, …;
+             CRx bit 2 banks direction vs data — see Invariants)
 $E000-$EFFF  Integer BASIC ROM (mutex with Microsoft BASIC below — one socket)
 $E000-$FEFF  Microsoft BASIC ROM (OSI lineage, 8 KB, FLOATING POINT; cold E000R,
              warm E003R; loaded from Settings → Memory Settings → ROM Loading)
