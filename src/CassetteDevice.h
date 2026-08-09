@@ -175,6 +175,41 @@ public:
     const std::string& getLoadInfo() const { return loadInfo; }
     const std::string& getLastError() const { return lastError; }
 
+    // ── Interpreting loadInfo ────────────────────────────────────────────
+    // tapeinfo.txt entries come in two shapes and the UI must not conflate
+    // them:
+    //
+    //   a RANGE      "E000.EFFF"          the operator types it, then C100R
+    //   a COMMAND    "C500R then RX RX"   the whole entry sequence, because
+    //                                     Uncle Bernie's extended format
+    //                                     carries its own from/to headers
+    //                                     and needs no typed range
+    //
+    // A space is the discriminator: a load range never contains one. Both
+    // helpers are pure string work and live here, next to the field they
+    // interpret, so the deck widget and the tests agree by construction —
+    // the deck used to hardcode "C100R" in its ARMED banner and to append a
+    // bare "R" to whatever loadInfo said, which turned the extended entry
+    // into the uncopyable "Type C500R then RX RXR".
+
+    /// What the cassette label should tell the operator to type.
+    static std::string tapeLabelCommand(const std::string& info)
+    {
+        if (info.empty()) return std::string();
+        // A range needs the Woz Monitor's "R" to run; a command already has
+        // every keystroke it needs.
+        return info.find(' ') == std::string::npos ? info + "R" : info;
+    }
+
+    /// The command that ends the deck's ARMED wait by making the ACI poll
+    /// $C081. For a range-style tape that is C100R (the range is typed
+    /// first and does not read the tape); for a command-style tape the
+    /// sequence itself already says it.
+    static std::string tapeArmingCommand(const std::string& info)
+    {
+        return info.find(' ') == std::string::npos ? std::string("C100R") : info;
+    }
+
     // Arm recording without requiring a CPU $C000 toggle. The deck's REC
     // button and the CLI `--rec` verb both use this so a scripted run can
     // capture output that the program emits as soon as it reaches the ACI
