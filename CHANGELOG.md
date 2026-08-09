@@ -10,6 +10,46 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — le PIA 6821 : registres de direction ($D010-$D013), et Codebreaker croyait tourner sur un émulateur
+
+Le Codebreaker d'Uncle Bernie affichait « HEY ! I WANT TO RUN ON A REAL
+APPLE-1 ! » au lieu de jouer. Ce n'était pas une histoire de chronométrage : le
+jeu **sonde le PIA**.
+
+```
+$0939: STA $D013   ; CRB := $00 → bit 2 à 0 : $D012 adresse le registre de DIRECTION
+$093C: LDA $D012   ; lit DDRB
+$0941: STX $D013   ; CRB := $A7 → retour au registre de données
+$0944: CMP #$7F    ; DDRB doit valoir $7F, ce que programme le moniteur Woz
+$0946: BNE ...     ; sinon → la pub
+```
+
+Chaque port du PIA cache **deux** registres derrière une adresse, choisis par le
+**bit 2 du registre de contrôle** : à 0 le registre de **direction**, à 1 le
+registre de données. POM1 n'en modélisait rien — `$D013` tombait en RAM
+ordinaire et `$D012` relisait le dernier caractère écrit. Les quatre registres
+sont désormais émulés (`$D010` KBD/DDRA · `$D011` CRA · `$D012` DSP/DDRB ·
+`$D013` CRB), décodage A0-A1 compris.
+
+**Le point délicat, trouvé en cassant neuf tests d'abord :** POM1 amorce le PIA
+dans son état **après reset** (`CRA=CRB=$A7`, `DDRB=$7F`) et non dans l'état
+silicium à la mise sous tension (tout à zéro). C'est porteur : POM1 saute
+directement dans les programmes (`--run`, DevBench Run, `jumpTo`) sans exécuter
+le reset du moniteur à `$FF00`, et un CRB à zéro laisse les registres de
+direction en façade — l'ECHO du moniteur écrit alors ses caractères dans DDRB
+puis **se bloque indéfiniment** sur son propre `BIT $D012 / BMI` dès qu'un
+octet à bit 7 y atterrit. C'est ce qui vidait la trame GEN2 de référence.
+
+Les lectures de `$D011` gardent leur sémantique historique (bit 7 = touche
+prête, rien d'autre) : tous les programmes la testent par BIT/BPL, et relire les
+bits de contrôle changerait chaque lecture du corpus sans aucun appelant qui le
+demande.
+
+Verrouillé par **`pia_ddr_smoke`** (le mécanisme isolé, plus les invariants
+d'affichage et de clavier) et par **`extended_aci_smoke` partie C** : la vraie
+bande, un niveau choisi, et l'exigence que le jeu file au tableau des scores
+sans passer par la pub.
+
 ### Fixed — le deck cassette envoyait vers des commandes qui ne lisent pas la bande
 
 Trouvé en testant le glisser-déposer : après avoir déposé `codebrk.aiff` (format

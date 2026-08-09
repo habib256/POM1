@@ -326,6 +326,41 @@ int main(int argc, char** argv)
         return 1;
     }
 
+    // ---- PART C: Codebreaker must not think it is on an emulator ----------
+    // The game probes the PIA's port-B DATA DIRECTION register (CRB := 0, read
+    // $D012, expect $7F, CRB := $A7) and, when the answer is wrong, prints
+    // "HEY ! I WANT TO RUN ON A REAL APPLE-1 !" instead of playing. POM1 used
+    // to fail that probe because it modelled neither $D013 nor the DDR — see
+    // pia_ddr_smoke for the mechanism in isolation. Here it is end to end, on
+    // the real tape: pick a level and let the game decide what we are.
+    display.captured.clear();
+    memory.setKeyPressed('0');   // ROOKIE
+
+    bool advert = false, scoreboard = false;
+    for (int64_t spent = 0; spent < 60'000'000LL; spent += kCycleSlice) {
+        cpu.run(kCycleSlice);
+        if (containsIgnoreCase(display.captured, "REAL APPLE")) { advert = true; break; }
+        if (containsIgnoreCase(display.captured, "SCORE")) { scoreboard = true; break; }
+    }
+
+    if (advert) {
+        std::fprintf(stderr,
+            "FAIL: Codebreaker printed its \"I WANT TO RUN ON A REAL APPLE-1\" "
+            "advert — its PIA probe found the wrong DDRB. POM1 is failing an "
+            "emulator-detection check that real hardware passes.\n"
+            "---- capture ----\n%s\n-----------------\n",
+            display.captured.c_str());
+        return 1;
+    }
+    if (!scoreboard) {
+        std::fprintf(stderr,
+            "FAIL: the game neither advertised nor reached its scoreboard after "
+            "a level was chosen. Captured:\n%s\n", display.captured.c_str());
+        return 1;
+    }
+    std::printf("C: Codebreaker's PIA probe passed — it went straight to the "
+                "scoreboard, no emulator advert\n");
+
     std::printf("PASS: extended ACI loaded and autostarted codebrk.aiff "
                 "(%lld cycles)\n", static_cast<long long>(cyclesConsumed));
     return 0;

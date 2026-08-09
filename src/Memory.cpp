@@ -842,6 +842,19 @@ void Memory::setHgrFramebufferAttached(bool e)
 
 void Memory::resetMemory(void)
 {
+    // PIA state as it stands the instant the Woz Monitor's reset code has
+    // run — NOT the bare silicon power-on state (all zeros). See Memory.h for
+    // why: POM1 jumps straight into programs (--run, DevBench Run, jumpTo)
+    // without executing $FF00, and a zeroed CRB would leave the DDRs selected,
+    // so the Monitor's ECHO would write its characters into DDRB and then hang
+    // forever on its own `BIT $D012 / BMI` once a character with bit 7 set
+    // landed there. Seeding the post-reset values makes every entry path see
+    // the same PIA a real machine presents to software.
+    piaCrA  = 0xA7;   // what `LDA #$A7 / STA $D011` leaves behind
+    piaCrB  = 0xA7;   // ... and `STA $D013`
+    piaDdrA = 0x00;   // keyboard: all inputs
+    piaDdrB = 0x7F;   // display: `LDY #$7F / STY $D012`, bits 0-6 out, PB7 in
+
     // RAM power-on profile. Default = zero-init (legacy, preserves tests
     // and snapshots). When systemRamNoiseOnReset is enabled, seed RAM with
     // mt19937 noise — matches what real Apple-1 6502 RAM actually shows
@@ -1695,6 +1708,17 @@ uint8_t Memory::memRead(uint16_t address)
     // Protocole Apple 1 :
     // - 0xD011 (KBDCR) : bit 7 = strobe (1 si touche prête). La lecture réinitialise le strobe.
     // - 0xD010 (KBD) : caractère avec bit 7 = 1 si prêt. Le caractère reste disponible jusqu'à nouvelle touche.
+    // PIA register banking: with the port's CR bit 2 clear, the data address
+    // is the DATA DIRECTION register, not the port. See Memory.h.
+    if (address == 0xD010 && !piaPortASelected()) return piaDdrA;
+    if (address == 0xD012 && !piaPortBSelected()) return piaDdrB;
+    if (address == 0xD013) {
+        // CRB read-back. Bit 7 (IRQB1, driven by the display's RDA on CB1) is
+        // not modelled; nothing in the corpus polls it, and the Apple-1's
+        // display handshake goes through PB7 on the data port instead.
+        return piaCrB;
+    }
+
     if (address == 0xD010) {
         // KBD : retourne le caractère avec bit 7 à 1
         // Lire 0xD010 efface le strobe (PIA 6821 behavior)
@@ -1729,8 +1753,12 @@ uint8_t Memory::memRead(uint16_t address)
         if (busy) return mem[address] | 0x80;
         return mem[address] & 0x7F;
     } else if (address == 0xD011) {
-        uint8_t result = keyReady ? 0x80 : 0x00;
-        return result;
+        // CRA read-back is deliberately NOT modelled: bit 7 is IRQA1, the
+        // keyboard strobe, and that is the only bit any Apple-1 program tests
+        // (always with BIT/BPL). Returning the control bits too would change
+        // every $D011 read in the corpus from $00/$80 to $27/$A7 for no
+        // demonstrated caller — a wide blast radius bought for nothing.
+        return keyReady ? 0x80 : 0x00;
     }
 
     checkOutOfRangeAccess(address, false);
@@ -1803,22 +1831,36 @@ void Memory::memWrite(uint16_t address, uint8_t value)
     }
 
     // Apple 1 Display : écriture vers 0xD012 (PIA 6821).
-    // Real hardware only latches a glyph into the 74LS164 shift register when
-    // PB7 = 1 (the data-strobe bit). Writes with bit 7 clear are PIA handshake
-    // / DDR setup writes — most visibly the WOZ Monitor reset sequence at
-    // $FF02 (`LDY #$7F / STY $D012`) which sets the port-B DDR and would
-    // otherwise paint a spurious '_' on every soft reset.
     //
-    // POM1 however has been historically permissive: emulator-era demos
-    // (e.g. software/Apple-1_TMS_CC65/nino-democ.bin, whose startup banner uses the WOZ
-    // Monitor ECHO routine with plain ASCII in the accumulator — bit 7
-    // clear) print correctly on POM1 even though a real Apple-1 would keep
-    // the 74LS164 silent. Breaking that compatibility regresses every
-    // legacy program that predates the bit-7-strobe convention, so instead
-    // of gating on bit 7 we narrowly filter the single raw-$7F write the
-    // WOZ reset sequence emits. Any program that genuinely wants a '_'
-    // glyph asks for $DF via ECHO (`value & 0x7F` still yields $5F — the
-    // underscore slot in the Apple-1 character ROM) and is unaffected.
+    // Real hardware only latches a glyph into the 74LS164 shift register when
+    // PB7 = 1 (the data-strobe bit), but POM1 stays deliberately permissive
+    // here: emulator-era demos (e.g. software/Apple-1_TMS_CC65/nino-democ.bin,
+    // whose banner calls the WOZ Monitor's ECHO with plain ASCII, bit 7 clear)
+    // print correctly on POM1 even though a real Apple-1 would keep the shift
+    // register silent. Gating on bit 7 would regress every legacy program that
+    // predates the strobe convention.
+    //
+    // The reset sequence's `LDY #$7F / STY $D012` DOES still reach here: CRB
+    // is seeded to its post-reset $A7 (see resetMemory), so that write lands
+    // on the data register rather than on DDRB — which is why the narrow
+    // raw-$7F filter below survives. It would otherwise paint a spurious '_'
+    // on every soft reset. A program that genuinely wants that glyph asks for
+    // $DF through ECHO (`value & 0x7F` = $5F, the underscore slot) and is
+    // unaffected. DDRB is pre-seeded to $7F, so a program that banks it in
+    // still reads back exactly what the Monitor would have programmed.
+    // PIA control registers, and the direction registers they bank in.
+    if (address == 0xD011) { piaCrA = value; mem[address] = value; return; }
+    if (address == 0xD013) { piaCrB = value; mem[address] = value; return; }
+    if (address == 0xD010 && !piaPortASelected()) { piaDdrA = value; return; }
+    if (address == 0xD012 && !piaPortBSelected()) {
+        // The Woz Monitor's `LDY #$7F / STY $D012` lands HERE, not on the
+        // display — which is why the old raw-$7F filter that used to guard
+        // this branch is gone. A program that genuinely wants to print $7F
+        // now can, and the reset can no longer paint a spurious '_'.
+        piaDdrB = value;
+        return;
+    }
+
     if (address == 0xD012) {
         if (value != 0x7F) {
             displayBusyCycles = displayCharDelay; // Simuler le délai du terminal

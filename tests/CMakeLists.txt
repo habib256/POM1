@@ -1498,6 +1498,32 @@ add_test(NAME intel_hex_smoke
          WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set_tests_properties(intel_hex_smoke PROPERTIES TIMEOUT 5)
 
+# pia_ddr_smoke -- the PIA 6821's register banking ($D010-$D013): with a port's
+# control-register bit 2 clear, the data address IS the data direction register.
+# Uncle Bernie's Codebreaker probes DDRB to detect emulators and POM1 failed it.
+# Also pins the seeded post-reset state that keeps direct-jump entry paths
+# (--run, DevBench, jumpTo) able to print at all.
+add_executable(test_pia_ddr
+    pia_ddr_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_pia_ddr PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_pia_ddr PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_pia_ddr PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_pia_ddr PRIVATE ws2_32)
+endif()
+
+add_test(NAME pia_ddr_smoke
+         COMMAND test_pia_ddr
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(pia_ddr_smoke PROPERTIES TIMEOUT 10)
+
 # measured_cpu_rate_smoke -- the status bar's MEASURED clock rate
 # (EmulationController::getMeasuredCpuHz) as opposed to the pacer's target.
 # Wall-clock based, so the bands are loose; they only separate "measured" from
