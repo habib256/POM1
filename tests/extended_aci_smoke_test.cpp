@@ -218,6 +218,46 @@ int main(int argc, char** argv)
         return 1;
     }
 
+    // What the DECK tells the operator to type. The playback path below
+    // proves the tape loads; this proves the UI sends the user to the
+    // commands that actually do it. Both used to be wrong for this tape: the
+    // ARMED banner hardcoded "C100R" — the one entry that does NOT read an
+    // extended tape — and the cassette label appended a bare "R" to an entry
+    // that was already a full command, printing "Type C500R then RX RXR".
+    // The keystrokes queued a few lines down are the ground truth these two
+    // strings must agree with.
+    {
+        const std::string& info = tape.getLoadInfo();
+        if (info.find("C500R") == std::string::npos) {
+            std::fprintf(stderr,
+                "FAIL: cassettes/tapeinfo.txt no longer describes %s as an "
+                "extended-format tape (loadInfo = \"%s\").\n",
+                tapePath.c_str(), info.c_str());
+            return 1;
+        }
+        const std::string label = CassetteDevice::tapeLabelCommand(info);
+        const std::string armed = CassetteDevice::tapeArmingCommand(info);
+        if (label != info || armed != info) {
+            std::fprintf(stderr,
+                "FAIL: the deck would misdescribe an extended tape.\n"
+                "  label  = \"%s\"\n  banner = \"%s\"\n"
+                "  both must be the entry sequence verbatim: \"%s\"\n",
+                label.c_str(), armed.c_str(), info.c_str());
+            return 1;
+        }
+        // ...and the range-style tapes must keep their old behaviour: the
+        // range is typed first, C100R is what starts the read.
+        if (CassetteDevice::tapeLabelCommand("E000.EFFF") != "E000.EFFFR" ||
+            CassetteDevice::tapeArmingCommand("E000.EFFF") != "C100R") {
+            std::fprintf(stderr,
+                "FAIL: a bare load range no longer gets the Woz Monitor's "
+                "run suffix / the stock C100R arming command.\n");
+            return 1;
+        }
+        std::printf("B: deck says \"Type %s\" and waits for \"%s\"\n",
+                    label.c_str(), armed.c_str());
+    }
+
     tape.playTape();   // B6: arms; the first $C081 read starts it
 
     // Exactly the operator's keystrokes on real hardware.

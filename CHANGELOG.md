@@ -10,6 +10,32 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — le deck cassette envoyait vers des commandes qui ne lisent pas la bande
+
+Trouvé en testant le glisser-déposer : après avoir déposé `codebrk.aiff` (format
+étendu d'Uncle Bernie), le deck affichait `Type C500R then RX RXR` et
+`ARMED - waiting for C100R`. Deux instructions fausses.
+
+- **`RX RXR` n'existe pas.** L'étiquette de cassette ajoutait un `R` à la valeur
+  lue dans `tapeinfo.txt`. Correct pour une plage de chargement (`E000.EFFF` →
+  `E000.EFFFR`, le `R` du moniteur Woz), absurde pour une entrée qui est déjà
+  une commande complète. Le défaut était présent **à deux endroits** du widget.
+- **La bannière ARMED codait `C100R` en dur** — précisément l'entrée qui ne lit
+  *pas* une bande étendue, celle-ci s'amorçant par `C500R` puis `RX RX`. Le deck
+  envoyait donc l'opérateur vers la seule commande incapable de la démarrer.
+
+La règle vit désormais dans `CassetteDevice` (`tapeLabelCommand` /
+`tapeArmingCommand`), à côté du champ qu'elle interprète : une entrée de
+`tapeinfo.txt` est soit une **plage** — jamais d'espace, reçoit le `R` du
+moniteur, s'arme sur `C100R` — soit une **commande complète**, reproduite
+verbatim. Widget et tests s'accordent par construction.
+
+Le chemin fonctionnel, lui, n'était pas en cause : le déclencheur de lecture est
+la première lecture de `$C081` et n'inspecte aucune adresse d'entrée, si bien
+que `extended_aci_smoke` chargeait déjà cette bande par `RX RX`. Ce test pinne
+maintenant aussi les deux chaînes affichées, contre les frappes qu'il envoie
+réellement.
+
 ### Added — EhBASIC 2.22 sur Apple-1 (portage POM1)
 
 *Derived from EhBASIC.*

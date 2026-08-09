@@ -472,7 +472,15 @@ CassetteDeck_ImGui::render(const char* title,
         // distracting. wallClock_ is already frame-accumulated in seconds.
         const float pulse = 0.55f + 0.45f * std::sin(static_cast<float>(wallClock_) * 7.5f);
         const ImVec4 armedColor(0.95f, 0.28f, 0.22f, pulse);
-        const char* kArmedText = "ARMED - waiting for C100R";
+        // What ends the wait depends on the TAPE, not on a constant: Uncle
+        // Bernie's extended format is entered with "C500R then RX RX", and
+        // the banner used to send the operator to C100R regardless — telling
+        // them to type the one command that would NOT start this tape.
+        // CassetteDevice owns the rule; see tapeArmingCommand.
+        const std::string armedCmd =
+            CassetteDevice::tapeArmingCommand(snap.cassetteLoadInfo);
+        const std::string armedText = "ARMED - waiting for " + armedCmd;
+        const char* kArmedText = armedText.c_str();
         const ImVec2 armedSize = ImGui::CalcTextSize(kArmedText);
         ImGui::SetCursorPosX(ImGui::GetCursorPosX()
                              + std::max(0.0f, (availW - armedSize.x) * 0.5f));
@@ -831,8 +839,12 @@ void CassetteDeck_ImGui::drawCassetteWindow(ImDrawList* dl, ImVec2 p0, float s,
             // ready-to-type Woz Monitor command so the user knows exactly
             // what to key in. Otherwise fall back to playback duration.
             if (!snap.cassetteLoadInfo.empty()) {
-                std::snprintf(detail, sizeof(detail), "Type %sR",
-                              snap.cassetteLoadInfo.c_str());
+                // NOT "%sR": a bare load range needs the Woz Monitor's run
+                // suffix, but an entry that is already a full command does
+                // not — appending it produced "Type C500R then RX RXR".
+                std::snprintf(detail, sizeof(detail), "Type %s",
+                              CassetteDevice::tapeLabelCommand(
+                                  snap.cassetteLoadInfo).c_str());
             } else {
                 const double total = snap.cassettePlaybackTotalSeconds;
                 if (total > 0.0) {
@@ -849,8 +861,12 @@ void CassetteDeck_ImGui::drawCassetteWindow(ImDrawList* dl, ImVec2 p0, float s,
             drawText(dl, p0, s, labelR.x0 + 4.0f, labelR.y0 + 32.0f, 13.0f,
                      IM_COL32(170, 110, 30, 255), "PROGRAM TAPE");
             if (!snap.cassetteLoadInfo.empty()) {
-                std::snprintf(detail, sizeof(detail), "Type %sR",
-                              snap.cassetteLoadInfo.c_str());
+                // NOT "%sR": a bare load range needs the Woz Monitor's run
+                // suffix, but an entry that is already a full command does
+                // not — appending it produced "Type C500R then RX RXR".
+                std::snprintf(detail, sizeof(detail), "Type %s",
+                              CassetteDevice::tapeLabelCommand(
+                                  snap.cassetteLoadInfo).c_str());
             } else {
                 std::snprintf(detail, sizeof(detail), "%zu transitions",
                               snap.cassetteLoadedTransitionCount);
