@@ -16,6 +16,13 @@
 // extension leaves them openable by plain-text tooling and keeps the test paths
 // that reference them unchanged.
 //
+// ".hex" is AMBIGUOUS: it also names Intel HEX (":LLAAAATT<data>CC"), a
+// completely different container. It stays in this list because the two are
+// told apart by SHAPE, not by name -- Memory::loadHexDump sniffs each file with
+// pom1::looksLikeIntelHex (IntelHexFile.h) before the WOZMON parsers run, so an
+// Intel HEX published as ".txt" is read correctly too. Never make that routing
+// depend on the extension.
+//
 // ".tur" (TurboType) IS here, because the format turned out to be readable by
 // the same parser. A .TUR is:
 //

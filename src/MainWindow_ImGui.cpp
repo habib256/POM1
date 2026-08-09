@@ -575,6 +575,11 @@ void MainWindow_ImGui::render()
             finalizePendingCardPlugs();
         }
     }
+    // Drag-and-drop, deferred here from the GLFW callback (see
+    // queueDroppedFiles). Runs BEFORE the first Begin() of the frame because a
+    // load can raise window flags (showLoadDialog, showCassetteDeck, a card
+    // panel) that this same frame must honour.
+    processDroppedFiles();
     // Drain a layout reset (Settings → Reset window layout). applyPendingLayout
     // forces the factory geometry with ImGuiCond_Always while this is >0; once
     // it hits 0 the (kept) entries are dropped so normal FirstUseEver resumes.

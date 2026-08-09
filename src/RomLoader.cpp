@@ -28,6 +28,8 @@ bool reloadRom(Memory& mem, std::string& error, LoadFn fn)
 } // namespace
 
 bool RomLoader::reloadBasic              (Memory& m, std::string& e) { return reloadRom(m, e, &Memory::loadBasic); }
+bool RomLoader::reloadMsBasic            (Memory& m, std::string& e) { return reloadRom(m, e, &Memory::loadMsBasic); }
+bool RomLoader::reloadEhBasic            (Memory& m, std::string& e) { return reloadRom(m, e, &Memory::loadEhBasic); }
 bool RomLoader::reloadApplesoftLite      (Memory& m, std::string& e) { return reloadRom(m, e, &Memory::loadApplesoftLite); }
 bool RomLoader::reloadApplesoftLiteCFFA1 (Memory& m, std::string& e) { return reloadRom(m, e, &Memory::loadApplesoftLiteCFFA1); }
 bool RomLoader::reloadApplesoftLiteSDCard(Memory& m, std::string& e) { return reloadRom(m, e, &Memory::loadApplesoftLiteSDCard); }

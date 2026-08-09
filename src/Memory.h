@@ -178,6 +178,25 @@ public:
     // Zero the $E000-$EFFF BASIC ROM region — matches a pre-October-1976
     // bare Apple-1 that shipped with no BASIC cassette.
     void unloadBasic(void);
+    // Microsoft BASIC 6502 (the OSI-derived 8 KB build with floating point),
+    // ported to the Apple-1's PIA. Occupies the SAME $E000 window as Woz's
+    // Integer BASIC, so the two are mutually exclusive by construction — see
+    // MainWindow's BasicType. Cold start `E000R`, warm start `E003R`.
+    //
+    // The shipped roms/msbasic.rom is the full 8 KB image built for a replica's
+    // EPROM: $E000-$FEFF BASIC, then its own Woz Monitor copy at $FF00 and
+    // vectors at $FFFA. It is loaded whole and POM1's own WozMonitor.rom is then
+    // put back on top — the bundled copy exists solely because the replica's
+    // EPROM had to supply one, and POM1's is the canonical image the rest of the
+    // emulator (and configureResetVectors) is built around.
+    int loadMsBasic(void);
+    // Lee Davison's Enhanced 6502 BASIC 2.22, ported to the Apple-1 PIA. NOT a
+    // ROM window: a 12 KB image flashed into plain RAM at $5000-$7FFF, the same
+    // model as Applesoft Lite on the microSD card. Cold start `5000R`, warm
+    // `5003R`; user programs live in $0300-$4FFF. Sources + provenance in
+    // dev/ehbasic/. Mutually exclusive with every card decoding inside
+    // $5000-$7FFF (microSD's Applesoft window, CodeTank, Juke-Box).
+    int loadEhBasic(void);
     int loadApplesoftLite(void);
     // Explicit variants — let the user pick which flavour to re-flash regardless
     // of which card is plugged. The auto-dispatching loadApplesoftLite()

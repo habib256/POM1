@@ -27,6 +27,8 @@
 #include <cmath>
 
 #include "Memory.h"
+#include "HexDumpFile.h"
+#include "IntelHexFile.h"
 #include "Logger.h"
 #include "M6502.h"
 #include "TMS9918.h"
@@ -1066,8 +1068,38 @@ int Memory::loadBasic(void)
 
 void Memory::unloadBasic(void)
 {
-    std::fill_n(mem.begin() + 0xE000, 0x1000, static_cast<uint8_t>(0));
-    markPagesDirty(0xE000, 0x1000);
+    // $E000-$FEFF, not $E000-$EFFF: Microsoft BASIC is nearly twice the size of
+    // Woz's Integer BASIC and shares the window, so clearing only the low 4 KB
+    // would leave 3 KB of the other interpreter behind when switching flavours.
+    // The region above $EFFF is bare RAM on an Apple-1 anyway (nothing else maps
+    // there — see the memory map), so zeroing it costs nothing when the previous
+    // occupant was Integer BASIC.
+    std::fill_n(mem.begin() + 0xE000, 0x1F00, static_cast<uint8_t>(0));
+    markPagesDirty(0xE000, 0x1F00);
+}
+
+int Memory::loadMsBasic(void)
+{
+    // The file is the replica's full 8 KB EPROM image ($E000-$FFFF): BASIC up to
+    // $FEFF, then its own Woz Monitor copy at $FF00 and vectors at $FFFA. It is
+    // kept whole so its sha256 still matches the published ROM (see
+    // dev/msbasic/README.md) — loadROM cannot map a slice, and truncating the
+    // file would break that provenance check.
+    //
+    // So: load it entire, then put POM1's canonical Woz Monitor back on top.
+    // Doing that HERE rather than relying on a later reload in the preset path
+    // keeps the function order-independent — a caller that flashes MS BASIC on
+    // its own (the Hardware menu, --basic msbasic) must not be left running the
+    // replica's tweaked monitor copy. The vectors are identical either way
+    // (NMI $0F00, IRQ $0000), so nothing else has to be re-asserted.
+    const int rc = loadROM("msbasic.rom", 0xE000, 0x2000, "Microsoft BASIC");
+    if (rc != 0) return rc;
+    return loadWozMonitor();
+}
+
+int Memory::loadEhBasic(void)
+{
+    return loadROM("ehbasic.rom", 0x5000, 0x3000, "EhBASIC");
 }
 
 int Memory::loadApplesoftLite(void)
@@ -1249,7 +1281,16 @@ int Memory::loadHexDump(const char* filename, uint16_t &startAddress, int* bytes
     // structure to tell ":data" from "address:".
     std::string cleaned;
     std::vector<std::string> lines;
-    bool turboFile = false;
+    // A ".tur" takes the line-structured parser WHATEVER its content, because
+    // the "T" marker it is normally selected by is optional in the wild: a
+    // TurboType file may be published as plain "AAAA: bytes" blocks with no
+    // T/X markers at all (HoneyCrisp wraps those into a synthetic T..X block
+    // for the same reason). Fed to the legacy joined-lines parser, such a file
+    // hits the exact failure the line-structured branch exists to avoid -- each
+    // data line's trailing digits sliced off as the next line's address, the
+    // program scattered across memory. The marker gate still applies to every
+    // other extension, so a ".txt" in turbo syntax is recognised by its "T".
+    bool turboFile = pom1::lowerExtension(filename) == "tur";
     std::istringstream lineStream(content);
     std::string line;
     while (std::getline(lineStream, line)) {
@@ -1326,6 +1367,66 @@ int Memory::loadHexDump(const char* filename, uint16_t &startAddress, int* bytes
         }
     };
 
+    // ----------------------------------------------------------------------
+    // Intel HEX (":LLAAAATT<data>CC") — a DIFFERENT container that is also
+    // published as ".hex". Detection is structural (see IntelHexFile.h), never
+    // extension-based, so an Intel HEX named ".txt" is read correctly and a
+    // WOZMON dump named ".hex" is untouched. Without this branch every digit of
+    // the record — count, address, type and checksum included — was written as
+    // data at whatever address happened to be current, silently.
+    //
+    // `looksLikeIntelHex` validates the first record only. Once it says yes, a
+    // failure further down is a BROKEN Intel HEX file, so it is reported rather
+    // than quietly retried through the WOZMON parser, which would resume
+    // writing garbage — the whole point of the branch.
+    // ----------------------------------------------------------------------
+    if (pom1::looksLikeIntelHex(content)) {
+        pom1::IntelHexImage ihx;
+        std::string ihxError;
+        if (!pom1::parseIntelHex(content, ihx, &ihxError)) {
+            pom1::log().error("Mem", "Intel HEX file " +
+                                         std::filesystem::path(filename).filename().string() +
+                                         " is malformed (" + ihxError + ")");
+            return 1;
+        }
+        for (const pom1::IntelHexRecord& rec : ihx.records) {
+            // 6502 = 16-bit bus. A record past $FFFF means the file targets
+            // something else entirely (the type 02/04 base records are an x86
+            // inheritance); wrapping it would scribble over page zero.
+            if (rec.addr + rec.data.size() > 0x10000) {
+                std::ostringstream oss;
+                oss << "Intel HEX file " << std::filesystem::path(filename).filename().string()
+                    << ": record at 0x" << std::hex << rec.addr
+                    << " lies outside the 6502's 64 KB address space";
+                pom1::log().error("Mem", oss.str());
+                return 1;
+            }
+            setAddr(rec.addr);
+            for (uint8_t b : rec.data) writeByte(b);
+        }
+        closeZone();
+        // A type 03/05 start record is the file's run address, the Intel HEX
+        // equivalent of WOZMON's trailing "AAAAR". Absent one, the first data
+        // address stands (already latched by the first setAddr).
+        if (ihx.hasStart && ihx.start <= 0xFFFF) startAddress = static_cast<uint16_t>(ihx.start);
+        if (bytesLoaded) *bytesLoaded = totalBytes;
+        if (totalBytes > 0) markAllPagesDirty();
+        {
+            std::ostringstream oss;
+            oss << "Intel HEX loaded: " << std::filesystem::path(filename).filename().string()
+                << " (" << std::dec << totalBytes << " bytes, "
+                << (ihx.hasStart ? "run" : "start") << " at 0x" << std::hex << startAddress << ")";
+            pom1::log().info("Mem", oss.str());
+        }
+        if (!ihx.sawEof) {
+            pom1::log().warn("Mem", "Intel HEX file " +
+                                        std::filesystem::path(filename).filename().string() +
+                                        " has no ':00000001FF' end-of-file record — loaded anyway, "
+                                        "but it may be truncated.");
+        }
+        return firstAddr ? 1 : 0;
+    }
+
     if (turboFile) {
         // ------------------------------------------------------------------
         // TurboType (.TUR) — LINE-STRUCTURED parse.
@@ -1346,8 +1447,9 @@ int Memory::loadHexDump(const char* filename, uint16_t &startAddress, int* bytes
         //
         // Keeping the lines apart makes every case unambiguous, and it also
         // handles the autotyped WOZMON prologue without needing the merge
-        // hacks at all. Only files carrying a lone "T" line take this path,
-        // so the ~100 bundled dumps keep their exact legacy behaviour.
+        // hacks at all. Only ".tur" files and files carrying a lone "T" line
+        // take this path, so the ~100 bundled dumps (all ".txt") keep their
+        // exact legacy behaviour.
         // ------------------------------------------------------------------
         auto emitData = [&](const std::string& s, size_t from) {
             std::string digits;

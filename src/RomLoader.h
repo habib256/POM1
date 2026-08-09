@@ -19,6 +19,8 @@ public:
     // Pre: caller holds the mutex protecting `mem`.
     // Returns true on success; on failure, writes Memory::getLastError() into `error`.
     static bool reloadBasic              (Memory& mem, std::string& error);
+    static bool reloadMsBasic            (Memory& mem, std::string& error);
+    static bool reloadEhBasic            (Memory& mem, std::string& error);
     static bool reloadApplesoftLite      (Memory& mem, std::string& error);
     static bool reloadApplesoftLiteCFFA1 (Memory& mem, std::string& error);
     static bool reloadApplesoftLiteSDCard(Memory& mem, std::string& error);

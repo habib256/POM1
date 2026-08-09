@@ -448,6 +448,18 @@ static void glfw_window_focus_callback(GLFWwindow* w, int focused)
 // otherwise). No ImGui counterpart to chain for these two.
 static void glfw_window_refresh_callback(GLFWwindow*) { pom1_note_activity(); }
 static void glfw_window_size_callback(GLFWwindow*, int, int) { pom1_note_activity(); }
+// Drag-and-drop. GLFW owns `paths` only for the duration of this call, and we
+// are inside glfwPollEvents — outside the ImGui frame — so the strings are
+// copied into the MainWindow queue and the actual load happens at the top of
+// the next render(). ImGui's own drop handler is deliberately NOT chained: POM1
+// has no ImGui drag-and-drop payload of its own, and the platform-IO one only
+// matters for multi-viewport, which stays off (see CLAUDE.md).
+static void glfw_drop_callback(GLFWwindow* w, int count, const char** paths)
+{
+    pom1_note_activity();
+    auto* mw = static_cast<MainWindow_ImGui*>(glfwGetWindowUserPointer(w));
+    if (mw) mw->queueDroppedFiles(paths, count);
+}
 #endif // !POM1_IS_WASM
 
 #if !POM1_IS_WASM && defined(__APPLE__)
@@ -1265,6 +1277,9 @@ int main(int argc, char* argv[])
     glfwSetWindowFocusCallback(window, glfw_window_focus_callback);
     glfwSetWindowRefreshCallback(window, glfw_window_refresh_callback);
     glfwSetWindowSizeCallback(window, glfw_window_size_callback);
+    // Drag-and-drop (desktop only: under Emscripten the browser owns the drop
+    // and hands over a File object, not a path the native loaders could open).
+    glfwSetDropCallback(window, glfw_drop_callback);
 #endif
 
     // Main loop

@@ -2068,6 +2068,37 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
             setStatusMessage(ok ? "BASIC loaded" : error, 3.0f);
         }
 
+        // Microsoft BASIC 6502 — the OSI-derived 8 KB build with floating point,
+        // ported to the Apple-1's PIA. It shares the $E000 window with Woz's
+        // Integer BASIC, which IS the mutex: flashing one evicts the other, the
+        // same way it would on a real machine with a single BASIC EPROM socket.
+        // Nothing else is needed to enforce it — the loadedRoms purge below
+        // drops every $E000-$FFFF entry before recording the new occupant.
+        if (ImGui::Button("Load Microsoft BASIC  [$E000-$FEFF + Woz $FF00-$FFFF]")) {
+            std::string error;
+            bool ok = emulation->reloadMsBasic(error);
+            if (!writeProtect) emulation->setWriteInRom(true);
+            if (ok) {
+                loadedRoms.erase(std::remove_if(loadedRoms.begin(), loadedRoms.end(),
+                    [](const LoadedRegion& r) { return r.start >= 0xE000 && r.end <= 0xFFFF; }), loadedRoms.end());
+                loadedRoms.push_back({"Microsoft BASIC", 0xE000, 0xFEFF});
+                loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
+            }
+            setStatusMessage(ok ? "Microsoft BASIC loaded — cold start E000R, warm start E003R"
+                                : error, 4.0f);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Microsoft BASIC 6502 (OSI lineage, 8 KB, FLOATING POINT).\n"
+                "Woz's Integer BASIC has no floats at all — that is the reason\n"
+                "to use this one. Both live at $E000, so loading either evicts\n"
+                "the other, exactly like swapping the BASIC EPROM.\n\n"
+                "Cold start: E000R    Warm start: E003R\n"
+                "The cold start asks MEMORY SIZE? and TERMINAL WIDTH? —\n"
+                "press RETURN twice to take the defaults.\n\n"
+                "Reproducible build from public sources: see dev/msbasic/.");
+        }
+
         if (ImGui::Button("Load Applesoft Lite (CFFA1)  [$E000-$FFFF]")) {
             std::string error;
             bool ok = emulation->reloadApplesoftLiteCFFA1(error);
@@ -2097,6 +2128,75 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
                     loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
             }
             setStatusMessage(ok ? "Applesoft Lite (microSD) loaded" : error, 3.0f);
+        }
+
+        // EhBASIC is flashed into plain RAM at $5000-$7FFF, not into a ROM
+        // window — so unlike the buttons above it has no bus decoding of its
+        // own to win with, and any card mapping inside that range simply
+        // shadows it. Unplug exactly the three that do (Parmigiani's one-board
+        // rule); CFFA1 ($9000) and A1-IO/RTC ($2000) are left alone because
+        // they do not overlap, which is why this does not call the broader
+        // evictStorageCards().
+        if (ImGui::Button("Load EhBASIC 2.22  [$5000-$7FFF, in RAM]")) {
+            std::vector<std::string> evicted;
+            if (microSDEnabled) {
+                microSDEnabled = false;
+                emulation->setMicroSDEnabled(false);
+                iecCardEnabled = false;    // rides on microSD's VIA — mirror the cascade
+                showIECCard = false;
+                evicted.push_back("microSD");
+            }
+            if (codeTankEnabled) {
+                codeTankEnabled = false;
+                showCodeTankLibrary = false;
+                codeTankPendingWozRunAt = 0.0;
+                emulation->setCodeTankEnabled(false);
+                evicted.push_back("CodeTank");
+            }
+            if (jukeBoxEnabled) {
+                jukeBoxEnabled = false;
+                showJukeBox = false;
+                emulation->setJukeBoxEnabled(false);
+                evicted.push_back("Juke-Box");
+            }
+
+            std::string error;
+            bool ok = emulation->reloadEhBasic(error);
+            if (!writeProtect) emulation->setWriteInRom(true);
+            if (ok) {
+                loadedRoms.erase(std::remove_if(loadedRoms.begin(), loadedRoms.end(),
+                    [](const LoadedRegion& r) {
+                        return !(r.end < 0x5000 || r.start > 0x7FFF);
+                    }), loadedRoms.end());
+                loadedRoms.push_back({"EhBASIC 2.22 (loaded in RAM)", 0x5000, 0x7FFF});
+                std::stringstream ss;
+                ss << "EhBASIC 2.22 loaded — cold start 5000R, warm start 5003R";
+                if (!evicted.empty()) {
+                    ss << "  [unplugged ";
+                    for (size_t i = 0; i < evicted.size(); ++i) {
+                        if (i) ss << ", ";
+                        ss << evicted[i];
+                    }
+                    ss << ": was shadowing $5000-$7FFF]";
+                }
+                setStatusMessage(ss.str(), evicted.empty() ? 4.0f : 6.0f);
+            } else {
+                setStatusMessage(error, 3.0f);
+            }
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Lee Davison's Enhanced 6502 BASIC 2.22 — floating point,\n"
+                "string handling, IF..THEN..ELSE, DO..UNTIL, hex/binary\n"
+                "literals. Far beyond any BASIC the Apple-1 actually shipped\n"
+                "with.\n\n"
+                "No Apple-1 port existed: POM1's lives in dev/ehbasic/ (PIA\n"
+                "I/O + entry stub; the interpreter itself is untouched).\n\n"
+                "Cold start: 5000R    Warm start: 5003R\n"
+                "Programs live in $0300-$4FFF (~19 KB free).\n\n"
+                "It is loaded into RAM, not a ROM window, so it needs at least\n"
+                "32 KB and unplugs any card decoding $5000-$7FFF (microSD,\n"
+                "CodeTank, Juke-Box).");
         }
 
         if (ImGui::Button("Load WOZ Monitor  [$FF00-$FFFF]")) {

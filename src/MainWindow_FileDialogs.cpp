@@ -169,6 +169,122 @@ void MainWindow_ImGui::loadMemory()
     showLoadDialog = true;
 }
 
+void MainWindow_ImGui::queueDroppedFiles(const char** paths, int count)
+{
+    for (int i = 0; i < count; ++i)
+        if (paths && paths[i] && paths[i][0]) droppedFiles_.emplace_back(paths[i]);
+}
+
+void MainWindow_ImGui::processDroppedFiles()
+{
+    if (droppedFiles_.empty()) return;
+    // Take the whole batch and clear the queue FIRST: every branch below can
+    // fail, and a path left in the queue would be retried on every frame.
+    std::vector<std::string> batch;
+    batch.swap(droppedFiles_);
+    if (!emulation) return;
+
+    // Only the first file is acted on. A drop carrying several programs has no
+    // sensible meaning — each load re-plugs cards, evicts storage and resets the
+    // Memory Map regions, so "load them all" would just leave the last one
+    // standing on top of four disturbed machine states. Say so instead.
+    const std::string path = batch.front();
+    const std::string name = std::filesystem::path(path).filename().string();
+    const std::string ext = lowerExt(path);
+
+    std::error_code ec;
+    if (std::filesystem::is_directory(path, ec)) {
+        setStatusMessage("Dropped a folder — drop a program, tape or snapshot file", 3.0f);
+        return;
+    }
+
+    // The routing table mirrors the File menu one for one: whatever the matching
+    // menu entry does with a path, dropping that path does too. Hex dumps go
+    // through performMemoryLoad, so a drop from software/Graphic HGR/ still
+    // auto-plugs GEN2, evicts the shadowing storage cards, loads the symbols and
+    // registers the Memory Map regions — dropping is a shortcut for the picker,
+    // never a second, thinner loading path.
+    bool handled = true;
+    if (pom1::isHexDumpPath(path)) {
+        performMemoryLoad(path, 1, 0);
+    } else if (ext == "bin") {
+        // A raw binary carries no address. Same follow-up prompt the native
+        // picker pops (renderLoadDialog honours addressPromptOnly).
+        loadDlg.reset();
+        std::strncpy(loadDlg.filePath, path.c_str(), sizeof(loadDlg.filePath) - 1);
+        loadDlg.filePath[sizeof(loadDlg.filePath) - 1] = '\0';
+        loadDlg.fileType = 0;
+        loadDlg.addressPromptOnly = true;
+        showLoadDialog = true;
+    } else if (ext == "snap") {
+        std::string err;
+        if (emulation->loadSnapshot(path, err)) {
+            emulation->copySnapshot(uiSnapshot);
+            setStatusMessage("Loaded snapshot: " + name, 3.0f);
+        } else {
+            setStatusMessage(err.empty() ? "Error: cannot load snapshot" : err, 3.0f);
+        }
+    } else if (ext == "aci" || ext == "wav" || ext == "aiff" || ext == "aif" ||
+               ext == "ogg" || ext == "mp3" || ext == "flac") {
+        std::strncpy(loadTapeDlg.filePath, path.c_str(), sizeof(loadTapeDlg.filePath) - 1);
+        loadTapeDlg.filePath[sizeof(loadTapeDlg.filePath) - 1] = '\0';
+        std::string err;
+        if (emulation->loadTape(path, err)) {
+            emulation->copySnapshot(uiSnapshot);
+            std::stringstream ss;
+            ss << "Tape loaded: " << name << " ("
+               << uiSnapshot.cassetteLoadedTransitionCount << " transitions)";
+            setStatusMessage(ss.str(), 3.0f);
+            showCassetteDeck = true;
+        } else {
+            setStatusMessage(err.empty() ? "Error: cannot load tape" : err, 3.0f);
+        }
+    } else if (ext == "d64") {
+        // The 1541 lives on the IEC daughterboard, which rides on microSD's
+        // spare VIA pins — Memory cascade-plugs microSD, so mirror both flags
+        // here exactly as the Hardware menu does, or the IEC window renders an
+        // unplugged card and a later toggle mis-cascades.
+        if (!iecCardEnabled) {
+            iecCardEnabled = true;
+            emulation->setIECCardEnabled(true);
+            microSDEnabled = true;
+            cffa1Enabled = false;
+            jukeBoxEnabled = false;
+            if (codeTankEnabled) {
+                codeTankEnabled = false;
+                showCodeTankLibrary = false;
+                codeTankPendingWozRunAt = 0.0;
+            }
+        }
+        if (emulation->mountIECDisk(path)) {
+            showIECCard = true;
+            setStatusMessage("1541 disk mounted: " + name, 3.0f);
+        } else {
+            setStatusMessage("Error: cannot mount " + name +
+                             " (a .d64 must be 174 848 bytes)", 4.0f);
+        }
+    } else {
+        handled = false;
+        // Name what IS accepted rather than just refusing: the set is not
+        // guessable (.apl and .mon are hex dumps, .po is NOT droppable because
+        // the CFFA1 image is opened once at construction).
+        setStatusMessage("Cannot drop " + name +
+                         " — accepted: .txt .hex .apl .mon .tur .bin .snap "
+                         ".aci .aiff .wav .mp3 .ogg .flac .d64", 5.0f);
+    }
+
+    if (handled && batch.size() > 1) {
+        // Deliberately replaces the per-type message: one status line, and
+        // "some of what you dropped was silently skipped" is the more urgent
+        // half. "taken" rather than "loaded" because the .bin branch has only
+        // opened its address prompt at this point.
+        std::stringstream ss;
+        ss << name << " taken — the other " << (batch.size() - 1)
+           << " dropped file(s) were ignored (drop one at a time)";
+        setStatusMessage(ss.str(), 4.0f);
+    }
+}
+
 std::vector<std::string> MainWindow_ImGui::evictStorageCards()
 {
     std::vector<std::string> evicted;
