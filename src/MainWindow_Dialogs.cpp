@@ -35,6 +35,10 @@
 #include <cctype>
 #include <cstdint>
 #include <cstring>
+// <sstream> is NOT optional here even though libstdc++ pulls it in transitively:
+// MSVC does not, so the EhBASIC button's std::stringstream broke the Windows
+// release job while every Linux build stayed green. Include what you use.
+#include <sstream>
 #include <string>
 #include <vector>
 
