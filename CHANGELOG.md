@@ -10,7 +10,7 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
-## [1.9.5] — 2026-08-09
+## [1.9.5] — 2026-08-09 — « Docked XACI »
 
 ### Fixed — le PIA 6821 : registres de direction ($D010-$D013), et Codebreaker croyait tourner sur un émulateur
 
