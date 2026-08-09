@@ -10,6 +10,44 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — la fenêtre Welcome explique l'ACI étendue
+
+Une ligne dans le démarrage rapide (`C500R`) et une section dédiée. Elle dit
+surtout ce que l'interface taisait : **`C500R` a l'air de ne rien faire**. Il
+relocalise la ROM ACI dans la page de pile, la rustine et rend la main au
+moniteur — c'est `RX RX` qui fait tourner la bande. Avec la marche à suivre
+complète (Play d'abord), l'écriture (`<from>.<to>WX`), où brancher la carte, et
+la rétro-compatibilité avec une ACI d'origine.
+
+### Fixed — documentation : promesses que le dépôt ne tenait plus
+
+Passe de vérification factuelle, pas de relecture au jugé.
+
+- **Le bloc « Dev tools » du README annonçait sept programmes ; six n'étaient
+  plus livrés.** `software/Apple-1 dev/` et `software/utils/` ont disparu le
+  22 juin dans le commit `72b39a7` (« Update CMake configuration and BASIC
+  sketches »), qui supprime 41 fichiers de `software/` sans que son message le
+  mentionne. Bloc retiré — le septième, Party, est un démo déjà couvert.
+- **`software/Apple-1_TMS_CC65/` est parti avec eux** mais restait cité par une
+  infobulle qui envoyait l'utilisateur vers un dossier inexistant, par un
+  commentaire de `Memory.cpp` et par CLAUDE.md. Infobulle et commentaire
+  nettoyés ; la branche de code demeure (elle sert un dossier que l'utilisateur
+  crée lui-même) et CLAUDE.md le consigne avec la date et le commit.
+- **« 30th » → « 50th anniversary »** : le fichier livré est `50th.apl.txt`, et
+  le reste du README fête les 50 ans d'Apple.
+- **Le README ignorait trois capacités réelles** : le glisser-déposer et ses
+  formats, la double nature de `.hex`, et un tableau « Cinq BASIC, un support »
+  — Microsoft BASIC et EhBASIC n'y figuraient nulle part alors qu'ils sont
+  accessibles depuis les Réglages.
+- **`doc/README.md` se dit l'index de toute prose du dépôt** mais oubliait
+  `HGR_AI_IMAGE_PROMPTS.md` et les deux `dev/*/README.md` neufs.
+- **`doc/CLI.md`** documentait le routage par extension de `--load` sans
+  mentionner l'Intel HEX ni le fait que sa détection est structurelle.
+
+Vérifié au passage sans rien changer : les 20 programmes encore annoncés sont
+tous livrés, la table des presets colle à `kMachinePresets` (13), aucun nom de
+test cité dans CLAUDE.md n'est fantôme, aucun lien `.md` mort.
+
 ## [1.9.5] — 2026-08-09 — « Docked XACI »
 
 ### Fixed — le PIA 6821 : registres de direction ($D010-$D013), et Codebreaker croyait tourner sur un émulateur

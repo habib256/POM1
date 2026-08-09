@@ -1583,6 +1583,7 @@ void MainWindow_ImGui::renderWelcomeWindow()
         bulletWrapped("6000R    Applesoft Lite");
         bulletWrapped("8000R    SD Card OS (microSD)");
         bulletWrapped("C100R    ACI cassette (load/save)");
+        bulletWrapped("C500R    Extended ACI -- then RX RX (see below)");
 
         // ── Cassette deck ───────────────────────────────────────────
         ImGui::Separator();
@@ -1595,6 +1596,41 @@ void MainWindow_ImGui::renderWelcomeWindow()
             "WOZ_talk tape. If the tapeinfo.txt entry gives a load "
             "range, the jaquette tells you what to type in Woz "
             "(e.g. 'Type 0280.0FFFR').");
+
+        // ── Uncle Bernie's Extended ACI ─────────────────────────────
+        // Two-step entry, so the quick-start line above cannot carry it:
+        // C500R only relocates and patches the firmware and hands control
+        // back to the Monitor -- nothing moves on the tape until RX RX.
+        // That surprises everyone the first time, hence this section.
+        ImGui::Separator();
+        ImGui::TextWrapped("Extended ACI -- Uncle Bernie's $C500 page");
+        ImGui::TextWrapped(
+            "A second 256-byte PROM page on the cassette card, beside Woz's "
+            "untouched $C100 firmware. Same silicon underneath -- no new I/O. "
+            "What it buys you: each block carries an 8-byte header with its "
+            "own from/to addresses, so you never type a load range again, and "
+            "equal addresses mean 'autostart'. It adds Apple-II style "
+            "checksums too.");
+        ImGui::Spacing();
+        bulletWrapped("Press Play on the deck FIRST, then:");
+        bulletWrapped("C500R      install the extended firmware (returns to '\\')");
+        bulletWrapped("RX RX      read and run -- no address to type");
+        bulletWrapped("C500R then <from>.<to>WX      write a tape");
+        ImGui::Spacing();
+        ImGui::TextWrapped(
+            "C500R on its own looks like it did nothing: it relocates the ACI "
+            "ROM into the stack page and patches it, then hands you back the "
+            "Monitor prompt. RX RX is what moves the tape. The cassette "
+            "jaquette spells out both lines for a tape that needs them.");
+        ImGui::Spacing();
+        ImGui::TextWrapped(
+            "Try it: load cassettes/codebrk.aiff (Uncle Bernie's Codebreaker, "
+            "in the .aiff his ACIace synthesiser emits), press Play, then the "
+            "two lines above. Plugged by default wherever the ACI is, except "
+            "the two period-faithful 1976 presets -- otherwise Hardware -> Woz "
+            "ACI -> Uncle Bernie's Extended ACI, or --enable xaci. Tapes stay "
+            "readable on a stock ACI or an Apple-II: subtract 8 from each "
+            "<from> and skip the autostart block.");
 
         // ── microSD ─────────────────────────────────────────────────
         ImGui::Separator();
@@ -1699,7 +1735,7 @@ void MainWindow_ImGui::renderSoftwareReferenceWindow()
             ImGui::TextWrapped(
                 "The Load dialog auto-enables the matching card from the file's folder: "
                 "software/Graphic HGR/ (GEN2), software/SOUND SID/ (A1-SID), "
-                "software/Graphic TMS9918/ or software/Apple-1_TMS_CC65/ (TMS9918), "
+                "software/Graphic TMS9918/ (TMS9918), "
                 "software/Graphic gt-6144/ (GT-6144), software/a1io_rtc/ (A1-IO & RTC), "
                 "software/NET/ (Wi-Fi modem) or sdcard/ (microSD). Loading from "
                 "software/NET/ also drops any live Wi-Fi modem connection.");
