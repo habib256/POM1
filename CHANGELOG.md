@@ -10,6 +10,121 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — EhBASIC 2.22 sur Apple-1 (portage POM1)
+
+*Derived from EhBASIC.*
+
+Enhanced 6502 BASIC de Lee Davison — flottants, chaînes, `IF..THEN..ELSE`,
+`DO..UNTIL`, littéraux hexa et binaires — chargé en RAM à `$5000-$7FFF`. Cold
+start `5000R`, warm `5003R`, programmes en `$0300-$4FFF` (~19 Ko libres).
+Settings → Memory Settings → ROM Loading.
+
+**Aucun portage Apple-1 n'existait** : l'amont ne fournit que `min_mon.asm`, un
+stub pour le simulateur Kowalski avec un ACIA simulé à `$F000`, une entrée par
+le vecteur RESET et une invite `[C]old/[W]arm ?` — rien de tout cela ne convient
+à une machine dont le vecteur RESET appartient au Woz Monitor. `dev/ehbasic/src/`
+le remplace : I/O sur le vrai PIA 6821 (`KBDCR`/`KBD` en entrée, `DSP` en sortie
+avec la boucle d'attente ECHO de Woz) et deux `JMP` épinglés par le linker à
+`$5000`/`$5003`, dans la convention de tous les autres interpréteurs de POM1.
+`basic.asm` — l'interpréteur lui-même — n'est pas touché.
+
+- **En RAM, pas en ROM** : même modèle que l'Applesoft Lite du microSD. Donc
+  ≥ 32 Ko requis, et sous la règle Parmigiani toute carte décodant `$5000-$7FFF`
+  l'ombrage — POM1 débranche exactement les trois concernées (microSD, CodeTank,
+  Juke-Box) et le dit dans la barre d'état. CFFA1 et A1-IO/RTC sont laissées en
+  place : elles ne chevauchent pas.
+- **Pourquoi `$5000` et pas `$5800`** : la fenêtre `$5800-$7FFF` que supposent
+  les discussions Apple-1 est **183 octets trop petite** pour un 2.22 complet.
+- **La vérification, c'est l'exécution** : aucun binaire publié auquel se
+  comparer, donc `ehbasic_smoke` démarre l'interpréteur sur le 6502 émulé,
+  vérifie `PRINT 1/4` = `.25` et `PRINT SQR(2)` = `1.41421`, puis saisit une
+  boucle `FOR` et la lance. Le test exige aussi la présence de
+  `DERIVED FROM EHBASIC` dans l'image — **c'est une condition de licence**, pas
+  une coquetterie : EhBASIC l'impose dans tout binaire distribué, et
+  `dev/ehbasic/README.md` en est la moitié lisible par un humain.
+
+### Added — glisser-déposer, Microsoft BASIC, fréquence CPU mesurée
+
+Trois manques relevés en comparant POM1 à HoneyCrisp (l'émulateur Apple-1 de
+Landon J. Smith).
+
+- **Glisser-déposer de fichiers** (`glfwSetDropCallback` → `MainWindow_ImGui::
+  queueDroppedFiles` / `processDroppedFiles`). La callback GLFW se déclenche
+  dans `glfwPollEvents`, hors de la frame ImGui : les chemins sont donc mis en
+  file et traités en tête de `render()`, avant le premier `Begin()` — un
+  chargement peut lever des drapeaux de fenêtre que la frame doit honorer. Le
+  routage par extension **rejoue exactement l'action du menu Fichier
+  correspondante** : un `.txt/.hex/.apl/.mon/.tur` passe par `performMemoryLoad`,
+  donc un dépôt depuis `software/Graphic HGR/` branche toujours la GEN2, évicte
+  les cartes de stockage qui l'ombrageraient, charge les symboles et enregistre
+  les régions de la Memory Map. Aussi : `.bin` (avec la même invite d'adresse),
+  `.snap`, les bandes `.aci/.aiff/.wav/.mp3/.ogg/.flac`, et `.d64` (montage 1541
+  + cascade IEC/microSD). Un dépôt multiple ne charge que le premier fichier et
+  le dit. Desktop uniquement : sous Emscripten le navigateur fournit un objet
+  File, pas un chemin. `.po` reste hors périmètre — l'image CFFA1 est ouverte une
+  fois à la construction, sans API de remontage.
+- **Microsoft BASIC 6502 à `$E000`** (`roms/msbasic.rom`, test `msbasic_smoke`) —
+  8 Ko, lignée OSI, **virgule flottante**, portée sur le PIA de l'Apple-1. C'est
+  la raison d'être de cette ROM : l'Integer BASIC de Woz n'a aucun flottant.
+  Cold start `E000R`, warm `E003R` ; chargement par Settings → Memory Settings →
+  ROM Loading. Le mutex `$E000` n'a demandé aucune machinerie : les deux
+  interpréteurs partagent la fenêtre, en charger un évince l'autre — un seul
+  support d'EPROM BASIC, comme sur la vraie machine. `unloadBasic` nettoie
+  désormais **tout** `$E000-$FEFF` : MS BASIC fait presque le double d'Integer
+  BASIC, et l'ancien effacement `$E000-$EFFF` laissait 3 Ko de l'interpréteur
+  précédent en place lors d'un changement.
+  **La ROM est reconstructible depuis les sources publiques** :
+  `dev/msbasic/build_msbasic.sh` la rebâtit à partir de commits épinglés de
+  mist64/msbasic + de l'overlay coopzone-dc, applique les quatre branches de
+  dispatch que l'auteur de l'overlay n'a jamais publiées (sans le patch de
+  `header.s`, `E000R` tombe au milieu d'une table de vecteurs au lieu de démarrer
+  BASIC) et **vérifie le sha256 — qui est celui de la ROM publiée, au bit près**.
+  Provenance, patchs et position sur la licence : `dev/msbasic/README.md`.
+- **Fréquence CPU mesurée** (`EmulationController::getMeasuredCpuHz`, test
+  `measured_cpu_rate_smoke`). La barre d'état affichait `executionSpeed × 60`,
+  c'est-à-dire la *cible* du régulateur : une machine tournant à moitié vitesse
+  se lisait exactement comme une machine à l'heure, et « Max » n'affichait aucun
+  chiffre. Le débit réel est désormais mesuré sur une fenêtre glissante de 0,5 s.
+  En Max il est affiché seul (la cible y est un ~60 MHz volontairement hors
+  d'atteinte) ; en x1/x2 la cible reste l'étiquette honnête tant qu'elle est
+  tenue, et le réel n'apparaît qu'en dessous de 95 % — barre calme au cas normal,
+  parlante quand un programme verbeux fait décrocher la machine. Le temps est
+  comptabilisé **avant** le retour anticipé « budget non plein », sinon la mesure
+  ne couvrirait que les rafales et annoncerait des dizaines de MHz à x1.
+
+### Fixed — chargeur hex : Intel HEX reconnu, `.TUR` sans marqueur `T`
+
+Deux trous du même genre que l'ancien `.apl` qui écrivait son propre texte ASCII
+en RAM : un fichier lisible par POM1 mais lu par le **mauvais** parseur, sans
+erreur ni avertissement. Repérés en relisant le changelog de HoneyCrisp v1.3.6
+(l'émulateur Apple-1 en ECMAScript de Landon J. Smith), qui traite les deux.
+
+- **Intel HEX** (`src/IntelHexFile.h`, test `intel_hex_smoke`). `.hex` désigne
+  deux dialectes sans rapport : le dump WOZMON (`AAAA: HH HH … / AAAAR`) et
+  l'Intel HEX (`:10030000A9018510…0D`). Le second n'a pas d'adresse `AAAA:`, donc
+  l'ancien parseur écrivait **chaque chiffre** — compteur d'octets, adresse de
+  chargement, type d'enregistrement et checksum compris — comme *donnée*, à
+  l'adresse courante quelle qu'elle soit. La détection est **structurelle, jamais
+  par extension** (`looksLikeIntelHex` valide ensemble le compteur, le type et le
+  checksum du premier enregistrement) : un Intel HEX nommé `.txt` se charge
+  correctement, un dump WOZMON nommé `.hex` garde son comportement au bit près —
+  aucun des ~100 dumps livrés ne commence même une ligne par `:`. Une fois le
+  premier enregistrement validé, POM1 **s'engage** : checksum faux, type inconnu
+  ou enregistrement au-delà de `$FFFF` (les types 02/04 sont un héritage x86)
+  font échouer le chargement **bruyamment**, au lieu de repasser au parseur
+  WOZMON qui recommencerait à écrire des en-têtes en mémoire. Un enregistrement
+  de départ 03/05 joue le rôle du `AAAAR` final ; un EOF (type 01) manquant ne
+  déclenche qu'un avertissement.
+- **`.TUR` sans marqueur `T`** (`Memory::loadHexDump`, test
+  `hex_dump_turbotype_smoke` §4). Le parseur ligne-structuré n'était sélectionné
+  que par une ligne `T` isolée — or le marqueur est optionnel dans la nature : le
+  même transfert circule aussi en blocs « adresse + `:données` » sans marqueur du
+  tout. Ces fichiers-là retombaient sur le parseur legacy joint-lignes, donc sur
+  l'échec exact que la branche ligne-structurée existe pour éviter (les 4
+  derniers chiffres de chaque ligne pris pour l'adresse de la suivante — les 60+
+  zones fantômes du 15 Puzzle). L'extension `.tur` force désormais le bon
+  parseur ; le reste continue d'exiger son `T`.
+
 ### Added — CI « Borne Raspberry Pi » : binaires taillés pour un cœur (PGO + LTO)
 
 Recette portée de NeoST (`.github/workflows/pi-borne.yml` +

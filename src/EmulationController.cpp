@@ -92,6 +92,11 @@ int EmulationController::getExecutionSpeedCyclesPerFrame() const
     return executionSpeedCyclesPerFrame.load();
 }
 
+double EmulationController::getMeasuredCpuHz() const
+{
+    return measuredCpuHz_.load(std::memory_order_relaxed);
+}
+
 void EmulationController::startCpu()
 {
     runRequested.store(true);
@@ -1117,6 +1122,22 @@ bool EmulationController::reloadBasic(std::string& error)
     return ok;
 }
 
+bool EmulationController::reloadMsBasic(std::string& error)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    bool ok = RomLoader::reloadMsBasic(*memory, error);
+    publisher.publish(*memory, *cpu, runRequested.load());
+    return ok;
+}
+
+bool EmulationController::reloadEhBasic(std::string& error)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    bool ok = RomLoader::reloadEhBasic(*memory, error);
+    publisher.publish(*memory, *cpu, runRequested.load());
+    return ok;
+}
+
 void EmulationController::unloadBasic()
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -1839,6 +1860,26 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
         cycleBudgetAnchorCpf = cpf;
     }
 
+    // Throughput measurement window. The wall-clock half is accumulated HERE,
+    // ahead of every early return below: the slice sleeps whenever the budget
+    // isn't full yet (the normal case at x1, where the host is far faster than
+    // an Apple-1), and charging only the running slices would report the burst
+    // rate -- tens of MHz -- as the sustained one.
+    //
+    // One path still escapes it: the emulation loop's live-audio-lead throttle
+    // `continue`s without entering this function at all, so a long tape
+    // playback under-charges time and reads slightly high. Bounded and benign
+    // -- MAX speed skips that throttle entirely (so the one mode that DISPLAYS
+    // the raw number is unaffected), and at x1/x2 an over-estimate can only
+    // suppress the "(real ...)" warning, never invent one.
+    measuredTimeAccum_ += elapsedSeconds;
+    if (measuredTimeAccum_ >= kMeasuredWindowSec) {
+        measuredCpuHz_.store(measuredCycleAccum_ / measuredTimeAccum_,
+                             std::memory_order_relaxed);
+        measuredCycleAccum_ = 0.0;
+        measuredTimeAccum_ = 0.0;
+    }
+
     const double cyclesPerSecond = static_cast<double>(cpf) * kFramesPerSecond;
     emulationCycleBudget += cyclesPerSecond * elapsedSeconds;
 
@@ -1899,6 +1940,9 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
                 cpu->start();
                 const int actualCycles = cpu->run(cyclesToRun);
                 emulationCycleBudget -= static_cast<double>(actualCycles);
+                // Only real 6502 cycles count towards the measured rate: the
+                // SID-preview branch below advances the chip, not the CPU.
+                measuredCycleAccum_ += static_cast<double>(actualCycles);
                 // A PC-matched breakpoint or a memory watchpoint halts the CPU
                 // mid-slice (run() exits with the trip latched). Park the
                 // emulation thread so the halt is *sticky*: without this,
@@ -1986,6 +2030,12 @@ void EmulationController::pumpEmulationMainThread(double deltaSeconds)
 {
 #if POM1_IS_WASM
     if (!runRequested.load()) {
+        // Same reasoning as the native loop's parked branch: the measurement
+        // window lives inside runEmulationSlice, so zero it here or a paused
+        // machine keeps displaying its last running rate.
+        measuredCpuHz_.store(0.0, std::memory_order_relaxed);
+        measuredCycleAccum_ = 0.0;
+        measuredTimeAccum_ = 0.0;
         return;
     }
 
@@ -2025,6 +2075,16 @@ void EmulationController::emulationLoop()
                             [this] { return runRequested.load() ||
                                             terminateRequested.load(); });
             lastTick = clock::now();
+            // Parked: no cycles are being executed, so the measured rate is 0.
+            // The averaging window only refreshes inside runEmulationSlice,
+            // which this branch skips — without zeroing here the last running
+            // value would stay on screen and a paused machine would read as
+            // busy (and the status bar's "(real ...)" alarm would be gated on a
+            // stale number). Written from the emulation thread, which owns the
+            // accumulators, so the single-writer discipline holds.
+            measuredCpuHz_.store(0.0, std::memory_order_relaxed);
+            measuredCycleAccum_ = 0.0;
+            measuredTimeAccum_ = 0.0;
             continue;
         }
 

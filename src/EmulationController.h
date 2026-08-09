@@ -76,6 +76,11 @@ public:
     void setExecutionSpeedCyclesPerFrame(int cyclesPerFrame);
     int getExecutionSpeedCyclesPerFrame() const;
 
+    /// Cycles per second the emulated 6502 actually sustained over the last
+    /// ~0.5 s, wall-clock. 0 while the CPU is stopped. This is a MEASUREMENT,
+    /// not the target of the speed selector — see measuredCpuHz_. Lock-free.
+    double getMeasuredCpuHz() const;
+
     void startCpu();
     void stopCpu();
     void softReset();
@@ -342,6 +347,11 @@ public:
     void setOutOfRangeStrictMode(bool enable);
     bool isOutOfRangeStrictMode() const;
     bool reloadBasic(std::string& error);
+    /// Microsoft BASIC 6502 at $E000 — evicts whatever interpreter held the
+    /// window (Woz's Integer BASIC or Applesoft Lite CFFA1). See Memory::loadMsBasic.
+    bool reloadMsBasic(std::string& error);
+    /// EhBASIC 2.22 flashed into RAM at $5000-$7FFF. See Memory::loadEhBasic.
+    bool reloadEhBasic(std::string& error);
     void unloadBasic();
     bool reloadApplesoftLite(std::string& error);
     bool reloadApplesoftLiteCFFA1(std::string& error);
@@ -573,6 +583,27 @@ private:
     int cycleBudgetAnchorCpf = -1;
     /// Budget de cycles partagé entre le fil d’émulation (natif) et pumpEmulationMainThread (Web).
     double emulationCycleBudget = 0.0;
+
+    // ── Measured CPU throughput ───────────────────────────────────────────
+    // What the emulated 6502 ACTUALLY achieved, as opposed to the target the
+    // speed selector asks for. The two diverge whenever the host cannot keep
+    // up (a print-heavy program, a busy machine) and always at MAX speed,
+    // where the "target" is a deliberately unreachable 60 MHz. The status bar
+    // used to display the target only, so a machine running at half speed
+    // looked exactly like one running on time.
+    //
+    // The accumulators belong to the emulation thread alone (runEmulationSlice
+    // is the single writer, native thread or WASM pump — never both); only the
+    // published rate crosses to the UI thread, via a relaxed atomic. Wall-clock
+    // is accumulated BEFORE the "budget not full yet" early return, or the
+    // measurement would cover only the bursts and report the peak rate as if it
+    // were sustained.
+    std::atomic<double> measuredCpuHz_ { 0.0 };
+    double measuredCycleAccum_ = 0.0;
+    double measuredTimeAccum_ = 0.0;
+    /// Averaging window. Long enough that slice jitter cancels, short enough
+    /// that the reading follows a program's phases.
+    static constexpr double kMeasuredWindowSec = 0.5;
 
     /// Wall-clock spent parked on a telemetry lock-step ACK wait (slice loop);
     /// reset when the CPU runs, trips kTelemetryStallTimeoutSec to auto-resume.

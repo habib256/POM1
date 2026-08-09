@@ -1472,6 +1472,114 @@ add_test(NAME hex_dump_turbotype_smoke
          WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set_tests_properties(hex_dump_turbotype_smoke PROPERTIES TIMEOUT 30)
 
+# intel_hex_smoke -- ".hex" is published in two mutually unintelligible dialects.
+# Pins that Intel HEX is detected by the file's SHAPE (src/IntelHexFile.h) rather
+# than by its extension, that a WOZMON dump named ".hex" keeps the legacy parser
+# byte for byte, and that a malformed Intel HEX is refused instead of being
+# silently reinterpreted as WOZMON data (which wrote record headers into RAM).
+add_executable(test_intel_hex
+    intel_hex_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_intel_hex PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_intel_hex PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_intel_hex PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_intel_hex PRIVATE ws2_32)
+endif()
+
+add_test(NAME intel_hex_smoke
+         COMMAND test_intel_hex
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(intel_hex_smoke PROPERTIES TIMEOUT 5)
+
+# measured_cpu_rate_smoke -- the status bar's MEASURED clock rate
+# (EmulationController::getMeasuredCpuHz) as opposed to the pacer's target.
+# Wall-clock based, so the bands are loose; they only separate "measured" from
+# "target" and from the burst-rate bug (charging elapsed time only to the slices
+# that ran the CPU, which reads x1 as tens of MHz). The only test linking
+# EmulationController.cpp, hence the extra sources.
+add_executable(test_measured_cpu_rate
+    measured_cpu_rate_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController.cpp
+    ${CMAKE_SOURCE_DIR}/src/RewindBuffer.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotPublisher.cpp
+    ${CMAKE_SOURCE_DIR}/src/KeyboardController.cpp
+    ${CMAKE_SOURCE_DIR}/src/RomLoader.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_measured_cpu_rate PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_measured_cpu_rate PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_measured_cpu_rate PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_measured_cpu_rate PRIVATE ws2_32)
+endif()
+
+add_test(NAME measured_cpu_rate_smoke
+         COMMAND test_measured_cpu_rate
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(measured_cpu_rate_smoke PROPERTIES TIMEOUT 30)
+
+# msbasic_smoke -- Microsoft BASIC 6502 on the Apple-1 ($E000, shares the window
+# with Integer BASIC). Boots the shipped ROM on the emulated 6502 and asks it to
+# divide, which no checksum can do: it proves the image is a working interpreter
+# with floating point, not just bytes that hash correctly.
+add_executable(test_msbasic
+    msbasic_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_msbasic PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_msbasic PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_msbasic PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_msbasic PRIVATE ws2_32)
+endif()
+
+add_test(NAME msbasic_smoke
+         COMMAND test_msbasic
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(msbasic_smoke PROPERTIES TIMEOUT 60)
+
+# ehbasic_smoke -- Lee Davison's Enhanced 6502 BASIC at $5000, flashed into RAM.
+# The Apple-1 port is POM1's own (dev/ehbasic/), so there is no published image
+# to diff against: running the interpreter IS the verification. Also asserts the
+# licence string EhBASIC requires of any distributed binary.
+add_executable(test_ehbasic
+    ehbasic_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_ehbasic PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_ehbasic PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_ehbasic PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_ehbasic PRIVATE ws2_32)
+endif()
+
+add_test(NAME ehbasic_smoke
+         COMMAND test_ehbasic
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(ehbasic_smoke PROPERTIES TIMEOUT 60)
+
 # -- M6502 PC-matched breakpoint smoke test -----------------------------------
 # Pins the M6502 single-PC breakpoint added with --break <addr> (CLI verb).
 # Halt-before-instruction semantics, clearBreakpoint resume, manual step-over,

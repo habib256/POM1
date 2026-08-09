@@ -1,0 +1,53 @@
+diff --git a/defines.s b/defines.s
+index 9b5459e..2becbe5 100644
+--- a/defines.s
++++ b/defines.s
+@@ -1,6 +1,9 @@
+ .if .def(cbmbasic1)
+ CBM1 := 1
+ .include "defines_cbm1.s"
++.elseif .def(cz6502)
++CZ6502 := 1
++.include "defines_cz6502.s"
+ .elseif .def(osi)
+ OSI := 1
+ .include "defines_osi.s"
+diff --git a/extra.s b/extra.s
+index 2f7da9f..6777ac0 100644
+--- a/extra.s
++++ b/extra.s
+@@ -31,3 +31,7 @@
+ .ifdef W65C816SXB
+ .include "w65c816sxb_extra.s"
+ .endif
++
++.ifdef CZ6502
++.include "cz6502_extra.s"
++.endif
+diff --git a/header.s b/header.s
+index f0de846..3ac63c8 100644
+--- a/header.s
++++ b/header.s
+@@ -23,6 +23,10 @@
+         jmp     LE68C
+         .byte   $00,$13,$56
+ .endif
++.ifdef CZ6502
++        jmp     COLD_START      ; $E000 -- cold start ("E000R")
++        jmp     RESTART         ; $E003 -- warm start ("E003R")
++.endif
+ .ifdef AIM65
+         jmp     COLD_START
+         jmp     RESTART
+diff --git a/iscntc.s b/iscntc.s
+index b9e9130..5548975 100644
+--- a/iscntc.s
++++ b/iscntc.s
+@@ -30,3 +30,7 @@
+ .include "w65c816sxb_iscntc.s"
+ .endif
+ ;!!! runs into "STOP"
++
++.ifdef CZ6502
++.include "cz6502_iscntc.s"
++.endif

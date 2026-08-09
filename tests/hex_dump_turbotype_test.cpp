@@ -40,7 +40,9 @@
 
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -149,6 +151,65 @@ int main()
         assert(false);
     }
     assert(contains(disp.text, "JEFF JETTON") && "the program's own author line");
+
+    // ---- 4. A .TUR with no T/X markers loads identically -------------------
+    // The "T" marker is optional in the wild: the same transfer is also
+    // published as plain address + ":data" blocks with no markers at all
+    // (HoneyCrisp wraps those into a synthetic T..X block for this very
+    // reason). The line-structured parser is therefore selected by the ".tur"
+    // EXTENSION as well as by the marker -- without that, a marker-less file
+    // falls to the legacy joined-lines parser and hits the exact failure the
+    // line-structured branch exists to prevent.
+    std::string stripped;
+    {
+        std::ifstream in(kFixture);
+        std::string l;
+        while (std::getline(in, l)) {
+            const size_t b = l.find_first_not_of(" \t\r");
+            const size_t e = l.find_last_not_of(" \t\r");
+            const std::string t = (b == std::string::npos) ? std::string() : l.substr(b, e - b + 1);
+            if (t.size() == 1 && (t[0] == 'T' || t[0] == 'X')) continue;
+            stripped += l;
+            stripped += '\n';
+        }
+    }
+    const std::filesystem::path scratch =
+        std::filesystem::temp_directory_path() / "pom1_turbotype_markerless";
+    std::error_code ec;
+    std::filesystem::create_directories(scratch, ec);
+    const std::filesystem::path markerless = scratch / "15puzzle.tur";
+    { std::ofstream out(markerless); out << stripped; }
+
+    Memory mem2;
+    uint16_t runAddr2 = 0;
+    int bytes2 = 0;
+    std::vector<std::pair<uint16_t, uint16_t>> zones2;
+    const int rc2 = mem2.loadHexDump(markerless.string().c_str(), runAddr2, &bytes2, &zones2);
+    if (rc2 != 0 || bytes2 != bytes || runAddr2 != runAddr || zones2 != zones) {
+        std::fprintf(stderr,
+                     "  → the marker-less .tur loaded differently: rc=%d, %d bytes in %zu "
+                     "zones, run $%04X (expected %d bytes, %zu zones, run $%04X). The "
+                     ".tur extension no longer forces the line-structured parser.\n",
+                     rc2, bytes2, zones2.size(), runAddr2, bytes, zones.size(), runAddr);
+        assert(false);
+    }
+    assert(std::memcmp(mem2.getMemoryPointer() + 0x0300, m + 0x0300, 998) == 0 &&
+           "the program block must be byte-identical without the markers");
+
+    // The same content named ".txt" has no marker left to select the parser, so
+    // it takes the legacy path and shreds -- that is what the extension gate
+    // protects against. If the legacy parser is ever taught this shape, this
+    // assert is the one to relax.
+    const std::filesystem::path asTxt = scratch / "15puzzle.txt";
+    { std::ofstream out(asTxt); out << stripped; }
+    Memory mem3;
+    uint16_t runAddr3 = 0;
+    int bytes3 = 0;
+    std::vector<std::pair<uint16_t, uint16_t>> zones3;
+    mem3.loadHexDump(asTxt.string().c_str(), runAddr3, &bytes3, &zones3);
+    assert(zones3.size() > zones.size() &&
+           "the legacy parser is expected to shred a marker-less turbo stream");
+    std::filesystem::remove_all(scratch, ec);
 
     std::printf("hex_dump_turbotype_smoke: OK (CRC-CCITT verified the injected "
                 "image, run $%04X -> $0300, %zu chars of program output)\n",

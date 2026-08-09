@@ -741,12 +741,27 @@ private:
     // performMemoryLoad's auto-enable map), or "" when ambiguous (0 or ≥2 cards).
     // Seeds the Load/Save Memory picker into the right folder. See FileDialogs.
     std::string memoryContextSubdir() const;
+    // Drain the drag-and-drop queue: route the dropped path to the same action
+    // the matching File menu entry would have run (hex dump / binary / snapshot
+    // / cassette / .d64), picked from the extension. Called once per frame from
+    // render(), NOT from the GLFW callback — see queueDroppedFiles.
+    void processDroppedFiles();
+    // Paths dropped on the window since the last frame. Filled by the GLFW
+    // callback, consumed by processDroppedFiles.
+    std::vector<std::string> droppedFiles_;
     void pasteCode();
     // Feed text through the Apple-1 keyboard FIFO (CR-normalised, printable,
     // capped at 4096). Public: the WASM browser-paste hook (pom1_paste_text in
     // main_imgui.cpp) calls it from outside the class; desktop Ctrl+V uses it too.
 public:
     void pasteText(const char* text);
+
+    /// Drag-and-drop: record the paths GLFW just handed us. Called from the
+    /// GLFW drop callback, which fires inside glfwPollEvents — OUTSIDE the ImGui
+    /// frame and before the emulation snapshot of the tick. Loading there would
+    /// mutate window flags and card state mid-poll, so the work is deferred to
+    /// processDroppedFiles() at the top of the next render().
+    void queueDroppedFiles(const char** paths, int count);
 
     /// CLI `--fullscreen`: open (and stay) fullscreen on the primary monitor.
     /// Call once, right after construction — render() applies it on the frame

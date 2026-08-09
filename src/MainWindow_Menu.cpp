@@ -1707,13 +1707,36 @@ void MainWindow_ImGui::renderStatusBar()
         ImGui::Text("%s", statusMessage.c_str());
 
         std::string cpuText = cpuRunning ? "RUNNING" : "STOPPED";
+        // `executionSpeed * 60` is the TARGET the pacer aims for; it says
+        // nothing about what the host actually delivered. Pair it with the
+        // measured rate (EmulationController::getMeasuredCpuHz), which is the
+        // only number that answers "is my machine keeping up?".
+        //   Max      → the target is a deliberately unreachable ~60 MHz, so the
+        //              measurement IS the reading; show it alone.
+        //   x1 / x2  → the target is the honest label when it is being met, so
+        //              only mention the real rate once it falls behind. A quiet
+        //              status bar in the normal case, a visible one when a
+        //              print-heavy program drags the machine down.
+        const double measuredMHz = emulation->getMeasuredCpuHz() / 1000000.0;
         std::string speedText;
-        if (executionSpeed >= 1000000) {
-            speedText = "| Max";
-        } else {
+        {
             std::ostringstream oss;
-            oss << "| " << std::fixed << std::setprecision(3)
-                << (executionSpeed * 60.0 / 1000000.0) << " MHz";
+            oss << std::fixed;
+            if (executionSpeed >= 1000000) {
+                // Whole MHz, right-aligned in a fixed cell: the reading is
+                // re-published every 0.5 s and the whole right-hand block is
+                // laid out from its text width, so a digit appearing or
+                // vanishing would shove RAM/STRICT sideways twice a second.
+                oss << "| Max: " << std::setw(4) << std::setprecision(0)
+                    << measuredMHz << " MHz";
+            } else {
+                const double targetMHz = executionSpeed * 60.0 / 1000000.0;
+                oss << "| " << std::setprecision(3) << targetMHz << " MHz";
+                // 5 % slack absorbs slice jitter; below that the machine really
+                // is behind. Meaningless while the CPU is stopped (0 measured).
+                if (cpuRunning && measuredMHz < targetMHz * 0.95)
+                    oss << " (real " << std::setprecision(3) << measuredMHz << ")";
+            }
             speedText = oss.str();
         }
         std::ostringstream ramOss;
