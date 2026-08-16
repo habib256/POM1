@@ -86,11 +86,10 @@ sudo apt install -y \
 
 # ---- 2. Dear ImGui (dépendance de build, non vendorée) --------------------
 echo "--- 2/4 Dear ImGui ---"
-if [ ! -d "${REPO_ROOT}/imgui" ]; then
-    git clone --depth 1 --branch v1.92.9-docking https://github.com/ocornut/imgui.git "${REPO_ROOT}/imgui"
-else
-    echo "  déjà présent (${REPO_ROOT}/imgui)"
-fi
+# Même logique que setup_pom1.sh : un test de simple présence du dossier
+# laisserait en place un checkout périmé, que la compilation ne rejetterait
+# que bien plus loin (ou, désormais, que CMake refuserait à la configuration).
+"${REPO_ROOT}/tools/ensure_imgui.sh" "${REPO_ROOT}/imgui"
 
 # ---- 3. Compilation -------------------------------------------------------
 echo "--- 3/4 Compilation (plusieurs minutes ; --pgo : ~2× plus, et ça les vaut) ---"

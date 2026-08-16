@@ -148,6 +148,55 @@ endif()
 
 # ImGui
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
+# Quoted in the error messages below. NOT the single source of truth: the tag
+# is pinned in nine places — see the "Docking" bullet in CLAUDE.md for the full
+# list, and bump them together.
+set(POM1_IMGUI_TAG "v1.92.9-docking")
+# imgui/ is NOT vendored: it is .gitignored and cloned by setup_pom1.sh. Check
+# it is present AND on the DOCKING branch before globbing it. POM1 uses
+# DockSpace and ImGuiWindowFlags_NoDocking, which exist only there, and a
+# master-branch copy fails hundreds of lines into the build with a bare
+# "unknown identifier" that reads as a POM1 bug rather than a stale dependency.
+# The setup scripts used to test only for the DIRECTORY, so every checkout made
+# before POM1 moved to docking stayed silently behind — this is that trap's
+# backstop, and it must stay even though the scripts now self-heal, because a
+# developer can always have cloned imgui by hand.
+if(NOT EXISTS "${IMGUI_DIR}/imgui.h")
+    message(FATAL_ERROR
+        "Dear ImGui is missing from ${IMGUI_DIR}.\n"
+        "Run ./setup_pom1.sh (setup_pom1.bat on Windows), or clone it yourself:\n"
+        "  git clone --depth 1 --branch ${POM1_IMGUI_TAG} "
+        "https://github.com/ocornut/imgui.git")
+endif()
+set(POM1_IMGUI_FIX_HINT
+    "Run tools/ensure_imgui.sh (setup_pom1.sh and the Pi installer both call "
+    "it; setup_pom1.bat is its Windows twin) — it upgrades an existing "
+    "checkout in place.")
+file(STRINGS "${IMGUI_DIR}/imgui.h" POM1_IMGUI_DOCKING_PROBE
+     REGEX "ImGuiWindowFlags_NoDocking" LIMIT_COUNT 1)
+if(NOT POM1_IMGUI_DOCKING_PROBE)
+    message(FATAL_ERROR
+        "The Dear ImGui in ${IMGUI_DIR} is not the docking branch.\n"
+        "POM1 needs DockSpace + ImGuiWindowFlags_NoDocking, so this copy cannot "
+        "build. ${POM1_IMGUI_FIX_HINT}")
+endif()
+# Docking alone is NOT enough. An old docking tag (v1.90.x) defines
+# ImGuiWindowFlags_NoDocking, sails past the probe above, and then dies deep in
+# the build on ImGuiChildFlags_Borders — renamed upstream in 1.91.1 and used by
+# src/bench/CodeBench.cpp. The Metal sampler patch further down is version-split
+# at 1.92.7/1.92.8 too. So pin the numeric version as well: ImGui encodes it as
+# MAJOR*10000 + MINOR*100 + PATCH*10, i.e. 19290 for 1.92.9.
+set(POM1_IMGUI_MIN_VERSION_NUM 19290)
+file(STRINGS "${IMGUI_DIR}/imgui.h" POM1_IMGUI_VERSION_LINE
+     REGEX "^#define[ \t]+IMGUI_VERSION_NUM[ \t]" LIMIT_COUNT 1)
+string(REGEX MATCH "[0-9]+$" POM1_IMGUI_VERSION_NUM "${POM1_IMGUI_VERSION_LINE}")
+if(NOT POM1_IMGUI_VERSION_NUM OR
+   POM1_IMGUI_VERSION_NUM LESS POM1_IMGUI_MIN_VERSION_NUM)
+    message(FATAL_ERROR
+        "The Dear ImGui in ${IMGUI_DIR} is too old: IMGUI_VERSION_NUM is "
+        "'${POM1_IMGUI_VERSION_NUM}', POM1 needs ${POM1_IMGUI_MIN_VERSION_NUM} "
+        "or newer (${POM1_IMGUI_TAG}).\n${POM1_IMGUI_FIX_HINT}")
+endif()
 # Core ImGui TUs are picked up by glob — they don't change between backends.
 file(GLOB IMGUI_CORE_SOURCES ${IMGUI_DIR}/*.cpp)
 # The platform (GLFW) backend is the same on every renderer. The rendering

@@ -33,13 +33,13 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     fi
 fi
 
-# Télécharger Dear ImGui
-if [ ! -d "imgui" ]; then
-    echo "Téléchargement de Dear ImGui (v1.92.9-docking, version testée par POM1)..."
-    git clone --depth 1 --branch v1.92.9-docking https://github.com/ocornut/imgui.git
-    echo "Dear ImGui téléchargé avec succès !"
-else
-    echo "Dear ImGui déjà présent."
+# Dear ImGui — checkout non vendoré, logique partagée avec l'installeur Pi.
+# Voir tools/ensure_imgui.sh : il exige la branche docking ET le pin de
+# version, et met à niveau un checkout périmé au lieu de le laisser casser la
+# compilation plus loin.
+if ! "$(dirname "$0")/tools/ensure_imgui.sh" imgui; then
+    echo "ERREUR : Dear ImGui n'a pas pu être installé." >&2
+    exit 1
 fi
 
 # Créer le dossier de build
