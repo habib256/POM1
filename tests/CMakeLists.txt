@@ -1498,6 +1498,32 @@ add_test(NAME intel_hex_smoke
          WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set_tests_properties(intel_hex_smoke PROPERTIES TIMEOUT 5)
 
+# woz_backspace_smoke -- github #38: the Apple-1 has no destructive backspace.
+# Its display is a shift register that cannot un-shift a cell, so the Woz
+# Monitor ECHOes '_' ($DF) and merely DEYs the input index -- the character
+# leaves the line buffer while the screen keeps the underscore. Pins both
+# halves against the real ROM; the host Backspace key maps to '_' for this.
+add_executable(test_woz_backspace
+    woz_backspace_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_woz_backspace PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_woz_backspace PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_woz_backspace PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_woz_backspace PRIVATE ws2_32)
+endif()
+
+add_test(NAME woz_backspace_smoke
+         COMMAND test_woz_backspace
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(woz_backspace_smoke PROPERTIES TIMEOUT 10)
+
 # pia_ddr_smoke -- the PIA 6821's register banking ($D010-$D013): with a port's
 # control-register bit 2 clear, the data address IS the data direction register.
 # Uncle Bernie's Codebreaker probes DDRB to detect emulators and POM1 failed it.

@@ -151,11 +151,14 @@ Full reference → [`doc/CLI.md`](doc/CLI.md).
 
 | Shortcut | Action | Shortcut | Action |
 |----------|--------|----------|--------|
-| `F1` | Memory Viewer | `Ctrl+O` | Load program |
-| `F2` | Memory Map | `Ctrl+S` | Save memory |
-| `F3` | Debug Console | `Ctrl+V` | Paste code |
-| `F5` / `Ctrl+F5` | Soft / Hard Reset | `F6` | Start / Stop CPU |
-| `F7` | Single-step | `Ctrl+Q` | Quit |
+| `F1` | Memory Viewer | `F6` | Start / Stop CPU |
+| `F2` | Memory Map | `F7` | Single-step |
+| `F3` | Debug Console | `F10` | UI keyboard navigation |
+| `F5` / `Ctrl+F5` | Soft / Hard Reset | | |
+
+`Ctrl`+*letter* is **not** an emulator shortcut — it goes to the Apple-1 as the ASCII control code `$01-$1A`, exactly like the CTRL key on the real keyboard (`Ctrl+C` breaks Integer BASIC, `Ctrl+H` is Applesoft Lite's backspace, `Ctrl+S`/`Ctrl+Q` are XOFF/XON). Load / Save Memory, Paste Code and Quit are in the *File* menu, so none of the 26 control codes is shadowed.
+
+**Backspace** sends `_`, because the Apple-1 has no hardware that can erase the character left of the cursor: the Woz Monitor echoes the `_` and drops the character from its input buffer, so the screen keeps a trail of underscores — as it did in 1976.
 
 The keyboard is **TTL-faithful** — no autorepeat by default, like the real ASCII keyboard ROM. Toggle host autorepeat from *Settings* if you can't take it.
 

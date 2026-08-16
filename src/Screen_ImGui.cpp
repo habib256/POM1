@@ -873,13 +873,16 @@ void Screen_ImGui::writeCharUnlocked(char c)
     //   newline here would double-count every CRLF pair emitted by the microSD ROM
     //   when it prints file contents (observed: extra blank line after HELP output,
     //   confirmed against Claudio Parmigiani's real Apple-1 photo 2026-04-15).
+    //   $08 (BS) is one of those dropped control codes and NOT a destructive
+    //   backspace: the terminal section is a shift-register display whose 74LS
+    //   counters only advance, wrap, scroll and CR — there is no cursor-left and
+    //   no way to blank a cell already shifted in (github #38). Erasing on screen
+    //   is a thing no Apple-1 could do. Both line editors stay correct without it:
+    //   the Woz Monitor's backspace char is '_' ($DF), which it ECHOes as a
+    //   visible glyph before doing BACKSPACE:DEY on the input index, and
+    //   Applesoft Lite's Ctrl-H edits its buffer while the screen keeps the text.
     if (c == '\r') {
         newLineUnlocked();
-    } else if (c == '\b') {
-        if (cursorX > 0) {
-            cursorX--;
-            screenBuffer[bufferIndex(cursorY, cursorX)] = ' ';
-        }
     } else if (static_cast<unsigned char>(c) >= 0x20) {
         unsigned char glyphCode = static_cast<unsigned char>(c) & 0x7F;
         // Apple-1 display fold: the Signetics 2513 char ROM has only 64 glyphs
