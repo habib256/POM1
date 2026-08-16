@@ -147,6 +147,15 @@ public:
     void savePresetLayout(int presetIndex);
     bool loadPresetLayout(int presetIndex);  // returns true if a file was found
 
+    // "Is the OS window currently filling the screen?" — true for POM1's own
+    // fullscreen toggle (`fullscreen` / glfwSetWindowMonitor) AND for macOS'
+    // native fullscreen space, which GLFW does not model at all (see
+    // MacNativeFullscreen.h). Fullscreen is a SESSION property, never a
+    // per-preset one: every geometry decision keyed on it must use this, so a
+    // profile switch neither yanks the user out of a fullscreen space nor
+    // resizes a window AppKit would refuse to resize anyway.
+    bool osWindowIsFullscreen() const;
+
     // Debounced layout autosave — called once per frame from render(). Saves
     // the active preset's layout a couple of seconds after the last window
     // move/resize (io.WantSaveIniSettings, which ImGui raises when
@@ -527,6 +536,10 @@ private:
     // snapshot the Memory Settings dialog reads (uiSnapshot.oorStrictMode).
     // Armed/disarmed by the master Strict/Fantasy switch.
     bool oorStrictModeEnabled = false;
+    // POM1's OWN fullscreen (Display Settings checkbox → glfwSetWindowMonitor,
+    // or emscripten_request_fullscreen under WASM). It does NOT cover macOS'
+    // native fullscreen space — always ask osWindowIsFullscreen() when the
+    // question is "does the window currently fill the screen?".
     bool fullscreen = false;
     // --fullscreen (kiosk): keep the OS window fullscreen across preset
     // switches, since every applyBootConfig()/loadPresetLayout() restores the
@@ -534,6 +547,34 @@ private:
     // Fullscreen, so the escape hatch still works, and NOT written back into
     // the preset's .size file (a CLI flag must not rewrite a saved layout).
     bool cliForcedFullscreen_ = false;
+    // Pending re-expansion of the Apple 1 Screen window over the whole display
+    // (0 = idle). Armed by armFullscreenScreenExpand() from the fullscreen
+    // transition in render(), a preset switch landing in a fullscreen session,
+    // and a layout reset while fullscreen.
+    //
+    // This is a SETTLE counter, not a plain delay: it only counts down while
+    // DisplaySize holds still, and re-arms whenever it moves. A fixed count
+    // cannot work on macOS — AppKit sets NSWindowStyleMaskFullScreen at the
+    // START of its ~0.5 s animated transition, so osWindowIsFullscreen() flips
+    // long before the framebuffer reaches its final size, and expanding two
+    // frames later would size the screen window to the pre-animation frame and
+    // leave it undersized for the rest of the session. Waiting for DisplaySize
+    // to stop moving covers the animated path and the synchronous
+    // glfwSetWindowMonitor one alike.
+    int    fullscreenResizePendingFrames = 0;
+    ImVec2 fullscreenResizeLastDisplaySize{0.0f, 0.0f};
+    // Frames of stillness required before the expand fires.
+    static constexpr int kFullscreenResizeSettleFrames = 2;
+    void armFullscreenScreenExpand();
+    // Set while AppKit animates OUT of a native fullscreen space, holding the
+    // ImGui timestamp of the toggleFullScreen: request (<0 = idle). The style
+    // mask stays set for the whole animation, so osWindowIsFullscreen() would
+    // keep reporting fullscreen and re-tick the Settings checkbox on the very
+    // next frame; a second click would then hand AppKit another toggle and put
+    // the window straight back into the space. Also a timeout, so a missed
+    // completion cannot wedge the checkbox permanently.
+    double macNativeExitRequestedAt_ = -1.0;
+    static constexpr double kMacNativeExitTimeoutSeconds = 2.0;
 
     // ── Interface zoom ────────────────────────────────────────────────────
     // uiScale_ is the USER zoom (Settings ▸ Interface zoom, persisted

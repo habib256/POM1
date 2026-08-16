@@ -10,6 +10,7 @@
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
 #include "POM1Build.h"
+#include "MacNativeFullscreen.h"  // macOS fullscreen space is invisible to GLFW
 #include "Logger.h"
 #include "CodeBench.h"   // codeBench_->loadStarterForTargetIfClean() in DevBench presets
 #include "Pom1BenchHost.h" // benchHost_->targetFor / selectTargetExplicit for the chooser's language launch
@@ -989,11 +990,19 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     const bool layoutLoaded = loadPresetLayout(presetIndex);
 #if !POM1_IS_WASM
     if (!layoutLoaded && window) {
-        // No saved size — derive a default OS-window bounding box from the
-        // preset's layout table (factored so resetActivePresetLayout reuses it).
-        int glfwW = 0, glfwH = 0;
-        defaultOsWindowSize(presetIndex, glfwW, glfwH);
-        glfwSetWindowSize(window, glfwW, glfwH);
+        if (osWindowIsFullscreen()) {
+            // Fullscreen session: the OS frame is the screen and stays that way
+            // (same rule as loadPresetLayout). Only the Apple 1 Screen window
+            // needs re-expanding — the pendingLayout defaults just installed are
+            // windowed-frame coordinates.
+            armFullscreenScreenExpand();
+        } else {
+            // No saved size — derive a default OS-window bounding box from the
+            // preset's layout table (factored so resetActivePresetLayout reuses it).
+            int glfwW = 0, glfwH = 0;
+            defaultOsWindowSize(presetIndex, glfwW, glfwH);
+            glfwSetWindowSize(window, glfwW, glfwH);
+        }
     }
 #else
     // WASM: resize the HTML canvas to the incoming profile — ONCE, here, on the
@@ -1635,7 +1644,12 @@ struct OsWindowGeom {
     bool havePos = false;
     int  x = 0, y = 0;
     bool maximized = false;
-    bool fullscreen = false;
+    // F field: 0 = windowed, 1 = POM1's own fullscreen (glfwSetWindowMonitor),
+    // 2 = macOS native fullscreen SPACE. 2 is distinct because it must never be
+    // restored via glfwSetWindowMonitor — that is a different (borderless)
+    // fullscreen, and forcing it on a window AppKit already owns is a mess.
+    // Legacy files only ever carry 0 or 1, so they read unchanged.
+    int  fullscreenMode = 0;
 };
 
 bool loadSizeFile(int idx, OsWindowGeom& g)
@@ -1657,8 +1671,8 @@ bool loadSizeFile(int idx, OsWindowGeom& g)
             g.y = y;
         }
         if (f >> m >> fs) {
-            g.maximized  = (m != 0);
-            g.fullscreen = (fs != 0);
+            g.maximized = (m != 0);
+            if (fs >= 0 && fs <= 2) g.fullscreenMode = fs;
         }
     }
     return true;
@@ -1675,7 +1689,7 @@ bool saveSizeFile(int idx, const OsWindowGeom& g)
     // 2-field form so restoring them leaves the OS free to place the window.
     if (g.havePos) {
         f << ' ' << g.x << ' ' << g.y << ' '
-          << (g.maximized ? 1 : 0) << ' ' << (g.fullscreen ? 1 : 0);
+          << (g.maximized ? 1 : 0) << ' ' << g.fullscreenMode;
     }
     f << '\n';
     return bool(f);
@@ -1805,8 +1819,13 @@ void MainWindow_ImGui::savePresetLayout(int idx)
         // render()) plus the maximized/fullscreen flags, so a maximized or
         // fullscreen session restores with a sane underlying windowed rect.
         OsWindowGeom g;
-        const bool maxed = glfwGetWindowAttrib(window, GLFW_MAXIMIZED) != 0;
-        if (!maxed && !fullscreen) {
+        const bool nativeFs = pom1::macWindowIsNativeFullscreen(window);
+        const bool anyFs    = osWindowIsFullscreen();
+        // GLFW_MAXIMIZED is meaningless inside a macOS fullscreen space (AppKit
+        // reports the zoomed state of the underlying window) — don't persist it
+        // as an intent to restore maximized.
+        const bool maxed = !nativeFs && glfwGetWindowAttrib(window, GLFW_MAXIMIZED) != 0;
+        if (!maxed && !anyFs) {
             glfwGetWindowSize(window, &g.w, &g.h);
             glfwGetWindowPos(window, &g.x, &g.y);
         } else {
@@ -1815,12 +1834,15 @@ void MainWindow_ImGui::savePresetLayout(int idx)
             g.x = windowedPosX;
             g.y = windowedPosY;
         }
-        g.havePos    = true;
-        g.maximized  = maxed;
+        g.havePos   = true;
+        g.maximized = maxed;
         // A CLI --fullscreen (kiosk) must not rewrite the profile's saved
         // layout: the next plain launch would come up fullscreen for no
-        // visible reason. Only the Settings checkbox persists.
-        g.fullscreen = fullscreen && !cliForcedFullscreen_;
+        // visible reason. Only a user-driven fullscreen persists. The flag
+        // only ever drives POM1's OWN fullscreen, so it can't suppress mode 2
+        // — a macOS native space is always something the user asked for.
+        g.fullscreenMode = nativeFs ? 2
+                                    : ((anyFs && !cliForcedFullscreen_) ? 1 : 0);
         if (g.w > 0 && g.h > 0) saveSizeFile(idx, g);
     }
 #endif
@@ -1847,10 +1869,29 @@ bool MainWindow_ImGui::loadPresetLayout(int idx)
         OsWindowGeom g;
         if (loadSizeFile(idx, g)) {
             clampToVisibleMonitor(window, g);
-            const bool isFullscreenNow = glfwGetWindowMonitor(window) != nullptr;
-            if (g.fullscreen) {
-                // Restore straight into fullscreen; keep the windowed rect in
-                // the tracking members so leaving fullscreen lands right.
+            if (osWindowIsFullscreen()) {
+                // Fullscreen is a SESSION property, not a per-profile one:
+                // switching profile must never yank the user out of it (and on
+                // macOS the setFrame: behind glfwSetWindowSize is ignored by
+                // AppKit inside a fullscreen space anyway — the frame would
+                // stay full-screen while every layout decision assumed it had
+                // shrunk). Adopt the incoming profile's windowed rect so
+                // LEAVING fullscreen later lands on it.
+                windowedWidth  = g.w;
+                windowedHeight = g.h;
+                if (g.havePos) { windowedPosX = g.x; windowedPosY = g.y; }
+                // The .ini just loaded was authored for that windowed frame, so
+                // the Apple 1 Screen window would sit in a corner of the
+                // screen — re-expand it over the whole display, exactly as the
+                // windowed→fullscreen transition does. A profile saved IN
+                // fullscreen already carries a fullscreen-sized layout: leave
+                // its arrangement alone.
+                if (g.fullscreenMode == 0)
+                    armFullscreenScreenExpand();
+            } else if (g.fullscreenMode == 1) {
+                // Profile saved under POM1's own fullscreen toggle, session is
+                // windowed — restore straight into it; keep the windowed rect
+                // in the tracking members so leaving fullscreen lands right.
                 windowedWidth  = g.w;
                 windowedHeight = g.h;
                 if (g.havePos) { windowedPosX = g.x; windowedPosY = g.y; }
@@ -1862,22 +1903,25 @@ bool MainWindow_ImGui::loadPresetLayout(int idx)
                     fullscreen = true;
                 }
             } else {
-                if (isFullscreenNow) {
-                    // Previous preset left us fullscreen — drop back to windowed.
-                    glfwSetWindowMonitor(window, nullptr,
-                                         g.havePos ? g.x : windowedPosX,
-                                         g.havePos ? g.y : windowedPosY,
-                                         g.w, g.h, 0);
-                    fullscreen = false;
-                } else {
-                    if (g.havePos) glfwSetWindowPos(window, g.x, g.y);
-                    glfwSetWindowSize(window, g.w, g.h);
-                }
+                // Windowed (mode 0), or a profile saved in a macOS native
+                // fullscreen space (mode 2) — that one is NOT re-entered from
+                // here: only the user's green button owns that space, so we
+                // restore the underlying windowed rect it recorded.
+                if (g.havePos) glfwSetWindowPos(window, g.x, g.y);
+                glfwSetWindowSize(window, g.w, g.h);
                 if (g.maximized)
                     glfwMaximizeWindow(window);
                 else if (glfwGetWindowAttrib(window, GLFW_MAXIMIZED))
                     glfwRestoreWindow(window);
             }
+        } else if (osWindowIsFullscreen()) {
+            // No .size sidecar — a hand-seeded profile, or one whose file the
+            // user deleted. The .ini itself DID load, and it was authored for a
+            // windowed frame, so the Apple 1 Screen still needs the expand the
+            // sized path arms above. Without this the profile falls between two
+            // stools: applyMachineConfig skips it because a layout *was*
+            // loaded, and the block above never runs.
+            armFullscreenScreenExpand();
         }
     }
 #endif
@@ -2130,10 +2174,31 @@ void MainWindow_ImGui::resetActivePresetLayout()
     layoutResetForceFrames = 2;                 // apply with Always next frame(s)
 
 #if !POM1_IS_WASM
-    if (window) {
+    // Never resize the OS frame while fullscreen — the layout reset above still
+    // rearranges the ImGui windows inside the screen-sized frame.
+    if (window && !osWindowIsFullscreen()) {
         int glfwW = 0, glfwH = 0;
         defaultOsWindowSize(idx, glfwW, glfwH);
         glfwSetWindowSize(window, glfwW, glfwH);
+    } else if (window) {
+        // Fullscreen: pendingLayout was just rebuilt from the hard-coded table,
+        // whose coordinates are windowed-frame ones — the Apple 1 Screen would
+        // be force-moved into the top-left corner of a screen-sized frame with
+        // nothing to follow. Re-expand it, exactly as a profile switch does.
+        // (The curated branch above gets this for free via loadPresetLayout.)
+        //
+        // Drop its pendingLayout entry first: a reset force-applies entries with
+        // ImGuiCond_Always for layoutResetForceFrames frames, and
+        // applyPendingLayout runs AFTER the expand's SetNextWindowSize — it
+        // would otherwise stamp the windowed rect back over it. Every other
+        // window still gets the factory arrangement inside the fullscreen frame.
+        pendingLayout.erase(
+            std::remove_if(pendingLayout.begin(), pendingLayout.end(),
+                           [](const PendingWindowPlacement& p) {
+                               return p.name == "Apple 1 Screen";
+                           }),
+            pendingLayout.end());
+        armFullscreenScreenExpand();
     }
 #endif
     setStatusMessage("Window layout reset to preset default", 2.5f);

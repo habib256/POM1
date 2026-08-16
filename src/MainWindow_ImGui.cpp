@@ -7,6 +7,7 @@
 #include "WiFiModem.h"
 #include "TerminalCard.h"
 #include "POM1Build.h"
+#include "MacNativeFullscreen.h"
 #include "Disassembler6502.h"
 #include "Logger.h"
 #include "imgui.h"
@@ -500,6 +501,11 @@ bool MainWindow_ImGui::wantsContinuousRender() const
     if (!uiIdleThrottle_) return true;            // feature disabled → always 60 Hz
     if (!uiSettingsLoaded_) return true;          // first frames — settings not read yet
     if (pendingCardEnableFrames > 0) return true; // deferred plug counts FRAMES
+    // The fullscreen re-expand settles on DisplaySize standing still, so it
+    // needs frames to observe. At the 5 Hz idle floor an AppKit transition
+    // would resolve in seconds instead of milliseconds — and the pre-expand
+    // frames show the screen window at its windowed size.
+    if (fullscreenResizePendingFrames > 0) return true;
     if (statusTimer > 0.0f) return true;          // status-bar message fading
     if (screen && screen->hasPendingOutput()) return true;   // Apple-1 printing / boot
     // Card framebuffers: real change detection (GEN2 render() diff, TMS/GT
@@ -514,6 +520,29 @@ bool MainWindow_ImGui::wantsContinuousRender() const
     // trail, which finishes fading at the idle floor (~5 frames ≈ 1 s) after
     // the screen goes static; active content is already covered by the
     // pending-output / card-window conditions above.
+    return false;
+}
+
+void MainWindow_ImGui::armFullscreenScreenExpand()
+{
+    fullscreenResizePendingFrames = kFullscreenResizeSettleFrames;
+    // Seed the settle baseline with the size we can see right now. Every caller
+    // runs inside a frame, but guard anyway: applyMachineConfig/loadPresetLayout
+    // are also reachable from the headless CLI paths, where there is no context.
+    fullscreenResizeLastDisplaySize =
+        ImGui::GetCurrentContext() ? ImGui::GetIO().DisplaySize : ImVec2(0.0f, 0.0f);
+}
+
+bool MainWindow_ImGui::osWindowIsFullscreen() const
+{
+    if (fullscreen) return true;          // POM1's own toggle (also the WASM path)
+#if !POM1_IS_WASM
+    if (!window) return false;
+    // A glfwSetWindowMonitor() fullscreen entered by any other route, then
+    // AppKit's fullscreen space — invisible to GLFW, so it needs the Cocoa seam.
+    if (glfwGetWindowMonitor(window) != nullptr) return true;
+    if (pom1::macWindowIsNativeFullscreen(window)) return true;
+#endif
     return false;
 }
 
@@ -543,7 +572,9 @@ void MainWindow_ImGui::render()
     // Track the WINDOWED rect while neither maximized, fullscreen nor
     // iconified — savePresetLayout persists this rect (plus the flags), so a
     // maximized/fullscreen session still restores a sane underlying window.
-    if (window && !fullscreen
+    // osWindowIsFullscreen() (not `fullscreen`) so a macOS native fullscreen
+    // space doesn't overwrite the windowed rect with the screen size.
+    if (window && !osWindowIsFullscreen()
         && !glfwGetWindowAttrib(window, GLFW_MAXIMIZED)
         && !glfwGetWindowAttrib(window, GLFW_ICONIFIED)) {
         glfwGetWindowPos(window, &windowedPosX, &windowedPosY);
@@ -661,8 +692,11 @@ void MainWindow_ImGui::render()
     // preset saved, and so does every later preset switch, either of which
     // would drop a kiosk back into a small window on a black desktop.
     // Unticking Settings ▸ Fullscreen clears the flag, so the escape hatch
-    // survives.
-    if (cliForcedFullscreen_ && !fullscreen)
+    // survives. Keyed on osWindowIsFullscreen(), not the `fullscreen` member:
+    // a window the user green-buttoned into a macOS native space already fills
+    // the screen, and forcing glfwSetWindowMonitor on top of an AppKit space
+    // would stack a second, different fullscreen on it.
+    if (cliForcedFullscreen_ && !osWindowIsFullscreen())
         setOsFullscreen(true);
 
     if (showProfileChooser) {
@@ -689,7 +723,6 @@ void MainWindow_ImGui::render()
     // Au premier frame, dimensionner selon l'écran Apple 1 (40x24 * scale)
     static bool firstFrame = true;
     static bool wasFullscreen = false;
-    static int fullscreenResizePending = 0;
     if (firstFrame) {
         ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
         ImVec2 charSize = ImGui::CalcTextSize("M");
@@ -708,13 +741,16 @@ void MainWindow_ImGui::render()
         // happens here anymore; this block only sizes the Apple 1 screen window.
     }
 
-    // Resize Apple 1 screen window on fullscreen transitions
-    if (fullscreen != wasFullscreen) {
+    // Resize Apple 1 screen window on fullscreen transitions. Keyed on
+    // osWindowIsFullscreen() so macOS' green button behaves exactly like the
+    // Display Settings checkbox instead of leaving the screen window at its
+    // windowed size in the middle of a fullscreen space.
+    const bool osFullscreenNow = osWindowIsFullscreen();
+    if (osFullscreenNow != wasFullscreen) {
         ImGuiIO& fsio = ImGui::GetIO();
         const float toolbarBottom = ImGui::GetFrameHeight() + uiPx(kToolbarBandHeight);
-        if (fullscreen) {
-            // Defer resize by 1 frame so GLFW has updated DisplaySize
-            fullscreenResizePending = 2;
+        if (osFullscreenNow) {
+            armFullscreenScreenExpand();
         } else {
             // Restore to default Apple 1 size
             ImGui::PushFont(fsio.Fonts->Fonts[0]);
@@ -725,16 +761,23 @@ void MainWindow_ImGui::render()
             float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale + uiPx(kApple1ImGuiWinPadH);
             ImGui::SetNextWindowPos(ImVec2(10, toolbarBottom + uiPx(kGapBelowToolbarBeforeApple1)));
             ImGui::SetNextWindowSize(ImVec2(sw, sh));
+            fullscreenResizePendingFrames = 0;   // drop a switch-armed expand
         }
-        wasFullscreen = fullscreen;
+        wasFullscreen = osFullscreenNow;
     }
-    if (fullscreenResizePending > 0) {
-        fullscreenResizePending--;
-        if (fullscreenResizePending == 0) {
-            ImGuiIO& fsio = ImGui::GetIO();
+    if (fullscreenResizePendingFrames > 0) {
+        const ImVec2 ds = ImGui::GetIO().DisplaySize;
+        if (ds.x != fullscreenResizeLastDisplaySize.x ||
+            ds.y != fullscreenResizeLastDisplaySize.y) {
+            // Still moving — AppKit animates into its fullscreen space over
+            // ~0.5 s and flips the style mask at the START of it. Re-arm and
+            // let the expand land on the size the frame actually settles at.
+            fullscreenResizeLastDisplaySize = ds;
+            fullscreenResizePendingFrames   = kFullscreenResizeSettleFrames;
+        } else if (--fullscreenResizePendingFrames == 0) {
             const float toolbarBottom = ImGui::GetFrameHeight() + uiPx(kToolbarBandHeight);
             ImGui::SetNextWindowPos(ImVec2(0, toolbarBottom));
-            ImGui::SetNextWindowSize(ImVec2(fsio.DisplaySize.x, fsio.DisplaySize.y - toolbarBottom));
+            ImGui::SetNextWindowSize(ImVec2(ds.x, ds.y - toolbarBottom));
         }
     }
 
