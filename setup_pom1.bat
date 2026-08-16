@@ -45,14 +45,72 @@ if defined VCPKG_ROOT (
     echo.
 )
 
-REM Download Dear ImGui if not present
-if not exist "imgui" (
-    echo Downloading Dear ImGui...
-    git clone --depth 1 --branch v1.92.9-docking https://github.com/ocornut/imgui.git
-    echo.
-) else (
-    echo Dear ImGui already present.
+REM Dear ImGui -- Windows counterpart of tools/ensure_imgui.sh (see the long
+REM rationale there). imgui\ is .gitignored, so it is a local checkout, not
+REM vendored code, and BOTH of these must hold or the build dies far from the
+REM real cause: the DOCKING branch, and IMGUI_VERSION_NUM at or above the pin
+REM (an old docking tag has ImGuiWindowFlags_NoDocking but lacks
+REM ImGuiChildFlags_Borders, which src\bench\CodeBench.cpp uses).
+REM
+REM Written with labels rather than nested parenthesised blocks on purpose:
+REM cmd.exe expands %VAR% when it PARSES a block, so a variable set inside one
+REM reads as its pre-block value unless delayed expansion is enabled.
+set "IMGUI_TAG=v1.92.9-docking"
+set "IMGUI_MIN=19290"
+set "IMGUI_URL=https://github.com/ocornut/imgui.git"
+
+if not exist "imgui\imgui.h" goto imgui_clone
+
+set "IMGUI_HAVE="
+for /f "tokens=3" %%v in ('findstr /b /c:"#define IMGUI_VERSION_NUM" "imgui\imgui.h"') do set "IMGUI_HAVE=%%v"
+findstr /c:"ImGuiWindowFlags_NoDocking" "imgui\imgui.h" >nul 2>&1
+if errorlevel 1 goto imgui_upgrade
+if not defined IMGUI_HAVE goto imgui_upgrade
+if %IMGUI_HAVE% LSS %IMGUI_MIN% goto imgui_upgrade
+echo Dear ImGui already present ^(%IMGUI_HAVE%, docking^).
+goto imgui_done
+
+:imgui_clone
+echo Downloading Dear ImGui %IMGUI_TAG%...
+git clone --depth 1 --branch %IMGUI_TAG% %IMGUI_URL% imgui
+if errorlevel 1 goto imgui_fail
+echo.
+goto imgui_done
+
+:imgui_upgrade
+echo imgui\ is stale or not the docking branch - upgrading to %IMGUI_TAG%...
+git -C imgui rev-parse --git-dir >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: imgui\ is not a git repository, cannot upgrade.
+    echo        Delete the folder and re-run this script.
+    exit /b 1
 )
+REM --quiet HEAD, not plain --quiet: the latter compares worktree against the
+REM index, so already-staged edits would slip through and fail later at the
+REM checkout with a misleading message.
+git -C imgui diff --quiet HEAD
+if errorlevel 1 (
+    echo ERROR: imgui\ has local changes - nothing was touched.
+    echo        Save them, then re-run this script.
+    exit /b 1
+)
+REM --depth 1 against a COMPLETE clone would convert it to a shallow one and
+REM lose its history, so only ask for it when the repo is already shallow.
+set "IMGUI_SHALLOW="
+for /f %%s in ('git -C imgui rev-parse --is-shallow-repository') do set "IMGUI_SHALLOW=%%s"
+if "%IMGUI_SHALLOW%"=="true" (git -C imgui fetch --depth 1 origin tag %IMGUI_TAG%) else (git -C imgui fetch origin tag %IMGUI_TAG%)
+if errorlevel 1 goto imgui_fail
+git -C imgui checkout --quiet %IMGUI_TAG%
+if errorlevel 1 goto imgui_fail
+echo Dear ImGui upgraded to %IMGUI_TAG%.
+echo.
+goto imgui_done
+
+:imgui_fail
+echo ERROR: could not obtain Dear ImGui %IMGUI_TAG%.
+exit /b 1
+
+:imgui_done
 
 REM Create build directory
 if not exist "build" mkdir build
