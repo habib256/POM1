@@ -1078,8 +1078,8 @@ int main(int argc, char* argv[])
     // La navigation manette, elle, ne rentre jamais en conflit avec le clavier
     // Apple 1 — toujours active (no-op sans manette branchée).
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
-    // Docking (branche `docking` de Dear ImGui, épinglée v1.92.9-docking par
-    // setup_pom1.sh / la CI). Toute l'UI POM1 vit dans un DockSpace plein
+    // Docking (branche `docking` de Dear ImGui, dont le tag est épinglé dans
+    // le fichier IMGUI_VERSION). Toute l'UI POM1 vit dans un DockSpace plein
     // cadre construit par MainWindow_ImGui::renderDockSpace(), entre la barre
     // d'outils et la barre de statut. Le multi-viewport (fenêtres détachées
     // hors de la fenêtre OS) reste VOLONTAIREMENT désactivé : WASM ne le

@@ -23,8 +23,8 @@ jobs:
           sudo apt-get install -y cmake g++ libglfw3-dev libgl1-mesa-dev cc65 \
                                   libgles2-mesa-dev libegl1-mesa-dev
 
-      - name: Fetch Dear ImGui (pinned to the tested release)
-        run: git clone --depth 1 --branch v1.92.9-docking https://github.com/ocornut/imgui.git
+      - name: Fetch Dear ImGui (pin from IMGUI_VERSION)
+        run: tools/ensure_imgui.sh imgui
 
       - name: Build POM1
         run: |

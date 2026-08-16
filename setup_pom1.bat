@@ -55,8 +55,22 @@ REM
 REM Written with labels rather than nested parenthesised blocks on purpose:
 REM cmd.exe expands %VAR% when it PARSES a block, so a variable set inside one
 REM reads as its pre-block value unless delayed expansion is enabled.
-set "IMGUI_TAG=v1.92.9-docking"
-set "IMGUI_MIN=19290"
+REM Pin read from the repo-root IMGUI_VERSION file: "<git tag> <version-num>".
+set "IMGUI_TAG="
+set "IMGUI_MIN="
+for /f "tokens=1,2" %%a in (IMGUI_VERSION) do (
+    set "IMGUI_TAG=%%a"
+    set "IMGUI_MIN=%%b"
+    goto imgui_pin_read
+)
+:imgui_pin_read
+if not defined IMGUI_TAG goto imgui_pin_bad
+if not defined IMGUI_MIN goto imgui_pin_bad
+goto imgui_pin_ok
+:imgui_pin_bad
+echo ERROR: IMGUI_VERSION is missing or malformed ^(expected "^<tag^> ^<version-num^>"^).
+exit /b 1
+:imgui_pin_ok
 set "IMGUI_URL=https://github.com/ocornut/imgui.git"
 
 if not exist "imgui\imgui.h" goto imgui_clone

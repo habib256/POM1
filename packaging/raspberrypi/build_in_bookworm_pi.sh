@@ -88,8 +88,8 @@ echo 'int main(){}' | g++ -x c++ -mcpu="$MCPU" -o /dev/null - \
 # --- cc65 + Dear ImGui -------------------------------------------------------
 tools/build_cc65_bundle.sh --out dist/cc65-bundle
 rm -rf imgui
-git clone --depth 1 --branch "${IMGUI_TAG:-v1.92.9-docking}" \
-    https://github.com/ocornut/imgui.git
+# Pin lu dans IMGUI_VERSION (IMGUI_TAG le surcharge) + contrôle docking/version.
+tools/ensure_imgui.sh imgui
 
 # --- Configuration -----------------------------------------------------------
 # -static-libstdc++/-static-libgcc : ne dépendre QUE de la glibc de bookworm, pas

@@ -1902,6 +1902,19 @@ if(UNIX)
     set_tests_properties(version_sync PROPERTIES TIMEOUT 30)
 endif()
 
+# imgui_pin_sync -- same idea for the OTHER pin the repo carries. Dear ImGui is
+# not vendored, and its tag was copy-pasted into eleven files; CMake and the
+# scripts now read IMGUI_VERSION, but two workflow `env:` blocks still can't
+# (they are parsed before any step runs). This scans every tracked file for a
+# `vX.Y.Z-docking` literal that disagrees with the pin, so a new site is caught
+# when it lands and not at the next bump. UNIX only (bash + git grep).
+if(UNIX)
+    add_test(NAME imgui_pin_sync
+             COMMAND bash "${CMAKE_SOURCE_DIR}/tools/check_imgui_pin.sh"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(imgui_pin_sync PROPERTIES TIMEOUT 30)
+endif()
+
 # -- Coverage gaps closed (TODO.md › Infra, juillet 2026) ---------------------
 # Five modules carried no dedicated test at all. Each of these is headless and
 # deterministic despite three of the subjects being "desktop-only": the parts
