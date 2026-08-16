@@ -1149,7 +1149,7 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
             hwKeyValue("Mutually exclusive:", "CFFA1 (shares $9000-$9FFF).");
             hwHeading("Prompt & line editing");
             hwKeyValue("Prompt:", "'/>' at root, '/FOLDER>' after CD (the path itself IS the prompt - no need for PWD).");
-            hwKeyValue("Backspace:", "Press '_' (underscore) to erase the last character typed - real keyboards have no Backspace. May not work on every keyboard.");
+            hwKeyValue("Backspace:", "'_' (underscore) erases the last character typed - the real Apple-1 has no hardware backspace. The host Backspace key sends '_' for you.");
             hwKeyValue("Long listings:", "Press any key (except ESC) to pause a DIR / LS / TYPE / DUMP. Press ENTER to resume, ESC to abort.");
             hwKeyValue("Case:", "Commands are UPPERCASE only (Apple-1 keyboard is upper-only). All hex arguments are in hex without $ prefix.");
             hwHeading("Tagged filenames (NAME#TTAAAA)");
@@ -1730,7 +1730,7 @@ void MainWindow_ImGui::renderSoftwareReferenceWindow()
             hwKeyValue("Raw .bin:", "Binary image loaded at the address you pick in the Load dialog.");
             hwKeyValue("Woz hex dump (.txt/.hex/.apl/.mon):", "Apple-1 standard format - .apl is Uncle Bernie's canonical name for it. Supports comments (// # ;), continuation lines and the R (run address) suffix.");
             hwKeyValue("TurboType (.tur):", "Uncle Bernie's fast-transfer file. POM1 writes memory directly, so the serial loader inside it is skipped; the file's own CRC check then verifies the image and starts the program. 'EE' on screen means the check failed.");
-            hwKeyValue("Paste Code (Ctrl+V):", "Feeds the clipboard through the keyboard (up to 4096 chars) - perfect for pasting Woz hex listings.");
+            hwKeyValue("Paste Code (File menu):", "Feeds the clipboard through the keyboard (up to 4096 chars) - perfect for pasting Woz hex listings.");
             hwHeading("Auto-plug on load");
             ImGui::TextWrapped(
                 "The Load dialog auto-enables the matching card from the file's folder: "
@@ -2492,7 +2492,10 @@ void MainWindow_ImGui::renderTutorialApplesoftWindow()
             "array SI(A), which auto-dimensions to zero, so it silently "
             "prints 0. Compute them yourself with a Taylor series, or use "
             "the full Applesoft on the GEN2 / TMS9918 cards.");
-        bulletWrapped("Line editor: Ctrl-H (Backspace) deletes the last character typed.");
+        bulletWrapped(
+            "Line editor: Ctrl-H deletes the last character typed. Applesoft "
+            "Lite is the odd one out here - the host Backspace key sends '_', "
+            "which every other firmware uses, so type Ctrl-H for this one.");
         bulletWrapped("No HGR / HCOLOR - the GEN2 HGR card is addressed directly via POKE.");
         bulletWrapped("See tutorial 'microSD: load and save programs' for full ASAVE / LOAD / RUN workflow.");
         ImGui::EndChild();
@@ -3481,12 +3484,13 @@ void MainWindow_ImGui::renderShortcutsHelpWindow()
                             "Tab / arrows / Space / Enter drive the POM1 interface "
                             "instead of typing into the Apple-1. The status bar "
                             "shows \"UI NAV\" while active.");
-            row("Ctrl+O",   "Load Memory (program file)");
-            row("Ctrl+S",   "Save Memory");
-            row("Ctrl+V",   "Paste host clipboard text to the Apple-1 keyboard");
-#if !POM1_IS_WASM
-            row("Ctrl+Q",   "Quit POM1");
-#endif
+            row("Ctrl+A..Z", "Sent straight to the Apple-1 as the ASCII control "
+                             "code $01-$1A, like the CTRL key on the real ASCII "
+                             "keyboard: Ctrl+C breaks Integer BASIC, Ctrl+H is "
+                             "Applesoft Lite's backspace, Ctrl+S / Ctrl+Q are "
+                             "XOFF / XON. POM1 keeps NO Ctrl+letter shortcut of "
+                             "its own so none of the 26 is shadowed - Load / Save "
+                             "Memory, Paste Code and Quit live in the File menu.");
             row("Enter",    "On the startup profile chooser: boot the default profile");
             ImGui::EndTable();
         }

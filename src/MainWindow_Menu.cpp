@@ -92,10 +92,12 @@ void MainWindow_ImGui::renderMenuBar()
         };
 
         if (ImGui::BeginMenu("File")) {
-            if (ImGui::MenuItem("Load Memory", shortcutLabel(GLFW_KEY_O, GLFW_MOD_CONTROL))) {
+            // No CTRL+letter accelerators here on purpose — they would shadow
+            // the ASCII control codes the Apple-1 needs (see shortcuts[]).
+            if (ImGui::MenuItem("Load Memory", nullptr)) {
                 loadMemory();
             }
-            if (ImGui::MenuItem("Save Memory", shortcutLabel(GLFW_KEY_S, GLFW_MOD_CONTROL))) {
+            if (ImGui::MenuItem("Save Memory", nullptr)) {
                 saveMemory();
             }
             ImGui::Separator();
@@ -124,12 +126,12 @@ void MainWindow_ImGui::renderMenuBar()
                 "CodeTank if needed. 32 KB ROM in roms/codetank/ (two 16 KB banks).\n"
                 "After a Run (lower or upper bank), 4000R is sent to the Woz monitor.");
             ImGui::Separator();
-            if (ImGui::MenuItem("Paste Code", shortcutLabel(GLFW_KEY_V, GLFW_MOD_CONTROL))) {
+            if (ImGui::MenuItem("Paste Code", nullptr)) {
                 pasteCode();
             }
 #if !POM1_IS_WASM
             ImGui::Separator();
-            if (ImGui::MenuItem("Quit", shortcutLabel(GLFW_KEY_Q, GLFW_MOD_CONTROL))) {
+            if (ImGui::MenuItem("Quit", nullptr)) {
                 quit();
             }
 #endif
@@ -1050,7 +1052,7 @@ void MainWindow_ImGui::renderToolbar()
 
         // --- Chargement (premier) ---
         if (ImGui::Button(ICON_FA_FOLDER_OPEN, btnSize)) loadMemory();
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Load (Ctrl+O)");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Load");
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,

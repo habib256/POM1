@@ -12,11 +12,15 @@
 
 #include <GLFW/glfw3.h>
 
+// NEVER add a CTRL+LETTER entry to this table. handleGlfwKey dispatches
+// shortcuts BEFORE the Apple-1 gets the key, so any Ctrl+<letter> listed here
+// shadows the ASCII control code of the same letter and makes it untypeable on
+// the emulated machine. That is why Ctrl+O/S/V/Q (Load/Save/Paste/Quit) were
+// removed: they were eating $0F, $13 (XOFF), $16 and $11 (XON). Every one of
+// those actions is still reachable from the menus (File ▸ Load/Save Memory,
+// Paste Code, Quit) and, for Load, the toolbar. Function-key chords are safe —
+// F1-F10 are not ASCII, so Ctrl+F5 keeps its shortcut.
 const MainWindow_ImGui::Shortcut MainWindow_ImGui::shortcuts[] = {
-    { GLFW_KEY_O,  GLFW_MOD_CONTROL, "Ctrl+O",  &MainWindow_ImGui::loadMemory },
-    { GLFW_KEY_S,  GLFW_MOD_CONTROL, "Ctrl+S",  &MainWindow_ImGui::saveMemory },
-    { GLFW_KEY_V,  GLFW_MOD_CONTROL, "Ctrl+V",  &MainWindow_ImGui::pasteCode },
-    { GLFW_KEY_Q,  GLFW_MOD_CONTROL, "Ctrl+Q",  &MainWindow_ImGui::quit },
     { GLFW_KEY_F5, GLFW_MOD_CONTROL, "Ctrl+F5", &MainWindow_ImGui::hardReset },
     { GLFW_KEY_F5, 0,                "F5",       &MainWindow_ImGui::reset },
     { GLFW_KEY_F6, 0,                "F6",       nullptr }, // toggle start/stop
@@ -94,8 +98,9 @@ void MainWindow_ImGui::handleGlfwKey(int key, int scancode, int action, int mods
         }
     }
 
-    // Non-printable Apple-1 keys (Enter / Backspace / Escape) do not produce a
-    // char callback, so queue them here — gated on autorepeat for REPEAT events.
+    // Non-printable Apple-1 keys (Enter / Backspace / Escape) and CTRL+letter do
+    // not produce a char callback, so queue them here — gated on autorepeat for
+    // REPEAT events.
     if (ImGui::GetIO().WantTextInput) return;
     if (uiNavMode_) return;   // F10 mode: keys navigate the UI, not the Apple-1
     // Same guard as handleGlfwChar: while the SID Tracker owns the keyboard,
@@ -104,10 +109,39 @@ void MainWindow_ImGui::handleGlfwKey(int key, int scancode, int action, int mods
     const bool fire = (action == GLFW_PRESS) || (action == GLFW_REPEAT && keyboardAutorepeat);
     if (!fire) return;
 
+    // CTRL+letter → ASCII control code $01-$1A, the way the CTRL key on a real
+    // Apple-1 ASCII keyboard worked. GLFW emits no char event for a CTRL combo,
+    // so without this the physical keyboard cannot reach a control code AT ALL
+    // — Ctrl-C (Integer BASIC break) and Ctrl-H (Applesoft Lite's line editor)
+    // were only typeable from the on-screen keyboard photo, which has its own
+    // sticky CTRL latch. GLFW_KEY_A..Z are the ASCII letter codes, so the
+    // offset arithmetic is the usual `& 0x1F` fold. The shortcut table above
+    // deliberately holds no CTRL+letter chord, so all 26 reach the Apple-1.
+    // ALT/SUPER are excluded so Cmd- combos stay with the OS; SHIFT is allowed
+    // because Ctrl+Shift+letter yields the same control code on real hardware.
+    const bool ctrlChord = (activeMods & GLFW_MOD_CONTROL) &&
+                           !(activeMods & (GLFW_MOD_ALT | GLFW_MOD_SUPER));
+    if (ctrlChord && key >= GLFW_KEY_A && key <= GLFW_KEY_Z) {
+        emulation->queueKey(static_cast<char>(key - GLFW_KEY_A + 1));
+        return;
+    }
+
     if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
         emulation->queueKey('\r');
     } else if (key == GLFW_KEY_BACKSPACE) {
-        emulation->queueKey('\b');
+        // The host Backspace key sends '_' ($5F -> $DF on the bus), NOT $08
+        // (github #38). The Apple-1 has no hardware able to delete the
+        // character left of the cursor — the terminal is a shift-register
+        // display that cannot un-shift. What the Woz Monitor does instead is
+        // visible in its own byte stream: GETLINE ECHOes every key BEFORE
+        // testing it, so the '_' is already on screen when `CMP #$DF` matches
+        // and BACKSPACE does nothing but `DEY` — the character leaves the input
+        // buffer while the screen keeps a trail of underscores. Sending $08
+        // here instead would print nothing and silently leave a junk byte in
+        // the buffer, since NOTCR only ever tests $DF and $9B. Applesoft Lite's
+        // Ctrl-H line editor is unaffected: it is reachable as a CTRL+letter
+        // chord, handled above.
+        emulation->queueKey('_');
     } else if (key == GLFW_KEY_ESCAPE) {
         emulation->queueKey(27);
     }
