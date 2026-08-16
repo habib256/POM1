@@ -398,6 +398,16 @@ if(APPLE AND NOT EMSCRIPTEN)
          "${POM1_SRC_DIR}/NativeFileDialog_Mac.mm")
 endif()
 
+# macOS native fullscreen (green button / ⌃⌘F) query+toggle: AppKit's fullscreen
+# SPACE is invisible to GLFW, so MainWindow needs a Cocoa seam to avoid
+# resizing a window it must not resize. MacNativeFullscreen.h inlines a
+# `false` fallback on every other platform, so nothing else is conditional.
+set(POM1_MACOS_WINDOW_SOURCES "")
+if(APPLE AND NOT EMSCRIPTEN)
+    list(APPEND POM1_MACOS_WINDOW_SOURCES
+         "${POM1_SRC_DIR}/MacNativeFullscreen.mm")
+endif()
+
 # Renderer backend implementation: PomRenderer.cpp (factory/singleton) is
 # always compiled; the actual GL or Metal impl follows POM1_USE_METAL.
 set(POM1_RENDERER_SOURCES "")
@@ -424,12 +434,14 @@ if(APPLE AND NOT EMSCRIPTEN)
                    ${SOURCES} ${HEADERS} ${IMGUI_SOURCES}
                    ${POM1_NATIVE_ICON_SOURCES}
                    ${POM1_NATIVE_FILE_DIALOG_SOURCES}
+                   ${POM1_MACOS_WINDOW_SOURCES}
                    ${POM1_RENDERER_SOURCES})
 else()
     add_executable(${PROJECT_NAME}
                    ${SOURCES} ${HEADERS} ${IMGUI_SOURCES}
                    ${POM1_NATIVE_ICON_SOURCES}
                    ${POM1_NATIVE_FILE_DIALOG_SOURCES}
+                   ${POM1_MACOS_WINDOW_SOURCES}
                    ${POM1_RENDERER_SOURCES})
 endif()
 

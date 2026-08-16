@@ -8,6 +8,7 @@
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
 #include "POM1Build.h"
+#include "MacNativeFullscreen.h"  // macOS fullscreen space is invisible to GLFW
 #include "PomVersion.h"   // POM1_VERSION_STRING (generated from VERSION)
 #include "PomRenderer.h"
 #include "Logger.h"
@@ -1884,7 +1885,50 @@ void MainWindow_ImGui::renderScreenConfigDialog()
         }
 
         ImGui::Spacing();
-        if (ImGui::Checkbox("Fullscreen", &fullscreen)) {
+        // The checkbox reflects fullscreen by ANY route, so a session entered
+        // through macOS' green button doesn't show up here as "off" (ticking it
+        // would then stack a glfwSetWindowMonitor fullscreen on top of AppKit's
+        // space). Leaving a native space is handed back to AppKit's own toggle.
+#if !POM1_IS_WASM
+        const bool nativeFs = window && pom1::macWindowIsNativeFullscreen(window);
+        // Retire the in-flight latch once AppKit has actually left the space,
+        // or after the timeout if we somehow never observe that.
+        if (macNativeExitRequestedAt_ >= 0.0 &&
+            (!nativeFs || ImGui::GetTime() - macNativeExitRequestedAt_
+                              > kMacNativeExitTimeoutSeconds)) {
+            macNativeExitRequestedAt_ = -1.0;
+        }
+#endif
+        bool fullscreenUi = osWindowIsFullscreen();
+#if !POM1_IS_WASM
+        // Show the state the user ASKED for while AppKit animates out of the
+        // space — the style mask (and so osWindowIsFullscreen) stays set for
+        // the whole animation, and a checkbox that snaps back to ticked reads
+        // as "my click did nothing".
+        if (macNativeExitRequestedAt_ >= 0.0) fullscreenUi = false;
+#endif
+        bool fullscreenToggled = ImGui::Checkbox("Fullscreen", &fullscreenUi);
+#if !POM1_IS_WASM
+        // Swallow clicks while a native transition is already running: handing
+        // AppKit a second toggleFullScreen: mid-animation puts the window
+        // straight back into the space.
+        if (fullscreenToggled && macNativeExitRequestedAt_ >= 0.0)
+            fullscreenToggled = false;
+        // Inside a macOS native space, hand the exit back to AppKit and stop
+        // here: glfwSetWindowMonitor must never fight a window AppKit owns.
+        if (fullscreenToggled && nativeFs) {
+            pom1::macWindowToggleNativeFullscreen(window);
+            macNativeExitRequestedAt_ = ImGui::GetTime();
+            fullscreen = false;
+            // Same escape hatch as the plain path below: a --fullscreen kiosk
+            // must let go here too, or render() re-asserts setOsFullscreen(true)
+            // the moment AppKit finishes leaving the space.
+            cliForcedFullscreen_ = false;
+            fullscreenToggled = false;
+        }
+#endif
+        if (fullscreenToggled) {
+            fullscreen = fullscreenUi;
 #if POM1_IS_WASM
             if (fullscreen) {
                 EmscriptenFullscreenStrategy strategy{};
