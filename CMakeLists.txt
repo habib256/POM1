@@ -148,10 +148,21 @@ endif()
 
 # ImGui
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
-# Quoted in the error messages below. NOT the single source of truth: the tag
-# is pinned in nine places — see the "Docking" bullet in CLAUDE.md for the full
-# list, and bump them together.
-set(POM1_IMGUI_TAG "v1.92.9-docking")
+# The pin lives in the repo-root IMGUI_VERSION file — one line, two fields:
+# "<git tag> <IMGUI_VERSION_NUM floor>". Same idiom as VERSION: derive it
+# wherever a consumer can read a file, and let tools/check_imgui_pin.sh (ctest
+# `imgui_pin_sync`) fail on any literal left behind that disagrees.
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/IMGUI_VERSION" POM1_IMGUI_PIN_LINE
+     LIMIT_COUNT 1)
+separate_arguments(POM1_IMGUI_PIN_FIELDS UNIX_COMMAND "${POM1_IMGUI_PIN_LINE}")
+list(LENGTH POM1_IMGUI_PIN_FIELDS POM1_IMGUI_PIN_FIELD_COUNT)
+if(POM1_IMGUI_PIN_FIELD_COUNT LESS 2)
+    message(FATAL_ERROR
+        "IMGUI_VERSION is malformed: expected \"<tag> <version-num>\", got "
+        "\"${POM1_IMGUI_PIN_LINE}\"")
+endif()
+list(GET POM1_IMGUI_PIN_FIELDS 0 POM1_IMGUI_TAG)
+list(GET POM1_IMGUI_PIN_FIELDS 1 POM1_IMGUI_MIN_VERSION_NUM)
 # imgui/ is NOT vendored: it is .gitignored and cloned by setup_pom1.sh. Check
 # it is present AND on the DOCKING branch before globbing it. POM1 uses
 # DockSpace and ImGuiWindowFlags_NoDocking, which exist only there, and a
@@ -184,9 +195,7 @@ endif()
 # ImGuiWindowFlags_NoDocking, sails past the probe above, and then dies deep in
 # the build on ImGuiChildFlags_Borders — renamed upstream in 1.91.1 and used by
 # src/bench/CodeBench.cpp. The Metal sampler patch further down is version-split
-# at 1.92.7/1.92.8 too. So pin the numeric version as well: ImGui encodes it as
-# MAJOR*10000 + MINOR*100 + PATCH*10, i.e. 19290 for 1.92.9.
-set(POM1_IMGUI_MIN_VERSION_NUM 19290)
+# at 1.92.7/1.92.8 too. Hence the numeric floor read from IMGUI_VERSION above.
 file(STRINGS "${IMGUI_DIR}/imgui.h" POM1_IMGUI_VERSION_LINE
      REGEX "^#define[ \t]+IMGUI_VERSION_NUM[ \t]" LIMIT_COUNT 1)
 string(REGEX MATCH "[0-9]+$" POM1_IMGUI_VERSION_NUM "${POM1_IMGUI_VERSION_LINE}")

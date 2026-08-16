@@ -17,6 +17,13 @@
 #
 # On vérifie donc les DEUX : branche docking ET IMGUI_VERSION_NUM >= le pin.
 #
+# Le pin vient du fichier IMGUI_VERSION à la racine du dépôt — une seule ligne,
+# deux champs séparés par une espace : «<tag git> <plancher IMGUI_VERSION_NUM>».
+# (ImGui encode sa version en MAJOR*10000 + MINOR*100 + PATCH*10, d'où 19290
+# pour la 1.92.9 ; le nombre est stocké plutôt que dérivé du tag, la formule ne
+# tenant plus si un jour le patch atteint 10.) tools/check_imgui_pin.sh, câblé
+# sur ctest, échoue si un des littéraux restants s'en écarte.
+#
 # Usage :  tools/ensure_imgui.sh [dir]          (dir par défaut : ./imgui)
 # Réglages par variable d'environnement : IMGUI_TAG, IMGUI_MIN_VERSION_NUM,
 # IMGUI_URL — c'est ainsi que les conteneurs de packaging imposent leur pin.
@@ -24,10 +31,20 @@
 set -euo pipefail
 
 IMGUI_DIR="${1:-imgui}"
-IMGUI_TAG="${IMGUI_TAG:-v1.92.9-docking}"
-# ImGui encode sa version en MAJOR*10000 + MINOR*100 + PATCH*10 : la 1.92.9
-# vaut 19290. À garder aligné sur IMGUI_TAG ci-dessus.
-IMGUI_MIN_VERSION_NUM="${IMGUI_MIN_VERSION_NUM:-19290}"
+
+pin_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/IMGUI_VERSION"
+if [ ! -f "$pin_file" ]; then
+    echo "ERREUR : $pin_file introuvable." >&2
+    exit 1
+fi
+read -r pin_tag pin_num _ < "$pin_file"
+if [ -z "${pin_tag:-}" ] || [ -z "${pin_num:-}" ]; then
+    echo "ERREUR : $pin_file malformé (attendu «<tag> <num>»)." >&2
+    exit 1
+fi
+
+IMGUI_TAG="${IMGUI_TAG:-$pin_tag}"
+IMGUI_MIN_VERSION_NUM="${IMGUI_MIN_VERSION_NUM:-$pin_num}"
 IMGUI_URL="${IMGUI_URL:-https://github.com/ocornut/imgui.git}"
 
 hdr="$IMGUI_DIR/imgui.h"

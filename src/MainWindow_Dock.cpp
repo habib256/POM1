@@ -3,8 +3,8 @@
 //
 // MainWindow_Dock.cpp — the ImGui docking host.
 //
-// POM1 runs on Dear ImGui's `docking` branch (pinned v1.92.9-docking by
-// setup_pom1.sh and the CI/packaging scripts). Every panel of the UI lives
+// POM1 runs on Dear ImGui's `docking` branch (the tag is pinned in the
+// repo-root IMGUI_VERSION file). Every panel of the UI lives
 // inside ONE full-frame DockSpace that occupies the band between the toolbar
 // and the status bar; panels can be tabbed, split and re-arranged by the user
 // and the arrangement persists per machine preset for free, because
