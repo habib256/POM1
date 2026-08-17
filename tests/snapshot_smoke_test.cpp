@@ -660,10 +660,92 @@ int main()
         std::filesystem::remove(pathSD, ecSD);
     }
 
+    // ── CFFA1: a multi-sector transfer must survive a snapshot taken while it
+    //    is still in flight. The card's sector counter lives only in
+    //    sectorsRemaining_ — it is not derivable from the ATA registers, since
+    //    the count register is a copy that the transfer itself rewrites — and
+    //    it was missing from the CFFA1 section until snapshot v6. Restoring
+    //    left it at whatever the destination card held (0 on a fresh one), so
+    //    the next 512-byte boundary decremented it below zero, cleared DRQ and
+    //    truncated the read to the sector already in the buffer: ProDOS got a
+    //    short read and $FF for every byte after it.
+    //
+    //    The image is built here rather than borrowed from cfcard/cfcard.po:
+    //    every sector must carry a DISTINCT byte, or the truncation is
+    //    invisible — a run of $FF in the real image reads the same whether the
+    //    transfer continued or aborted (an abort also answers $FF), and the pin
+    //    would pass against the very bug it exists for.
+    {
+        const auto imagePath = std::filesystem::temp_directory_path()
+                             / "pom1_snap_cffa1_multisector.po";
+        {
+            std::ofstream img(imagePath, std::ios::binary | std::ios::trunc);
+            for (int s = 0; s < 8; ++s) {
+                const std::vector<char> sector(512, static_cast<char>(0x10 + s));
+                img.write(sector.data(), static_cast<std::streamsize>(sector.size()));
+            }
+            if (!img) {
+                std::fprintf(stderr, "CFFA1 multi-sector pin: cannot write %s\n",
+                             imagePath.string().c_str());
+                return 1;
+            }
+        }
+        const std::string kImage = imagePath.string();
+        CFFA1 straight, restored;
+        if (!straight.openDiskImage(kImage) || !restored.openDiskImage(kImage)) {
+            std::fprintf(stderr, "CFFA1 multi-sector pin: cannot open %s\n",
+                         kImage.c_str());
+            return 1;
+        }
+        auto startRead4 = [](CFFA1& cf) {
+            cf.writeByte(0xAFEA, 4);       // sector count = 4
+            cf.writeByte(0xAFEB, 0x00);    // LBA0 — sectors 0..3
+            cf.writeByte(0xAFEC, 0x00);
+            cf.writeByte(0xAFED, 0x00);
+            cf.writeByte(0xAFEE, 0xE0);    // LBA3 / device
+            cf.writeByte(0xAFEF, 0x20);    // READ SECTOR(S)
+        };
+        startRead4(straight);
+        startRead4(restored);
+
+        std::vector<uint8_t> want, got;
+        want.reserve(4 * 512);
+        got.reserve(4 * 512);
+        for (int i = 0; i < 4 * 512; ++i) want.push_back(straight.readByte(0xAFE8));
+
+        // Interrupt the second card one byte into sector 1 and round-trip it.
+        for (int i = 0; i < 512 + 1; ++i) got.push_back(restored.readByte(0xAFE8));
+        pom1::SnapshotWriter cfw;
+        restored.serialize(cfw);
+        const std::vector<uint8_t> cfBlob = cfw.takeBuffer();
+        CFFA1 resumed;
+        if (!resumed.openDiskImage(kImage)) {
+            std::fprintf(stderr, "CFFA1 multi-sector pin: cannot reopen %s\n",
+                         kImage.c_str());
+            return 1;
+        }
+        pom1::SnapshotReader cfr(cfBlob);
+        resumed.deserialize(cfr);
+        while (got.size() < want.size()) got.push_back(resumed.readByte(0xAFE8));
+
+        if (got != want) {
+            size_t at = 0;
+            while (at < want.size() && got[at] == want[at]) ++at;
+            std::fprintf(stderr,
+                "CFFA1 multi-sector transfer did not survive the snapshot: "
+                "byte %zu (sector %zu) got %02X expected %02X\n",
+                at, at / 512, got[at], want[at]);
+            return 1;
+        }
+        std::error_code ecCf;
+        std::filesystem::remove(imagePath, ecCf);
+    }
+
     std::error_code ec;
     std::filesystem::remove(path, ec);
     std::printf("snapshot round-trip OK (%zu RAM bytes, CPU regs, "
-                "TMS9918+SID+cassette+GT-6144+PR-40+CodeTank+CFFA1 + "
+                "TMS9918+SID+cassette+GT-6144+PR-40+CodeTank+CFFA1 "
+                "(incl. an in-flight multi-sector transfer) + "
                 "standalone Juke-Box + A1-IO/RTC + GEN2 HGR + "
                 "microSD/CodeTank preset-cross)\n",
                 baseline.size());

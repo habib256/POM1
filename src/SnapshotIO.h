@@ -70,7 +70,14 @@ inline constexpr char     kSnapshotMagic[8] = {'P','O','M','1','S','N','A','P'};
 //     snapshots read no journal (the section's length-prefix realigns), so a
 //     restored beam-split frame simply falls back to the end-of-frame latch
 //     until the next flip re-journals — the pre-fix behaviour.
-inline constexpr uint32_t kSnapshotVersion  = 5;
+// v6: August 2026 — two pieces of live device state that were never captured:
+//     the PIA 6821's shadow registers (CRA/CRB + DDRA/DDRB, 4 bytes appended to
+//     the MEM section) and the CFFA1's in-flight multi-sector counter (1 byte
+//     appended to its own section). Both are read gated on `r.version() >= 6`;
+//     pre-v6 snapshots restore the PIA to its post-reset seed ($A7/$A7/$00/$7F,
+//     what resetMemory installs) and treat an in-flight CFFA1 transfer as its
+//     last sector, which is exactly what those snapshots used to do.
+inline constexpr uint32_t kSnapshotVersion  = 6;
 
 /// Section names are 8 bytes, NUL-padded. 8 bytes keeps the file aligned
 /// and reads cheaply via fixed-size buffers. Names beyond 8 chars are

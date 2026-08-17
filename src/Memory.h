@@ -751,6 +751,28 @@ private :
     std::unordered_set<uint32_t> oorWarned;  // key = (addr<<1)|isWrite; capped at 64
     void checkOutOfRangeAccess(uint16_t address, bool isWrite);
     bool writeInRom = false;   // ROM windows write-protected by default (see initMemory)
+    /// True when `address` sits in a window that is physically unwriteable on
+    /// the real machine (Woz Monitor PROM, ACI PROM, Uncle Bernie's extended
+    /// ACI page) and the ROM write-protect is on.
+    ///
+    /// Lives here rather than inline in memWrite() because memWrite is NOT the
+    /// only path that reaches mem[]: a PeripheralBus handler registered over a
+    /// broad window answers FIRST and may fall through to flat RAM for the
+    /// addresses it does not decode. GEN2's soft-switch handler spans
+    /// $C200-$C7FF for exactly that reason — and its fall-through swallowed the
+    /// extended ACI page, so plugging the HGR card silently made that PROM
+    /// writable. Any handler with a flat-RAM fall-through must consult this.
+    bool isRomWriteProtected(uint16_t address) const
+    {
+        if (writeInRom) return false;
+        if (address >= 0xFF00) return true;                      // Woz Monitor PROM
+        if (address >= 0xC100 && address <= 0xC1FF) return true;  // ACI PROM
+        // Uncle Bernie's extended ACI page — the other half of the same PROM
+        // pair. Gated on its own flag so a machine without the Gen-2 cassette
+        // card keeps plain RAM here.
+        if (extendedAciEnabled && address >= 0xC500 && address <= 0xC5FF) return true;
+        return false;
+    }
     std::string lastError;
     std::unique_ptr<CassetteDevice> cassetteDevice;
     // All expansion cards start UNPLUGGED. MainWindow::applyMachineConfig

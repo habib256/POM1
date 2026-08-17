@@ -153,6 +153,41 @@ int runPartA()
     }
     std::printf("A OK: the extended page is write-protected while plugged\n");
 
+    // ...and it stays protected once the GEN2 HGR card is attached. That card
+    // registers a PeripheralBus handler over the whole $C200-$C7FF block (its
+    // soft switches are scattered mirrors, SEL = !A11 & A9 & A4) and falls
+    // through to flat RAM for every address it does not decode. $C5xx has
+    // A9 = 0, so the decoder is blind to it — and the handler answers from
+    // bus.tryWrite() at the TOP of memWrite, BEFORE the ROM write-protect ran.
+    // Plugging the HGR card therefore made this PROM writable, on the default
+    // Fantasy profile and every GEN2 preset (all of which carry the extended
+    // page). Silent corruption of a page whose own design note is that it can
+    // be neither moved nor trimmed.
+    memory.setHgrFramebufferAttached(true);
+    const uint8_t beforeGen2 = memory.memRead(0xC540);
+    memory.memWrite(0xC540, static_cast<uint8_t>(~beforeGen2));
+    if (memory.memRead(0xC540) != beforeGen2) {
+        std::fprintf(stderr,
+            "FAIL: $C540 accepted a write with the GEN2 HGR card attached "
+            "($%02X -> $%02X) — the card's $C200-$C7FF pass-through handler is "
+            "bypassing the PROM write-protect.\n",
+            beforeGen2, memory.memRead(0xC540));
+        return 1;
+    }
+    // The same handler's fall-through must still serve the RAM either side of
+    // the PROM, or the fix would have turned the whole window read-only.
+    memory.memWrite(0xC440, 0x5A);
+    memory.memWrite(0xC640, 0xA5);
+    if (memory.memRead(0xC440) != 0x5A || memory.memRead(0xC640) != 0xA5) {
+        std::fprintf(stderr,
+            "FAIL: the GEN2 pass-through stopped serving RAM around the PROM "
+            "($C440 = $%02X, $C640 = $%02X, expected $5A / $A5).\n",
+            memory.memRead(0xC440), memory.memRead(0xC640));
+        return 1;
+    }
+    memory.setHgrFramebufferAttached(false);
+    std::printf("A OK: ...including with the GEN2 HGR card attached\n");
+
     // Reverse cascade: pulling the cassette card takes its second PROM page
     // with it, and hands $C500 back to RAM.
     memory.setACIEnabled(false);

@@ -102,6 +102,83 @@ moniteur — c'est `RX RX` qui fait tourner la bande. Avec la marche à suivre
 complète (Play d'abord), l'écriture (`<from>.<to>WX`), où brancher la carte, et
 la rétro-compatibilité avec une ACI d'origine.
 
+### Fixed — la PROM de l'ACI étendue redevenait inscriptible dès qu'on branchait la carte GEN2
+
+`$C500-$C5FF` est une PROM : `memWrite` la protège en écriture depuis qu'elle
+existe. Sauf que la carte GEN2 HGR enregistre un handler `PeripheralBus` sur
+**tout** `$C200-$C7FF` — ses soft switches sont des miroirs éparpillés
+(`SEL = !A11 & A9 & A4`) — et retombe sur la RAM à plat pour tout ce qu'il ne
+décode pas. Or `$C5xx` a `A9 = 0`, donc le décodeur GEN2 y est structurellement
+aveugle… et le handler répond depuis `bus.tryWrite()` **en tête** de
+`memWrite`, donc **avant** la protection ROM, qui n'était jamais atteinte.
+
+Résultat : brancher la carte HGR rendait la PROM d'Uncle Bernie inscriptible.
+Sur le profil POM1 Fantasy par défaut et sur tous les presets GEN2 — qui
+portent justement la page étendue — un `STA $C5xx` égaré la corrompait en
+silence. Précisément la page dont la note de conception dit qu'elle ne peut
+être ni déplacée ni rognée, parce que le firmware s'y relocalise dans la page
+de pile et rustine sa propre copie ; une fois corrompue, `C500R` déraille d'une
+manière qui ressemble à un problème de bande.
+
+Les fenêtres protégées vivent désormais dans `Memory::isRomWriteProtected()`,
+que `memWrite` **et** le passe-plat GEN2 consultent — la règle est écrite une
+fois, et CLAUDE.md la pose pour tout futur handler qui écrit `mem[]` lui-même.
+Épinglé dans `extended_aci_smoke` partie A (vérifié rouge sans le correctif),
+avec la contrepartie : la RAM de part et d'autre de la PROM (`$C440`, `$C640`)
+doit rester inscriptible, sinon le correctif aurait gelé toute la fenêtre.
+
+### Fixed — snapshots v6 : deux états vivants que la sauvegarde ne capturait pas
+
+Chasse aux bugs sur le format de snapshot. Les deux défauts sont de la même
+famille — un registre interne qui décide du comportement du matériel, présent
+nulle part dans l'image mémoire, et absent de la section qui aurait dû le
+porter. Le rewind rejoue exactement les mêmes blobs (`RewindBuffer` travaille
+sur `saveSnapshotToBuffer`), donc chacun se manifestait aussi en scrubbant la
+timeline, pas seulement sur un File → Load snapshot.
+
+- **Les registres fantômes du PIA 6821 (`CRA`/`CRB` + `DDRA`/`DDRB`)
+  n'étaient pas sauvegardés.** Ils ne sont pas reconstructibles depuis les
+  64 Ko : `memWrite` sort **avant** le rangement dans `mem[]` quand le
+  registre de direction est banké, donc DDRA/DDRB n'y sont jamais ; et si
+  `mem[$D011]`/`mem[$D013]` reçoivent bien une copie des mots de contrôle,
+  **toute lecture répond depuis le membre**. Restaurer gardait donc le banking
+  de la machine *vivante* : un état pris pendant la sonde de Codebreaker
+  (`CRB:=0` / lire `$D012` / attendre `$7F`) revenait avec `$D012` répondant
+  le port d'affichage au lieu du registre de direction, et `$D013` relisant
+  l'ancien CR. Quatre octets ajoutés à la section `MEM`.
+- **Le compteur multi-secteurs de la CFFA1 (`sectorsRemaining_`) non plus.**
+  Il n'est pas déductible des registres ATA — le registre de comptage est une
+  copie que le transfert réécrit au fil des secteurs. Une restauration le
+  laissait à la valeur de la carte de destination (0 sur une carte neuve),
+  donc la frontière des 512 octets suivante le décrémentait sous zéro,
+  retombait DRQ et **tronquait la lecture au secteur déjà en tampon** :
+  ProDOS recevait une lecture courte puis `$FF` pour tout le reste. Un octet
+  ajouté à la section `CFFA1`, plus `reset()` qui le remet à zéro (SRST
+  laissait un transfert fantôme en compte).
+
+Format **v6**. Les deux champs sont relus derrière `r.version() >= 6`, comme
+le drapeau T2 du microSD l'a fait en v4 : un snapshot v1-v5 se recharge sans
+rien perdre de ce qu'il portait — le PIA repart sur son état post-reset
+(`$A7/$A7/$00/$7F`, ce qu'installe `resetMemory`, et surtout **pas** une
+reconstruction depuis `mem[$D011]`/`mem[$D013]` qui valent 0 sur une machine
+n'ayant pas exécuté le reset du moniteur, donc DDR bankés et ECHO qui pend),
+et un transfert CFFA1 en vol est traité comme son dernier secteur, ce qu'il
+faisait déjà.
+
+Épinglé des deux côtés — chaque pin a été vérifié rouge sans le correctif :
+**`pia_ddr_smoke`** gagne un aller-retour snapshot (§8), **`snapshot_smoke`**
+une lecture CFFA1 de quatre secteurs interrompue en plein vol, comparée
+octet à octet au même transfert mené d'une traite. Ce dernier fabrique sa
+propre image (un octet distinct par secteur) au lieu d'emprunter
+`cfcard/cfcard.po` : une plage de `$FF` dans l'image réelle se lit pareil que
+le transfert continue ou qu'il avorte, et le test passait alors contre le bug
+même qu'il devait attraper.
+
+Au passage, l'écriture des CR (`$D011`/`$D013`) marque enfin la page `$D0`
+sale. Le Memory Viewer dessine le snapshot **publié**, qui ne recopie que les
+pages marquées — il affichait donc l'ancien mot de contrôle jusqu'à ce qu'une
+autre écriture dans la page veuille bien la salir.
+
 ### Fixed — documentation : promesses que le dépôt ne tenait plus
 
 Passe de vérification factuelle, pas de relecture au jugé.

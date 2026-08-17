@@ -42,6 +42,7 @@
 
 #include <cstdio>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -136,7 +137,43 @@ int main()
     if (mem.memRead(0xD012) != 0x7F)
         return fail("resetMemory did not restore DDRB to $7F");
 
+    // ---- 8. The banking survives a snapshot round-trip ---------------------
+    // The four shadow registers are NOT reconstructible from the 64 KB RAM
+    // image: DDRA/DDRB never reach mem[] at all (memWrite returns before the
+    // store when the CR banks them in), and while CRA/CRB are mirrored there,
+    // every READ answers from the member. They were missing from the MEM
+    // section until v6, so a restore silently kept the LIVE machine's banking
+    // — load a state taken mid-probe and Codebreaker's `LDA $D012` came back
+    // with the display port instead of DDRB. Rewind replays the same blobs, so
+    // scrubbing the timeline hit it too.
+    {
+        Memory a;
+        a.initMemory();
+        a.memWrite(0xD013, 0x00);            // CRB := 0 → DDRB banked in
+        a.memWrite(0xD012, 0x3C);            // program DDRB
+        a.memWrite(0xD011, 0x04);            // CRA := 4 → keyboard DATA selected
+        a.memWrite(0xD013, 0x00);            // (still banked in when we snapshot)
+
+        const std::vector<uint8_t> blob = a.saveSnapshotToBuffer(nullptr);
+        if (blob.empty()) return fail("saveSnapshotToBuffer produced nothing");
+
+        Memory b;                            // fresh: CRB = $A7, DDRB = $7F
+        b.initMemory();
+        std::string err;
+        if (!b.loadSnapshotFromBuffer(blob, err, nullptr))
+            return fail(("snapshot restore failed: " + err).c_str());
+
+        if (b.memRead(0xD013) != 0x00)
+            return fail("CRB did not survive the snapshot round-trip");
+        if (b.memRead(0xD012) != 0x3C)
+            return fail("DDRB did not survive the snapshot round-trip");
+        b.memWrite(0xD013, 0xA7);            // bank the data register back
+        if (b.memRead(0xD013) != 0xA7)
+            return fail("CRB is not writable after a restore");
+    }
+
     std::printf("pia_ddr_smoke: OK (DDRB reads $7F through the CRB bank, "
-                "$D013 is a register, display and keyboard unchanged)\n");
+                "$D013 is a register, display and keyboard unchanged, "
+                "banking survives a snapshot)\n");
     return 0;
 }
