@@ -288,7 +288,11 @@ set(SOURCES
     ${POM1_SRC_DIR}/CassetteDevice.cpp
     ${POM1_SRC_DIR}/CassetteDeck_ImGui.cpp
     ${POM1_SRC_DIR}/CliDispatcher.cpp
+    ${POM1_SRC_DIR}/MachinePresets.cpp
     ${POM1_SRC_DIR}/EmulationController.cpp
+    ${POM1_SRC_DIR}/EmulationController_State.cpp
+    ${POM1_SRC_DIR}/EmulationController_Machine.cpp
+    ${POM1_SRC_DIR}/EmulationController_Cards.cpp
     ${POM1_SRC_DIR}/GraphicsCard.cpp
     ${POM1_SRC_DIR}/Gen2VideoScanner.cpp
     ${POM1_SRC_DIR}/main_imgui.cpp
@@ -329,11 +333,19 @@ set(SOURCES
     ${POM1_SRC_DIR}/MainWindow_Presets.cpp
     ${POM1_SRC_DIR}/MainWindow_Menu.cpp
     ${POM1_SRC_DIR}/MainWindow_Dialogs.cpp
+    ${POM1_SRC_DIR}/MainWindow_Settings.cpp
+    ${POM1_SRC_DIR}/MainWindow_Tutorials.cpp
     ${POM1_SRC_DIR}/MainWindow_HardwareWindows.cpp
+    ${POM1_SRC_DIR}/MainWindow_SiliconStrict.cpp
     ${POM1_SRC_DIR}/MainWindow_FileDialogs.cpp
     ${POM1_SRC_DIR}/MainWindow_DebugWindows.cpp
     ${POM1_SRC_DIR}/MainWindow_TMS9918Inspector.cpp
     ${POM1_SRC_DIR}/MainWindow_Keyboard.cpp
+    # Pure logic lifted out of MainWindow so it can be tested headless — no
+    # ImGui, no GLFW. See each header for what it owns and why.
+    ${POM1_SRC_DIR}/Apple1KeyMap.cpp
+    ${POM1_SRC_DIR}/FullscreenExpand.cpp
+    ${POM1_SRC_DIR}/WindowGeometry.cpp
     ${POM1_SRC_DIR}/NativeFileDialog.cpp
     ${POM1_SRC_DIR}/PomRenderer.cpp
     ${POM1_SRC_DIR}/OpenGLShader.cpp
@@ -342,6 +354,9 @@ set(SOURCES
     ${POM1_SRC_DIR}/Logger.cpp
     ${POM1_SRC_DIR}/third_party/ImGuiColorTextEdit/TextEditor.cpp
     ${POM1_SRC_DIR}/Pom1BenchHost.cpp
+    ${POM1_SRC_DIR}/Pom1BenchTargets.cpp
+    ${POM1_SRC_DIR}/Pom1BenchCc65.cpp
+    ${POM1_SRC_DIR}/Pom1BenchHost_Lang.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bench/ProcessUtil.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bench/BenchLang.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bench/CodeBench.cpp

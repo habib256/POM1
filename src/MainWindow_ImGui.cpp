@@ -505,7 +505,7 @@ bool MainWindow_ImGui::wantsContinuousRender() const
     // needs frames to observe. At the 5 Hz idle floor an AppKit transition
     // would resolve in seconds instead of milliseconds — and the pre-expand
     // frames show the screen window at its windowed size.
-    if (fullscreenResizePendingFrames > 0) return true;
+    if (fullscreenExpand_.pending()) return true;
     if (statusTimer > 0.0f) return true;          // status-bar message fading
     if (screen && screen->hasPendingOutput()) return true;   // Apple-1 printing / boot
     // Card framebuffers: real change detection (GEN2 render() diff, TMS/GT
@@ -525,12 +525,12 @@ bool MainWindow_ImGui::wantsContinuousRender() const
 
 void MainWindow_ImGui::armFullscreenScreenExpand()
 {
-    fullscreenResizePendingFrames = kFullscreenResizeSettleFrames;
     // Seed the settle baseline with the size we can see right now. Every caller
     // runs inside a frame, but guard anyway: applyMachineConfig/loadPresetLayout
     // are also reachable from the headless CLI paths, where there is no context.
-    fullscreenResizeLastDisplaySize =
+    const ImVec2 ds =
         ImGui::GetCurrentContext() ? ImGui::GetIO().DisplaySize : ImVec2(0.0f, 0.0f);
+    fullscreenExpand_.arm(ds.x, ds.y);
 }
 
 bool MainWindow_ImGui::osWindowIsFullscreen() const
@@ -761,20 +761,13 @@ void MainWindow_ImGui::render()
             float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale + uiPx(kApple1ImGuiWinPadH);
             ImGui::SetNextWindowPos(ImVec2(10, toolbarBottom + uiPx(kGapBelowToolbarBeforeApple1)));
             ImGui::SetNextWindowSize(ImVec2(sw, sh));
-            fullscreenResizePendingFrames = 0;   // drop a switch-armed expand
+            fullscreenExpand_.cancel();          // drop a switch-armed expand
         }
         wasFullscreen = osFullscreenNow;
     }
-    if (fullscreenResizePendingFrames > 0) {
+    {
         const ImVec2 ds = ImGui::GetIO().DisplaySize;
-        if (ds.x != fullscreenResizeLastDisplaySize.x ||
-            ds.y != fullscreenResizeLastDisplaySize.y) {
-            // Still moving — AppKit animates into its fullscreen space over
-            // ~0.5 s and flips the style mask at the START of it. Re-arm and
-            // let the expand land on the size the frame actually settles at.
-            fullscreenResizeLastDisplaySize = ds;
-            fullscreenResizePendingFrames   = kFullscreenResizeSettleFrames;
-        } else if (--fullscreenResizePendingFrames == 0) {
+        if (fullscreenExpand_.step(ds.x, ds.y)) {
             const float toolbarBottom = ImGui::GetFrameHeight() + uiPx(kToolbarBandHeight);
             ImGui::SetNextWindowPos(ImVec2(0, toolbarBottom));
             ImGui::SetNextWindowSize(ImVec2(ds.x, ds.y - toolbarBottom));

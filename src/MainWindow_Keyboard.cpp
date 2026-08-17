@@ -7,10 +7,26 @@
 
 #include "MainWindow_ImGui.h"
 #include "POM1Build.h"
+#include "Apple1KeyMap.h"
 
 #include "imgui.h"
 
 #include <GLFW/glfw3.h>
+
+// Apple1KeyMap is dependency-free on purpose, so it mirrors GLFW's key and
+// modifier values rather than including the header. Pin the mirror here, at the
+// one place that sees both: a GLFW renumbering becomes a compile error instead
+// of a keyboard that quietly stops working.
+static_assert(pom1::keymap::kKeyA         == GLFW_KEY_A,         "GLFW key drift");
+static_assert(pom1::keymap::kKeyZ         == GLFW_KEY_Z,         "GLFW key drift");
+static_assert(pom1::keymap::kKeyEscape    == GLFW_KEY_ESCAPE,    "GLFW key drift");
+static_assert(pom1::keymap::kKeyEnter     == GLFW_KEY_ENTER,     "GLFW key drift");
+static_assert(pom1::keymap::kKeyBackspace == GLFW_KEY_BACKSPACE, "GLFW key drift");
+static_assert(pom1::keymap::kKeyKpEnter   == GLFW_KEY_KP_ENTER,  "GLFW key drift");
+static_assert(pom1::keymap::kModShift     == GLFW_MOD_SHIFT,     "GLFW mod drift");
+static_assert(pom1::keymap::kModControl   == GLFW_MOD_CONTROL,   "GLFW mod drift");
+static_assert(pom1::keymap::kModAlt       == GLFW_MOD_ALT,       "GLFW mod drift");
+static_assert(pom1::keymap::kModSuper     == GLFW_MOD_SUPER,     "GLFW mod drift");
 
 // NEVER add a CTRL+LETTER entry to this table. handleGlfwKey dispatches
 // shortcuts BEFORE the Apple-1 gets the key, so any Ctrl+<letter> listed here
@@ -109,40 +125,10 @@ void MainWindow_ImGui::handleGlfwKey(int key, int scancode, int action, int mods
     const bool fire = (action == GLFW_PRESS) || (action == GLFW_REPEAT && keyboardAutorepeat);
     if (!fire) return;
 
-    // CTRL+letter → ASCII control code $01-$1A, the way the CTRL key on a real
-    // Apple-1 ASCII keyboard worked. GLFW emits no char event for a CTRL combo,
-    // so without this the physical keyboard cannot reach a control code AT ALL
-    // — Ctrl-C (Integer BASIC break) and Ctrl-H (Applesoft Lite's line editor)
-    // were only typeable from the on-screen keyboard photo, which has its own
-    // sticky CTRL latch. GLFW_KEY_A..Z are the ASCII letter codes, so the
-    // offset arithmetic is the usual `& 0x1F` fold. The shortcut table above
-    // deliberately holds no CTRL+letter chord, so all 26 reach the Apple-1.
-    // ALT/SUPER are excluded so Cmd- combos stay with the OS; SHIFT is allowed
-    // because Ctrl+Shift+letter yields the same control code on real hardware.
-    const bool ctrlChord = (activeMods & GLFW_MOD_CONTROL) &&
-                           !(activeMods & (GLFW_MOD_ALT | GLFW_MOD_SUPER));
-    if (ctrlChord && key >= GLFW_KEY_A && key <= GLFW_KEY_Z) {
-        emulation->queueKey(static_cast<char>(key - GLFW_KEY_A + 1));
-        return;
-    }
-
-    if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
-        emulation->queueKey('\r');
-    } else if (key == GLFW_KEY_BACKSPACE) {
-        // The host Backspace key sends '_' ($5F -> $DF on the bus), NOT $08
-        // (github #38). The Apple-1 has no hardware able to delete the
-        // character left of the cursor — the terminal is a shift-register
-        // display that cannot un-shift. What the Woz Monitor does instead is
-        // visible in its own byte stream: GETLINE ECHOes every key BEFORE
-        // testing it, so the '_' is already on screen when `CMP #$DF` matches
-        // and BACKSPACE does nothing but `DEY` — the character leaves the input
-        // buffer while the screen keeps a trail of underscores. Sending $08
-        // here instead would print nothing and silently leave a junk byte in
-        // the buffer, since NOTCR only ever tests $DF and $9B. Applesoft Lite's
-        // Ctrl-H line editor is unaffected: it is reachable as a CTRL+letter
-        // chord, handled above.
-        emulation->queueKey('_');
-    } else if (key == GLFW_KEY_ESCAPE) {
-        emulation->queueKey(27);
-    }
+    // The DECISION lives in Apple1KeyMap (pure, no GLFW/ImGui) so it can be
+    // tested without a window — see tests/apple1_keymap_smoke_test.cpp. What
+    // stays here is the event plumbing: focus guards, autorepeat gating and the
+    // shortcut table, all of which need the live UI.
+    if (const char c = pom1::keymap::mapKey(key, activeMods))
+        emulation->queueKey(c);
 }
