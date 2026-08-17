@@ -396,7 +396,15 @@ Memory::Memory()
         },
         [this](uint16_t a, uint8_t v) {
             if ((a & 0x0200) && (a & 0x0010)) return;  // switches ignore writes
-            mem[a] = v;      // undecoded → flat-RAM fall-through
+            // Undecoded → flat-RAM fall-through, but this handler is reached
+            // from bus.tryWrite() at the TOP of memWrite, i.e. BEFORE its ROM
+            // write-protect. Uncle Bernie's extended ACI PROM at $C500-$C5FF
+            // sits inside this window (A9 = 0 there, so the GEN2 decoder is
+            // structurally blind to it), and plugging the HGR card therefore
+            // used to make that PROM writable — silent corruption of the page
+            // whose whole design note is that it cannot be moved or trimmed.
+            if (isRomWriteProtected(a)) return;
+            mem[a] = v;
             dirtyPages.set(static_cast<std::size_t>(a >> 8));
         });
     bus.setEnabled(gen2SoftSwitchBusHandle, hgrFramebufferAttached);
@@ -1802,18 +1810,11 @@ void Memory::memWrite(uint16_t address, uint8_t value)
         address = 0xD010 | (address & 0x03);
     }
 
-    // Protection ROM (si writeInRom est désactivé)
+    // Protection ROM (si writeInRom est désactivé). The windows themselves live
+    // in Memory::isRomWriteProtected — PeripheralBus handlers with a flat-RAM
+    // fall-through answer before this point and have to apply the same rule.
+    if (isRomWriteProtected(address)) return;
     if (!writeInRom) {
-        // WOZ Monitor: 0xFF00-0xFFFF — real 256-byte bipolar PROM on the
-        // motherboard, physically unwriteable.
-        if (address >= 0xFF00) return;
-        // ACI ROM: 0xC100-0xC1FF — real 256-byte PROM on the ACI card.
-        if (address >= 0xC100 && address <= 0xC1FF) return;
-
-        // Uncle Bernie's extended ACI page: 0xC500-0xC5FF — the other half
-        // of the same PROM pair, equally read-only. Guarded on its own flag
-        // so a machine without the Gen-2 cassette card keeps plain RAM here.
-        if (extendedAciEnabled && address >= 0xC500 && address <= 0xC5FF) return;
         // $E000-$EFFF is RAM on a real Apple 1: Apple BASIC is distributed
         // on cassette and loaded into RAM there by the Woz Monitor
         // (`E000.EFFR`). POM1 pre-seeds the RAM from basic.rom at boot so

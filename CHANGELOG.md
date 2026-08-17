@@ -102,6 +102,31 @@ moniteur — c'est `RX RX` qui fait tourner la bande. Avec la marche à suivre
 complète (Play d'abord), l'écriture (`<from>.<to>WX`), où brancher la carte, et
 la rétro-compatibilité avec une ACI d'origine.
 
+### Fixed — la PROM de l'ACI étendue redevenait inscriptible dès qu'on branchait la carte GEN2
+
+`$C500-$C5FF` est une PROM : `memWrite` la protège en écriture depuis qu'elle
+existe. Sauf que la carte GEN2 HGR enregistre un handler `PeripheralBus` sur
+**tout** `$C200-$C7FF` — ses soft switches sont des miroirs éparpillés
+(`SEL = !A11 & A9 & A4`) — et retombe sur la RAM à plat pour tout ce qu'il ne
+décode pas. Or `$C5xx` a `A9 = 0`, donc le décodeur GEN2 y est structurellement
+aveugle… et le handler répond depuis `bus.tryWrite()` **en tête** de
+`memWrite`, donc **avant** la protection ROM, qui n'était jamais atteinte.
+
+Résultat : brancher la carte HGR rendait la PROM d'Uncle Bernie inscriptible.
+Sur le profil POM1 Fantasy par défaut et sur tous les presets GEN2 — qui
+portent justement la page étendue — un `STA $C5xx` égaré la corrompait en
+silence. Précisément la page dont la note de conception dit qu'elle ne peut
+être ni déplacée ni rognée, parce que le firmware s'y relocalise dans la page
+de pile et rustine sa propre copie ; une fois corrompue, `C500R` déraille d'une
+manière qui ressemble à un problème de bande.
+
+Les fenêtres protégées vivent désormais dans `Memory::isRomWriteProtected()`,
+que `memWrite` **et** le passe-plat GEN2 consultent — la règle est écrite une
+fois, et CLAUDE.md la pose pour tout futur handler qui écrit `mem[]` lui-même.
+Épinglé dans `extended_aci_smoke` partie A (vérifié rouge sans le correctif),
+avec la contrepartie : la RAM de part et d'autre de la PROM (`$C440`, `$C640`)
+doit rester inscriptible, sinon le correctif aurait gelé toute la fenêtre.
+
 ### Fixed — snapshots v6 : deux états vivants que la sauvegarde ne capturait pas
 
 Chasse aux bugs sur le format de snapshot. Les deux défauts sont de la même
