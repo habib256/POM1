@@ -421,9 +421,14 @@ add_executable(test_preset_ram_profiles
 )
 target_include_directories(test_preset_ram_profiles PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
+# argv[1] is the file the kMachinePresets[] TABLE lives in — MachinePresets.cpp
+# since the UI-free split, not MainWindow_Presets.cpp (which kept only the
+# ImGui-side apply/persist code). The test parses it as TEXT, so moving the
+# table without moving this path makes it abort on "table not found" rather
+# than silently pass — which is how the split was caught.
 add_test(NAME preset_ram_profiles_smoke
          COMMAND test_preset_ram_profiles
-                 "${CMAKE_SOURCE_DIR}/src/MainWindow_Presets.cpp"
+                 "${CMAKE_SOURCE_DIR}/src/MachinePresets.cpp"
                  "${CMAKE_SOURCE_DIR}/README.md"
                  "${CMAKE_SOURCE_DIR}/src/MainWindow_Menu.cpp")
 set_tests_properties(preset_ram_profiles_smoke PROPERTIES TIMEOUT 5)
@@ -1559,6 +1564,9 @@ set_tests_properties(pia_ddr_smoke PROPERTIES TIMEOUT 10)
 add_executable(test_measured_cpu_rate
     measured_cpu_rate_test.cpp
     ${CMAKE_SOURCE_DIR}/src/EmulationController.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController_State.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController_Machine.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController_Cards.cpp
     ${CMAKE_SOURCE_DIR}/src/RewindBuffer.cpp
     ${CMAKE_SOURCE_DIR}/src/SnapshotPublisher.cpp
     ${CMAKE_SOURCE_DIR}/src/KeyboardController.cpp
@@ -1902,6 +1910,25 @@ if(UNIX)
     set_tests_properties(version_sync PROPERTIES TIMEOUT 30)
 endif()
 
+# mainwindow_logic_smoke -- the pure logic extracted from MainWindow_ImGui.
+# The UI is excluded from every other test binary (see the note at the top of
+# this file), which left POM1's largest layer uncovered — and it is where the
+# august 2026 bugs lived. Apple1KeyMap / FullscreenExpand / WindowGeometry have
+# no ImGui and no GLFW, so they link on their own and need none of
+# POM1_TEST_CORE_SOURCES.
+add_executable(test_mainwindow_logic
+    mainwindow_logic_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/Apple1KeyMap.cpp
+    ${CMAKE_SOURCE_DIR}/src/FullscreenExpand.cpp
+    ${CMAKE_SOURCE_DIR}/src/WindowGeometry.cpp
+)
+target_include_directories(test_mainwindow_logic PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+add_test(NAME mainwindow_logic_smoke
+         COMMAND test_mainwindow_logic
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(mainwindow_logic_smoke PROPERTIES TIMEOUT 10)
+
 # imgui_pin_sync -- same idea for the OTHER pin the repo carries. Dear ImGui is
 # not vendored, and its tag was copy-pasted into eleven files; CMake and the
 # scripts now read IMGUI_VERSION, but two workflow `env:` blocks still can't
@@ -1971,3 +1998,42 @@ add_executable(test_wifi_modem
 target_include_directories(test_wifi_modem PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME wifi_modem_smoke COMMAND test_wifi_modem)
 set_tests_properties(wifi_modem_smoke PROPERTIES TIMEOUT 15)
+
+# CLI parser (parseCli) + the machine-preset table it reads. The point of this
+# target is as much WHAT IT DOES NOT LINK as what it does: CliDispatcher.cpp
+# used to #include MainWindow_ImGui.h for two preset accessors, so no unit test
+# could exist without pulling in ImGui + GLFW. The table now lives in the
+# UI-free MachinePresets.cpp; if a future edit re-couples the dispatcher to the
+# UI, this target stops linking — which is the alarm, not an inconvenience.
+# EmulationController.cpp comes along because runDeferredActions() lives in the
+# same TU as parseCli(); it is itself UI-free (July-2026 include fix).
+add_executable(test_cli_dispatcher
+    cli_dispatcher_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/CliDispatcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/MachinePresets.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController_State.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController_Machine.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController_Cards.cpp
+    ${CMAKE_SOURCE_DIR}/src/GraphicsCard.cpp
+    ${CMAKE_SOURCE_DIR}/src/RewindBuffer.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotPublisher.cpp
+    ${CMAKE_SOURCE_DIR}/src/KeyboardController.cpp
+    ${CMAKE_SOURCE_DIR}/src/RomLoader.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_cli_dispatcher PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    # Headers only (Screen_ImGui.h is reachable transitively through Memory's
+    # peripheral unique_ptrs). No ImGui symbols are called, so nothing links.
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_cli_dispatcher PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_cli_dispatcher PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_cli_dispatcher PRIVATE ws2_32)
+endif()
+add_test(NAME cli_dispatcher_smoke COMMAND test_cli_dispatcher)
+set_tests_properties(cli_dispatcher_smoke PROPERTIES TIMEOUT 15)

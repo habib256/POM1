@@ -13,6 +13,7 @@
 #include "imgui.h"
 #include "CodeTank.h"
 #include "JukeBox.h"
+#include "MachinePresets.h"
 #include "Screen_ImGui.h"
 
 namespace pom1::mainwindow::detail {
@@ -105,6 +106,17 @@ void drawToolbarTankIcon(ImDrawList* dl, const ImVec2& rmin, const ImVec2& rmax)
 /// Centred text label for toolbar buttons (BBS, HGR, etc.).
 void drawToolbarTextLabel(ImDrawList* dl, const ImVec2& rmin, const ImVec2& rmax, const char* text);
 
+/// Bullet + wrapped body text, so a long line reflows at the window edge
+/// instead of clipping. Used for every Help-window bullet (Notes sections,
+/// quick-start, acknowledgements) in both MainWindow_Dialogs.cpp and
+/// MainWindow_Tutorials.cpp — which is why it lives here rather than as a
+/// file-local static in either of them.
+inline void bulletWrapped(const char* text)
+{
+    ImGui::Bullet();
+    ImGui::TextWrapped("%s", text);
+}
+
 inline constexpr int kMonitorTintCount = 3;
 
 Screen_ImGui::MonitorMode monitorTintAdvance(Screen_ImGui::MonitorMode m);
@@ -116,95 +128,39 @@ const char*               monitorTintLabel(Screen_ImGui::MonitorMode m);
 bool monitorTintCycleButton(const char* id, const ImVec2& size, Screen_ImGui* screen);
 
 // ---------------------------------------------------------------------------
-// Machine presets — table of all machine configurations available via the
-// Hardware → Preset menu and applyMachineConfig(). Defined in
-// MainWindow_Presets.cpp; consumed by MainWindow_Menu.cpp (menu list) and
-// MainWindow_Presets.cpp (applyMachineConfig + getPresetName).
-// Future migration target: load from external presets.json.
+// Machine presets — the table itself (MachineConfig / kMachinePresets[] /
+// kMachinePresetCount / the named kPreset* indices) lives in the UI-free
+// MachinePresets.h, included above; only the ImGui-flavoured helper at the
+// bottom of this block stays on this side of the seam.
+//
+// The using-declarations below re-export those names into this namespace. They
+// are NOT cosmetic: most MainWindow_*.cpp code sits in the GLOBAL namespace
+// (`MainWindow_ImGui::applyMachineConfig(...)`) and reaches `detail` through a
+// `using namespace pom1::mainwindow::detail;` directive, which pulls in names
+// declared IN detail only — enclosing-namespace lookup never runs from there.
+// Without these lines every call site would need a `pom1::` qualifier, and
+// Pom1BenchHost's `md::kPresetGen2Bench` (md = this namespace) would not
+// compile at all.
 // ---------------------------------------------------------------------------
 
-struct MachineWindowPlacement {
-    const char* name;
-    ImVec2 pos;
-    ImVec2 size;  // (0,0) = no size override
-};
+using pom1::PresetVec2;
+using pom1::MachineWindowPlacement;
+using pom1::BasicType;
+using pom1::MachineConfig;
+using pom1::kMachinePresets;
+using pom1::kMachinePresetCount;
+using pom1::kPresetCC65Bench;
+using pom1::kPresetTMS9918Bench;
+using pom1::kPresetGen2Bench;
+using pom1::kPresetIntegerCassette;
+using pom1::kPresetMicroSD;
+using pom1::kPresetTMS9918Card;
+using pom1::kPresetGen2Color;
 
-enum class BasicType { None, Integer, IntegerCassette, ApplesoftLite };
-
-struct MachineConfig {
-    const char* name;
-    const char* description;
-    bool graphicsCard, microSD, sid, tms9918, a1ioRtc, wifiModem, terminalCard;
-    bool pr40Printer;   // SWTPC PR-40 (Jobs Oct. 1976 Interface Age hack)
-    bool krusader;
-    bool cffa1;
-    bool aci;                   // Apple Cassette Interface (false for pre-ACI Bare 4K)
-    int  ramKB;                 // Usable RAM in kilobytes (8 = standard dual-bank Apple-1)
-    BasicType basicType;
-    // A1-AUDIO Special Edition: Claudio Parmigiani's 10-unit A1-AUDIO card
-    // (https://p-l4b.github.io/A1-AUDIO/). Same MOS 6581/8580 chip as the
-    // prototype A1-SID, but the register window lives at $CC00-$CC1F instead
-    // of $C800-$CFFF. Collides with TMS9918 at $CC00/$CC01 — the preset
-    // layer enforces mutual exclusivity with `tms9918`.
-    bool sidSpecialEdition;
-    // P-LAB Apple-1 Juke-Box (Claudio Parmigiani & Jacopo Rosselli). When
-    // true, the preset plugs the Juke-Box card at $4000-$BFFF or
-    // $8000-$BFFF (per `jukeBoxJumper`), loads `roms/jukebox.rom` with the
-    // chip-mode stored in `jukeBoxChipMode`, and claims the Px/Sx bank
-    // latch at $CA00. Mutually exclusive with CFFA1, microSD, Krusader,
-    // Wi-Fi Modem and A1-SID — the preset layer enforces that.
-    bool jukeBox;
-    JukeBox::Jumper jukeBoxJumper;
-    JukeBox::ChipMode jukeBoxChipMode;
-    // P-LAB CodeTank — 28c256 ROM daughterboard at $4000-$7FFF that
-    // physically piggybacks the TMS9918 Graphic Card on real P-LAB
-    // hardware. It has no edge connector and no on-board address decoder,
-    // so it cannot exist standalone: enabling codeTank auto-plugs TMS9918
-    // (see Memory::setCodeTankEnabled), and disabling TMS9918 cascade-
-    // unplugs CodeTank. Mutually exclusive with the Juke-Box (overlapping
-    // ROM window).
-    bool codeTank;
-    CodeTank::Jumper codeTankJumper;
-    // Optional — when non-empty, the named ROM file is loaded into the
-    // CodeTank card on plug. Empty falls back to the default probe path
-    // (roms/codetank/Codetank_ARCADE.rom, then the legacy roms/codetank.rom).
-    const char* codeTankRomPath;
-    // SWTPC GT-6144 Graphic Terminal (1976) — write-only 64x96 mono framebuffer
-    // at $D00A. No bus conflicts with other cards at that address.
-    bool gt6144;
-    // P-LAB IEC daughterboard for the microSD Storage Card. Drives the
-    // Commodore IEC serial bus on unused 65C22 pins (PORTB bits 2-6) via
-    // an SN7406 inverter. Backed by a virtual 1541 mounted from
-    // disks/iec/dev8.d64. Daughterboard only — requires microSD enabled.
-    bool iecCard;
-    // Uncle Bernie's Extended ACI — the $C500-$C5FF page of the improved
-    // Gen-2 cassette interface (Applefritter, august 2026). Daughter page of
-    // the ACI's own PROM pair, so it cannot exist without `aci`: enabling it
-    // cascade-plugs the ACI (see Memory::setExtendedACIEnabled) and unplugging
-    // the ACI cascade-unplugs it. Off on every historical preset — it is an
-    // aftermarket upgrade, not 1976 hardware — and on for POM1 Fantasy.
-    bool extendedAci;
-    MachineWindowPlacement layout[8];
-    int layoutCount;
-};
-
-extern const MachineConfig kMachinePresets[];
-extern const int kMachinePresetCount;
-
-// Named indices into kMachinePresets[] that other subsystems depend on by
-// position (DevBench targets in Pom1BenchHost's kP1Targets[], the reverse
-// applyMachineConfig auto-open). Anchoring them here means a preset reorder is
-// a one-line edit instead of a silent DevBench breakage across scattered
-// `t.preset == N` comparisons. Pinned by preset_ram_profiles_smoke.
-inline constexpr int kPresetCC65Bench      = 0;   // Apple-1 CC65 Development Bench
-inline constexpr int kPresetTMS9918Bench   = 1;   // Apple-1 TMS9918 Development Bench
-inline constexpr int kPresetGen2Bench      = 2;   // Apple-1 GEN2 HGR Development Bench
-inline constexpr int kPresetIntegerCassette = 4;  // Apple-1 with ACI & Integer BASIC cassette
-inline constexpr int kPresetMicroSD        = 8;   // P-LAB microSD + Applesoft Lite
-inline constexpr int kPresetTMS9918Card    = 9;   // P-LAB Apple-1 with TMS9918 + CodeTank
-inline constexpr int kPresetGen2Color      = 11;  // Uncle Bernie's GEN2 HGR Color
-// POM1 Multiplexing Fantasy is always the LAST preset (invariant — see
-// applyMachineConfig / the "default = last" contract). Use kMachinePresetCount-1.
+/// PresetVec2 → ImVec2. The preset table is UI-free and carries its own POD
+/// vector type, so the handful of UI sites that feed a placement into ImGui
+/// geometry convert here rather than MachinePresets.h learning about ImGui.
+inline ImVec2 toImVec2(PresetVec2 v) { return ImVec2(v.x, v.y); }
 
 /// Compute the axis-aligned bounding box (in ImGui screen coordinates)
 /// that encloses every sized placement in `cfg.layout`. Entries whose size

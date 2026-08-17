@@ -9,7 +9,7 @@
 #include "EmulationController.h"
 #include "HexDumpFile.h"
 #include "Logger.h"
-#include "MainWindow_ImGui.h"
+#include "MachinePresets.h"
 
 #include <cctype>
 #include <climits>
@@ -262,10 +262,10 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
         // -----------------------------------------------------------------
         if (arg == "--list-presets") {
             listPresetsOut = true;
-            int n = MainWindow_ImGui::getPresetCount();
+            int n = pom1::machinePresetCount();
             std::cout << "Available machine presets:" << std::endl;
             for (int p = 0; p < n; ++p) {
-                std::cout << "  " << p << ": " << MainWindow_ImGui::getPresetName(p) << std::endl;
+                std::cout << "  " << p << ": " << pom1::machinePresetName(p) << std::endl;
             }
             return std::nullopt;
         }
@@ -382,7 +382,7 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
             char* end = nullptr;
             long idx = std::strtol(val.c_str(), &end, 10);
             if (end != val.c_str() && *end == '\0') {
-                int n = MainWindow_ImGui::getPresetCount();
+                int n = pom1::machinePresetCount();
                 if (idx < 0 || idx >= n) {
                     pom1::log().error("CLI", "Preset index " + val + " out of range [0, " +
                                               std::to_string(n - 1) +
@@ -392,10 +392,10 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
                 plan.presetIndex = static_cast<int>(idx);
             } else {
                 int match = -1;
-                int n = MainWindow_ImGui::getPresetCount();
+                int n = pom1::machinePresetCount();
                 std::string vLow = toLower(val);
                 for (int p = 0; p < n; ++p) {
-                    std::string pLow = toLower(MainWindow_ImGui::getPresetName(p));
+                    std::string pLow = toLower(pom1::machinePresetName(p));
                     if (pLow.find(vLow) != std::string::npos) { match = p; break; }
                 }
                 if (match < 0) {
@@ -406,7 +406,7 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
                 plan.presetIndex = match;
             }
             pom1::log().info("CLI", std::string("Preset: ") +
-                              MainWindow_ImGui::getPresetName(plan.presetIndex));
+                              pom1::machinePresetName(plan.presetIndex));
             continue;
         }
         if (arg == "--enable") {

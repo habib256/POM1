@@ -10,6 +10,89 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — passe « god files » : cinq fichiers monstres découpés, un couplage UI supprimé
+
+Suite de l'audit architectural de juillet 2026 (`TODO.md` → *Refactors
+architecturaux*). Deux natures de travail, à ne pas confondre :
+
+**1. Un vrai découplage** — `kMachinePresets[]` sort vers `MachinePresets.{h,cpp}`,
+un TU **sans UI**. La table est de la donnée pure (cartes, RAM, BASIC,
+placements de fenêtres au premier lancement) que lisent la CLI, la table de
+cibles du DevBench et le menu Hardware ; elle vivait dans
+`MainWindow_Presets.cpp`, ce qui obligeait `CliDispatcher.cpp` à inclure
+`MainWindow_ImGui.h` **pour deux accesseurs statiques** — et donc à traîner
+ImGui + GLFW dans tout binaire liant le parseur de ligne de commande. C'était
+la raison pour laquelle `parseCli()` est resté le 5ᵉ trou de tests de
+juillet 2026 alors que les quatre autres étaient comblés.
+
+- Nouveau test **`cli_dispatcher_smoke`** (90 tests au total). Son assertion la
+  plus importante n'est pas dans le fichier : **c'est qu'il linke**. Recoupler
+  le dispatcher à l'UI casse la compilation de cette cible.
+- Il couvre au passage la sélection de preset par index et par nom, le rejet
+  des index hors bornes (jamais de clamp silencieux), les bornes de
+  `--audio-latency`, l'ordre des actions différées, et la règle « carte fille »
+  (CodeTank ⇒ TMS9918, ACI étendue ⇒ ACI, IEC ⇒ microSD) sur toute la table.
+- `MachineWindowPlacement` porte un POD `PresetVec2` au lieu d'`ImVec2` — c'est
+  ce qui garde le TU sans UI ; l'interface convertit à un seul endroit
+  (`detail::toImVec2`).
+- **Piège** : `preset_ram_profiles_smoke` parse le fichier source **en texte**.
+  Son argument `add_test` pointe désormais `MachinePresets.cpp` ; déplacer la
+  table sans déplacer ce chemin fait échouer le test sur « table introuvable »
+  (c'est comme ça que le déplacement a été rattrapé).
+
+**2. Du code motion pur** — cinq god files scindés selon leurs axes réels,
+sans changer une signature ni un site d'appel. Chaque découpage a été vérifié
+en comparant le multi-ensemble des lignes de code non commentées avant/après :
+identique à chaque fois, aux seuls préfixes `static` retirés et aux structures
+déplacées vers un header près. 90/90 tests verts après chaque étape.
+
+| fichier | avant | après | nouveaux TU |
+|---|---:|---:|---|
+| `Pom1BenchHost.cpp` | 3957 | 2229 | `_Lang` 571 · `Pom1BenchTargets` 456 · `Pom1BenchCc65` 789 |
+| `MainWindow_Dialogs.cpp` | 3559 | 1807 | `MainWindow_Settings` 594 · `MainWindow_Tutorials` 1227 |
+| `MainWindow_HardwareWindows.cpp` | 2530 | 1752 | `MainWindow_SiliconStrict` 818 |
+| `MainWindow_Presets.cpp` | 2740 | 2327 | `MachinePresets` 407 |
+| `EmulationController.cpp` | 2143 | 867 | `_State` 381 · `_Machine` 332 · `_Cards` 652 |
+
+Les lignes de coupe sont choisies, pas arbitraires :
+
+- **`EmulationController`** — 207 définitions de méthodes dans un seul fichier.
+  Le `.cpp` garde le thread CPU, run/stop/reset, step + step-over, points
+  d'arrêt / de surveillance / trace PC, injection clavier et la boucle de
+  slice (les constantes de cadence restent là : la boucle est leur seul
+  usager). `_State` = images mémoire, snapshots, rewind, rechargements de ROM.
+  `_Machine` = les boutons de fidélité silicium et de diagnostic. `_Cards` =
+  cassette/audio et les passthroughs par carte. L'ordre des mutex
+  (`stateMutex > keyboard.keyMutex > publisher.snapshotMutex`) vaut pour les
+  quatre.
+- **DevBench** — `Pom1BenchTargets` prend la table `kP1Targets[]`, les sketches
+  hello-world et les deux helpers de chemin : de la donnée, exactement comme
+  `MachinePresets`. `Pom1BenchCc65` prend la couche **pure** (sondage
+  Makefile/cfg linker, spec JSON de build C, cache d'archive `ar65`,
+  fabrication des commandes cl65/ld65) — ni MainWindow, ni
+  EmulationController, ni ImGui : à garder ainsi. `_Lang` prend l'**injection**
+  d'interpréteur. La ligne de partage est *injection vs chaîne d'outils*, pas
+  « ce qui touche aux langages » : `compileBasicNative` est un chemin BASIC lui
+  aussi, mais il appelle ca65/ld65 et partage la plomberie cc65 de `build()`,
+  donc il reste à côté de ce pipeline.
+- **`MainWindow_SiliconStrict`** — la règle Parmigiani « une carte à la fois »
+  **en tant que politique** (table `ConflictRule`, `gateStrictPlug`,
+  `wouldCreateConflict`) plus son inspecteur. Assise au milieu de 52 blocs
+  `ImGui::Begin`, elle avait l'air d'un détail de rendu ; elle n'en est pas un,
+  et l'item ouvert « data-driver ces 52 blocs contre `Memory::cardSlots()` »
+  commence par lui donner un fichier à elle.
+
+Le plus gros fichier propre restant est `Memory.cpp` (2532 l.) : plus rien
+au-dessus de 2 600 lignes, contre quatre fichiers > 2 500 et deux > 3 500 avant
+la passe.
+
+**Chemin WASM vérifié** : le build web est celui que personne ne compile en
+local, et la découpe a bien failli y laisser un piège — `MainWindow_Settings.cpp`
+hérite de la branche plein-écran Emscripten et donc de ses `#include`. Tous les
+TU touchés ont été passés au `-fsyntax-only` sous `POM1_BUILD_FOR_EMSCRIPTEN=1`
+avec des stubs Emscripten, et le contrôle a été prouvé mordant (retirer
+l'include fait bien échouer la sonde).
+
 ### Added — la fenêtre Welcome explique l'ACI étendue
 
 Une ligne dans le démarrage rapide (`C500R`) et une section dédiée. Elle dit

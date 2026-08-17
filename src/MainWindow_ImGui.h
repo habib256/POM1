@@ -26,6 +26,7 @@
 #include "SidTrackerEditor.h"      // sidtrack/ (portable SID tracker) on the include path
 #include "Pom1SidHost.h"
 #include "Screen_ImGui.h"
+#include "FullscreenExpand.h"
 #include "Pom1CrtEffects.h"        // universal shader CRT post-process (opt-in)
 #include "GraphicsCard.h"
 #include "TMS9918.h"
@@ -547,24 +548,12 @@ private:
     // Fullscreen, so the escape hatch still works, and NOT written back into
     // the preset's .size file (a CLI flag must not rewrite a saved layout).
     bool cliForcedFullscreen_ = false;
-    // Pending re-expansion of the Apple 1 Screen window over the whole display
-    // (0 = idle). Armed by armFullscreenScreenExpand() from the fullscreen
-    // transition in render(), a preset switch landing in a fullscreen session,
-    // and a layout reset while fullscreen.
-    //
-    // This is a SETTLE counter, not a plain delay: it only counts down while
-    // DisplaySize holds still, and re-arms whenever it moves. A fixed count
-    // cannot work on macOS — AppKit sets NSWindowStyleMaskFullScreen at the
-    // START of its ~0.5 s animated transition, so osWindowIsFullscreen() flips
-    // long before the framebuffer reaches its final size, and expanding two
-    // frames later would size the screen window to the pre-animation frame and
-    // leave it undersized for the rest of the session. Waiting for DisplaySize
-    // to stop moving covers the animated path and the synchronous
-    // glfwSetWindowMonitor one alike.
-    int    fullscreenResizePendingFrames = 0;
-    ImVec2 fullscreenResizeLastDisplaySize{0.0f, 0.0f};
-    // Frames of stillness required before the expand fires.
-    static constexpr int kFullscreenResizeSettleFrames = 2;
+    // Pending re-expansion of the Apple 1 Screen window over the whole display.
+    // Armed by armFullscreenScreenExpand() from the fullscreen transition in
+    // render(), a preset switch landing in a fullscreen session, and a layout
+    // reset while fullscreen. The timing rule (settle on DisplaySize rather
+    // than count frames, and why) lives in FullscreenExpand.h, tested headless.
+    pom1::FullscreenExpandSettler fullscreenExpand_;
     void armFullscreenScreenExpand();
     // Set while AppKit animates OUT of a native fullscreen space, holding the
     // ImGui timestamp of the toggleFullScreen: request (<0 = idle). The style
