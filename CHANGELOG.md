@@ -102,6 +102,20 @@ moniteur — c'est `RX RX` qui fait tourner la bande. Avec la marche à suivre
 complète (Play d'abord), l'écriture (`<from>.<to>WX`), où brancher la carte, et
 la rétro-compatibilité avec une ACI d'origine.
 
+### Fixed — la CI Linux ne compilait plus : `<sstream>` perdu dans la découpe des god files
+
+`MainWindow_Settings.cpp` construit la ligne d'état d'EhBASIC avec un
+`std::stringstream`, mais l'`#include <sstream>` est resté dans
+`MainWindow_Dialogs.cpp` — le TU d'origine, qui n'en utilise plus. Le fichier
+scindé compilait quand même partout où l'en-tête arrivait transitivement ;
+la libstdc++ du runner CI ne le fournit pas, donc `std::stringstream` y était
+un type incomplet. Job `linux` rouge depuis `346e9e4` (la passe god files),
+sur une erreur qu'aucune machine de dev ne voyait.
+
+Un `-fsyntax-only` sur les 105 TU du projet confirme que c'était le seul
+manque : la compilation s'arrêtait au premier fichier fautif, donc rien ne
+disait que les TU suivants passaient.
+
 ### Fixed — la PROM de l'ACI étendue redevenait inscriptible dès qu'on branchait la carte GEN2
 
 `$C500-$C5FF` est une PROM : `memWrite` la protège en écriture depuis qu'elle

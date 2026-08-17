@@ -36,6 +36,13 @@
 
 #include <algorithm>
 #include <cstring>
+// renderMemoryConfigDialog() builds the EhBASIC status line with an
+// ostringstream. The include stayed behind in MainWindow_Dialogs.cpp when this
+// file was split out of it — that TU no longer uses one — and the split TU
+// compiled anyway wherever <sstream> happened to arrive transitively. The CI
+// runner's libstdc++ does not provide it, so `std::stringstream` was an
+// incomplete type there and only the Linux job saw it.
+#include <sstream>
 #include <string>
 #include <vector>
 
