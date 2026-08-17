@@ -27,6 +27,7 @@ void CFFA1::reset()
     bufferIndex = 0;
     readActive = false;
     writeActive = false;
+    sectorsRemaining_ = 0;   // no transfer in flight after SRST
     sectorBuffer.fill(0);
 
     // Status: DRDY + DSC if disk present, $00 if no disk
@@ -379,6 +380,14 @@ void CFFA1::serialize(pom1::SnapshotWriter& w) const
     w.writeU32(static_cast<uint32_t>(bufferIndex));
     w.writeU8(readActive  ? 1 : 0);
     w.writeU8(writeActive ? 1 : 0);
+    // v6+: how many sectors of the current multi-sector transfer are still
+    // owed. Without it a state saved mid-transfer restored with the counter at
+    // whatever the live card held — 0 on a fresh one — so the very next
+    // 512-byte boundary decremented it below zero, cleared DRQ and truncated
+    // the read/write to the sector already in the buffer. Bounded by
+    // ataSectorCnt (a u8), so one byte is the whole range.
+    w.writeU8(static_cast<uint8_t>(sectorsRemaining_ < 0 ? 0
+                                  : (sectorsRemaining_ > 255 ? 255 : sectorsRemaining_)));
 }
 
 void CFFA1::deserialize(pom1::SnapshotReader& r)
@@ -399,4 +408,21 @@ void CFFA1::deserialize(pom1::SnapshotReader& r)
     if (bufferIndex < 0 || bufferIndex >= 512) bufferIndex = 0;
     readActive    = r.readU8() != 0;
     writeActive   = r.readU8() != 0;
+    if (r.version() >= 6) {
+        sectorsRemaining_ = static_cast<int>(r.readU8());
+    } else {
+        // Pre-v6 blob carries no counter. "1" means "the sector already in the
+        // buffer is the last one", which reproduces exactly what those
+        // snapshots did before the field existed — no behaviour change for old
+        // files, and never a negative counter.
+        sectorsRemaining_ = 1;
+    }
+    // A transfer cannot be in flight with nothing left to send; likewise a card
+    // with no transfer owes no sectors. Keeps a forged blob out of the
+    // decrement-below-zero path in readRegister()/writeRegister().
+    if (readActive || writeActive) {
+        if (sectorsRemaining_ < 1) sectorsRemaining_ = 1;
+    } else {
+        sectorsRemaining_ = 0;
+    }
 }

@@ -102,6 +102,58 @@ moniteur — c'est `RX RX` qui fait tourner la bande. Avec la marche à suivre
 complète (Play d'abord), l'écriture (`<from>.<to>WX`), où brancher la carte, et
 la rétro-compatibilité avec une ACI d'origine.
 
+### Fixed — snapshots v6 : deux états vivants que la sauvegarde ne capturait pas
+
+Chasse aux bugs sur le format de snapshot. Les deux défauts sont de la même
+famille — un registre interne qui décide du comportement du matériel, présent
+nulle part dans l'image mémoire, et absent de la section qui aurait dû le
+porter. Le rewind rejoue exactement les mêmes blobs (`RewindBuffer` travaille
+sur `saveSnapshotToBuffer`), donc chacun se manifestait aussi en scrubbant la
+timeline, pas seulement sur un File → Load snapshot.
+
+- **Les registres fantômes du PIA 6821 (`CRA`/`CRB` + `DDRA`/`DDRB`)
+  n'étaient pas sauvegardés.** Ils ne sont pas reconstructibles depuis les
+  64 Ko : `memWrite` sort **avant** le rangement dans `mem[]` quand le
+  registre de direction est banké, donc DDRA/DDRB n'y sont jamais ; et si
+  `mem[$D011]`/`mem[$D013]` reçoivent bien une copie des mots de contrôle,
+  **toute lecture répond depuis le membre**. Restaurer gardait donc le banking
+  de la machine *vivante* : un état pris pendant la sonde de Codebreaker
+  (`CRB:=0` / lire `$D012` / attendre `$7F`) revenait avec `$D012` répondant
+  le port d'affichage au lieu du registre de direction, et `$D013` relisant
+  l'ancien CR. Quatre octets ajoutés à la section `MEM`.
+- **Le compteur multi-secteurs de la CFFA1 (`sectorsRemaining_`) non plus.**
+  Il n'est pas déductible des registres ATA — le registre de comptage est une
+  copie que le transfert réécrit au fil des secteurs. Une restauration le
+  laissait à la valeur de la carte de destination (0 sur une carte neuve),
+  donc la frontière des 512 octets suivante le décrémentait sous zéro,
+  retombait DRQ et **tronquait la lecture au secteur déjà en tampon** :
+  ProDOS recevait une lecture courte puis `$FF` pour tout le reste. Un octet
+  ajouté à la section `CFFA1`, plus `reset()` qui le remet à zéro (SRST
+  laissait un transfert fantôme en compte).
+
+Format **v6**. Les deux champs sont relus derrière `r.version() >= 6`, comme
+le drapeau T2 du microSD l'a fait en v4 : un snapshot v1-v5 se recharge sans
+rien perdre de ce qu'il portait — le PIA repart sur son état post-reset
+(`$A7/$A7/$00/$7F`, ce qu'installe `resetMemory`, et surtout **pas** une
+reconstruction depuis `mem[$D011]`/`mem[$D013]` qui valent 0 sur une machine
+n'ayant pas exécuté le reset du moniteur, donc DDR bankés et ECHO qui pend),
+et un transfert CFFA1 en vol est traité comme son dernier secteur, ce qu'il
+faisait déjà.
+
+Épinglé des deux côtés — chaque pin a été vérifié rouge sans le correctif :
+**`pia_ddr_smoke`** gagne un aller-retour snapshot (§8), **`snapshot_smoke`**
+une lecture CFFA1 de quatre secteurs interrompue en plein vol, comparée
+octet à octet au même transfert mené d'une traite. Ce dernier fabrique sa
+propre image (un octet distinct par secteur) au lieu d'emprunter
+`cfcard/cfcard.po` : une plage de `$FF` dans l'image réelle se lit pareil que
+le transfert continue ou qu'il avorte, et le test passait alors contre le bug
+même qu'il devait attraper.
+
+Au passage, l'écriture des CR (`$D011`/`$D013`) marque enfin la page `$D0`
+sale. Le Memory Viewer dessine le snapshot **publié**, qui ne recopie que les
+pages marquées — il affichait donc l'ancien mot de contrôle jusqu'à ce qu'une
+autre écriture dans la page veuille bien la salir.
+
 ### Fixed — documentation : promesses que le dépôt ne tenait plus
 
 Passe de vérification factuelle, pas de relecture au jugé.

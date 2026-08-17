@@ -1848,8 +1848,13 @@ void Memory::memWrite(uint16_t address, uint8_t value)
     // unaffected. DDRB is pre-seeded to $7F, so a program that banks it in
     // still reads back exactly what the Monitor would have programmed.
     // PIA control registers, and the direction registers they bank in.
-    if (address == 0xD011) { piaCrA = value; mem[address] = value; return; }
-    if (address == 0xD013) { piaCrB = value; mem[address] = value; return; }
+    // The mem[] mirror is cosmetic (every READ answers from the shadow member),
+    // but the Memory Viewer draws the PUBLISHED snapshot, which copies only
+    // pages flagged dirty — so the store has to flag page $D0 or the viewer
+    // keeps showing the previous control byte until some other write to that
+    // page happens to mark it.
+    if (address == 0xD011) { piaCrA = value; mem[address] = value; dirtyPages.set(0xD0); return; }
+    if (address == 0xD013) { piaCrB = value; mem[address] = value; dirtyPages.set(0xD0); return; }
     if (address == 0xD010 && !piaPortASelected()) { piaDdrA = value; return; }
     if (address == 0xD012 && !piaPortBSelected()) {
         // The Woz Monitor's `LDY #$7F / STY $D012` lands HERE, not on the

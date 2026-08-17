@@ -279,6 +279,19 @@ void Memory::writeSnapshotSections(pom1::SnapshotWriter& w, const M6502* cpu) co
         w.writeU16(static_cast<uint16_t>(presetRamKB));
         w.writeU8(oorStrictMode ? 1 : 0);
         w.writeU8(writeInRom ? 1 : 0);
+        // v6+: the PIA 6821 shadow registers. NOT reconstructible from the RAM
+        // image above — DDRA/DDRB never touch mem[] at all (memWrite returns
+        // before the store when the CR banks them in), and mem[$D011]/mem[$D013]
+        // hold the control bytes only because the write path mirrors them there,
+        // while every READ answers from these members. Leaving them out meant a
+        // restore silently kept the LIVE machine's banking: load a state taken
+        // with DDRB banked in and $D012 answered from the display port instead
+        // of the direction register (and $D013 read back the stale CR). Rewind
+        // scrubbing hit the same desync, since it replays these same blobs.
+        w.writeU8(piaCrA);
+        w.writeU8(piaCrB);
+        w.writeU8(piaDdrA);
+        w.writeU8(piaDdrB);
         w.endSection(h);
     }
 
@@ -402,12 +415,16 @@ bool Memory::readSnapshotSections(pom1::SnapshotReader& r, std::string& error, M
             // readBytes consume bytes belonging to the next section and load
             // garbage into RAM and the machine-state scalars while reporting
             // success. Mirror readString's remainingBytes guard.
-            constexpr uint32_t kMemSectionLen =
+            constexpr uint32_t kMemSectionLenV5 =
                 0x10000u + 1 + 1 + 4 + 2 + 2 + 1 + 1; // RAM + scalars
-            if (sectionLen != kMemSectionLen) {
+            constexpr uint32_t kMemSectionLen =
+                kMemSectionLenV5 + 4;                 // ... + PIA CRA/CRB/DDRA/DDRB (v6)
+            const bool memHasPia = (sectionLen == kMemSectionLen);
+            if (!memHasPia && sectionLen != kMemSectionLenV5) {
                 error = "corrupt snapshot: MEM section length "
                       + std::to_string(sectionLen) + " (expected "
-                      + std::to_string(kMemSectionLen) + ")";
+                      + std::to_string(kMemSectionLen) + ", or "
+                      + std::to_string(kMemSectionLenV5) + " pre-v6)";
                 r.fail();
                 return false;
             }
@@ -424,6 +441,25 @@ bool Memory::readSnapshotSections(pom1::SnapshotReader& r, std::string& error, M
             presetRamKB        = std::clamp(static_cast<int>(r.readU16()), 4, 64);
             oorStrictMode      = r.readU8() != 0;
             writeInRom         = r.readU8() != 0;
+            if (memHasPia) {
+                piaCrA  = r.readU8();
+                piaCrB  = r.readU8();
+                piaDdrA = r.readU8();
+                piaDdrB = r.readU8();
+            } else {
+                // Pre-v6 blob: the PIA was never captured. Install the
+                // post-reset seed rather than inheriting whatever the LIVE
+                // machine happened to have banked in, so an old snapshot
+                // restores deterministically. Reconstructing CRA/CRB from
+                // mem[$D011]/mem[$D013] is NOT an option — those bytes are 0 on
+                // a machine that has not run the Monitor's reset, and a zero CRB
+                // banks the DDRs in, which is precisely the state that hangs
+                // ECHO (see resetMemory()).
+                piaCrA  = 0xA7;
+                piaCrB  = 0xA7;
+                piaDdrA = 0x00;
+                piaDdrB = 0x7F;
+            }
             markAllPagesDirty();
             continue;
         }
