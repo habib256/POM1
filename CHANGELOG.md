@@ -12,6 +12,14 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ### Fixed — passe de cohérence doc ↔ code (2) : les guides 6502 et les cartouches CodeTank
 
+> **Vérifié par une exécution réelle** (les deux passes précédentes annonçaient
+> ne pas avoir compilé) : `cmake` + `make` complets puis `ctest` → **90/90
+> passent, 0 échec**, les 8 « skipped » étant les cibles conditionnées à cc65,
+> absent de l'environnement. `make -C dev/lib check` passe ses gates de dérive
+> (police partagée, C64-font, catalogue de sprites, shims wozmon) et ne
+> s'arrête qu'au pas `ca65`, même cause. Les 46 sidecars `.sketch.json` du
+> DevBench ne référencent aucun fichier manquant.
+
 Deuxième passe, sur le périmètre que la première n'avait pas couvert : les
 chemins cités par **tous** les docs (pas seulement `CLAUDE.md`), les
 `README.md` de `dev/lib/`, les guides `sketchs/doc/` et les claims sur les
@@ -76,6 +84,9 @@ disent maintenant la même chose.
   seulement sur `v*`.
 - `dev/lib/tms9918c/README.md` : section « Modules `lib/` » alors que les
   modules sont à plat dans le répertoire.
+- `dev/cc65/Makefile.common`, `dev/lib/gfx/Makefile` et
+  `tools/build_shared_font.py` renvoyaient à `sketchs/doc/TODO6502.md` ; le
+  fichier est `dev/TODO6502.md`.
 
 
 ### Fixed — passe de cohérence doc ↔ code : 20 dérives corrigées
