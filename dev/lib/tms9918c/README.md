@@ -67,7 +67,7 @@ Not ported here (KickC / big `.c` / other hardware): `anagram`, `tapemon`, `sdca
    auto-plugs TMS9918 for a folder named `Apple-1_TMS_CC65/`, but POM1 no longer ships
    one — that branch now serves a folder you make yourself.)
 
-## Modules `lib/`
+## Modules
 
 **Not monolithic — per-family objects, same dead-strip story as `gen2c`.**
 `tms9918c.mk` exposes per-family source sets (`TMS9918C_CORE_SRCS`,

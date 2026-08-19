@@ -34,7 +34,7 @@ This document summarises everything you need to program the Apple 1 emulated by 
 > Bench*, desktop) edits, assembles/compiles (asm **or** C) and launches in one click, with
 > a `HELLO WORLD` skeleton per target. Copy `sketchs/apple1/_template/` for a minimal
 > asm or text-mode-C starting point (and `sketchs/gen2/_template_gen2c/`,
-> `sketchs/tms9918/_template_tms9918c/` for the cc65 graphics-card flavours). In C →
+> `sketchs/tms9918/tms9918_hello_c/` for the cc65 graphics-card flavours). In C →
 > [`Programming_Apple1_C.md`](Programming_Apple1_C.md).
 
 ### Standard commands
@@ -72,7 +72,7 @@ The compiled binary and its Woz hex `.txt` are deposited under `software/<dir>/`
 | Config | CODE range | Size | Typical use |
 |--------|-----------|--------|---------------|
 | `dev/cc65/apple1_4k.cfg` | `$0280-$127F` | 4 096 B | Text or TMS9918 games (VRAM off the bus) — default config |
-| `dev/cc65/apple1_gen2.cfg` | `$E000-$EFFF` | 4 096 B | HGR games: code in the high bank (launch with `E000R`), the framebuffer `$2000-$3FFF` stays reserved (direct writes). Programs > 4 KB: dedicated split-bank cfg (cf. `projects/gen2/game_sokoban/apple1_sok_hgr.cfg`) |
+| `dev/cc65/apple1_gen2.cfg` | `$E000-$EFFF` | 4 096 B | HGR games: code in the high bank (launch with `E000R`), the framebuffer `$2000-$3FFF` stays reserved (direct writes). Programs > 4 KB: dedicated split-bank cfg (cf. `sketchs/gen2/game_sokoban/apple1_sok_hgr.cfg`) |
 | `dev/cc65/pom1_fantasy.cfg` | configurable | — | Multiplexing Fantasy preset (POM1-only) |
 
 Minimal `.cfg` syntax:
@@ -434,8 +434,9 @@ The three **Sokoban** ports share the same grid, the same move logic (`execute_m
 
 Other GEN2 programs useful as templates:
 - `sketchs/gen2/game_maze/HGR_Maze.asm`: maze sub-byte rendering (4-px walls)
-- `sketchs/gen2/demo_mandelbrot/HGR_Mandelbrot.asm`: computation + pixel plotting
-- `sketchs/gen2/demo_house/HGR_House.asm`: shape drawing
+- `sketchs/gen2/demo_sierpinski/HGR_Sierpinski.asm`: computation + pixel plotting (`hgr_tables.inc`)
+- `sketchs/gen2/game_maze3d/HGR_Maze3D.asm`: shape drawing + 16×16 sprite blit
+- `sketchs/gen2/demo_bestiary/HGR_Bestiary.asm`: the SCROLL-O-SPRITES catalogue browser
 
 Reusable libraries (`dev/lib/`):
 - `dev/lib/apple1/apple1.inc` — Wozmon + PIA equates

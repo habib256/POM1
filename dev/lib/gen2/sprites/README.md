@@ -29,15 +29,13 @@ Each category produces two files:
   `.include` because cc65 cannot resolve `.import`ed symbols in
   immediate addressing mode (`CMP #N`).
 
-Consumers: `sketchs/gen2/demo_symbols/` (one category, catalogue viewer) and
-`sketchs/gen2/demo_bestiary/` (a 6-category browser — creatures / trollkind /
-unliving / fauna / magick / music — that pages between categories). Both blit
+Consumer: `sketchs/gen2/demo_bestiary/` (a 6-category browser — creatures / trollkind /
+unliving / fauna / magick / music — that pages between categories). It blits
 via the byte-aligned STA fast path (16 rows × 3 bytes straight into the
 framebuffer through `hgr_lo`/`hgr_hi`).
 
 Recommended project Makefile + .asm pattern (see
-`sketchs/gen2/demo_symbols/` or `sketchs/gen2/demo_bestiary/` for working
-examples):
+`sketchs/gen2/demo_bestiary/` for a working example):
 
 ```makefile
 LIB := -I ../../lib/apple1 -I ../../lib/gen2 -I ../../lib/gen2/sprites

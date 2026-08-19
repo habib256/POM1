@@ -1,14 +1,82 @@
 # Changelog
 
 Notable shipped work, recorded as it ships — both the **emulator** (lifted from
-`TODO.md`) and the **6502 software** under `dev/` (libraries + `sketchs/` +
-`dev/projects/` programs, lifted from `dev/TODO6502.md`). The authoritative commit-level history
+`TODO.md`) and the **6502 software** (`dev/lib/` libraries, `dev/codetank/`
+cartridge composition, `sketchs/` programs — lifted from `dev/TODO6502.md`). The authoritative commit-level history
 is `git log`; the user-facing feature tour is `README.md`; open work lives in
 `TODO.md` (emulator) and `dev/TODO6502.md` (6502). Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/). Versions track the string in
 `src/main_imgui.cpp` / `README.md`.
 
 ## [Unreleased]
+
+### Fixed — passe de cohérence doc ↔ code (2) : les guides 6502 et les cartouches CodeTank
+
+Deuxième passe, sur le périmètre que la première n'avait pas couvert : les
+chemins cités par **tous** les docs (pas seulement `CLAUDE.md`), les
+`README.md` de `dev/lib/`, les guides `sketchs/doc/` et les claims sur les
+workflows CI. Là encore, aucun changement de comportement — la seule retouche
+de source est un commentaire.
+
+**La réorganisation des cartouches de juillet 2026 n'avait pas été propagée.**
+Les images `Codetank_GAME1-7` ont disparu au profit de CLASSICS / BASIC_LOGO /
+ARCADE / DEMOS, mais cinq documents faisaient encore graver les anciennes — et
+dans deux cas la banque du jumper avait changé aussi, ce qui rend l'instruction
+activement fausse :
+
+- `APPLE-1_LOGO-2.6-MANUAL.md` + `-MANUEL.md` (FR) demandaient de flasher
+  `Codetank_GAME1.rom` **jumper Upper** pour lancer LOGO. La bonne combinaison
+  est `Codetank_BASIC_LOGO.rom` **jumper Lower** — l'ancienne fait démarrer
+  l'interpréteur Applesoft sur un vrai Apple-1.
+- `sketchs/tms9918/game_rogue/README.md` : Rogue est dans la banque **haute**
+  d'`Codetank_ARCADE.rom`, pas dans la banque basse de `GAME2` ; `--rom=2`
+  n'est plus une valeur acceptée (`--rom=arcade`).
+- `sketchs/tms9918/demo_nyan_cat/README.md` : Nyan est passé d'une banque haute
+  dédiée au slot `$6000` du menu **bas** de `Codetank_DEMOS.rom`.
+- `sketchs/tms9918/tool_logo/README.md` : cartouche + cible de build.
+- `sketchs/doc/Programming_TMS9918.md` décrivait encore la disposition
+  `--layout=dualslot8k` (sacrifiant le menu et Snake) comme la solution au
+  dépassement de slot de Galaga. Le drapeau n'existe plus ; la disposition
+  ARCADE actuelle donne 8 448 B à Galaga **et** garde le menu.
+- `doc/BASIC_COMPILER.md` datait l'interpréteur Applesoft TMS9918 de
+  `CODETANKDEV.rom` (cartouche générée, sans interpréteur).
+
+**Exemples et projets fantômes.** Trois guides renvoyaient le lecteur vers
+`sketchs/gen2/demo_mandelbrot/HGR_Mandelbrot.asm` et
+`sketchs/gen2/demo_house/HGR_House.asm` — deux sketchs absents de l'arbre,
+cités comme *les* modèles à copier pour le tracé de pixels et le dessin de
+formes. Remplacés par `demo_sierpinski/HGR_Sierpinski.asm` (qui consomme bien
+`hgr_tables.inc`), `game_maze3d/HGR_Maze3D.asm` et
+`demo_bestiary/HGR_Bestiary.asm`. Même classe ailleurs :
+`sketchs/gen2/demo_symbols/`, `sketchs/tms9918/nino-democ/` (source sortie de
+l'arbre avec GAME5), `sketchs/gen2/demo_dbuf` (le vrai démonstrateur de
+double-buffer est `demo_bounces`), `dev/codetank/game6_maze3d/`,
+`dev/lib/hgr/` (les `hgr_*` vivent dans `dev/lib/gen2/`), `dev/assets/` et
+`dev/apple1-videocard-lib` (le WASM précharge `dev/cc65` + `dev/lib`).
+`dev/projects/` — arborescence dissoute — était encore cité par le préambule
+de ce fichier et par deux guides cc65.
+
+**Une contradiction dans les deux sens sur les cibles natives du Bench.**
+`Pom1BenchTargets.cpp` affirmait que les cibles 12-13 (Applesoft compilé natif)
+sont *« guarded out of the WASM target table (see the ctor) »* — le
+constructeur ne filtre plus rien, `targetMap_` est l'identité. Symétriquement
+`CLAUDE.md` affirmait que le web expose « every target … same matrix as
+desktop » sans mentionner que ces deux-là sont bien listées mais refusées par
+le dispatch mode 5, avec `nativeSiblingOf()` qui renvoie -1. Les deux côtés
+disent maintenant la même chose.
+
+**Divers.**
+
+- `README.md` annonçait que la carte GEN2 *« auto-loads
+  `software/Graphic HGR/GEN2.HGR.BIN` »*. Ce fichier n'existe pas et aucun
+  chargement automatique n'existe dans le code : les 17 programmes du dossier
+  se chargent par *File → Load Memory* (qui branche la carte au passage).
+- `CLAUDE.md` : `release.yml` se déclenche aussi sur les tags numériques nus
+  (`1.9.5`), que le workflow lui-même qualifie de convention courante, pas
+  seulement sur `v*`.
+- `dev/lib/tms9918c/README.md` : section « Modules `lib/` » alors que les
+  modules sont à plat dans le répertoire.
+
 
 ### Fixed — passe de cohérence doc ↔ code : 20 dérives corrigées
 

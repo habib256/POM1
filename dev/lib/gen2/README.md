@@ -100,8 +100,10 @@ Lookup tables for the GEN2 HGR framebuffer (passive RAM-mapped at `$2000-$3FFF`,
 - **`sprites/`** — HGR sprite data (`.asm` + `.inc` per category), mirrored from
   the TMS9918 sprite sources by `tools/build_hgr_sprites.py`. See
   [`sprites/README.md`](sprites/).
-- **`fonts/`** — font source slices (`font7x8.s`, `fontbb.s`). The reference PNG
-  sheets live in `dev/assets/`.
+- **`fonts/`** — standalone font source slices (`font7x8.s`, `fontbb.s`), kept
+  as imported. Not to be confused with the generated `bbfont_*.inc` tables in
+  this directory, which `tools/build_shared_font.py` emits from the shared
+  Beautiful Boot master (drift-gated by `make -C dev/lib check`).
 
 ## Exported symbols quick-reference
 

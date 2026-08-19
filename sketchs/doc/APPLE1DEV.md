@@ -337,10 +337,10 @@ Add a C++ test in `tests/`. Template: `tests/peripheral_bus_smoke_test.cpp` — 
 |---|---|
 | Text-mode game, ASCII tiles | `sketchs/apple1/game_sokoban/Sokoban.asm` |
 | Text-mode BASIC | `software/Integer_basic/mini-startrek.apl.txt` (Integer) or write fresh Applesoft |
-| HGR pixel plotter | `sketchs/gen2/demo_mandelbrot/HGR_Mandelbrot.asm` + `dev/lib/gen2/hgr_tables.inc` |
+| HGR pixel plotter | `sketchs/gen2/demo_sierpinski/HGR_Sierpinski.asm` + `dev/lib/gen2/hgr_tables.inc` |
 | HGR byte-aligned tiles | `sketchs/gen2/game_sokoban/HGR_Sokoban.asm` (14 px wide) |
 | HGR sub-byte tiles (≠ 7 px) | `sketchs/gen2/game_maze/HGR_Maze.asm` (4-px walls) |
-| HGR shape drawing | `sketchs/gen2/demo_house/HGR_House.asm` |
+| HGR shape drawing / sprite blit | `sketchs/gen2/game_maze3d/HGR_Maze3D.asm` (3-D walls + `hgr_sprite16`), `sketchs/gen2/demo_bestiary/HGR_Bestiary.asm` (SCROLL-O-SPRITES catalogue) |
 | TMS9918 multi-colour tiles | `sketchs/tms9918/game_sokoban/TMS_Sokoban.asm` (colour-group trick) |
 | TMS9918 full-screen sprite game | `sketchs/tms9918/game_galaga/TMS_Galaga.asm` |
 | GT-6144 plotter | `sketchs/apple1/gt6144_demo_hello/GT1_Hello.asm`, `sketchs/apple1/gt6144_demo_life/GT1_Life.asm` |

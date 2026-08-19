@@ -83,8 +83,8 @@ silently — no error, just no graphics.
 
 ## Migration path for existing projects
 
-`gt6144/gt6144_demo_hello/GT1_Hello.asm` (CLR_SCREEN, ~14 lines) and
-`gt6144/gt6144_demo_life/GT1_Life.asm` (clear_gt, identical). Replace each local
+`sketchs/apple1/gt6144_demo_hello/GT1_Hello.asm` (CLR_SCREEN, ~14 lines) and
+`sketchs/apple1/gt6144_demo_life/GT1_Life.asm` (clear_gt, identical). Replace each local
 copy with `.include "gt6144.asm"` + `JSR gt_clear`. ~14 lines saved per
 project, plus consistency.
 

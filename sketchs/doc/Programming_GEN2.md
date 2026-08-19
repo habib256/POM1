@@ -107,5 +107,6 @@ JSR clear_hgr              ; zero the framebuffer
 
 - `sketchs/gen2/game_maze/HGR_Maze.asm` — sub-byte rendering maze (4-pixel walls)
 - `sketchs/gen2/game_sokoban/HGR_Sokoban.asm` — full 72-level game, 14×16 tiles, delta rendering
-- `sketchs/gen2/demo_mandelbrot/HGR_Mandelbrot.asm` — computation + pixel plotting
-- `sketchs/gen2/demo_house/HGR_House.asm` — shape drawing
+- `sketchs/gen2/demo_sierpinski/HGR_Sierpinski.asm` — computation + pixel plotting (`hgr_tables.inc`)
+- `sketchs/gen2/game_maze3d/HGR_Maze3D.asm` — shape drawing + 16×16 sprite blit
+- `sketchs/gen2/demo_bestiary/HGR_Bestiary.asm` — SCROLL-O-SPRITES catalogue browser

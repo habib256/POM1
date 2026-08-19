@@ -436,7 +436,10 @@ const P1T kP1Targets[] = {
     // which mirrors tools/basicc_native.sh (ca65 prog + minimal runtime + optional
     // float, then ld65 against basicc_native.cfg) and loadBinary+runs the result at
     // $0300. cfg=nullptr (the native build hardcodes basicc_native.cfg). DESKTOP
-    // only — guarded out of the WASM target table (see the ctor). GEN2 = preset 2
+    // only: the ctor lists every target on both platforms (targetMap_ is the
+    // identity), so these two are VISIBLE under WASM but the mode-5 dispatch in
+    // build() refuses them there, and nativeSiblingOf() returns -1 so the
+    // Inject/Native toggle collapses to Inject. GEN2 = preset 2
     // (HGR page 1 framebuffer); TMS = preset 1 (code runs from $0300 RAM, draws to
     // the VDP at $CC00/$CC01 — NOT a CodeTank cartridge, so codetankRom = false).
     { "Applesoft GEN2 (native, 0300R)",          md::kPresetGen2Bench,    nullptr, "BASIC", 5, false, false, kSketchBasicApplesoftGen2 },

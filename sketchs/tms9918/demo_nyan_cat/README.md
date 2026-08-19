@@ -30,22 +30,22 @@ exactly 1 536 output bytes per frame.
 
 1. Load **preset 9** (P-LAB Apple-1 with TMS9918 + CodeTank
    daughterboard) — TMS9918 is plugged by default, CodeTank too.
-2. Hardware → CodeTank → ROM Library → select **Codetank_GAME2.rom**
-   (Nyan is its upper-bank program).
-3. Hardware → CodeTank → Jumper → **Upper**.
-4. Wozmon `\` prompt → type `4000R`.
-5. Watch the cat bob and the rainbow scroll at ~20 fps.
+2. Hardware → CodeTank → ROM Library → select **Codetank_DEMOS.rom**
+   (Nyan is one of its five lower-bank demos).
+3. Hardware → CodeTank → Jumper → **Lower**.
+4. Wozmon `\` prompt → type `4000R` — the demo picker comes up.
+5. Pick **Nyan**; watch the cat bob and the rainbow scroll at ~20 fps.
 6. ESC returns to Wozmon.
 
 > Or just open this sketch in DevBench and **Run**.
 
 ## Build
 
-Mono-source DevBench sketch (no Makefile). It ships in
-`Codetank_GAME2.rom`'s upper bank, assembled from `TMS_Nyan_CodeTank.asm`
+Mono-source DevBench sketch (no Makefile). It ships in the `$6000` slot of
+`Codetank_DEMOS.rom`'s **lower** bank, assembled from `TMS_Nyan_CodeTank.asm`
 + `nyan_rle.asm` (with `tms9918_pad` auto-linked) by:
 
-    python3 tools/build_codetank_rom.py --rom=2
+    python3 tools/build_codetank_rom.py --rom=demos
 
 ## Why it fits when the Fantasy variant ships 19 KB raw
 
@@ -68,12 +68,13 @@ Same data — the RLE compression pays for itself entirely:
     Host Apple-1:
       $0000-$007F  Zero page (~80 B)
       $0100-$01FF  6502 stack
-    CodeTank ROM (GAME2 upper half of the 28c256 EEPROM):
-      $4000-$7FFF  CODE — code (~700 B) + nyan_rle.asm (~6.8 KB)
+    CodeTank ROM (DEMOS lower half of the 28c256 EEPROM):
+      $6000-$7FFF  CODE — code (~700 B) + nyan_rle.asm (~6.8 KB)
                           + lib/tms9918_pad (~50 B)
 
-Nyan runs in place from $4000 regardless of which physical half holds it;
-in `Codetank_GAME2.rom` it is the **upper** bank (lower bank = Rogue).
+The DEMOS lower bank is a menu of five run-in-place demos ($4000 menu /
+$4200 Life / $4A00 Mandel / $5200 Plasma / $5A00 Vague / $6000 Nyan); the
+upper bank holds `demo_sprite_animals`.
 
 ## Sources
 
@@ -81,7 +82,7 @@ in `Codetank_GAME2.rom` it is the **upper** bank (lower bank = Rogue).
 - `nyan_rle.asm` — auto-generated 12-frame compressed stream
 - `apple1_nyan_codetank.cfg` — ld65 config (CODE at $4000, 16 KB)
 - `.sketch.json` — DevBench metadata (cfg + extraAsm `nyan_rle.asm` + `tms9918_pad.asm`)
-- Output: shipped as `Codetank_GAME2.rom`'s upper bank (via `build_codetank_rom.py --rom=2`)
+- Output: shipped in `Codetank_DEMOS.rom`'s lower bank, `$6000` slot (via `build_codetank_rom.py --rom=demos`)
 
 ## Author / License
 

@@ -23,8 +23,7 @@ ARCADE / DEMOS, see `tools/build_codetank_rom.py --help`):
 |---------------------|----------------------------------------------------------|
 | `game1_menu/`       | **ARCADE lower**-bank launcher ($4000-$40FF) → Galaga/Sokoban/Snake |
 | `demos_menu/`       | **DEMOS lower**-bank launcher ($4000-$41FF) → Life/Mandel/Plasma/Vague/Nyan |
-| `game6_maze3d/`     | Maze3D (retired from the cart line-up; kept as a buildable project) |
-| `game6_menu/`       | retired launcher kept alongside it                       |
+| `game6_menu/`       | retired launcher, kept for reference (Maze3D itself lives at `sketchs/tms9918/game_maze3d/`) |
 | `bank_cfgs/`        | per-game ld65 **bank-layout** cfgs (`apple1_*_codetank_bank.cfg`) — pin each game at its fixed cartridge offset |
 
 Both menus print their prompt then dispatch through `menu_select` from

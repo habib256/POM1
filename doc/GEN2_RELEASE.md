@@ -130,8 +130,8 @@ line to B&W.
 | DHGR / 80-col / AN3 | does not exist (Apple II, not IIe) |
 
 Tooling: `dev/cc65/apple1_gen2.cfg` (CODE at `$E000`, HGR pages reserved),
-libraries `dev/lib/gen2/` (this SDK), `dev/lib/hgr/` (scanline tables,
-plot), `dev/lib/apple1/` (Wozmon/PIA equates, print). Multi-zone loading:
+libraries `dev/lib/gen2/` (this SDK — including the `hgr_*` scanline tables
+and plot routines), `dev/lib/apple1/` (Wozmon/PIA equates, print). Multi-zone loading:
 `emit_woz.py` bundles raw blobs (e.g. an 8 KB HGR image at `$2000`) into the
 program's `.txt` via `extra_zones` — one Wozmon load installs everything.
 
