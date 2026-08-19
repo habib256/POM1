@@ -172,11 +172,14 @@ changes**, not just per-band switching.
 > **Back-port plan for POM1:** copy the POM2 trio (`VideoEvent.emuCycle` journal,
 > `frameCycleToPos`, `forEachBeamSegment`) — adapted for GEN2 `$C250–$C257` soft
 > switches and Bernie MSB blank reads (Phase 2). POM1 subset = 280-wide TEXT /
-> LORES / HGR only (no 560-wide IIe save/restore). Still needed on POM1: TEXT +
-> LORES renderers on the GEN2 window (HGR-only today), Phase 2 HBLANK MSB flag,
-> then port `horizontal_split_smoke` with `$C25x` addresses. **v1 refinement
+> LORES / HGR only (no 560-wide IIe save/restore). **Every item on this list has
+> since landed** (août 2026): `renderInternalSegment` dispatches TEXT / LORES /
+> HIRES / MIXED, the Phase-2 HBLANK MSB flag is `Gen2VideoScanner::hst0State()`
+> (pinned by `gen2_softswitch_msb_smoke`), and POM2's `horizontal_split` test was
+> ported to the `$C25x` journal as `gen2_horizontal_split_smoke`. **v1 refinement
 > scope:** column-byte boundary is exact; transition cycle within a character
-> clock is deferred (same as POM2). Tracked in `TODO.md` Phase 3.
+> clock is deferred (same as POM2). Tracked in `TODO.md` under *GEN2 beam engine —
+> Phase 4* (Phases 0-3 + 5 are delivered).
 
 ### 2026-06-09 — full thread review (AppleFritter posts #1–#22)
 
@@ -213,9 +216,9 @@ technical nuggets) for answers and emulation-relevant facts:
   the 2716 video-ROM rewrite, but per Bernie's latest specification **all modes
   work on the real hardware — including his prototype**: TEXT 40×25 (lowercase),
   LORES 40×50 in 16 colors, HIRES 280×192, MIXED. The PDF's spec list describes
-  working features, not future plans. ⚠ POM1 rendering only HGR `$2000-$3FFF`
-  is therefore an **emulator gap** (TEXT/LORES/MIXED renderers tracked in
-  `TODO.md` Phase 3 *Modes d'affichage*), **not** hardware parity.
+  working features, not future plans. The matching emulator gap (POM1 rendering
+  only HGR `$2000-$3FFF`) is **closed** — `GraphicsCard::renderInternalSegment`
+  now dispatches TEXT / LORES / HIRES / MIXED, so this paragraph is history.
 
 **Timing (answers Q4 in part)**
 - ✅ **65 CPU cycles per scanline — explicitly confirmed**: *"the scan line
@@ -407,11 +410,13 @@ documented arbitrary cold-state, never cleared on RESET.
 **Other / future hooks (not blocking Phase 2):**
 - **Char set (Table 2):** 2716 EPROM = full ASCII like the IIe. Bits 7/6/5 of the
   screen byte = display attribute (inverted/flashing/normal); low 6 bits = Apple-II
-  encoding. Relevant only once GEN2 TEXT/LORES rendering lands (POM1 is HGR-only today).
-  Bernie can send a parseable char-set template.
+  encoding. **Landed** — `GraphicsCard::resolveGlyph` decodes the three attribute
+  bands (`$00-$3F` inverse, `$40-$7F` flashing at ~2 Hz, `$80-$FF` normal) and
+  `renderText` paints them, so no char-set template is outstanding.
 - **Improved GEN1/GEN2 ACI** is available by adding a **`$C5xx` PROM page** (fast
-  ACI routines, BASIC load in ~2 s). Bernie can send the binary — possible future
-  POM1 enhancement, separate from the graphics card.
+  ACI routines, BASIC load in ~2 s). **Shipped** — POM1 emulates it as the Extended
+  ACI (`roms/XACI.rom` at `$C500-$C5FF`, pinned by `extended_aci_smoke`). It is a
+  cassette-card upgrade, separate from the graphics card.
 - Bernie's own switch-level Visual-6502 emulator **EXACTA-1** runs ~10× slower than
   real hardware; he relies on POM1 for game dev — hence priority on Phase 2/3.
 

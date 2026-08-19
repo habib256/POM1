@@ -36,8 +36,8 @@ document keeps the plan + the proven pieces (the approach 8bitworkshop uses).
 
 - **Bundled + page-wired (this turn).** `tools/build_cc65_wasm.sh --out build-wasm/cc65`
   builds the tools into the web output; `CMakeLists.txt` (under `if(EMSCRIPTEN)`)
-  preloads the `dev/` toolchain (`dev/cc65`, `dev/lib`, `dev/apple1-videocard-lib`,
-  ~1.8 MB) into POM1's MEMFS, exports `FS`, and POST_BUILD-copies
+  preloads the `dev/` toolchain (`dev/cc65` + `dev/lib`, the latter carrying the
+  `tms9918c` port of nippur72's apple1-videocard-lib) into POM1's MEMFS, exports `FS`, and POST_BUILD-copies
   `tools/cc65_wasm.js` + `tools/cc65_bench.js` next to `POM1.html`. `shell.html`
   loads them + the four tool `.js` and defines **`window.POM1cc65`**. Confirmed in
   the built bundle: 293 `/dev/*` files in the MEMFS manifest, `Module["FS"]`

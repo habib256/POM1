@@ -152,7 +152,9 @@ else (`$0801` origin, `VARTAB` at `$69`) is shared Applesoft layout.
 
 These were extracted with `ld65 -Ln` from the assembled interpreters and pinned
 against the shipped ROMs: the rebuilt TMS image is **byte-identical** to the
-upper bank of `roms/codetank/CODETANKDEV.rom`; the rebuilt GEN2 image matches
+upper bank of `roms/codetank/Codetank_BASIC_LOGO.rom` (the stabilised language
+cartridge — `CODETANKDEV.rom` is the generated two-slot flash cart and carries
+no interpreter); the rebuilt GEN2 image matches
 `roms/applesoft-gen2.rom` except for one cosmetic byte far above both routines.
 
 **Re-deriving the addresses** (only needed if an interpreter ROM is rebuilt — the

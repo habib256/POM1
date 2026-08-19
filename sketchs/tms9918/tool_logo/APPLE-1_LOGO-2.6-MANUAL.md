@@ -72,8 +72,9 @@ CodeTank daughterboard (upper bank). Flip the CodeTank jumper to
 ### On a real Apple-1
 
 You need an Apple-1, the P-LAB TMS9918 card, and the CodeTank
-daughterboard. Flash `Codetank_GAME1.rom` into the 28C256, set the
-jumper to Upper, then type `4000R` from Wozmon.
+daughterboard. Flash `Codetank_BASIC_LOGO.rom` into the 28C256, set the
+jumper to **Lower**, then type `4000R` from Wozmon. (The upper bank of that
+same cartridge holds the Applesoft TMS9918 interpreter.)
 
 ### Saying hello
 

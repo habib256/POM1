@@ -8,7 +8,7 @@
 
 **Two colour graphics cards, one graphics BASIC.** Paint in colour on **Uncle Bernie's GEN2 HGR Card** (280×192) *and* the **P-LAB TMS9918** (256×192 + 32 sprites) — then drive *both* from an **Apple-1 Applesoft** whose Apple II graphics commands (`HGR` · `HPLOT` · `HCOLOR`) run the **same listing** on either card.
 
-Built with Dear ImGui & OpenGL — fast, lightweight, cross-platform.
+Built with Dear ImGui — OpenGL on Linux/Windows/Web, Metal on macOS. Fast, lightweight, cross-platform.
 
 [![▶ Play in browser (no install)](https://img.shields.io/badge/▶%20Play%20in%20browser-WebAssembly-blueviolet?style=for-the-badge)](https://habib256.github.io/pom1/build-wasm/POM1.html)
 
@@ -208,7 +208,7 @@ The **core machine** is an authentic 40×24 display (`charmap.rom` bitmap, three
 | 🎵 **A1-AUDIO Special Edition** | — | Same chip relocated to `$CC00-$CC1F` (excludes TMS9918) |
 | 🎨 **[Uncle Bernie's GEN2 HGR](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1)** | 2026 | 280×192 Apple-II-style framebuffer with NTSC artifact colour |
 | 🎨 **[P-LAB TMS9918](https://p-l4b.github.io/graphic/)** | — | TMS9918A VDP, 256×192, 32 sprites, 4 modes. Silicon-strict timing model |
-| 💾 **P-LAB CodeTank** | — | Daughterboard of the TMS9918 card. **3 cartridges shipped** (see Software) |
+| 💾 **P-LAB CodeTank** | — | Daughterboard of the TMS9918 card. **4 cartridges shipped** (see Software) |
 | 💾 **[P-LAB Juke-Box](https://p-l4b.github.io/jukebox/)** | — | Paged 16 KB–512 KB flash + writable 28c256 EEPROM. `$CA00` bank latch |
 | ⏰ **[P-LAB I/O Board & RTC](https://p-l4b.github.io/A1-IO_RTC/)** | — | DS3231, DS18B20, ADC + digital I/O |
 | 📡 **[P-LAB Wi-Fi Modem](https://p-l4b.github.io/wifi/)** | — | 65C51 + ESP8266, Hayes AT, real TCP/TELNET (desktop only) |
@@ -223,7 +223,7 @@ Bus-window exclusions are enforced (one P-LAB card at a time, per Parmigiani's r
 
 **Uncle Bernie's Extended ACI** *(2026)* — his improved Gen-2 cassette interface. The card is unchanged silicon (same `$C000` flip-flop, same `$C081` comparator); what is new is a **second 256-byte PROM page at `$C500-$C5FF`** beside Woz's untouched `$C100` firmware. `C500R` relocates the stock ACI ROM into the stack page and re-vectors it, adding Apple-II-style checksums and the **extended format**: 8-byte from/to headers, equal addresses meaning autostart. So a tape carries its own load address — `C500R` then `RX RX` loads and runs it, `<from>.<to>WX` writes one. Recordings stay readable on a stock ACI or an Apple-II (subtract 8 from each `<from>`, skip the autostart block). Bundled demo: `cassettes/codebrk.aiff`, Uncle Bernie's Codebreaker, in the `.aiff` format his **ACIace** synthesiser emits. Plug from **Hardware → Woz ACI ▸ Uncle Bernie's Extended ACI**, or `--enable xaci`.
 
-**Uncle Bernie's GEN2 HGR** — **280×192** HIRES, Apple II-compatible memory at `$2000-$3FFF`, **NTSC artifact colour**. Auto-loads `software/Graphic HGR/GEN2.HGR.BIN`; includes [HGR Maze](sketchs/gen2/game_maze/HGR_Maze.asm). Details → [`doc/GEN2_RELEASE.md`](doc/GEN2_RELEASE.md).
+**Uncle Bernie's GEN2 HGR** — **280×192** HIRES, Apple II-compatible memory at `$2000-$3FFF`, **NTSC artifact colour**. Its 17 programs live in `software/Graphic HGR/` as Woz-hex dumps — *File → Load Memory* (the folder auto-plugs the card), e.g. [HGR Maze](sketchs/gen2/game_maze/HGR_Maze.asm). Details → [`doc/GEN2_RELEASE.md`](doc/GEN2_RELEASE.md).
 
 **P-LAB TMS9918** — TMS9918A VDP, **256×192**, 15 colours + transparent, 32 hardware sprites, 4 modes. I/O at `$CC00`/`$CC01`, 16 KB dedicated VRAM. Compatible with [nippur72's apple1-videocard-lib](https://github.com/nippur72/apple1-videocard-lib). **Silicon Strict** mode enforces the VRAM timing model — tune it from *DevBench → Silicon Strict Inspector*. Chip quirks → [`Programming_TMS9918.md`](sketchs/doc/Programming_TMS9918.md).
 

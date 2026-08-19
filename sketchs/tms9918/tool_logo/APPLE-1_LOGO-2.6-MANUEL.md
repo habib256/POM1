@@ -74,8 +74,9 @@ et lancer l'interpréteur avec `4000R` depuis Wozmon.
 ### Sur un vrai Apple-1
 
 Il faut un Apple-1, la carte P-LAB TMS9918 et la fille CodeTank.
-Flasher `Codetank_GAME1.rom` dans la 28C256, mettre le jumper sur
-Upper, puis taper `4000R` depuis Wozmon.
+Flasher `Codetank_BASIC_LOGO.rom` dans la 28C256, mettre le jumper sur
+**Lower**, puis taper `4000R` depuis Wozmon. (La banque haute de cette même
+cartouche porte l'interpréteur Applesoft TMS9918.)
 
 ### Dire bonjour
 

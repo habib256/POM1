@@ -7,8 +7,9 @@ Graphic Card. Custom 8x8 tileset sliced from Quale's SCROLL-O-SPRITES
 (CC-BY-3.0), 16x16 hardware sprite for the player, dual-bank Parmigiani
 RAM layout (low bank for code, high bank for the map buffer).
 
-Ships as `roms/codetank/Codetank_GAME2.rom` — load via POM1's
-`--codetank-rom` and run with `4000R` from Wozmon.
+Ships in the **upper** bank of `roms/codetank/Codetank_ARCADE.rom` (the lower
+bank holds the Galaga / Sokoban / Snake picker) — load via POM1's
+`--codetank-rom`, set the jumper to Upper, and run with `4000R` from Wozmon.
 
 ## Shipped features
 
@@ -202,19 +203,21 @@ two banks with a hole in the middle:
 
 Cartridge (the only supported target):
 ```bash
-python3 tools/build_codetank_rom.py --rom=2     # writes roms/codetank/Codetank_GAME2.rom
-./build/POM1 --preset 9 --codetank-rom roms/codetank/Codetank_GAME2.rom
+python3 tools/build_codetank_rom.py --rom=arcade   # writes roms/codetank/Codetank_ARCADE.rom
+./build/POM1 --preset 9 --codetank-rom roms/codetank/Codetank_ARCADE.rom --codetank-jumper upper
 # Then 4000R from Wozmon to start.
 ```
 
 Build the ROM image (assembles `TMS_Rogue.asm` from this directory and links
-it into the `$4000` lower bank of `roms/codetank/Codetank_GAME2.rom`):
+it into the **upper** 16 KB bank of `roms/codetank/Codetank_ARCADE.rom`, which
+still runs in place at `$4000` once the jumper selects that half):
 ```bash
-python3 tools/build_codetank_rom.py --rom=2
+python3 tools/build_codetank_rom.py --rom=arcade
 ```
 This sketch is also discoverable in DevBench (mono-source `.sketch.json`);
-there is no per-project `Makefile` — it migrated out of `dev/projects/` into
-`sketchs/tms9918/game_rogue/`.
+there is no per-project `Makefile` — program sources live under
+`sketchs/<card>/`, and `dev/codetank/` keeps only the cartridge-composition
+material (menus + per-bank linker cfgs).
 
 ## Tileset regeneration
 

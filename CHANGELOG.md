@@ -1,14 +1,185 @@
 # Changelog
 
 Notable shipped work, recorded as it ships — both the **emulator** (lifted from
-`TODO.md`) and the **6502 software** under `dev/` (libraries + `sketchs/` +
-`dev/projects/` programs, lifted from `dev/TODO6502.md`). The authoritative commit-level history
+`TODO.md`) and the **6502 software** (`dev/lib/` libraries, `dev/codetank/`
+cartridge composition, `sketchs/` programs — lifted from `dev/TODO6502.md`). The authoritative commit-level history
 is `git log`; the user-facing feature tour is `README.md`; open work lives in
 `TODO.md` (emulator) and `dev/TODO6502.md` (6502). Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/). Versions track the string in
 `src/main_imgui.cpp` / `README.md`.
 
 ## [Unreleased]
+
+### Fixed — passe de cohérence doc ↔ code (2) : les guides 6502 et les cartouches CodeTank
+
+> **Vérifié par une exécution réelle** (les deux passes précédentes annonçaient
+> ne pas avoir compilé) : `cmake` + `make` complets puis `ctest` → **90/90
+> passent, 0 échec**, les 8 « skipped » étant les cibles conditionnées à cc65,
+> absent de l'environnement. `make -C dev/lib check` passe ses gates de dérive
+> (police partagée, C64-font, catalogue de sprites, shims wozmon) et ne
+> s'arrête qu'au pas `ca65`, même cause. Les 46 sidecars `.sketch.json` du
+> DevBench ne référencent aucun fichier manquant.
+
+Deuxième passe, sur le périmètre que la première n'avait pas couvert : les
+chemins cités par **tous** les docs (pas seulement `CLAUDE.md`), les
+`README.md` de `dev/lib/`, les guides `sketchs/doc/` et les claims sur les
+workflows CI. Là encore, aucun changement de comportement — la seule retouche
+de source est un commentaire.
+
+**La réorganisation des cartouches de juillet 2026 n'avait pas été propagée.**
+Les images `Codetank_GAME1-7` ont disparu au profit de CLASSICS / BASIC_LOGO /
+ARCADE / DEMOS, mais cinq documents faisaient encore graver les anciennes — et
+dans deux cas la banque du jumper avait changé aussi, ce qui rend l'instruction
+activement fausse :
+
+- `APPLE-1_LOGO-2.6-MANUAL.md` + `-MANUEL.md` (FR) demandaient de flasher
+  `Codetank_GAME1.rom` **jumper Upper** pour lancer LOGO. La bonne combinaison
+  est `Codetank_BASIC_LOGO.rom` **jumper Lower** — l'ancienne fait démarrer
+  l'interpréteur Applesoft sur un vrai Apple-1.
+- `sketchs/tms9918/game_rogue/README.md` : Rogue est dans la banque **haute**
+  d'`Codetank_ARCADE.rom`, pas dans la banque basse de `GAME2` ; `--rom=2`
+  n'est plus une valeur acceptée (`--rom=arcade`).
+- `sketchs/tms9918/demo_nyan_cat/README.md` : Nyan est passé d'une banque haute
+  dédiée au slot `$6000` du menu **bas** de `Codetank_DEMOS.rom`.
+- `sketchs/tms9918/tool_logo/README.md` : cartouche + cible de build.
+- `sketchs/doc/Programming_TMS9918.md` décrivait encore la disposition
+  `--layout=dualslot8k` (sacrifiant le menu et Snake) comme la solution au
+  dépassement de slot de Galaga. Le drapeau n'existe plus ; la disposition
+  ARCADE actuelle donne 8 448 B à Galaga **et** garde le menu.
+- `doc/BASIC_COMPILER.md` datait l'interpréteur Applesoft TMS9918 de
+  `CODETANKDEV.rom` (cartouche générée, sans interpréteur).
+
+**Exemples et projets fantômes.** Trois guides renvoyaient le lecteur vers
+`sketchs/gen2/demo_mandelbrot/HGR_Mandelbrot.asm` et
+`sketchs/gen2/demo_house/HGR_House.asm` — deux sketchs absents de l'arbre,
+cités comme *les* modèles à copier pour le tracé de pixels et le dessin de
+formes. Remplacés par `demo_sierpinski/HGR_Sierpinski.asm` (qui consomme bien
+`hgr_tables.inc`), `game_maze3d/HGR_Maze3D.asm` et
+`demo_bestiary/HGR_Bestiary.asm`. Même classe ailleurs :
+`sketchs/gen2/demo_symbols/`, `sketchs/tms9918/nino-democ/` (source sortie de
+l'arbre avec GAME5), `sketchs/gen2/demo_dbuf` (le vrai démonstrateur de
+double-buffer est `demo_bounces`), `dev/codetank/game6_maze3d/`,
+`dev/lib/hgr/` (les `hgr_*` vivent dans `dev/lib/gen2/`), `dev/assets/` et
+`dev/apple1-videocard-lib` (le WASM précharge `dev/cc65` + `dev/lib`).
+`dev/projects/` — arborescence dissoute — était encore cité par le préambule
+de ce fichier et par deux guides cc65.
+
+**Une contradiction dans les deux sens sur les cibles natives du Bench.**
+`Pom1BenchTargets.cpp` affirmait que les cibles 12-13 (Applesoft compilé natif)
+sont *« guarded out of the WASM target table (see the ctor) »* — le
+constructeur ne filtre plus rien, `targetMap_` est l'identité. Symétriquement
+`CLAUDE.md` affirmait que le web expose « every target … same matrix as
+desktop » sans mentionner que ces deux-là sont bien listées mais refusées par
+le dispatch mode 5, avec `nativeSiblingOf()` qui renvoie -1. Les deux côtés
+disent maintenant la même chose.
+
+**Divers.**
+
+- `README.md` annonçait que la carte GEN2 *« auto-loads
+  `software/Graphic HGR/GEN2.HGR.BIN` »*. Ce fichier n'existe pas et aucun
+  chargement automatique n'existe dans le code : les 17 programmes du dossier
+  se chargent par *File → Load Memory* (qui branche la carte au passage).
+- `CLAUDE.md` : `release.yml` se déclenche aussi sur les tags numériques nus
+  (`1.9.5`), que le workflow lui-même qualifie de convention courante, pas
+  seulement sur `v*`.
+- `dev/lib/tms9918c/README.md` : section « Modules `lib/` » alors que les
+  modules sont à plat dans le répertoire.
+- `dev/cc65/Makefile.common`, `dev/lib/gfx/Makefile` et
+  `tools/build_shared_font.py` renvoyaient à `sketchs/doc/TODO6502.md` ; le
+  fichier est `dev/TODO6502.md`.
+
+
+### Fixed — passe de cohérence doc ↔ code : 20 dérives corrigées
+
+Audit systématique de la documentation contre le code qu'elle décrit. Aucun
+changement de comportement : les seules retouches de sources sont des
+**commentaires**. Ce qui a été vérifié mécaniquement (et est désormais vert) :
+tous les liens relatifs des 85 `.md`, tous les drapeaux de `CliDispatcher.cpp`
+contre `doc/CLI.md`, tous les noms de tests `ctest` cités dans les docs, tous
+les chemins de fichiers cités par `CLAUDE.md`, et la table `kMachinePresets[]`
+contre le tableau des presets du `README.md`.
+
+**Fonctionnalités livrées mais encore décrites comme à faire.** C'est la
+catégorie la plus trompeuse — un lecteur y renonce à une feature qui existe.
+
+- `TODO.md` gardait **Uncle Bernie's Improved ACI** en 🚫 *bloqué, en attente du
+  binaire de Bernie*. La carte est livrée depuis août 2026 (`roms/XACI.rom`,
+  page `$C500-$C5FF`, cascade ACI dans les deux sens, `extended_aci_smoke`).
+  Entrée supprimée.
+- `doc/GEN2_RELEASE_questions.md` listait trois chantiers GEN2 comme restant à
+  faire, tous terminés : les rendus TEXT / LORES / MIXED
+  (`GraphicsCard::renderInternalSegment` les dispatche), le flag HBLANK MSB de
+  la phase 2 (`Gen2VideoScanner::hst0State()`), et le portage du test
+  `horizontal_split` de POM2 (livré en `gen2_horizontal_split_smoke`). Le même
+  fichier annonçait encore les attributs de caractères (inverse / clignotant)
+  comme un « hook futur » alors que `resolveGlyph` décode les trois bandes, et
+  la page PROM `$C5xx` comme « possible future » — c'est l'ACI étendue.
+
+**Symboles et fichiers déplacés que la doc suivait encore à l'ancienne adresse.**
+
+- `kP1Targets[]` vit dans `Pom1BenchTargets.cpp` depuis la découpe du god file
+  Bench, pas dans `Pom1BenchHost.cpp` : corrigé dans `CLAUDE.md`,
+  `doc/DEVBENCH.md`, `MachinePresets.cpp` et `MainWindow_Presets.cpp`. Au
+  passage, `CLAUDE.md` affirmait que chaque cible pointe vers l'un des trois
+  bancs — deux cibles n'en pointent aucun (`-1` « toute machine » pour le hex
+  Wozmon, `kPresetMicroSD` pour l'interpréteur Applesoft Lite).
+- `doc/DEVBENCH.md` faisait charger l'interpréteur Applesoft TMS9918 depuis
+  `CODETANKDEV.rom` et LOGO TMS9918 depuis `Codetank_GAME3.rom` — une cartouche
+  générée (jamais commitée) et une autre retirée en juillet 2026. Les deux
+  bancs viennent de `Codetank_BASIC_LOGO.rom`. Même dérive dans deux
+  commentaires de sources (`Pom1BenchHost.cpp`, `BasicTokeniserApplesoft.cpp`),
+  qui décrivaient encore CODETANKDEV comme portant l'Applesoft en banc haut.
+- `doc/CLI.md` donnait `Codetank_GAME1.rom` comme cartouche par défaut de
+  `--codetank-rom` ; la sonde réelle est `Codetank_ARCADE.rom` puis le legacy
+  `roms/codetank.rom`.
+
+**Trous de documentation.**
+
+- **Le `TelemetryPort` était absent de `CLAUDE.md`** — ni dans la carte mémoire,
+  ni dans la liste des périphériques, alors qu'il enregistre `$C440-$C443` en
+  **priorité 30**, soit au-dessus du handler large `$C200-$C7FF` de GEN2. C'est
+  exactement le genre d'arbitrage de bus que ce fichier existe pour documenter.
+  Ajouté aux deux endroits, avec le renvoi vers `doc/TELEMETRY_SIDE_CHANNEL.md`.
+- Quatre drapeaux du parseur n'avaient aucune ligne dans `doc/CLI.md` :
+  `--vram-noise` (cité seulement en prose ailleurs), `--tms-frameflag-hostile`,
+  `--ram-poison <HH>` et `--ram-trap`. Les quatre forment le harnais
+  « marche sur POM1, casse sur silicium » ; ils ont désormais leur ligne.
+
+**Comptes et affirmations fausses.**
+
+- `MachinePresets.h` : le commentaire d'`extendedAci` disait « off sur tous les
+  presets historiques, on pour POM1 Fantasy ». La table dit l'inverse — elle est
+  **on partout où l'ACI est branchée sauf** `#0`/`#4`/`#5`. Commentaire réécrit
+  avec la liste exacte.
+- `CLAUDE.md` : `MainWindow_ImGui` est réparti sur **14** TU, pas 12 (les 12
+  suffixés + `MainWindow_ImGui.cpp` + `_Dock`), et `_Keyboard` est le seul à ne
+  pas inclure `MainWindow_Internal.h`.
+- `README.md` : la ligne CodeTank du tableau des cartes disait « 3 cartouches
+  livrées » là où les deux autres mentions du même fichier disent 4 (CLASSICS /
+  BASIC_LOGO / ARCADE / DEMOS). Et « Built with Dear ImGui & OpenGL » ignorait
+  le backend Metal, défaut sur macOS depuis la couture `PomRenderer`.
+
+**Chemins qui n'existent pas.**
+
+- `doc/SKETCHS.md` documentait `sketchs/tms9918/_template_tms9918c/` — table des
+  starters, section dédiée et ligne `make -C` — pour un dossier absent de
+  l'arbre. Réécrit autour du vrai starter C TMS9918 (`tms9918_hello_c/`, sans
+  Makefile, construit par le DevBench), avec la nuance que trois sketchs
+  TMS9918 (`game_maze3d`, `tool_diapo`, `tool_tmsload`) ont bien le leur.
+- `sketchs/doc/CC65.md` citait `demo_maze`, `lib_smoke` et `tms9918_logo` comme
+  projets multi-objets à Makefile propre : aucun des trois n'existe. Remplacés
+  par les vrais, et par le constat que `Makefile.common` n'a plus qu'un seul
+  consommateur (`sketchs/apple1/_template/`).
+- `dev/lib/tms9918c/README.md` annonçait des sorties dans
+  `software/Apple-1_TMS_CC65/`, dossier parti avec les 41 fichiers retirés de
+  `software/` le 2026-06-22 ; `make -C dev/codetank` compose en réalité les
+  cartouches sous `roms/codetank/`.
+- Huit liens relatifs cassés : `CHANGELOG.md` (`../doc/` depuis la racine),
+  `doc/TELEMETRY_SIDE_CHANNEL.md` (chemins non préfixés `../`),
+  `dev/codetank/README.md` (`../../../` = un cran au-dessus du dépôt),
+  `dev/cc65/README.md` et `dev/lib/README.md` (`../projects/codetank/`, qui est
+  `../codetank/`).
+
 
 ### Changed — passe « god files » : cinq fichiers monstres découpés, un couplage UI supprimé
 
@@ -1312,7 +1483,7 @@ Reprise de la campagne « borne » de NeoST (`packaging/raspberry/`,
   without `FP_SIN`. Pinned: `basic_float_runtime` (5000-point ATN grid vs `atanf`,
   RND range + non-degeneracy), `basic_native_codegen` (emits `jsr fp_atn`/`fp_rand`),
   `basic_native_run` (end-to-end arctan-curve + RND-scatter native programs). Doc:
-  [`BASIC_COMPILER.md`](../doc/BASIC_COMPILER.md).
+  [`BASIC_COMPILER.md`](doc/BASIC_COMPILER.md).
 
 ### Fixed — documented `AND`/`OR` semantics divergence (not a tokeniser bug)
 
@@ -1323,7 +1494,7 @@ Reprise de la campagne « borne » de NeoST (`packaging/raspberry/`,
   `OR` are **logical** (nonzero→1) in the interpreter but **bitwise** in the native
   compiler, so a bit-mask idiom loops forever under Inject yet works under Compile —
   a genuine per-mode divergence surfaced by the new Inject/Compile toggle. Documented
-  in [`BASIC_COMPILER.md`](../doc/BASIC_COMPILER.md) (no code change — both modes are
+  in [`BASIC_COMPILER.md`](doc/BASIC_COMPILER.md) (no code change — both modes are
   correct, just different).
 
 ### Added — DevBench BASIC: explicit "Inject | Compile" mode toggle
@@ -1343,7 +1514,7 @@ Reprise de la campagne « borne » de NeoST (`packaging/raspberry/`,
   portable `bench/` module surfaces the toggle without knowing about card-specific
   compilers. The two `kP1Machines` "native compile" rows are gone; the native
   targets (12/13) and their `mode 5` dispatch are unchanged, so all
-  `basic_native_*` pins keep passing. Doc: [`DEVBENCH.md`](../doc/DEVBENCH.md).
+  `basic_native_*` pins keep passing. Doc: [`DEVBENCH.md`](doc/DEVBENCH.md).
 
 ### Added — HiDPI UI font scaling (Linux / Windows)
 

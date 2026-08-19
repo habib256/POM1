@@ -2,7 +2,7 @@
 
 *[← dev/ index](../../README.md)*
 
-*Tutorials: [TMS9918 assembly guide](../../../sketchs/doc/Programming_TMS9918.md) · [TMS9918 C guide](../../../sketchs/doc/Programming_TMS9918C.md).*
+*Tutorials: [TMS9918 assembly guide](../../sketchs/doc/Programming_TMS9918.md) · [TMS9918 C guide](../../sketchs/doc/Programming_TMS9918C.md).*
 
 CodeTank is a ROM **daughterboard of the P-LAB TMS9918 Graphic Card**: a
 single 32 kB 28c256 whose lower/upper 16 kB half is jumper-mapped to
@@ -13,7 +13,7 @@ POM1 cascade-plugs the TMS9918 and unplugging the TMS9918 cascade-unplugs it.
 This group holds only the **launcher menus** + per-game bank-layout cfgs that
 compose the cartridge ROMs. The actual games/demos they dispatch to are plain
 TMS9918 programs that live as standalone DevBench sketches under
-[`../../../sketchs/tms9918/`](../../../sketchs/tms9918/) — CodeTank just packages
+[`../../sketchs/tms9918/`](../../sketchs/tms9918/) — CodeTank just packages
 them at fixed bank offsets.
 
 Directories (juillet 2026 four-cartridge layout — CLASSICS / BASIC_LOGO /
@@ -23,16 +23,15 @@ ARCADE / DEMOS, see `tools/build_codetank_rom.py --help`):
 |---------------------|----------------------------------------------------------|
 | `game1_menu/`       | **ARCADE lower**-bank launcher ($4000-$40FF) → Galaga/Sokoban/Snake |
 | `demos_menu/`       | **DEMOS lower**-bank launcher ($4000-$41FF) → Life/Mandel/Plasma/Vague/Nyan |
-| `game6_maze3d/`     | Maze3D (retired from the cart line-up; kept as a buildable project) |
-| `game6_menu/`       | retired launcher kept alongside it                       |
+| `game6_menu/`       | retired launcher, kept for reference (Maze3D itself lives at `sketchs/tms9918/game_maze3d/`) |
 | `bank_cfgs/`        | per-game ld65 **bank-layout** cfgs (`apple1_*_codetank_bank.cfg`) — pin each game at its fixed cartridge offset |
 
 Both menus print their prompt then dispatch through `menu_select` from
-[`dev/lib/text40/menu.asm`](../../lib/text40/README.md) (adopted juillet 2026 —
+[`dev/lib/text40/menu.asm`](../lib/text40/README.md) (adopted juillet 2026 —
 the old inline wait/dispatch loops were the pattern it was factored from).
 
 The games/demos themselves are standalone DevBench programs under
-[`../../../sketchs/tms9918/`](../../../sketchs/tms9918/); each keeps only its
+[`../../sketchs/tms9918/`](../../sketchs/tms9918/); each keeps only its
 own **standalone** `*_codetank.cfg` (run-in-place at the load address it would
 use on its own). The cartridge-only bank-layout variants live here in
 `bank_cfgs/` so the composition glue stays out of `sketchs/`. (Run-in-place

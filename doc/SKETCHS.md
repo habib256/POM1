@@ -22,7 +22,7 @@ Copy-me starters sort to the top of each profile thanks to the `_` prefix:
 | Folder | What |
 |---|---|
 | [`sketchs/apple1/_template/`](../sketchs/apple1/_template/) | Minimal asm + C hello world |
-| [`sketchs/tms9918/_template_tms9918c/`](../sketchs/tms9918/_template_tms9918c/) | Minimal TMS9918 sprite C starter |
+| [`sketchs/tms9918/tms9918_hello_c/`](../sketchs/tms9918/tms9918_hello_c/) | Minimal TMS9918 C starter (DevBench-built — no `_` prefix, no Makefile) |
 | [`sketchs/gen2/_template_gen2c/`](../sketchs/gen2/_template_gen2c/) | Minimal GEN2 HGR C starter |
 
 Each sketch folder may include a **`.sketch.json`** sidecar with build metadata
@@ -144,18 +144,23 @@ ctest.
 
 ---
 
-## `_template_tms9918c` — TMS9918 sprite C
+## `tms9918_hello_c` — TMS9918 C
 
-Path: [`sketchs/tms9918/_template_tms9918c/`](../sketchs/tms9918/_template_tms9918c/)
+Path: [`sketchs/tms9918/tms9918_hello_c/`](../sketchs/tms9918/tms9918_hello_c/)
 
-About 18 lines of `main()`, using the no-tearing **shadow sprite** workflow from
-the start.
+About 10 lines of `main()` on Screen 1. Unlike the two `_template*` starters it
+carries **no Makefile** — it is built by the DevBench itself (target *P-LAB TMS9918
+CodeTank ROM (C)*, which links `dev/lib/tms9918c` against
+`dev/lib/tms9918c/cc65/codetank_c.cfg` and flashes the result into
+`CODETANKDEV.rom`). Open it in the Bench and press **Run**; there is no `make` line
+for it. That is the norm here: most `sketchs/tms9918/` sketches are source-only, and
+only the multi-object ones (`game_maze3d`, `tool_diapo`, `tool_tmsload`) carry a
+Makefile of their own.
 
-```bash
-make -C sketchs/tms9918/_template_tms9918c
-```
+Run: POM1 preset 9 (TMS9918 CodeTank) → the DevBench flashes the cartridge → `4000R`.
 
-Run: POM1 preset 9 (TMS9918 CodeTank) → Load Memory → `main.bin` → `4000R`.
+Want the no-tearing **shadow sprite** workflow on top? That is the API to reach for
+as soon as a sketch moves sprites every frame:
 
 ### Why the shadow workflow
 
@@ -165,11 +170,14 @@ sprites tear. The shadow API (`tms_shadow_set` / `tms_shadow_move` /
 flushes in one burst. Combined with a VBlank wait, it's flicker-free. A beginner
 should **never** call `tms_set_sprite()` per frame.
 
-The Makefile links `TMS9918C_CORE_SRCS + SCREEN1_SRCS + SPRITES_SRCS +
+The DevBench links `TMS9918C_CORE_SRCS + SCREEN1_SRCS + SPRITES_SRCS +
 APPLE1_SRCS` only — see `dev/lib/tms9918c/tms9918c.mk` for every family.
 
-Shipping sketches that emit Woz-hex into `software/Apple-1_TMS_CC65/` — copy
-[`sketchs/tms9918/demo_sprite_animals/`](../sketchs/tms9918/demo_sprite_animals/).
+Want a Makefile-driven, multi-object sketch instead (its own `ld65` invocation, its
+own output under `software/`)? Copy
+[`sketchs/tms9918/tool_tmsload/`](../sketchs/tms9918/tool_tmsload/) for a TMS9918 one,
+or [`sketchs/gen2/demo_sprite_animals/`](../sketchs/gen2/demo_sprite_animals/) for the
+sprite-heavy GEN2 shape.
 
 Further reading: [`Programming_C_Quickstart.md`](../sketchs/doc/Programming_C_Quickstart.md),
 [`Programming_TMS9918C.md`](../sketchs/doc/Programming_TMS9918C.md),

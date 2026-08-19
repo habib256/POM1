@@ -38,7 +38,10 @@ demos below are covered):
 make -C dev/codetank
 ```
 
-Outputs (per demo): `software/Apple-1_TMS_CC65/<name>.{bin,txt}` — 16 KB image (`$FF` padding), Wozmon hex + `4000R`.
+Outputs: the four release cartridges + `CODETANKDEV.rom` under `roms/codetank/` — 16 KB
+banks (`$FF` padding), entry `4000R`. (`make -C dev/codetank` composes cartridges; it does
+not emit a per-demo `.bin`/`.txt` pair. To run one demo on its own, open its `.c` in the
+DevBench and press **Run**.)
 
 > The seven C projects below share this single README (no per-project README);
 > each demo's `main.c` header documents its own specifics.
@@ -58,9 +61,13 @@ Not ported here (KickC / big `.c` / other hardware): `anagram`, `tapemon`, `sdca
 ## Testing under POM1
 
 1. Preset **9** (Apple-1 + TMS9918 + CodeTank).
-2. **File → Load Memory** from `software/Apple-1_TMS_CC65/` (TMS9918 auto-plugs), or paste the `.txt`, then **`4000R`**.
+2. Open the demo's `.c` in the **DevBench** (target *P-LAB TMS9918 CodeTank ROM (C)*) and
+   press **Run** — it flashes `CODETANKDEV.rom` and cold-starts it. Loading a prebuilt
+   image instead: **File → Load Memory**, then **`4000R`**. (The Load dialog also
+   auto-plugs TMS9918 for a folder named `Apple-1_TMS_CC65/`, but POM1 no longer ships
+   one — that branch now serves a folder you make yourself.)
 
-## Modules `lib/`
+## Modules
 
 **Not monolithic — per-family objects, same dead-strip story as `gen2c`.**
 `tms9918c.mk` exposes per-family source sets (`TMS9918C_CORE_SRCS`,

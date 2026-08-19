@@ -15,15 +15,15 @@ Two builds ship side-by-side:
 | Build | Linker config | `CODETANK_BUILD` | Target |
 |-------|---------------|:---:|--------|
 | **DevBench / CodeTank run-in-place** | `apple1_logo_codetank.cfg` (`$4000-$7FFF` + PROC `$E000`) | ✅ (via `.sketch.json` `defines`) | the `.sketch.json` cfg — **full** feature set, fits the in-app 8 KB dual-bank + CodeTank profile, entry `4000R` |
-| **GAME1 cartridge ROM** | `dev/codetank/bank_cfgs/apple1_logo_v2_codetank_bank.cfg` | ✅ (`build_codetank_rom.py`) | upper bank of `Codetank_GAME1.rom` |
+| **BASIC_LOGO cartridge ROM** | `dev/codetank/bank_cfgs/apple1_logo_v2_codetank_bank.cfg` | ✅ (`build_codetank_rom.py`) | **lower** bank of `Codetank_BASIC_LOGO.rom` (upper = Applesoft TMS9918) |
 | **16 KB linear-DRAM standalone** | `apple1_logo_16k.cfg` (CODE `$0280`, PROC `$3000`) | ❌ | a **real** 16 KB Apple-1 only (core interpreter, no editor; needs `$0280-$3FFF` contiguous RAM — not the 8 KB bench) |
 
 All three link `TMS_Logo_16k.asm` (V2.6). DevBench builds the **full**
 cartridge feature set: `.sketch.json` carries `"defines":
 ["CODETANK_BUILD"]`, which the bench passes to `ca65` for the main source
 and every `extraAsm` module — so the on-bitmap `text_bitmap`/SAY, speech
-bubbles, and the buffer editor are all present, exactly like the GAME1
-ROM. The lib `buffer_editor.asm` `.import`s `wait_key` and this sketch
+bubbles, and the buffer editor are all present, exactly like the
+cartridge ROM. The lib `buffer_editor.asm` `.import`s `wait_key` and this sketch
 `.export`s it from its `.include "kbd.asm"` (the Chess.asm separate-object
 pattern) so the editor links as its own module.
 
@@ -52,17 +52,19 @@ Build V2.6 in DevBench (mono-source `.sketch.json`, cfg
 is no per-project `Makefile`. It flashes into the CodeTank ROM window and
 runs at `4000R`.
 
-CodeTank ROM (GAME1: Galaga / Sokoban / Snake lower bank + TMS_LOGO V2.6
-upper bank):
+CodeTank ROM — since the juillet-2026 reorganisation LOGO rides the
+**language cartridge** (`Codetank_BASIC_LOGO.rom`: TMS_LOGO V2.6 in the
+lower bank, the Applesoft TMS9918 interpreter in the upper). It is also
+the image the in-app DevBench inserts for both interpreter targets:
 
 ```sh
-python3 tools/build_codetank_rom.py --rom=1
-# writes roms/codetank/Codetank_GAME1.rom (32 KB)
+python3 tools/build_codetank_rom.py --rom=basiclogo
+# writes roms/codetank/Codetank_BASIC_LOGO.rom (32 KB)
 ```
 
-The shipped library image is `roms/codetank/Codetank_GAME1.rom` —
-`build_codetank_rom.py --rom=1` writes it in place after touching
-anything that ends up in the V2.6 ROM.
+The shipped library image is `roms/codetank/Codetank_BASIC_LOGO.rom` —
+rebuild it after touching anything that ends up in the V2.6 ROM. Jumper
+**Lower** + `4000R` boots LOGO; jumper Upper boots Applesoft.
 
 ## Run
 
@@ -250,7 +252,7 @@ retired with option B; the lib stays pristine).
 - `apple1_logo_16k.cfg` — 16 KB linear-DRAM standalone (CODE `$0280-$2FFF`,
   PROCBSS `$3000-$3FFF`); for a real 16 KB Apple-1, **not** the bench.
 - `dev/codetank/bank_cfgs/apple1_logo_v2_codetank_bank.cfg` —
-  V2.6 GAME1-ROM bank config (CODE `$4000-$7FFF`, PROCBSS `$E000-$EFFF`,
+  V2.6 cartridge-bank config (CODE `$4000-$7FFF`, PROCBSS `$E000-$EFFF`,
   built with `-D CODETANK_BUILD`); lives with the cartridge composition layer.
 - `scroll_expressions_extract.asm` — generated `.byte` paste-fragment
   (emote shape_table) from `tools/extract_scroll_expressions.py`.

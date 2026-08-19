@@ -1,6 +1,6 @@
 # dev/cc65 — linker configs & build layer
 
-*[← dev/ index](../README.md)* · libraries: [`../lib/`](../lib/README.md) · projects: [`../projects/codetank/`](../projects/codetank/README.md)
+*[← dev/ index](../README.md)* · libraries: [`../lib/`](../lib/README.md) · projects: [`../codetank/`](../codetank/README.md)
 
 *Tutorials: [cc65 toolchain guide](../../sketchs/doc/CC65.md) · [C quickstart cheat sheet](../../sketchs/doc/Programming_C_Quickstart.md).*
 

@@ -181,7 +181,9 @@ Target targetGen2()
 Target targetTms()
 {
     // Extracted via ld65 -Ln from applesoft-tms9918.s built at $4000; byte-for-byte
-    // identical to the upper bank of roms/codetank/CODETANKDEV.rom.
+    // identical to the upper bank of roms/codetank/Codetank_BASIC_LOGO.rom (the
+    // stabilised language cartridge the DevBench inserts for the interpreter
+    // targets — CODETANKDEV.rom is the generated two-slot flash cart, not this).
     Target t;
     t.name = "Applesoft TMS9918 (4000R)";
     t.setptrs = 0x4596;

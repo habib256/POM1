@@ -1154,31 +1154,34 @@ were ignored → 2nd half of the address-write dropped → all strings
 written by `draw_str_tms` ended at random VRAM offsets (splattered text).
 Resolved by extending the matcher to `ST[AXY] VDP_(DATA|CTRL)`.
 
-#### ROM slot — why the `dualslot8k` layout
+#### ROM slot — why Galaga needed a bigger slot
 
 Full coverage on Galaga = 219 NOPs = 219 bytes added. The historic
-menu-bank layout (`build_codetank_rom.py --layout=menu`) reserved only
-**7 424 B** for the Galaga slot (`$4100-$5DFF`) — Galaga with patches
-was 7 419 B → 5 B of margin, untenable once all cases are covered.
+menu-bank layout reserved only **7 424 B** for the Galaga slot
+(`$4100-$5DFF`) — Galaga with patches was 7 419 B → 5 B of margin,
+untenable once all cases are covered.
 
-Solution: `--layout=dualslot8k`, which offers **8 192 B** per slot and
-sacrifices the interactive menu plus Snake/Life:
+The juillet-2026 release layout resolves it by spreading the library over
+four cartridges instead of one, so Galaga gets **8 448 B** *and* keeps the
+interactive menu. Galaga now rides `Codetank_ARCADE.rom`:
 
 ```
-Lower bank ($4000-$7FFF):
-  $4000-$5FFF  Galaga  (8 kB, 760 B padding with full patch)
-  $6000-$7FFF  Sokoban (8 kB, 3 410 B padding)
-Upper bank:
-  Tetris launcher + payload (unchanged)
+ARCADE lower bank ($4000-$7FFF):
+  $4000-$40FF  menu    (256 B)
+  $4100-$61FF  Galaga  (8 448 B)
+  $6200-$75FF  Sokoban (5 120 B)
+  $7600-$7FFF  Snake   (2 560 B)
+ARCADE upper bank:
+  TMS_Rogue alone, full 16 kB, run-in-place from $4000
 ```
 
-No menu — Wozmon `4000R` launches Galaga, `6000R` launches Sokoban.
-Published under `roms/codetank/Codetank_GAME1.rom`.
+Wozmon `4000R` with the jumper Lower brings up the picker; jumper Upper
+boots Rogue. Tetris moved to `Codetank_CLASSICS.rom` (lower bank).
 
 Builder:
 
 ```bash
-python3 tools/build_codetank_rom.py --layout=dualslot8k -o roms/codetank/Codetank_GAME1.rom
+python3 tools/build_codetank_rom.py --rom=arcade
 ```
 
 Cfgs: `apple1_galaga_codetank.cfg` / `apple1_sokoban_codetank.cfg` (DevBench,
