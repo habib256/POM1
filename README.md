@@ -8,7 +8,7 @@
 
 **Two colour graphics cards, one graphics BASIC.** Paint in colour on **Uncle Bernie's GEN2 HGR Card** (280×192) *and* the **P-LAB TMS9918** (256×192 + 32 sprites) — then drive *both* from an **Apple-1 Applesoft** whose Apple II graphics commands (`HGR` · `HPLOT` · `HCOLOR`) run the **same listing** on either card.
 
-Built with Dear ImGui & OpenGL — fast, lightweight, cross-platform.
+Built with Dear ImGui — OpenGL on Linux/Windows/Web, Metal on macOS. Fast, lightweight, cross-platform.
 
 [![▶ Play in browser (no install)](https://img.shields.io/badge/▶%20Play%20in%20browser-WebAssembly-blueviolet?style=for-the-badge)](https://habib256.github.io/pom1/build-wasm/POM1.html)
 
@@ -208,7 +208,7 @@ The **core machine** is an authentic 40×24 display (`charmap.rom` bitmap, three
 | 🎵 **A1-AUDIO Special Edition** | — | Same chip relocated to `$CC00-$CC1F` (excludes TMS9918) |
 | 🎨 **[Uncle Bernie's GEN2 HGR](https://www.applefritter.com/content/uncle-bernies-gen2-color-graphics-card-apple-1)** | 2026 | 280×192 Apple-II-style framebuffer with NTSC artifact colour |
 | 🎨 **[P-LAB TMS9918](https://p-l4b.github.io/graphic/)** | — | TMS9918A VDP, 256×192, 32 sprites, 4 modes. Silicon-strict timing model |
-| 💾 **P-LAB CodeTank** | — | Daughterboard of the TMS9918 card. **3 cartridges shipped** (see Software) |
+| 💾 **P-LAB CodeTank** | — | Daughterboard of the TMS9918 card. **4 cartridges shipped** (see Software) |
 | 💾 **[P-LAB Juke-Box](https://p-l4b.github.io/jukebox/)** | — | Paged 16 KB–512 KB flash + writable 28c256 EEPROM. `$CA00` bank latch |
 | ⏰ **[P-LAB I/O Board & RTC](https://p-l4b.github.io/A1-IO_RTC/)** | — | DS3231, DS18B20, ADC + digital I/O |
 | 📡 **[P-LAB Wi-Fi Modem](https://p-l4b.github.io/wifi/)** | — | 65C51 + ESP8266, Hayes AT, real TCP/TELNET (desktop only) |

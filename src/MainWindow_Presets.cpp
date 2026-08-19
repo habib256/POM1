@@ -647,7 +647,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // Indices 0-2 are the DevBench profiles (CC65 / TMS9918 / GEN2 HGR). When
     // the user picks one from the Presets menu, open the POM1 Bench and load
     // the matching ASM starter sketch. DevBench preset N maps identically to
-    // ASM target N in kP1Targets[] (Pom1BenchHost.cpp). If the editor is
+    // ASM target N in kP1Targets[] (Pom1BenchTargets.cpp). If the editor is
     // dirty, keep the user's code and just log a notice — they can pick New
     // from the toolbar to force-reset. Skipped when applyMachineConfig is
     // being driven BY the Bench's own target picker (otherwise picking a C

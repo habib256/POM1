@@ -59,8 +59,10 @@ namespace {
 // Pom1BenchTargets.cpp; pull them in unqualified so the code below is unchanged.
 using namespace pom1::benchhost;
 
-// CODETANKDEV.rom (the unified TMS9918 DevBench cartridge: blank flash slot in the
-// lower bank, Applesoft TMS9918 in the upper) normally lives under roms/codetank/.
+// CODETANKDEV.rom (the TMS9918 DevBench cartridge: a pure TWO-SLOT flash cart —
+// the asm/C build lands in whichever bank the "Upper" toggle selects; the resident
+// Applesoft/LOGO interpreters come from Codetank_BASIC_LOGO.rom, not from here)
+// normally lives under roms/codetank/.
 // On a dev checkout that tree is writable, so asm/C uploads reflash the lower bank
 // in place. In a packaged AppImage, roms/ is a read-only squashfs symlink — writes
 // there fail silently and the DevBench reboots a stale cartridge. AppRun exports

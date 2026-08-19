@@ -52,7 +52,7 @@ const MachineConfig kMachinePresets[] = {
     //                                  GEN2  uSD  SID  TMS  RTC  WiFi Term Krus CFFA ACI  RAM  BASIC              SID-SE
     // ── Development benches (indices 0-2) ─────────────────────────────────────
     // The profiles the in-app DevBench loads when you pick a (language x machine)
-    // target (kP1Targets[].preset in Pom1BenchHost.cpp). Each MIRRORS the machine
+    // target (kP1Targets[].preset in Pom1BenchTargets.cpp). Each MIRRORS the machine
     // config of an existing preset (cards + RAM + BASIC): CC65 = "ACI & BASIC
     // cassette" (8 KB dual-bank + ACI + Integer cassette), TMS9918 = "TMS9918
     // (CodeTank)" (8 KB + TMS9918 + CodeTank), GEN2 = "GEN2 HGR Color" (48 KB +

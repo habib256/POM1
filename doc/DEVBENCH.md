@@ -187,7 +187,7 @@ stored down from HIMEM, cold-start then image @ `pp` + RUN ($EFEC). Source:
 | Applesoft Lite (Apple-1) | `roms/applesoft-lite-cffa1.rom` (`$E000`) | `E000R` | tokeniser, Lite | — |
 | Applesoft Lite + microSD | `roms/applesoft-lite-microsd.rom` (`$6000`) | `6000R` | tokeniser, Lite | — |
 | Applesoft GEN2 HGR | `roms/applesoft-gen2.rom` (`$9800`, GEN2 card) | `9800R` | tokeniser, graphics | **`$0300` standalone** (desktop) |
-| Applesoft TMS9918 | `roms/codetank/CODETANKDEV.rom` upper bank (CodeTank `$4000`, jumper Upper) | `4000R` | tokeniser, graphics | **`$0300` standalone** (desktop) |
+| Applesoft TMS9918 | `roms/codetank/Codetank_BASIC_LOGO.rom` upper bank (CodeTank `$4000`, jumper Upper) | `4000R` | tokeniser, graphics | **`$0300` standalone** (desktop) |
 
 The graphics variants (GEN2/TMS9918) add the Apple II graphics command set
 (`TEXT/GR/HGR/COLOR=/HCOLOR=/PLOT/HLIN/VLIN/HPLOT`, `PRINT` → the card's screen,
@@ -202,7 +202,7 @@ manual → [`APPLE-1_LOGO-2.6-MANUAL.md`](../sketchs/tms9918/tool_logo/APPLE-1_L
 
 | Machine | Interpreter | Boot | Deploy |
 |---|---|---|---|
-| LOGO TMS9918 | `roms/codetank/Codetank_GAME3.rom` **lower** bank (CodeTank `$4000`, jumper Lower) | `4000R` | **inject** (proc table + entry line) |
+| LOGO TMS9918 | `roms/codetank/Codetank_BASIC_LOGO.rom` **lower** bank (CodeTank `$4000`, jumper Lower) | `4000R` | **inject** (proc table + entry line) |
 | LOGO GEN2 HGR | `roms/logo-gen2.rom` (`$6000`, GEN2 card) | `6000R` | **inject** (proc table + entry line) |
 
 Unlike Applesoft there is **no tokenised memory image**: a LOGO procedure is stored
@@ -314,4 +314,4 @@ defaults to **Wozmon hex** when it can't find cc65):
   target (GEN2 = ~24 KB) — see [`Programming_Apple1_C.md`](../sketchs/doc/Programming_Apple1_C.md) §7.
 
 The Bench module is portable (`bench/`); POM1 wires the targets above in
-`src/Pom1BenchHost.cpp` (`kP1Targets[]`).
+`src/Pom1BenchTargets.cpp` (`kP1Targets[]`).

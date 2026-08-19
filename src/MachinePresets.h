@@ -96,8 +96,11 @@ struct MachineConfig {
     // Gen-2 cassette interface (Applefritter, august 2026). Daughter page of
     // the ACI's own PROM pair, so it cannot exist without `aci`: enabling it
     // cascade-plugs the ACI (see Memory::setExtendedACIEnabled) and unplugging
-    // the ACI cascade-unplugs it. Off on every historical preset — it is an
-    // aftermarket upgrade, not 1976 hardware — and on for POM1 Fantasy.
+    // the ACI cascade-unplugs it. ON wherever the ACI is plugged, EXCEPT the two
+    // historically faithful 1976 machines (#4 ACI & BASIC cassette, #5 GT-6144)
+    // and the CC65 bench (#0), which mirrors #4 exactly — see
+    // preset_ram_profiles_smoke. So: on for #2 (GEN2 bench), #6 (Briel Krusader),
+    // #11 (GEN2 HGR Color) and #12 (POM1 Fantasy).
     bool extendedAci;
     MachineWindowPlacement layout[8];
     int layoutCount;

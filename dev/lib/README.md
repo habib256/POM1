@@ -1,6 +1,6 @@
 # dev/lib — POM1 6502 software libraries
 
-*[← dev/ index](../README.md)*  ·  build layer: [`../cc65/`](../cc65/README.md)  ·  projects: [`../projects/codetank/`](../projects/codetank/README.md)
+*[← dev/ index](../README.md)*  ·  build layer: [`../cc65/`](../cc65/README.md)  ·  projects: [`../codetank/`](../codetank/README.md)
 
 *Tutorial: [6502 developer guides index](../../sketchs/doc/README.md) — step-by-step programming guides for every track in this tree.*
 

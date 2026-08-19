@@ -5,7 +5,7 @@
 > Side Channel* panel and the Bench Serial Monitor, and driven by the
 > `--telemetry-port` / `--telemetry-log` / `--headless` CLI flags. The reusable
 > kit (`dev/lib/telemetry/telemetry.inc`, `tools/pom1_telemetry.py`,
-> [`sketchs/apple1/demo_telemetry/`](sketchs/apple1/demo_telemetry/) ships too. Sections still tagged *proposed*
+> [`sketchs/apple1/demo_telemetry/`](../sketchs/apple1/demo_telemetry/) ships too. Sections still tagged *proposed*
 > below are the original design rationale, kept for context; the ✅ markers flag
 > what landed.
 
@@ -305,7 +305,7 @@ The CLI flags exist (`--telemetry-port`, `--telemetry-log`) plus `--headless`
   `TELE_PUT*` / `TELE_FRAME` macros).
 - **Harness side** — `tools/pom1_telemetry.py` (`TelemetryClient` +
   `launch_headless`).
-- **Worked example** — [`sketchs/apple1/demo_telemetry/`](sketchs/apple1/demo_telemetry/) (a homing game) +
+- **Worked example** — [`sketchs/apple1/demo_telemetry/`](../sketchs/apple1/demo_telemetry/) (a homing game) +
   `tools/test_telemetry_demo.py`.
 
 Bernie's "dream SDK" loop, end to end — no display, no human:
