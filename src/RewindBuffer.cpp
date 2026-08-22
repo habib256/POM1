@@ -7,12 +7,24 @@
 
 #include "POM1Build.h"
 
+#include <algorithm>   // std::min — used below, was riding on a transitive include
 #include <cstring>
 
 #include "SnapshotIO.h"   // kSnapshotMagic — header size
 
 #if !POM1_IS_WASM
 #  if defined(_WIN32)
+// windows.h defines min/max as MACROS unless NOMINMAX is set, and this TU calls
+// std::min twice — MSVC answers "C2589: '(': illegal token on right side of
+// '::'". The main POM1 target sets NOMINMAX globally (CMakeLists.txt), but the
+// 50 test targets do not, so the guard has to live in the TU that pulls the
+// header in. Same idiom as AudioDevice.cpp.
+#    ifndef WIN32_LEAN_AND_MEAN
+#      define WIN32_LEAN_AND_MEAN
+#    endif
+#    ifndef NOMINMAX
+#      define NOMINMAX
+#    endif
 #    include <windows.h>
 #  else
 #    include <unistd.h>
