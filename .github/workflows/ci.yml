@@ -1,6 +1,7 @@
-# CI: build POM1 on all three desktop platforms, run the full ctest suite on
-# Linux (Klaus functional test + every smoke test + the GEN2 graphics-regression
-# golden), and assemble all the dev/ 6502 projects.
+# CI: build POM1 on all three desktop platforms AND under Emscripten, run the
+# full ctest suite on all three desktops (Klaus functional test + every smoke
+# test + the GEN2 graphics-regression golden), and assemble all the dev/ 6502
+# projects.
 #
 # It used to be a single Linux job, with macOS and Windows built ONLY by the
 # tag-driven release workflow — so a break on either was discovered at the worst
@@ -10,6 +11,12 @@
 # could have seen it. The two jobs below are build-only (no packaging, no
 # signing, no cc65) — the cheapest thing that turns "it compiles and links on
 # your platform" into a fact instead of a hope.
+#
+# The `wasm` job and the ctest steps on macOS/Windows were added on 2026-08-22,
+# after three breakages landed on main in a single merge — all three in the same
+# quadrant: code that no local run and no per-push job compiled or executed.
+# Before it, macOS and Windows built 50 test binaries and threw them away, and
+# the web bundle was built only by pages.yml, on main, after the merge.
 #
 # The nightly `sanitizers` job covers what 90 green functional tests
 # structurally cannot: overruns, uninitialised reads, and races.
@@ -132,6 +139,15 @@ jobs:
           cmake -S . -B build
           cmake --build build -j"$(sysctl -n hw.ncpu)"
 
+      - name: Run ctest (Metal build)
+        # The suite used to run on Linux only: this job built 50 test binaries
+        # and threw them away. "It links on macOS" is not "it works on macOS",
+        # and the difference is exactly where the platform bugs live — the Metal
+        # renderer, the Cocoa file dialogs, the native-fullscreen seam. cc65 is
+        # not installed here, so the cc65-gated tests report NOT RUN (77) rather
+        # than failing, which is the behaviour they were written for.
+        run: ctest --test-dir build --output-on-failure
+
       - name: Build POM1 (OpenGL backend, the documented macOS fallback)
         # POM1_RENDERER=opengl is a supported configuration users can select,
         # and it shares no compilation path with Metal — PomRenderer_GL.cpp is
@@ -170,6 +186,65 @@ jobs:
                 -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" \
                 -DVCPKG_TARGET_TRIPLET=x64-windows-static
           cmake --build build --config Release -j
+
+      - name: Run ctest
+        # Until august 2026 NOT ONE POM1 test had ever executed on Windows: this
+        # job compiled the 50 test binaries and discarded them. That is the
+        # platform whose users are the least equipped to diagnose anything, so
+        # it is the last place where "it links" should pass for "it works".
+        # -C Release matches the multi-config generator's build above; without
+        # it ctest looks for a Debug configuration that was never built.
+        shell: bash
+        run: ctest --test-dir build -C Release --output-on-failure
+
+  # ── WebAssembly (compile + link, no deploy) ────────────────────────────────
+  # The web bundle used to be built by NOTHING on a push: .github/workflows/
+  # pages.yml is the only job that runs emcc, and it runs on main, AFTER the
+  # merge. So the one channel that needs no installation — the one a visitor
+  # judges in ten seconds — was the least verified target in the repo.
+  #
+  # It cost a real breakage on 2026-08-22: the warnings pass commented out the
+  # parameter name of `updateCpuExecution(float /*deltaTime*/)`, which is read
+  # inside the `#if POM1_IS_WASM` branch two lines below. 92 local tests and
+  # three desktop jobs stayed green while the only build that compiles that
+  # line died at 29 %.
+  #
+  # Same commands as pages.yml on purpose — this must be the build the deploy
+  # does, not a cheaper approximation of it — minus the upload.
+  wasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Verify the committed WASM cc65 toolchain is present
+        run: tools/verify_wasm_cc65.sh
+
+      - name: Fetch Dear ImGui (pin from IMGUI_VERSION)
+        run: tools/ensure_imgui.sh imgui
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+          actions-cache-folder: emsdk-cache
+
+      - name: Build the WASM bundle
+        run: |
+          set -euo pipefail
+          emcmake cmake -S . -B build-wasm-ci -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-wasm-ci -j"$(nproc)"
+
+      - name: Assert the four deployed outputs exist
+        # A link that "succeeds" without emitting POM1.data would deploy a page
+        # that boots into an empty filesystem, so name the four files the site
+        # actually serves instead of trusting the exit status alone.
+        run: |
+          set -euo pipefail
+          for f in POM1.html POM1.js POM1.wasm POM1.data; do
+            test -s "build-wasm-ci/$f" || { echo "missing or empty: $f"; exit 1; }
+          done
+          ls -la build-wasm-ci/POM1.html build-wasm-ci/POM1.js \
+                 build-wasm-ci/POM1.wasm build-wasm-ci/POM1.data
 
   # ── Sanitizers (nightly + manual) ──────────────────────────────────────────
   # The one class of defect POM1's 90 functional tests cannot see. Nightly
