@@ -619,6 +619,12 @@ set(POM1_OWN_SOURCES
     ${POM1_MACOS_WINDOW_SOURCES}
 )
 list(FILTER POM1_OWN_SOURCES EXCLUDE REGEX "third_party")
+# ...and the platform icon RESOURCES, which are not translation units. The
+# Windows .rc goes to rc.exe, which does not speak cl's switches: it read /W4
+# as an unknown option and killed the whole Windows build with
+# "RC1106: invalid option: -4" — with no warning anywhere else, since Linux and
+# macOS have no .rc to hand it to. The .icns is never compiled at all.
+list(FILTER POM1_OWN_SOURCES EXCLUDE REGEX "\\.(rc|icns)$")
 set_source_files_properties(${POM1_OWN_SOURCES} PROPERTIES
                             COMPILE_OPTIONS "${POM1_WARNING_FLAGS}")
 

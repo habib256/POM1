@@ -1080,7 +1080,11 @@ void MainWindow_ImGui::updateStatus(float deltaTime)
     }
 }
 
-void MainWindow_ImGui::updateCpuExecution(float /*deltaTime*/)
+// `deltaTime` is read ONLY on the WASM branch below, so the native build sees
+// an unused parameter. Commenting the name out to silence -Wunused-parameter is
+// what broke the Emscripten build while every native job stayed green: keep the
+// name and mark it maybe_unused instead.
+void MainWindow_ImGui::updateCpuExecution([[maybe_unused]] float deltaTime)
 {
     emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
 #if POM1_IS_WASM
