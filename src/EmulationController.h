@@ -14,6 +14,7 @@
 
 #include "CpuClock.h"
 #include "Gen2VideoScanner.h"
+#include "LockOrder.h"
 #include "POM1Build.h"
 #if !POM1_IS_WASM
 #include <thread>
@@ -52,11 +53,26 @@
 class PriorityMutex {
 public:
     void lock() {
+#if POM1_LOCK_ORDER_CHECKS
+        // stateMutex is the OUTERMOST lock — see LockOrder.h. Reaching for it
+        // while already holding keyMutex or snapshotMutex is precisely the
+        // inversion the comment above warns about, and precisely what the
+        // comment could not prevent.
+        pom1::lockorder::willAcquire(pom1::LockRank::State);
+#endif
         waiters_.fetch_add(1, std::memory_order_relaxed);
         mtx_.lock();
         waiters_.fetch_sub(1, std::memory_order_relaxed);
+#if POM1_LOCK_ORDER_CHECKS
+        pom1::lockorder::didAcquire(pom1::LockRank::State);
+#endif
     }
-    void unlock() { mtx_.unlock(); }
+    void unlock() {
+#if POM1_LOCK_ORDER_CHECKS
+        pom1::lockorder::willRelease(pom1::LockRank::State);
+#endif
+        mtx_.unlock();
+    }
     bool hasWaiters() const {
         return waiters_.load(std::memory_order_relaxed) > 0;
     }

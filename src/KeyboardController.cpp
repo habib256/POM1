@@ -6,19 +6,19 @@
 
 void KeyboardController::queueKey(char key)
 {
-    std::lock_guard<std::mutex> lock(keyMutex);
+    std::lock_guard<decltype(keyMutex)> lock(keyMutex);
     queuedKeys.push(key);
 }
 
 bool KeyboardController::hasQueuedKeys()
 {
-    std::lock_guard<std::mutex> lock(keyMutex);
+    std::lock_guard<decltype(keyMutex)> lock(keyMutex);
     return !queuedKeys.empty();
 }
 
 void KeyboardController::clear()
 {
-    std::lock_guard<std::mutex> lock(keyMutex);
+    std::lock_guard<decltype(keyMutex)> lock(keyMutex);
     std::queue<char> empty;
     std::swap(queuedKeys, empty);
 }
@@ -29,7 +29,7 @@ void KeyboardController::drainTo(Memory& mem)
     // thread can keep queuing keys without waiting on the emulation slice.
     std::queue<char> localKeys;
     {
-        std::lock_guard<std::mutex> lock(keyMutex);
+        std::lock_guard<decltype(keyMutex)> lock(keyMutex);
         std::swap(localKeys, queuedKeys);
     }
     while (!localKeys.empty()) {

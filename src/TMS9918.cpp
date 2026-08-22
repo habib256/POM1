@@ -1555,7 +1555,7 @@ void TMS9918::renderText(uint32_t* pixels, const Snapshot& s, uint32_t backdrop)
 // --------------------------------------------------------------------------
 // Multicolor Mode — 64x48 color blocks
 // --------------------------------------------------------------------------
-void TMS9918::renderMulticolor(uint32_t* pixels, const Snapshot& s, uint32_t backdrop)
+void TMS9918::renderMulticolor(uint32_t* pixels, const Snapshot& s, uint32_t /*backdrop*/)
 {
     uint16_t nameBase    = (uint16_t)(s.regs[2] & 0x0F) << 10;
     uint16_t patternBase = (uint16_t)(s.regs[4] & 0x07) << 11;

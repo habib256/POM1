@@ -15,6 +15,11 @@ else()
     add_compile_options(-UNDEBUG)
 endif()
 
+# Same warning flags as the emulator (set in the top-level CMakeLists). Nothing
+# vendored is compiled in this directory, so unlike the main target these can be
+# applied directory-wide rather than per source file.
+add_compile_options(${POM1_WARNING_FLAGS})
+
 # Tests compiling AudioDevice.cpp (miniaudio, via POM1_TEST_CORE_SOURCES) need
 # libdl + libpthread. The main app gets both transitively from the glfw target;
 # tests don't link glfw. Modern glibc (>= 2.34) folds them into libc so the
@@ -54,7 +59,23 @@ endif()
 # The test links a subset of POM1 — exactly what Memory's constructor pulls
 # in. UI (Screen_ImGui, MainWindow_*, EmulationController) is deliberately
 # left out: the Klaus test drives the CPU directly, no ImGui context needed.
-set(POM1_TEST_CORE_SOURCES
+#
+# These files are compiled ONCE, into the `pom1_core` OBJECT library below, and
+# every test binary consumes the resulting objects. They used to be listed as
+# plain sources in each add_executable, so each of the 50 test targets compiled
+# all 24 of them from scratch: a full build ran 1435 compilations, 1300 of them
+# for tests, and 1154 of those (93 %) were the same handful of files over and
+# over — TMS9918.cpp alone was compiled 53 times, at -O3. Nothing about WHAT is
+# compiled changes here; only how many times.
+#
+# The object library is deliberately declared in THIS directory so it inherits
+# the -UNDEBUG above: these sources carry assert()s of their own, and compiling
+# them once with NDEBUG live would silently disarm every one of them for the
+# whole suite — the exact failure mode that -UNDEBUG exists to prevent.
+#
+# It cannot be shared with the main POM1 target for the same reason: the app is
+# built with NDEBUG, the tests without, so the two really are different objects.
+set(POM1_TEST_CORE_FILES
     ${CMAKE_SOURCE_DIR}/src/M6502.cpp
     ${CMAKE_SOURCE_DIR}/src/Memory.cpp
     ${CMAKE_SOURCE_DIR}/src/MemorySnapshot.cpp
@@ -80,6 +101,27 @@ set(POM1_TEST_CORE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/GT6144.cpp
     ${CMAKE_SOURCE_DIR}/src/Gen2VideoScanner.cpp
 )
+
+add_library(pom1_core OBJECT ${POM1_TEST_CORE_FILES})
+target_include_directories(pom1_core PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    # GraphicsCard.h / Screen_ImGui.h are still reachable transitively via
+    # Memory's peripheral unique_ptrs — headers only, no ImGui symbols called.
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+# SID.cpp includes third_party/libresidfp/src/SID.h; the target exports that
+# directory PUBLIC, so linking it here is how the object library gets the path.
+# An OBJECT library takes the usage requirements without producing a link step.
+target_link_libraries(pom1_core PRIVATE libresidfp_static)
+if(APPLE)
+    # Same OpenGL-deprecation silencer the test targets apply; the peripheral
+    # .cpp files transitively include it.
+    target_compile_definitions(pom1_core PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+
+# Every `add_executable(... ${POM1_TEST_CORE_SOURCES})` below is unchanged — the
+# variable now expands to the compiled objects instead of the source paths.
+set(POM1_TEST_CORE_SOURCES $<TARGET_OBJECTS:pom1_core>)
 
 add_executable(test_klaus_6502
     klaus_6502_functional_test.cpp
@@ -1789,6 +1831,16 @@ target_include_directories(test_d64_parse PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME d64_parse_smoke COMMAND test_d64_parse)
 set_tests_properties(d64_parse_smoke PROPERTIES TIMEOUT 5)
 
+# ── LockOrder — the documented mutex order, now enforced ─────────────────────
+# Header-only (src/LockOrder.h). Forks a child per inversion and reaps SIGABRT,
+# so the test proves the checker FIRES rather than merely that it compiles — and
+# carries a control case, because a checker that aborts on everything would
+# otherwise pass every assertion.
+add_executable(test_lock_order lock_order_smoke_test.cpp)
+target_include_directories(test_lock_order PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME lock_order_smoke COMMAND test_lock_order)
+set_tests_properties(lock_order_smoke PROPERTIES TIMEOUT 15)
+
 # ── BeamClock — shared cycle→(line,x) raster-beam mapping (Étape 3) ───────────
 # Header-only (src/BeamClock.h); pins the TMS9918 beam/CPU sync geometry.
 add_executable(test_beam_clock beam_clock_smoke.cpp)
@@ -1879,9 +1931,14 @@ endif()
 # back from the snapshot's MEM section, plus zero [TMS9918 DROP lines.
 # Skips (77) without cc65 on PATH or build/POM1.
 if(Python3_FOUND)
+    # --pom1 is not optional: without it the harness fell back to a hardcoded
+    # <repo>/build/POM1, so a build directory named anything else validated a
+    # stale binary (or skipped, when build/ held none) while still reporting
+    # green. gfx_regress already passed the target file; this now matches it.
     add_test(NAME lib_micro_tests
              COMMAND ${Python3_EXECUTABLE}
                      "${CMAKE_SOURCE_DIR}/tools/test_lib_micro.py"
+                     --pom1 "$<TARGET_FILE:pom1_imgui>"
              WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(lib_micro_tests PROPERTIES
                          SKIP_RETURN_CODE 77 TIMEOUT 120)
@@ -1908,6 +1965,20 @@ if(UNIX)
              COMMAND bash "${CMAKE_SOURCE_DIR}/tools/check_version_sync.sh"
              WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(version_sync PROPERTIES TIMEOUT 30)
+endif()
+
+# ── Documentation ↔ tree guard ───────────────────────────────────────────────
+# Third guard of the version_sync / imgui_pin_sync family: every source path the
+# markdown cites in backticks must exist. 26 000 lines of doc against 81 000 of
+# code is a lot of surface to keep true by hand — the git history already has a
+# manual "20 dérives corrigées" pass, which is the work this replaces. Python,
+# so it runs on all three platforms.
+if(Python3_FOUND)
+    add_test(NAME doc_paths_sync
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/check_doc_paths.py"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(doc_paths_sync PROPERTIES TIMEOUT 60)
 endif()
 
 # mainwindow_logic_smoke -- the pure logic extracted from MainWindow_ImGui.
@@ -2037,3 +2108,33 @@ if(WIN32)
 endif()
 add_test(NAME cli_dispatcher_smoke COMMAND test_cli_dispatcher)
 set_tests_properties(cli_dispatcher_smoke PROPERTIES TIMEOUT 15)
+
+# ── Timeout scaling under sanitizers ─────────────────────────────────────────
+# Every TIMEOUT above is sized for an optimised build. ASan/UBSan/TSan slow the
+# emulated 6502 down by several times, and POM1's slowest tests boot a whole
+# BASIC interpreter on it — applesoft_gen2_smoke and applesoft_tms9918_smoke
+# both blew their 120 s budget on the first instrumented run here, which reads
+# in CI as "the sanitizer job is red" when in fact it found nothing at all.
+#
+# A false red is worse than no job: it trains you to ignore the one report that
+# was supposed to be believed. So scale every declared timeout instead of
+# picking new numbers by hand in ninety places — the ratios between tests are
+# already right, only the clock changed.
+#
+# The factor is MEASURED, not guessed, and it is far bigger than the usual
+# 2-4x rule of thumb: ASan instruments every access to Memory's 64 KB array,
+# which IS the 6502 interpreter's innermost loop. The emulated-CPU-bound tests
+# slow down by at least 20x (applesoft_gen2_smoke: 31.6 s clean, still running
+# past 600 s instrumented). 30x leaves real headroom on a slower CI runner, and
+# costs nothing on the ~80 tests that finish under a second either way.
+if(POM1_SANITIZE)
+    get_property(pom1_declared_tests DIRECTORY PROPERTY TESTS)
+    foreach(pom1_t IN LISTS pom1_declared_tests)
+        get_test_property(${pom1_t} TIMEOUT pom1_tmo)
+        if(pom1_tmo AND NOT pom1_tmo STREQUAL "NOTFOUND")
+            math(EXPR pom1_scaled "${pom1_tmo} * 30")
+            set_tests_properties(${pom1_t} PROPERTIES TIMEOUT ${pom1_scaled})
+        endif()
+    endforeach()
+    message(STATUS "POM1: test timeouts scaled x30 for the sanitizer build")
+endif()

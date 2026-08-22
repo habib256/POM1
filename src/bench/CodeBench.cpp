@@ -1035,7 +1035,7 @@ void CodeBench::render(const char* title, bool* open)
                 const ImU32 col = IM_COL32(235, 80, 60, 230);
                 for (int ln : act.errorLines) {
                     float t = static_cast<float>(ln - 1) / static_cast<float>(total);
-                    if (t < 0.0f) t = 0.0f; if (t > 1.0f) t = 1.0f;
+                    if (t < 0.0f) { t = 0.0f; } if (t > 1.0f) t = 1.0f;
                     const float y = mn.y + 1.0f + t * trackH;
                     dl->AddRectFilled(ImVec2(x0, y - 1.5f), ImVec2(x1, y + 1.5f), col, 1.0f);
                 }

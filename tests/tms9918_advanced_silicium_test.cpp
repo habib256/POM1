@@ -45,15 +45,6 @@ void vramWrite(TMS9918& vdp, uint16_t addr, uint8_t v)
     vdp.writeData(v);
 }
 
-// Helper: read a byte from VRAM (sets read addr, then reads the
-// pre-fetched first byte).
-uint8_t vramRead(TMS9918& vdp, uint16_t addr)
-{
-    vdp.writeControl((uint8_t)(addr & 0xFF));
-    vdp.writeControl((uint8_t)((addr >> 8) & 0x3F));
-    return vdp.readData();
-}
-
 // Helper: write a SAT entry (Y, X, name, color) at SAT base $1B00.
 void writeSAT(TMS9918& vdp, int slot, uint8_t y, uint8_t x, uint8_t name, uint8_t col)
 {

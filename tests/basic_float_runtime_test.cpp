@@ -176,7 +176,7 @@ int main()
         for (int i = 0; i < 200; ++i) {
             fp.run("fp_rand"); float r = fp.rf(fp.FA);
             if (!(r >= 0.f && r < 1.f)) inRange = false;
-            if (r != prev) ++distinct; prev = r;
+            if (r != prev) { ++distinct; } prev = r;
         }
         ++total; if (!inRange)      { ++fails; std::printf("FAIL rand: value out of [0,1)\n"); }
         ++total; if (distinct < 190){ ++fails; std::printf("FAIL rand: only %d distinct of 200\n", distinct); }

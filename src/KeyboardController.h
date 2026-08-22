@@ -13,6 +13,8 @@
 #include <mutex>
 #include <queue>
 
+#include "LockOrder.h"
+
 class Memory;
 
 class KeyboardController
@@ -35,7 +37,10 @@ public:
     void drainTo(Memory& mem);
 
 private:
-    std::mutex keyMutex;
+    // Rank-checked: see LockOrder.h. keyMutex sits between stateMutex and
+    // snapshotMutex, so taking it while holding the snapshot lock now trips
+    // an assert instead of waiting for a deadlock to prove the point.
+    pom1::RankedMutex<pom1::LockRank::Keyboard> keyMutex;
     std::queue<char> queuedKeys;
 };
 

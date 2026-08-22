@@ -1080,7 +1080,7 @@ void MainWindow_ImGui::updateStatus(float deltaTime)
     }
 }
 
-void MainWindow_ImGui::updateCpuExecution(float deltaTime)
+void MainWindow_ImGui::updateCpuExecution(float /*deltaTime*/)
 {
     emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
 #if POM1_IS_WASM

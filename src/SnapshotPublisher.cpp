@@ -15,7 +15,7 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
     // Publish directly into latestSnapshot: its memory vector is already sized
     // to 64 KB, so a std::memcpy into the existing allocation avoids the
     // alloc-and-free of a fresh stack-constructed EmulationSnapshot every frame.
-    std::lock_guard<std::mutex> lock(snapshotMutex);
+    std::lock_guard<decltype(snapshotMutex)> lock(snapshotMutex);
     EmulationSnapshot& snapshot = latestSnapshot;
 
     // Page-level dirty copy: Memory::memWrite sets one bit per touched page
@@ -178,6 +178,6 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
 
 void SnapshotPublisher::copyTo(EmulationSnapshot& out) const
 {
-    std::lock_guard<std::mutex> lock(snapshotMutex);
+    std::lock_guard<decltype(snapshotMutex)> lock(snapshotMutex);
     out = latestSnapshot;
 }

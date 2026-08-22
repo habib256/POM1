@@ -51,7 +51,6 @@ bool parseAddr16(const std::string& s, int& out)
 {
     if (s.empty()) return false;
     std::string v = s;
-    int base = 16;
     if (v.size() > 2 && v[0] == '0' && (v[1] == 'x' || v[1] == 'X')) {
         v.erase(0, 2);
     } else if (v[0] == '$') {

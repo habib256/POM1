@@ -319,7 +319,7 @@ bool Codegen::primary(int d)
         emit("\tsec"); emit("\tlda #0"); emit("\tsbc " + Td); emit("\tsta " + Td);
         emit("\tlda #0"); emit("\tsbc " + Td + "+1"); emit("\tsta " + Td + "+1"); return true; }
     if (isKw("ABS")) { adv(); if (cur().t != T::LParen) return fail("ABS expects '('"); adv();
-        if (!expr(d)) return false; if (cur().t != T::RParen) return fail("expected ')'"); adv();
+        if (!expr(d)) { return false; } if (cur().t != T::RParen) return fail("expected ')'"); adv();
         if (fp) { emit("\tlda " + Td + "+3"); emit("\tand #$7F"); emit("\tsta " + Td + "+3"); return true; }
         std::string done = "Labs" + std::to_string(labelCounter++);
         emit("\tlda " + Td + "+1"); emit("\tbpl " + done);
@@ -329,7 +329,7 @@ bool Codegen::primary(int d)
     // INT(x): Applesoft floors toward -infinity. In the integer phase values are
     // already whole, so INT is the identity and links nothing.
     if (isKw("INT")) { adv(); if (cur().t != T::LParen) return fail("INT expects '('"); adv();
-        if (!expr(d)) return false; if (cur().t != T::RParen) return fail("expected ')'"); adv();
+        if (!expr(d)) { return false; } if (cur().t != T::RParen) return fail("expected ')'"); adv();
         if (fp) {
             // fp_int truncates toward zero; that equals floor for x >= 0, but for
             // a negative x with a fractional part floor(x) = trunc(x) - 1. Compute
@@ -356,7 +356,7 @@ bool Codegen::primary(int d)
         const char* nm = isKw("SQR") ? "SQR" : isKw("SIN") ? "SIN"
                        : isKw("COS") ? "COS" : "ATN";
         adv(); if (cur().t != T::LParen) return fail(std::string(nm) + " expects '('"); adv();
-        if (!expr(d)) return false; if (cur().t != T::RParen) return fail("expected ')'"); adv();
+        if (!expr(d)) { return false; } if (cur().t != T::RParen) return fail("expected ')'"); adv();
         if (!fp) return fail(std::string(nm) + " requires the floating-point phase");
         copyV("FA", Td); emit(std::string("\tjsr ") + rt); copyV(Td, "FA");
         return true; }
@@ -366,7 +366,7 @@ bool Codegen::primary(int d)
     // value on every call. Float phase only (auto-precision forces it via RND).
     if (isKw("RND")) {
         adv(); if (cur().t != T::LParen) return fail("RND expects '('"); adv();
-        if (!expr(d)) return false; if (cur().t != T::RParen) return fail("expected ')'"); adv();
+        if (!expr(d)) { return false; } if (cur().t != T::RParen) return fail("expected ')'"); adv();
         if (!fp) return fail("RND requires the floating-point phase");
         emit("\tjsr fp_rand"); copyV(Td, "FA");
         return true; }
@@ -707,7 +707,7 @@ bool Codegen::statement()
         };
         adv();
         if (!coord("rt_x0")) return false;
-        if (cur().t != T::Comma) return fail("HPLOT expects 'x,y'"); adv();
+        if (cur().t != T::Comma) { return fail("HPLOT expects 'x,y'"); } adv();
         if (!coord("rt_y0")) return false;
         if (!isKw("TO")) {                       // single point
             copy16("rt_px", "rt_x0"); copy16("rt_py", "rt_y0"); emit("\tjsr rt_plot"); return true;
@@ -715,7 +715,7 @@ bool Codegen::statement()
         while (isKw("TO")) {                      // line chain
             adv();
             if (!coord("rt_x1")) return false;
-            if (cur().t != T::Comma) return fail("HPLOT TO expects 'x,y'"); adv();
+            if (cur().t != T::Comma) { return fail("HPLOT TO expects 'x,y'"); } adv();
             if (!coord("rt_y1")) return false;
             emit("\tjsr rt_line");
             copy16("rt_x0", "rt_x1"); copy16("rt_y0", "rt_y1");
@@ -767,7 +767,7 @@ bool Codegen::statement()
         };
         adv();
         if (!coord("rt_x0")) return false;
-        if (cur().t != T::Comma) return fail("PLOT expects 'x,y'"); adv();
+        if (cur().t != T::Comma) { return fail("PLOT expects 'x,y'"); } adv();
         if (!coord("rt_y0")) return false;
         emit("\tjsr rt_loresplot"); return true;
     }
@@ -784,7 +784,7 @@ bool Codegen::statement()
         if (cur().t != T::Comma) return fail(h ? "HLIN expects 'x1,x2 AT y'" : "VLIN expects 'y1,y2 AT x'");
         adv();
         if (!coord("rt_x1")) return false;                 // x2 / y2
-        if (!isKw("AT")) return fail(h ? "HLIN expects AT" : "VLIN expects AT"); adv();
+        if (!isKw("AT")) { return fail(h ? "HLIN expects AT" : "VLIN expects AT"); } adv();
         if (!coord("rt_y0")) return false;                 // the fixed coordinate
         emit(h ? "\tjsr rt_hlin" : "\tjsr rt_vlin"); return true;
     }
@@ -865,14 +865,14 @@ bool Codegen::statement()
         adv();
         if (cur().t != T::Ident) return fail("FOR expects a variable");
         std::string v = cur().s; adv();
-        if (!isOp("=")) return fail("FOR expects '='"); adv();
-        if (!expr(0)) return false; copyV(varLabel(v), temp(0));      // v = start
-        if (!isKw("TO")) return fail("FOR expects TO"); adv();
+        if (!isOp("=")) { return fail("FOR expects '='"); } adv();
+        if (!expr(0)) { return false; } copyV(varLabel(v), temp(0));      // v = start
+        if (!isKw("TO")) { return fail("FOR expects TO"); } adv();
         int id = forCounter++;
         std::string lim = "F" + std::to_string(id) + "_lim";
         std::string stp = "F" + std::to_string(id) + "_step";
         forSlots.insert(id);
-        if (!expr(0)) return false; copyV(lim, temp(0));              // limit
+        if (!expr(0)) { return false; } copyV(lim, temp(0));              // limit
         if (isKw("STEP")) { adv(); if (!expr(0)) return false; copyV(stp, temp(0)); }
         else if (fp) fpLoadConst(stp, 1.0);
         else loadConst(stp, 1);

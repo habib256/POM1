@@ -172,10 +172,6 @@ std::string annotateOperand6502(const uint8_t* mem, uint16_t pc,
     const uint8_t hi = mem[(pc + 2) & 0xFFFF];
     const uint16_t abs16 = static_cast<uint16_t>(lo | (hi << 8));
 
-    auto rdword = [mem](uint16_t a) -> uint16_t {
-        return static_cast<uint16_t>(mem[a] |
-                                     (mem[(a + 1) & 0xFFFF] << 8));
-    };
     // Zero-page word read wraps inside page 0 (6502 quirk shared by (zp,X)/(zp),Y).
     auto rdzpword = [mem](uint8_t a) -> uint16_t {
         return static_cast<uint16_t>(mem[a] |

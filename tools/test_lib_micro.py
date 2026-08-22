@@ -51,10 +51,18 @@ Driver header contract (comment lines, ';' for .s / '*' or '//' for .c):
                                  at the end, so bigger is merely slower)
     EXPECT: ADDR B0 B1 ...       hex bytes expected at ADDR (repeatable)
 
-Exit codes: 0 all green, 1 failures, 77 skip (cc65 or build/POM1 missing).
+Exit codes: 0 all green, 1 failures, 77 skip (cc65 missing).
+
+The POM1 binary comes from --pom1, which ctest fills in with
+$<TARGET_FILE:pom1_imgui>. It used to be hardcoded to <repo>/build/POM1, so a
+build directory named anything else silently validated whatever stale binary
+happened to sit in build/ -- or skipped outright when none did. A missing
+--pom1 target is now an ERROR, not a skip: cc65 can legitimately be absent on
+a machine, the binary under test cannot.
 """
 
 import argparse
+import os
 import re
 import shutil
 import struct
@@ -66,8 +74,10 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 MICRO_DIR = REPO / "dev" / "lib" / "test" / "micro"
+# Renseigné par main() depuis --pom1 ; jamais deviné à partir d'un
+# répertoire de build supposé (voir le docstring).
+POM1_BIN = None
 LIB_DIR = REPO / "dev" / "lib"
-POM1_BIN = REPO / "build" / "POM1"
 
 # ca65 include path for the .s drivers (textual .include + macro packs).
 ASM_INCLUDE_DIRS = [
@@ -81,7 +91,10 @@ ASM_INCLUDE_DIRS = [
     LIB_DIR / "gen2",
 ]
 
-RUN_TIMEOUT_S = 60
+# Overridable so an instrumented build (ASan/UBSan/TSan slows the emulated 6502
+# by several times) can raise it without editing this file — the CI sanitizer
+# job does exactly that, the same way ctest's own TIMEOUTs are scaled there.
+RUN_TIMEOUT_S = int(os.environ.get("POM1_MICRO_RUN_TIMEOUT", "60"))
 
 
 class TestSpec:
@@ -300,8 +313,18 @@ def run_one(spec: TestSpec, keep: bool, verbose: bool) -> tuple[bool, str, float
             print(f"    cmd: {' '.join(str(c) for c in r.args)}")
         msg = "\n".join(errs)
         return (not errs), msg, time.monotonic() - t0
-    except Exception as e:  # build error, timeout, parse error…
-        return False, f"  {e}", time.monotonic() - t0
+    except subprocess.TimeoutExpired as e:
+        # Distinct de la branche ci-dessous À DESSEIN : un test qui échoue par
+        # dépassement de délai est un test intermittent, pas un test cassé, et
+        # les deux se réparent différemment. Sans ce cas, la suite affichait un
+        # message tronqué qui ne permettait pas de faire la différence.
+        cmd = " ".join(str(c) for c in (e.cmd or []))
+        return (False,
+                f"  TIMEOUT after {e.timeout:.0f}s (RUN_TIMEOUT_S) — machine "
+                f"under load, or a genuine hang\n    cmd: {cmd}",
+                time.monotonic() - t0)
+    except Exception as e:  # build error, parse error…
+        return False, f"  {type(e).__name__}: {e}", time.monotonic() - t0
     finally:
         if keep:
             print(f"    workdir kept: {workdir}")
@@ -316,11 +339,19 @@ def main():
     ap.add_argument("--keep", action="store_true",
                     help="keep per-test temp build dirs")
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--pom1", default=None,
+                    help="path to the POM1 binary under test "
+                         "(ctest passes $<TARGET_FILE:pom1_imgui>)")
     args = ap.parse_args()
 
+    global POM1_BIN
+    POM1_BIN = Path(args.pom1).resolve() if args.pom1 else REPO / "build" / "POM1"
     if not POM1_BIN.exists():
-        print(f"SKIP: {POM1_BIN} not found (build POM1 first)")
-        return 77
+        print(f"ERROR: POM1 binary not found at {POM1_BIN}")
+        if not args.pom1:
+            print("       (no --pom1 given, so this fell back to the legacy "
+                  "build/ path -- pass --pom1 <binary>)")
+        return 1
     if shutil.which("ca65") is None or shutil.which("ld65") is None:
         print("SKIP: cc65 (ca65/ld65) not on PATH")
         return 77

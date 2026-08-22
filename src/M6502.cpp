@@ -331,13 +331,13 @@ void M6502::ADC(void)
     }
     else
     {
-      tmp = Op1 + Op2 + (statusRegister & M6502::Status::C ? 1 : 0);
+        tmp = Op1 + Op2 + (statusRegister & M6502::Status::C ? 1 : 0);
         accumulator = tmp & 0xFF;
 
-     if (((Op1 ^ accumulator) & ~(Op1 ^ Op2)) & 0x80)
-        statusRegister |= M6502::Status::V;
-   else
-        statusRegister &= ~M6502::Status::V;
+        if (((Op1 ^ accumulator) & ~(Op1 ^ Op2)) & 0x80)
+            statusRegister |= M6502::Status::V;
+        else
+            statusRegister &= ~M6502::Status::V;
 
         setFlagCarry(tmp);
         setStatusRegisterNZ(accumulator);

@@ -13,6 +13,7 @@
 #include <mutex>
 
 #include "EmulationSnapshot.h"
+#include "LockOrder.h"
 
 class Memory;
 class M6502;
@@ -30,7 +31,8 @@ public:
     void copyTo(EmulationSnapshot& out) const;
 
 private:
-    mutable std::mutex snapshotMutex;
+    // Innermost rank — nothing may be acquired while this is held.
+    mutable pom1::RankedMutex<pom1::LockRank::Snapshot> snapshotMutex;
     EmulationSnapshot latestSnapshot;
 };
 

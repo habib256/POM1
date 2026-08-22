@@ -84,6 +84,28 @@ check_ipo_supported(RESULT POM1_IPO_SUPPORTED OUTPUT POM1_IPO_ERROR)
 # below 2 GB, and PGO's instrumented first pass turns it off too.
 option(POM1_LTO "Link-time optimization on non-Debug builds" ON)
 
+# ── Sanitizers ───────────────────────────────────────────────────────────────
+# -DPOM1_SANITIZE=address,undefined (or =thread) instruments EVERY target,
+# vendored code included — a sanitizer only reports the truth when the whole
+# process is built with it. Off by default; the nightly CI job turns it on.
+#
+# This is the one class of defect POM1's 90 green tests structurally cannot
+# see: a one-byte overrun, an uninitialised read, or a race between the
+# emulation thread and the audio callback all pass a functional assertion right
+# up until the day they don't. LTO is forced off with a sanitizer — it makes
+# the reports unreadable and buys nothing in a diagnostic build.
+set(POM1_SANITIZE "" CACHE STRING
+    "Sanitizers to build with, e.g. 'address,undefined' or 'thread' (empty = none)")
+if(POM1_SANITIZE)
+    if(MSVC)
+        message(FATAL_ERROR "POM1_SANITIZE is a GCC/Clang option; MSVC is not supported here")
+    endif()
+    message(STATUS "POM1: sanitizers enabled (-fsanitize=${POM1_SANITIZE}), LTO forced OFF")
+    set(POM1_LTO OFF CACHE BOOL "" FORCE)
+    add_compile_options(-fsanitize=${POM1_SANITIZE} -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=${POM1_SANITIZE})
+endif()
+
 # Vendored libresidfp (cycle-accurate SID emulation, GPL-2.0). See
 # src/third_party/libresidfp/CMakeLists.txt for the source list.
 add_subdirectory(src/third_party/libresidfp)
@@ -543,8 +565,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
     ${POM1_SRC_DIR}
-    ${POM1_SRC_DIR}/third_party/ImGuiColorTextEdit
-    ${POM1_SRC_DIR}/third_party/stb   # so portable hgrpaint/ can #include "stb_image.h" bare
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bench
     ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint
     ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint
@@ -553,6 +573,54 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/sfxbeep
     ${CMAKE_CURRENT_SOURCE_DIR}/src/sidtrack
 )
+
+# Vendored single-header libraries, marked SYSTEM so the warning flags below
+# don't report on code POM1 does not own — a vendored header "fixed" in place
+# would be undone by the next drop-in update anyway. Note this only covers
+# headers FOUND through these directories: GCC classifies a header by where it
+# resolved it, so main_imgui.cpp's `#include "third_party/stb/..."` (resolved
+# via POM1_SRC_DIR) still needs its local pragma block.
+target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
+    ${POM1_SRC_DIR}/third_party/ImGuiColorTextEdit
+    ${POM1_SRC_DIR}/third_party/stb   # so portable hgrpaint/ can #include "stb_image.h" bare
+)
+
+# ── Compiler warnings ────────────────────────────────────────────────────────
+# POM1 shipped 81 k lines with no warning flags at all. The audit that turned
+# that up also measured the cost of switching them on: 51 hits across the whole
+# tree, of which 24 came from the vendored stb header above and the rest were
+# a handful of dead locals, three tautological range tests and one genuinely
+# mis-indented else in M6502::ADC. All fixed — so the flags go on at zero debt,
+# which is exactly the moment to add them: the next warning to appear will be
+# alone on the screen instead of buried in noise.
+#
+# Applied PER SOURCE FILE, not per target: Dear ImGui's own .cpp files are
+# compiled into this same executable, and they are not ours to keep clean.
+# -Werror is deliberately NOT set here — it lives in CI only (.github/workflows/
+# ci.yml), so a warning never blocks someone's local build mid-experiment.
+option(POM1_WERROR "Treat warnings as errors (CI only — never on by default)" OFF)
+if(MSVC)
+    set(POM1_WARNING_FLAGS /W4)
+    if(POM1_WERROR)
+        list(APPEND POM1_WARNING_FLAGS /WX)
+    endif()
+else()
+    set(POM1_WARNING_FLAGS -Wall -Wextra)
+    if(POM1_WERROR)
+        list(APPEND POM1_WARNING_FLAGS -Werror)
+    endif()
+endif()
+
+set(POM1_OWN_SOURCES
+    ${SOURCES}
+    ${POM1_RENDERER_SOURCES}
+    ${POM1_NATIVE_ICON_SOURCES}
+    ${POM1_NATIVE_FILE_DIALOG_SOURCES}
+    ${POM1_MACOS_WINDOW_SOURCES}
+)
+list(FILTER POM1_OWN_SOURCES EXCLUDE REGEX "third_party")
+set_source_files_properties(${POM1_OWN_SOURCES} PROPERTIES
+                            COMPILE_OPTIONS "${POM1_WARNING_FLAGS}")
 
 # libresidfp (vendored, third_party/libresidfp). PUBLIC include dir on the
 # static lib propagates ${SRC_DIR}/third_party/libresidfp/src to consumers,

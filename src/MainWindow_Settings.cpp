@@ -371,7 +371,7 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
             if (!writeProtect) emulation->setWriteInRom(true);
             if (ok) {
                 loadedRoms.erase(std::remove_if(loadedRoms.begin(), loadedRoms.end(),
-                    [](const LoadedRegion& r) { return r.start >= 0xE000 && r.end <= 0xFFFF; }), loadedRoms.end());
+                    [](const LoadedRegion& r) { return r.start >= 0xE000; }), loadedRoms.end());
                 loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
                 loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
             }
@@ -390,7 +390,7 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
             if (!writeProtect) emulation->setWriteInRom(true);
             if (ok) {
                 loadedRoms.erase(std::remove_if(loadedRoms.begin(), loadedRoms.end(),
-                    [](const LoadedRegion& r) { return r.start >= 0xE000 && r.end <= 0xFFFF; }), loadedRoms.end());
+                    [](const LoadedRegion& r) { return r.start >= 0xE000; }), loadedRoms.end());
                 loadedRoms.push_back({"Microsoft BASIC", 0xE000, 0xFEFF});
                 loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
             }
@@ -415,7 +415,7 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
             if (!writeProtect) emulation->setWriteInRom(true);
             if (ok) {
                 loadedRoms.erase(std::remove_if(loadedRoms.begin(), loadedRoms.end(),
-                    [](const LoadedRegion& r) { return r.start >= 0xE000 && r.end <= 0xFFFF; }), loadedRoms.end());
+                    [](const LoadedRegion& r) { return r.start >= 0xE000; }), loadedRoms.end());
                 loadedRoms.push_back({"Applesoft Lite (CFFA1)", 0xE000, 0xFFFF});
             }
             setStatusMessage(ok ? "Applesoft Lite (CFFA1) loaded" : error, 3.0f);

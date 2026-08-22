@@ -1016,7 +1016,6 @@ void MainWindow_ImGui::renderMemoryBarWindow()
         totalClamped += regionH[i];
     }
     // Scale large regions down so everything fits within availH if clamping expanded the total
-    const float barHeight = std::max(availH, totalClamped);
     if (totalClamped > availH) {
         float excess = totalClamped - availH;
         // Shrink only regions that are bigger than minRegionH, proportionally

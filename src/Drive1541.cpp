@@ -267,11 +267,6 @@ void Drive1541::buildErrorBuffer() {
 void Drive1541::executeCommand(const std::vector<uint8_t>& cmd) {
     if (cmd.empty()) { setError(0, "OK"); return; }
     uint8_t op = foldCase(cmd[0]);
-    auto bodyAt = [&](size_t off) -> std::string_view {
-        if (off >= cmd.size()) return {};
-        return std::string_view(reinterpret_cast<const char*>(cmd.data() + off),
-                                cmd.size() - off);
-    };
     switch (op) {
         case 'I': {
             // INITIALIZE: re-read BAM (no-op for us).
@@ -381,9 +376,6 @@ std::vector<uint8_t> Drive1541::synthesizeDirectory(std::string_view pattern) co
         out.push_back(static_cast<uint8_t>(w >> 8));
     };
     auto putByte = [&](uint8_t b) { out.push_back(b); };
-    auto putBytes = [&](const uint8_t* p, size_t n) {
-        out.insert(out.end(), p, p + n);
-    };
 
     putWord(0x0401);   // load address
 

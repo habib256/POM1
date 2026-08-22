@@ -77,7 +77,7 @@ three sources so they can't rot before the first project adopts them.
 
 - `menu_select` — **adopted juillet 2026** by the two CodeTank launcher menus
   (`dev/codetank/game1_menu/codetank_menu.asm` +
-  `demos_menu/codetank_demos_menu.asm`, shipped in the ARCADE and DEMOS
+  `dev/codetank/demos_menu/codetank_demos_menu.asm`, shipped in the ARCADE and DEMOS
   cartridges). Their cfgs have no ZEROPAGE segment (tiny ROM stubs), so they
   alias `tmp`/`tmp2` onto $00/$01 with plain equates instead of `zp.inc` —
   the supported stand-alone mode documented in `menu.asm`'s header. Net

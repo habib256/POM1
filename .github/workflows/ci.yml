@@ -1,12 +1,29 @@
-# Minimal CI: build POM1 on Linux, run the ctest suite (Klaus functional test +
-# every smoke test + the GEN2 graphics-regression golden), and assemble all the
-# dev/ 6502 projects. Single Linux job by design — see CLAUDE.md / TODO.md.
+# CI: build POM1 on all three desktop platforms, run the full ctest suite on
+# Linux (Klaus functional test + every smoke test + the GEN2 graphics-regression
+# golden), and assemble all the dev/ 6502 projects.
+#
+# It used to be a single Linux job, with macOS and Windows built ONLY by the
+# tag-driven release workflow — so a break on either was discovered at the worst
+# possible moment, while publishing. That is not hypothetical: the Homebrew
+# dylib baked into the macOS .dmg with an absolute /usr/local path shipped a
+# package that died at dyld on every Apple Silicon machine, and no Linux job
+# could have seen it. The two jobs below are build-only (no packaging, no
+# signing, no cc65) — the cheapest thing that turns "it compiles and links on
+# your platform" into a fact instead of a hope.
+#
+# The nightly `sanitizers` job covers what 90 green functional tests
+# structurally cannot: overruns, uninitialised reads, and races.
 name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # Nightly, 03:17 UTC. Off-peak, and a prime-ish minute so it doesn't pile
+    # onto the top-of-hour surge on GitHub's shared runners.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
 
 jobs:
   linux:
@@ -27,8 +44,12 @@ jobs:
         run: tools/ensure_imgui.sh imgui
 
       - name: Build POM1
+        # -DPOM1_WERROR=ON is CI-only, deliberately: a warning must never block
+        # someone's local build mid-experiment, but it must never reach main
+        # either. The tree was brought to zero warnings under -Wall -Wextra when
+        # the flags were introduced, so this gate starts clean.
         run: |
-          cmake -S . -B build
+          cmake -S . -B build -DPOM1_WERROR=ON
           cmake --build build -j"$(nproc)"
 
       - name: Compile the GL TUs the way Windows sees them (no glext.h)
@@ -78,3 +99,138 @@ jobs:
           make -C sketchs/tms9918/tool_diapo
           make -C sketchs/tms9918/tool_tmsload
           make -C sketchs/tms9918/game_maze3d
+
+  # ── Build-only gates for the two platforms the release workflow ships ───────
+  # No packaging, no code signing, no cc65 bundle: those belong to release.yml
+  # and are slow. What these prove is the thing that actually breaks between
+  # releases — that POM1's own sources still compile and link against each
+  # platform's toolchain and system headers.
+  #
+  # NOTE for anyone tempted to reuse this job for packaging: the Homebrew GLFW
+  # installed below is exactly what must NOT end up in a shipped .app. It is
+  # single-arch and the linker bakes brew's absolute prefix into the binary.
+  # release.yml builds GLFW from source, universal and static, for that reason.
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: brew install glfw
+
+      - name: Fetch Dear ImGui (pin from IMGUI_VERSION)
+        run: tools/ensure_imgui.sh imgui
+
+      - name: Build POM1 (Metal backend, the macOS default)
+        # NOT -DPOM1_WERROR=ON, deliberately. The tree was measured clean under
+        # GCC's -Wall -Wextra; AppleClang's is a different set, and promising a
+        # gate on an unmeasured warning list would mean shipping a workflow that
+        # fails on its first run. The flags are still ON, so the warnings show up
+        # in this log — read them once, fix them, then add the -Werror here.
+        run: |
+          cmake -S . -B build
+          cmake --build build -j"$(sysctl -n hw.ncpu)"
+
+      - name: Build POM1 (OpenGL backend, the documented macOS fallback)
+        # POM1_RENDERER=opengl is a supported configuration users can select,
+        # and it shares no compilation path with Metal — PomRenderer_GL.cpp is
+        # not compiled at all in the job above. Untested means broken.
+        run: |
+          cmake -S . -B build-gl -DPOM1_RENDERER=opengl -DPOM1_ENABLE_TESTS=OFF
+          cmake --build build-gl -j"$(sysctl -n hw.ncpu)"
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install GLFW via vcpkg (manifest mode, static triplet)
+        # No package argument: the dependency and its pinned version live in the
+        # repo-root vcpkg.json, and vcpkg rejects arguments in manifest mode.
+        # Same triplet as release.yml so this compiles the configuration users
+        # actually get.
+        run: vcpkg install --triplet x64-windows-static
+
+      - name: Fetch Dear ImGui (pin from IMGUI_VERSION)
+        # Git Bash, so the pin stays single-sourced from the IMGUI_VERSION file
+        # instead of being copy-pasted into this workflow — see CLAUDE.md.
+        shell: bash
+        run: tools/ensure_imgui.sh imgui
+
+      - name: Build POM1
+        # No -DPOM1_WERROR=ON here either — same reason as the macOS job, more
+        # so: MSVC's /W4 is a far broader set than GCC's -Wall -Wextra
+        # (signed/unsigned conversions, unreferenced parameters) and has never
+        # been run over this tree. /W4 is applied, so the count lands in the log.
+        shell: bash
+        run: |
+          cmake -S . -B build \
+                -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" \
+                -DVCPKG_TARGET_TRIPLET=x64-windows-static
+          cmake --build build --config Release -j
+
+  # ── Sanitizers (nightly + manual) ──────────────────────────────────────────
+  # The one class of defect POM1's 90 functional tests cannot see. Nightly
+  # rather than per-push because the instrumented suite is several times slower
+  # and this catches latent damage, not the mistake you made ten seconds ago.
+  #
+  # ASan+UBSan and TSan are separate jobs on purpose: they are mutually
+  # incompatible (ASan and TSan cannot instrument the same binary), and they
+  # look for different things — memory damage vs. the emulation-thread/audio-
+  # callback/UI races that the LockOrder ranks only cover for POM1's own three
+  # mutexes.
+  sanitizers:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    # Long by design. ASan instruments every access to Memory's 64 KB array —
+    # the 6502 interpreter's innermost loop — so the emulated-CPU-bound tests
+    # run at least 20x slower (measured: applesoft_gen2_smoke 31.6 s clean,
+    # past 600 s instrumented), and those two Applesoft tests dominate the run.
+    # Nightly, so wall time is cheap. If it ever needs trimming, the lever is
+    # `ctest -E "applesoft_(gen2|tms9918)_smoke"` — and skipping them must be
+    # said out loud in the job name, never left implicit: a sanitizer job that
+    # quietly covers less than it appears to is the failure mode to avoid.
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: address+undefined
+            sanitize: address,undefined
+          - name: thread
+            sanitize: thread
+    name: sanitizers (${{ matrix.name }})
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libglfw3-dev libgl1-mesa-dev cc65
+
+      - name: Fetch Dear ImGui (pin from IMGUI_VERSION)
+        run: tools/ensure_imgui.sh imgui
+
+      - name: Build instrumented
+        # RelWithDebInfo, not Release: the reports need symbols and line numbers
+        # to be worth reading. POM1_SANITIZE forces LTO off by itself.
+        run: |
+          cmake -S . -B build-san -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+                -DPOM1_SANITIZE=${{ matrix.sanitize }}
+          cmake --build build-san -j"$(nproc)"
+
+      - name: Run ctest instrumented
+        env:
+          # halt_on_error=1: a sanitizer finding is a failure, not a log line.
+          # print_stacktrace makes the UBSan half actionable rather than a
+          # one-line "runtime error" with no location.
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          TSAN_OPTIONS: halt_on_error=1
+          # tools/test_lib_micro.py runs the instrumented POM1 once per micro-
+          # test; its own per-command budget needs the same headroom the ctest
+          # TIMEOUTs get (scaled x5 in tests/CMakeLists.txt under POM1_SANITIZE).
+          POM1_MICRO_RUN_TIMEOUT: "300"
+        run: ctest --test-dir build-san --output-on-failure

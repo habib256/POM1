@@ -89,7 +89,7 @@ bool loadTmsApplesoft(Memory& mem)
 // Cold-start the resident interpreter by jumping to `coldEntry` and running until
 // the `]` prompt appears on the Apple-1 terminal (cap as a safety net). Boots the
 // ROM only -- it types nothing.
-void coldStart(Memory& mem, M6502& cpu, CaptureDisplay& disp, uint16_t coldEntry)
+void coldStart(Memory& /*mem*/, M6502& cpu, CaptureDisplay& disp, uint16_t coldEntry)
 {
     cpu.setProgramCounter(coldEntry);
     cpu.start();
