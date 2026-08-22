@@ -44,17 +44,29 @@ releases/*.zip
 # GitHub Pages serves these static files directly (it doesn't build), and CI's
 # verify_wasm_cc65.sh (ci.yml) asserts the toolchain is committed. Rebuild with
 # emcmake+emmake / tools/build_cc65_wasm.sh, then re-commit the refreshed set.
+#
+# POM1.{data,wasm,js} are NO LONGER tracked, as of the switch to
+# .github/workflows/pages.yml: Pages now serves an artifact the CI builds, so
+# the deployed bundle no longer has to exist as files in this branch. That
+# arrangement is what had put 123 blobs and 2 GB of build output into the
+# history, growing ~62 MB per web deploy. Do not re-add them.
+#
+# build-wasm/cc65/, shell.html, cc65_bench.js, cc65_wasm.js and pic/ STAY
+# tracked: committed dependencies the workflow copies into the artifact, not
+# build outputs. tools/verify_wasm_cc65.sh (ci.yml) asserts the toolchain half.
 build-appimage
 build-debug
+# Sanitizer + secondary-renderer configures used by CI and local audits.
+build-san
+build-gl
+build-asan
+build-audit
 # Secondary configure of the GLES 3.0 tier (cmake -DPOM1_GLES=ON), as used by
 # the "Compile the GLES 3.0 tier" CI step and by local Raspberry Pi checks.
 build-gles
 build-wasm/*
 !build-wasm/shell.html
 !build-wasm/POM1.html
-!build-wasm/POM1.js
-!build-wasm/POM1.wasm
-!build-wasm/POM1.data
 !build-wasm/cc65_bench.js
 !build-wasm/cc65_wasm.js
 !build-wasm/pic
