@@ -190,15 +190,16 @@ struct CliPlan {
 ///
 /// Returns:
 ///   * `std::nullopt` if an error message has already been logged and main()
-///     should exit with status != 0. The function also handles `--list-presets`
-///     internally: it prints the preset table and returns nullopt (signalling
-///     "clean exit" — main() returns 0 in that case, keyed off `listPresetsOut`).
+///     should exit with status != 0. The function also handles the two flags
+///     that only print and leave — `--help` / `-h` and `--list-presets`: it
+///     writes to stdout and returns nullopt with `cleanExitOut` set, so main()
+///     returns 0 rather than treating it as a parse failure.
 ///   * A populated CliPlan otherwise.
 ///
-/// `listPresetsOut` is set to true iff `--list-presets` was seen (so the caller
-/// can decide to exit 0 without building a window). Unknown flags are logged
-/// and cause nullopt.
-std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut);
+/// `cleanExitOut` is set to true iff one of those print-and-exit flags was seen
+/// (so the caller can exit 0 without building a window). Unknown flags are
+/// logged and cause nullopt with `cleanExitOut` left false.
+std::optional<CliPlan> parseCli(int argc, char* argv[], bool& cleanExitOut);
 
 /// Run every phase-C action in `plan.deferredActions`, in order. Safe to call
 /// once the CPU has been running long enough for the deferred card plug to

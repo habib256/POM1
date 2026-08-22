@@ -1981,6 +1981,22 @@ if(Python3_FOUND)
     set_tests_properties(doc_paths_sync PROPERTIES TIMEOUT 60)
 endif()
 
+# cli_flags_sync -- the fourth guard of the version_sync / imgui_pin_sync /
+# doc_paths_sync family. Three places name POM1's CLI flags: the parse loop in
+# CliDispatcher.cpp (the authority), the kCliFlagHelp[] table that --help
+# prints, and doc/CLI.md. Before --help existed the unknown-flag error already
+# pointed at it -- "Run with --help for the supported list" -- so the person who
+# most needed the list got a dead end, and nothing in the tree could notice.
+# Adding the flag without this check would only move the rot: a new flag lands
+# in the parser, the table stays quiet, the help is wrong again.
+if(Python3_FOUND)
+    add_test(NAME cli_flags_sync
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/check_cli_flags.py"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(cli_flags_sync PROPERTIES TIMEOUT 60)
+endif()
+
 # mainwindow_logic_smoke -- the pure logic extracted from MainWindow_ImGui.
 # The UI is excluded from every other test binary (see the note at the top of
 # this file), which left POM1's largest layer uncovered — and it is where the

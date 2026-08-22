@@ -6,6 +6,7 @@ Three phases: **A** boot-time, **B** first-frame preset overrides, **C** deferre
 
 | Flag | Phase | Effect |
 |------|-------|--------|
+| `--help` / `-h` | A | Print the flag list (`kCliFlagHelp[]` in `CliDispatcher.cpp`) and exit 0. Kept in sync with this table and with the parser by ctest `cli_flags_sync`. |
 | `--list-presets` | A | Print `kMachinePresets[]` and exit. |
 | `--preset <N\|name>` / `-p` | A | Index or case-insensitive substring (first match). |
 | `--terminal` | A | Force-enable Terminal Card (`127.0.0.1:6502`). |

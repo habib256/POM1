@@ -10,6 +10,7 @@
 #include "HexDumpFile.h"
 #include "Logger.h"
 #include "MachinePresets.h"
+#include "PomVersion.h"
 
 #include <cctype>
 #include <climits>
@@ -240,9 +241,104 @@ std::string resolveSaveTapePath(const std::string& path, CliSaveTapeFormat hint)
     }
 }
 
-std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
+namespace {
+
+// ---------------------------------------------------------------------------
+// --help
+//
+// The unknown-flag error told the user to "Run with --help for the supported
+// list" while no such flag existed — a dead end for exactly the person who
+// needed the list. The usage text lives HERE and nowhere else, and ctest
+// `cli_flags_sync` (tools/check_cli_flags.py) asserts three sets agree: what
+// this table prints, what the parser below actually accepts (`arg == "--x"`),
+// and what doc/CLI.md documents. A help table nobody checks would rot the same
+// way that error message did.
+//
+// Phase letters match doc/CLI.md: A = read at boot before the window exists,
+// B = machine configuration, C = deferred until the cards are plugged.
+// ---------------------------------------------------------------------------
+struct CliFlagHelp { char phase; const char* spelling; const char* help; };
+
+constexpr CliFlagHelp kCliFlagHelp[] = {
+    {'A', "--help / -h",                        "Print this list and exit."},
+    {'A', "--list-presets",                     "Print the machine preset table and exit."},
+    {'A', "--preset <N|name> / -p",             "Boot preset: index, or case-insensitive substring."},
+    {'A', "--terminal",                         "Force-enable the Terminal Card (127.0.0.1:6502)."},
+    {'A', "--telemetry-port <N>",               "Dev-only: telemetry side channel on 127.0.0.1:N."},
+    {'A', "--telemetry-log <path>",             "Dev-only: tee the telemetry frame stream to a file."},
+    {'A', "--dump-gen2-frame <path>",           "Headless: write the GEN2 HGR framebuffer to a PNG, then exit."},
+    {'A', "--dump-tms-frame <path>",            "Headless: same for the TMS9918 framebuffer."},
+    {'A', "--dump-after-cycles <N>",            "Deterministic settle before a --dump-*-frame capture."},
+    {'A', "--dump-settle-ms <N>",               "Wall-clock settle before a --dump-*-frame capture (default 1000)."},
+    {'A', "--tape <path>",                      "Preload a cassette and auto-Play (.aci .wav .aiff .ogg .mp3 .flac)."},
+    {'A', "--save-tape <path>",                 "Dump the deck on clean shutdown."},
+    {'A', "--save-tape-format <aci|wav>",       "Format for --save-tape."},
+    {'A', "--cpu-max",                          "Pin execution speed to 1 000 000 cycles/frame."},
+    {'A', "--audio-latency <ms>",               "Output cushion, clamped to [20, 250]."},
+    {'A', "--fullscreen",                       "Open fullscreen and re-assert it after every preset switch."},
+    {'A', "--headless",                         "No window, no GL, no ImGui — for CI and scripted runs."},
+
+    {'B', "--speed <cycles/frame>",             "Execution speed (1x = 17045, 2x = 34091)."},
+    {'B', "--enable <card>[,...]",              "Plug cards: aci, xaci, sid, microsd, tms9918, hgr, cffa1, wifi..."},
+    {'B', "--disable <card>[,...]",             "Unplug cards from the deferred plug list."},
+    {'B', "--sid-chip <6581|8580>",             "Swap the SID chip model."},
+    {'B', "--jukebox-jumper <ram16|ram32>",     "Juke-Box ROM window jumper."},
+    {'B', "--jukebox-chip <flash|eeprom>",      "Juke-Box chip mode."},
+    {'B', "--codetank-jumper <lower|upper>",    "Pick the 16 kB half of the 32 kB CodeTank 28c256."},
+    {'B', "--codetank-rom <path>",              "Override the CodeTank ROM probe."},
+    {'B', "--iec-disk <path>",                  "Mount a .d64 on the IEC daughterboard's drive 8."},
+    {'B', "--silicon-strict",                   "Force TMS9918 paranoid VRAM timing on."},
+    {'B', "--no-silicon-strict",                "Force TMS9918 paranoid VRAM timing off."},
+    {'B', "--dram-refresh",                     "Force the Apple-1 DRAM-refresh CPU stall on."},
+    {'B', "--no-dram-refresh",                  "Force the Apple-1 DRAM-refresh CPU stall off."},
+    {'B', "--vram-noise",                       "Power on TMS9918 VRAM with real noise instead of $FF/$00."},
+    {'B', "--tms-frameflag-hostile",            "Model silicon whose status frame flag never registers."},
+    {'B', "--ram-poison <HH>",                  "Fill system RAM with sentinel byte HH instead of $00."},
+    {'B', "--ram-trap",                         "Log the first read of any RAM cell never written this run."},
+
+    {'C', "--load <addr>:<path>",               "Load a program (extension-routed: .txt .hex .apl .mon .tur). Repeatable."},
+    {'C', "--run <addr>",                       "Jump to <addr> once the machine is up."},
+    {'C', "--paste <file>",                     "Push up to 4096 chars into the keyboard queue."},
+    {'C', "--paste-at-cycle <N> \"<keys>\"",      "Headless: inject <keys> at cumulative cycle N."},
+    {'C', "--step <N>",                         "Single-step N instructions."},
+    {'C', "--trace-brk",                        "Dump a trace on BRK."},
+    {'C', "--play",                             "Cassette transport: play."},
+    {'C', "--rec",                              "Cassette transport: arm recording (no $C000 wait)."},
+    {'C', "--rewind",                           "Cassette transport: rewind."},
+    {'C', "--sd-mkdir <path>",                  "Create a directory on the microSD image."},
+    {'C', "--sd-put <host>:<guest>",            "Copy a host file onto the microSD image."},
+    {'C', "--sd-get <guest>:<host>",            "Copy a file off the microSD image."},
+    {'C', "--rtc-freeze \"YYYY-MM-DD HH:MM:SS\"", "Set the A1-IO RTC offset."},
+    {'C', "--snapshot-save <path>",             "Write the machine state to a .snap file."},
+    {'C', "--snapshot-load <path>",             "Restore a .snap written by --snapshot-save."},
+    {'C', "--break <addr>",                     "Arm a PC-matched halt before the instruction at <addr>."},
+};
+
+void printCliUsage()
 {
-    listPresetsOut = false;
+    std::cout << "POM1 " POM1_VERSION_STRING " - Apple 1 emulator\n"
+                 "Usage: POM1 [flags]\n\n"
+                 "  Phase A = read at boot, before the window exists\n"
+                 "  Phase B = machine configuration\n"
+                 "  Phase C = replayed once the cards are plugged\n\n"
+                 "Full reference, with the details this list cannot hold: doc/CLI.md\n";
+    char phase = 0;
+    for (const CliFlagHelp& f : kCliFlagHelp) {
+        if (f.phase != phase) {
+            phase = f.phase;
+            std::cout << "\nPhase " << phase << ":\n";
+        }
+        std::cout << "  " << std::left << std::setw(38) << f.spelling
+                  << ' ' << f.help << '\n';
+    }
+    std::cout << std::flush;
+}
+
+}  // namespace
+
+std::optional<CliPlan> parseCli(int argc, char* argv[], bool& cleanExitOut)
+{
+    cleanExitOut = false;
     CliPlan plan;
 
     auto needArg = [&](int i, const char* flag) -> bool {
@@ -259,8 +355,13 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& listPresetsOut)
         // -----------------------------------------------------------------
         // Phase-A flags — picked up at boot before the window opens.
         // -----------------------------------------------------------------
+        if (arg == "--help" || arg == "-h") {
+            cleanExitOut = true;
+            printCliUsage();
+            return std::nullopt;
+        }
         if (arg == "--list-presets") {
-            listPresetsOut = true;
+            cleanExitOut = true;
             int n = pom1::machinePresetCount();
             std::cout << "Available machine presets:" << std::endl;
             for (int p = 0; p < n; ++p) {

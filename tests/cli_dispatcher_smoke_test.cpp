@@ -32,7 +32,7 @@ using pom1::CliSaveTapeFormat;
 namespace {
 
 // parseCli takes `char* argv[]`, so the literals need writable storage.
-std::optional<CliPlan> parse(std::vector<std::string> args, bool* listPresetsOut = nullptr)
+std::optional<CliPlan> parse(std::vector<std::string> args, bool* cleanExitOut = nullptr)
 {
     std::vector<std::string> owned;
     owned.reserve(args.size() + 1);
@@ -43,9 +43,9 @@ std::optional<CliPlan> parse(std::vector<std::string> args, bool* listPresetsOut
     argv.reserve(owned.size());
     for (auto& s : owned) argv.push_back(s.data());
 
-    bool listPresets = false;
-    auto plan = pom1::parseCli(static_cast<int>(argv.size()), argv.data(), listPresets);
-    if (listPresetsOut) *listPresetsOut = listPresets;
+    bool cleanExit = false;
+    auto plan = pom1::parseCli(static_cast<int>(argv.size()), argv.data(), cleanExit);
+    if (cleanExitOut) *cleanExitOut = cleanExit;
     return plan;
 }
 
@@ -288,6 +288,30 @@ void testSaveTapePath()
     assert(!parse({"--save-tape-format", "mp3"}).has_value());
 }
 
+// ---------------------------------------------------------------------------
+// F — the print-and-exit flags.
+//
+// --help and --list-presets both return nullopt, exactly like a PARSE ERROR
+// does, and only `cleanExitOut` tells main() whether to exit 0 or 1. Getting
+// that backwards would make `POM1 --help` an error exit — or, worse, make a
+// typo'd flag look like success. The unknown-flag case is the control: same
+// nullopt, cleanExit false.
+// ---------------------------------------------------------------------------
+void testPrintAndExitFlags()
+{
+    for (const char* flag : {"--help", "-h", "--list-presets"}) {
+        bool cleanExit = false;
+        auto plan = parse({flag}, &cleanExit);
+        assert(!plan.has_value());
+        assert(cleanExit);
+    }
+
+    bool cleanExit = true;                       // seeded wrong on purpose
+    auto bad = parse({"--no-such-flag"}, &cleanExit);
+    assert(!bad.has_value());
+    assert(!cleanExit);
+}
+
 } // namespace
 
 int main()
@@ -297,6 +321,7 @@ int main()
     testDeferredActions();
     testOverridesAndBounds();
     testSaveTapePath();
+    testPrintAndExitFlags();
     std::printf("cli_dispatcher_smoke: OK\n");
     return 0;
 }

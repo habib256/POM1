@@ -866,11 +866,12 @@ int main(int argc, char* argv[])
     // Parse command-line arguments via the CLI dispatcher. The dispatcher
     // owns every verb — boot-time (preset, card overrides, cassette paths,
     // CPU speed) AND post-deferred-plug verbs (program load, --paste,
-    // --rec, --sd-*, --rtc-freeze, etc.). `listPresetsSeen` is true when the
-    // dispatcher printed the preset table; in that case main exits 0.
-    bool listPresetsSeen = false;
-    auto parsedPlan = pom1::parseCli(argc, argv, listPresetsSeen);
-    if (listPresetsSeen) return 0;
+    // --rec, --sd-*, --rtc-freeze, etc.). `cliCleanExit` is true when the
+    // dispatcher answered a print-and-leave flag (--help, --list-presets);
+    // in that case main exits 0 without opening a window.
+    bool cliCleanExit = false;
+    auto parsedPlan = pom1::parseCli(argc, argv, cliCleanExit);
+    if (cliCleanExit) return 0;
     if (!parsedPlan) return 1;
     pom1::CliPlan plan = std::move(*parsedPlan);
 

@@ -10,6 +10,54 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — GitHub Pages sert un artefact bâti par la CI, plus une branche du dépôt
+
+> **Vérifié sur le site en ligne.** Deux runs `Deploy Pages` verts, puis probe HTTP :
+> `/pom1/` 200, `build-wasm/POM1.{html,js,wasm,data}` 200, `cc65/ca65.wasm` 200.
+
+Le lien *Play in browser* du README était servi depuis la branche `main` elle-même,
+ce qui obligeait à **committer** `POM1.data` / `POM1.wasm` / `POM1.js` — de pures
+sorties de build, ~62 Mo par déploiement, que git conserve à jamais. 39 révisions du
+seul `POM1.data` avaient porté `.git` à 813 Mo, et la courbe ne redescend pas.
+
+*Settings → Pages → Source* est passé à **GitHub Actions** : `.github/workflows/pages.yml`
+compile le bundle avec emsdk et le publie à la même URL, les trois sorties ne sont plus
+versionnées (`.git` à 252 Mo), et `build-wasm/cc65/` reste committé — c'est une
+dépendance de la DevBench en ligne, pas une sortie de build. Le workflow n'avait
+jamais été exécuté : son premier run a été lu ligne à ligne avant de retirer quoi que
+ce soit de git.
+
+### Fixed — la passe avertissements cassait le WASM et Windows
+
+> **Vérifié par exécution réelle.** Build WASM complet avec emsdk en local
+> (`POM1.wasm` / `.js` / `.data` produits), `ctest` → 92/92, puis CI verte sur les
+> trois plateformes de bureau et `Deploy Pages` vert.
+
+`-Wall -Wextra` / `/W4` posés sur les sources de POM1 (août 2026) ont cassé les deux
+cibles qu'aucun job par-push ne compile — chacune pour une raison que Linux ne peut
+pas voir.
+
+**`updateCpuExecution(float /*deltaTime*/)`** : le nom du paramètre avait été commenté
+pour taire `-Wunused-parameter`, alors qu'il est lu dans la branche `#if POM1_IS_WASM`
+deux lignes plus bas. Le natif ne compile pas cette branche, donc rien n'a bronché ;
+emcc a rendu *« use of undeclared identifier 'deltaTime' »* et le job `Deploy Pages`
+est mort à 29 %. Le nom revient, marqué `[[maybe_unused]]`.
+
+**La propriété `COMPILE_OPTIONS` portant les drapeaux** était posée sur
+`POM1_OWN_SOURCES`, qui contient `packaging/windows/POM1.rc`. `rc.exe` ne parle pas
+`cl` : il a lu `/W4` comme une option inconnue et tué le build Windows sur
+*« RC1106: invalid option: -4 »*. Les ressources (`.rc`, `.icns`) sont filtrées avant
+la pose — ce ne sont pas des unités de traduction.
+
+**`RewindBuffer.cpp` ne compilait plus sous MSVC hors cible principale.** `windows.h`
+définit `min`/`max` en **macros** sans `NOMINMAX`, et ce TU appelle `std::min` deux
+fois → `C2589`. La cible POM1 pose `NOMINMAX` globalement, mais pas les 50 cibles de
+test : `POM1.exe` se construisait pendant que `test_rewind_buffer` échouait sur le
+même fichier. Le garde va dans le TU qui tire l'en-tête, comme le fait déjà
+`AudioDevice.cpp`. Au passage, `<algorithm>` manquait — `std::min` ne tenait que par
+une inclusion transitive de libstdc++.
+
+
 ### Fixed — le thread audio n'alloue plus et n'attend plus le chargement d'une cassette
 
 > **Vérifié par exécution réelle.** Build complet, 0 avertissement, `ctest` → 92/92.
