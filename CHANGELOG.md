@@ -10,6 +10,102 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — passe outillage : build des tests, avertissements, CI multiplateforme, sanitizers
+
+> **Vérifié par exécution réelle.** Reconfiguration + build complet depuis zéro,
+> puis `ctest` → **90/90**, 0 sauté. Build instrumenté `-fsanitize=address,undefined`
+> reconstruit et rejoué séparément.
+
+Issu d'un audit d'architecture transversal. Le cœur est sain — c'est
+l'outillage autour qui coûtait cher tous les jours.
+
+**Le build des tests recompilait le cœur 50 fois.** Aucun `add_library`
+n'existait dans le projet : chaque cible de test listait les 24 sources de
+`POM1_TEST_CORE_SOURCES` en dur, donc chacune les recompilait sous `-O3`. Un
+build complet exécutait **1435 compilations, dont 1300 pour les tests et 1154
+redondantes** (`TMS9918.cpp` compilé 53 fois). Elles passent par une
+bibliothèque `OBJECT` `pom1_core` déclarée dans `tests/CMakeLists.txt` — donc
+héritant du `-UNDEBUG` qui garde les `assert()` vivants — et
+`POM1_TEST_CORE_SOURCES` s'étend désormais en `$<TARGET_OBJECTS:pom1_core>` :
+**une seule édition, les 50 `add_executable` sont inchangés**. 1435 → **355**
+compilations.
+
+**81 000 lignes compilaient sans le moindre avertissement activé.** Ni `-Wall`,
+ni `-Wextra`, ni `/W4` nulle part. Le coût d'entrée a été mesuré avant d'agir :
+51 hits sur tout l'arbre, dont 24 venaient de `stb_image_write.h` (vendorisé).
+Le reste, corrigé : trois locales mortes (`base` dans `parseAddr16`, le lambda
+`rdword` du désassembleur, `barHeight`), deux helpers jamais appelés dans
+`Drive1541`, trois tests tautologiques (`r.end <= 0xFFFF` sur un `uint16_t`),
+un `kFile` inutilisé hors `_WIN32`, quinze `-Wmisleading-indentation` — dont
+**un vrai défaut d'indentation dans `M6502::ADC`**, où le `if`/`else` du calcul
+de l'overflow et le `setFlagCarry` qui suit étaient alignés de trois façons
+différentes. Les drapeaux sont appliqués **par fichier source**, ImGui étant
+compilé dans le même exécutable. `-DPOM1_WERROR=ON` en CI seulement.
+
+**macOS et Windows n'étaient construits qu'au moment de publier.** `ci.yml`
+n'avait qu'un job Linux ; les deux autres plateformes n'apparaissaient que dans
+le workflow de release, déclenché sur tag — c'est-à-dire qu'une régression y
+était découverte au pire moment. Ajout de deux jobs *build-only* (macOS Metal
+**et** OpenGL, Windows/vcpkg static). Sans `-Werror` : l'arbre a été mesuré
+propre sous GCC, pas sous AppleClang ni MSVC, et promettre un gate sur un jeu
+d'avertissements jamais exécuté aurait livré une CI rouge dès le premier run.
+
+**Sanitizers.** `-DPOM1_SANITIZE=address,undefined` (ou `=thread`) instrumente
+toutes les cibles, force LTO à OFF, et alimente un job CI nocturne. La première
+exécution locale a montré pourquoi il fallait le tester avant de le livrer :
+`applesoft_gen2_smoke` et `applesoft_tms9918_smoke` dépassaient leur budget de
+120 s sous ASan **sans rien trouver** — `tests/CMakeLists.txt` multiplie
+maintenant chaque `TIMEOUT` déclaré par 5 sous sanitizer. Aucun rapport ASan ni
+UBSan sur la suite.
+
+**Un test validait un binaire qu'il n'avait pas construit.**
+`tools/test_lib_micro.py` codait en dur `<repo>/build/POM1` et CMake ne lui
+passait pas le binaire — alors que `test_gfx_regress.py` recevait déjà
+`$<TARGET_FILE:pom1_imgui>` juste à côté. Depuis tout répertoire de build autre
+que `build/`, il validait donc un binaire périmé, et **sautait silencieusement**
+(code 77) quand `build/POM1` n'existait pas. Il reçoit `--pom1`, et l'absence du
+binaire est une **erreur**, plus un skip : cc65 peut légitimement manquer sur
+une machine, le binaire sous test non. Un dépassement de délai se distingue
+maintenant d'une erreur de compilation dans la sortie (l'ancien
+`except Exception` rendait les deux indiscernables).
+
+### Added — l'ordre des mutex est vérifié, la doc aussi
+
+**`src/LockOrder.h` + `lock_order_smoke`.** La règle
+`stateMutex > keyboard.keyMutex > publisher.snapshotMutex` était répétée dans
+huit fichiers et vérifiée dans aucun. Répéter un invariant montre qu'il compte ;
+ça ne le maintient pas vrai. Chaque verrou porte un rang, un thread ne peut en
+prendre qu'un strictement intérieur à ce qu'il détient déjà. `PriorityMutex`
+porte le rang `State` ; `keyMutex` et `snapshotMutex` deviennent des
+`pom1::RankedMutex<...>` (BasicLockable : les six sites de `lock_guard`
+existants ne changent que d'argument de template). Compilé hors des binaires
+livrés (`NDEBUG`), vivant dans les tests et en Debug, et de disposition mémoire
+identique dans les deux cas. Le test **fork un enfant par inversion et récolte
+`SIGABRT`** — un vérificateur qui ne se déclenche jamais se lit comme de la
+couverture tout en n'en apportant aucune — plus un cas témoin, sans lequel un
+vérificateur qui abortrait sur *tout* passerait chaque assertion.
+
+**`tools/check_doc_paths.py` + `doc_paths_sync`.** Troisième gardien de la
+famille `version_sync` / `imgui_pin_sync` : les 372 chemins de fichiers cités
+entre backticks par les 26 000 lignes de markdown doivent exister. Résolution
+selon les conventions réellement employées (racine, dossier du document, `src/`,
+`dev/`, `dev/lib/`) ; `CHANGELOG.md` exclu en entier, parce qu'un changelog qui
+nomme un fichier depuis renommé fait exactement son travail. Trois dérives
+réelles corrigées au passage (`demos_menu/`, `tms9918m1/m2.asm`,
+`gt6144_hello/`). Remplace une corvée manuelle — le git log en contient déjà une
+passe de 20 corrections à la main.
+
+### Changed — `pic/` divisé par deux (14 Mo → 7,0 Mo)
+
+Sept PNG portaient un canal alpha entièrement opaque, soit un quart d'octets
+constants ; POM1 charge de toute façon en RGBA forcé (`stbi_load(..., 4)`), donc
+le retirer est invisible au bit près après chargement. La photo de la PR-40
+était par ailleurs stockée en 2704×1568 pour une fenêtre qui la redimensionne à
+la volée : ramenée à 1600 px de large (Lanczos), toujours au-dessus de toute
+taille d'affichage réaliste. Bénéficie au préchargement WASM **et** aux trois
+installeurs de bureau.
+
+
 ### Fixed — passe de cohérence doc ↔ code (2) : les guides 6502 et les cartouches CodeTank
 
 > **Vérifié par une exécution réelle** (les deux passes précédentes annonçaient
