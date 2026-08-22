@@ -1,0 +1,138 @@
+# Build the WebAssembly bundle and publish it to GitHub Pages.
+#
+# WHY THIS EXISTS
+# ---------------
+# The "Play in browser" link in the README is served from GitHub Pages, and
+# Pages was configured to serve the repository's own `main` branch. That meant
+# POM1.data / POM1.wasm / POM1.js — pure build outputs — had to be COMMITTED for
+# the site to work. They are ~62 MB each deploy, and git keeps every one of
+# them: 39 revisions of POM1.data alone, 2.65 GB of raw blobs under build-wasm/,
+# a .git that had grown to 813 MB. The curve never comes back down.
+#
+# So the site moves from "a branch of the repo" to "an artifact built by CI".
+# Same URL, same content, no build output in version control.
+#
+# ONE-TIME SWITCH REQUIRED
+# ------------------------
+# This workflow does nothing until the repository's Pages source is changed:
+#     Settings → Pages → Build and deployment → Source: GitHub Actions
+# Until then Pages keeps serving `main`, so adding this file changes nothing.
+#
+# ORDER (the switch has to come BEFORE the first real deploy):
+#   1. merge this workflow;
+#   2. optionally run it by hand now (Actions → Deploy Pages → Run workflow):
+#      the `build` job succeeds and you can download + inspect the artifact from
+#      the run page. The `deploy` job WILL fail, and that is expected —
+#      actions/deploy-pages cannot create a deployment while the Pages source is
+#      still a branch. Do not read that failure as "the workflow is broken";
+#   3. flip Settings → Pages → Source to GitHub Actions;
+#   4. re-run the workflow, reload the README link;
+#   5. only then `git rm --cached` the three build outputs and drop the three
+#      `!build-wasm/POM1.*` lines from .gitignore.
+#
+# TWO SIDE EFFECTS WORTH KNOWING
+#   - The site will serve ONLY what this workflow uploads, not the whole repo.
+#     Today habib256.github.io/pom1/ answers 200 because Jekyll renders README.md
+#     as the index; after the switch the root is the index.html written below,
+#     which redirects to the emulator. Anything else that was reachable under
+#     that domain has to be added to the "Assemble the site" step.
+#   - The emsdk build below follows the documented WASM procedure but has never
+#     been executed (no emsdk on the machine it was written on). Read the first
+#     run's log before removing anything from git.
+name: Deploy Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # Only rebuild when something that ends up in the bundle changed. The
+      # MEMFS preload covers roms/ pic/ fonts/ software/ sdcard/ cassettes/
+      # cfcard/ sketchs/ dev/, so those count too.
+      - "src/**"
+      - "imgui/**"
+      - "CMakeLists.txt"
+      - "build-wasm/shell.html"
+      - "build-wasm/cc65/**"
+      - "roms/**"
+      - "pic/**"
+      - "fonts/**"
+      - "software/**"
+      - "sdcard/**"
+      - "cassettes/**"
+      - "cfcard/cfcard.po"
+      - "sketchs/**"
+      - "dev/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; never cancel a running one mid-publish or the site can
+# be left serving a half-uploaded artifact.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Verify the committed WASM cc65 toolchain is present
+        # build-wasm/cc65/ is a committed DEPENDENCY, not a build output — the
+        # in-browser DevBench compiles against it and no job rebuilds it. It
+        # stays in git; only POM1.{data,wasm,js} leave.
+        run: tools/verify_wasm_cc65.sh
+
+      - name: Fetch Dear ImGui (pin from IMGUI_VERSION)
+        run: tools/ensure_imgui.sh imgui
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+          actions-cache-folder: emsdk-cache
+
+      - name: Build the WASM bundle
+        run: |
+          set -euo pipefail
+          emcmake cmake -S . -B build-wasm-ci -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-wasm-ci -j"$(nproc)"
+
+      - name: Assemble the site
+        # The published path must stay build-wasm/POM1.html — that is the URL in
+        # the README badge and in every link anyone has already shared.
+        run: |
+          set -euo pipefail
+          mkdir -p site/build-wasm
+          for f in POM1.html POM1.js POM1.wasm POM1.data; do
+            cp "build-wasm-ci/$f" "site/build-wasm/$f"
+          done
+          # Runtime siblings the page fetches directly rather than through MEMFS.
+          cp -r build-wasm/cc65 site/build-wasm/cc65
+          cp build-wasm/cc65_bench.js build-wasm/cc65_wasm.js site/build-wasm/
+          mkdir -p site/build-wasm/pic && cp build-wasm/pic/icon.png site/build-wasm/pic/
+          # Bare habib256.github.io/pom1/ should land on the emulator, not a 404.
+          printf '<!doctype html><meta charset="utf-8">' > site/index.html
+          printf '<meta http-equiv="refresh" content="0; url=build-wasm/POM1.html">' >> site/index.html
+          printf '<title>POM1</title><a href="build-wasm/POM1.html">POM1</a>' >> site/index.html
+          du -sh site
+          ls -la site/build-wasm
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
