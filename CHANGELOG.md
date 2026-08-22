@@ -10,6 +10,73 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — le thread audio n'alloue plus et n'attend plus le chargement d'une cassette
+
+> **Vérifié par exécution réelle.** Build complet, 0 avertissement, `ctest` → 92/92.
+
+Issu d'une revue d'architecture ciblée stabilité. Trois défauts qu'aucun job de
+la CI ne pouvait voir, parce qu'aucun n'est une inversion d'ordre de verrou
+(`LockOrder.h` y est aveugle) ni une course (TSan y est aveugle) : ce sont des
+durées de détention et une allocation sur le thread temps-réel.
+
+**`CassetteDevice::loadAudioStream` tenait `audioStreamMutex` pendant
+`ma_decoder_init_file()`** — ouverture du fichier et détection du format — puis
+pendant `ma_decoder_get_length_in_pcm_frames()`, qui peut parcourir un MP3
+entier pour compter ses frames. Le callback audio réclame ce même verrou à
+chaque période, ~2,7 ms à 128 frames / 48 kHz : insérer une cassette décrochait
+le son, d'autant plus longtemps que le média est lent (la carte SD d'un Pi). Le
+décodeur passe en `std::unique_ptr` — adresse stable obligatoire, la base
+data-source de miniaudio gardant des pointeurs vers l'objet lui-même —
+construit hors verrou puis échangé sous verrou court, l'ancien étant retiré une
+fois le verrou relâché. `closeAudioStream` vole le pointeur sous verrou et fait
+l'`uninit` dehors. Même discipline que le SID, qui la documentait déjà dans son
+en-tête : c'était la référence à appliquer, pas à inventer.
+
+**`AudioDevice::mixSources` appelait `tmpBuf.resize()` dans le callback.** Une
+allocation sur le thread audio peut prendre un verrou d'allocateur et manquer
+l'échéance du tampon. Le scratch est dimensionné une fois dans le constructeur
+(`kMixScratchFrames`) et une demande plus grande est mixée par tranches au lieu
+d'agrandir le tampon — les sources sont des flux à état, leur demander N frames
+puis M revient exactement à leur en demander N+M.
+
+**`~CassetteDevice()` était `= default`.** Une cassette encore montée à
+l'extinction ne passait donc jamais par `ma_decoder_uninit` : les tampons du
+backend et le descripteur de fichier fuyaient. Le job ASan nocturne tourne avec
+`detect_leaks=1`.
+
+### Added — un journal qui survit au processus
+
+`Logger` n'avait que trois sinks : `StreamLogger` (cout/cerr), `RingBufferLogger`
+(mémoire) et le `TeeLogger` qui les combine. **Aucun sink fichier.** Sur un
+`.app` ou un `.exe` lancé au double-clic, stdout ne va nulle part — un rapport
+de bug n'a donc rien à joindre, et c'est vrai d'un défaut ordinaire (« la carte
+SID est muette »), pas seulement d'un plantage. La case TODO « filet de crash +
+bundle de diagnostic » supposait un journal à empaqueter ; il n'en existait pas.
+
+`FileLogger` devient le troisième enfant du Tee : une ligne horodatée à la
+milliseconde par entrée, flush par entrée (les entrées qui comptent le plus sont
+les dernières avant un gel ou un `kill`), rotation d'un cran à l'ouverture pour
+garder la session précédente, et no-op silencieux si le fichier ne s'ouvre pas —
+un sink capable de faire tomber l'application est pire que pas de sink.
+
+Un défaut trouvé en le câblant : `initDefaultTeeLogger()` s'exécutait **avant**
+`pom1_macos_provision_user_data_dir()`, qui fait le `chdir` vers
+`~/Library/Application Support/POM1/`. Un lancement Finder aurait écrit son
+journal là où le Finder se trouvait. Les deux sont réordonnés — le
+provisionnement ne journalise rien, donc rien n'est perdu. Non installé sous
+WASM, où le système de fichiers est virtuel et jeté au rechargement.
+
+### Changed — le budget du rewind suit la RAM de la machine
+
+`kDefaultMemoryBudgetBytes` était un `constexpr` de 128 Mo et `setMemoryBudget()`
+n'était appelé par rien avec une valeur dérivée de la plateforme. La constante
+précède la borne Raspberry Pi : sur un Pi 3 (1 Go), 128 Mo d'historique de scrub
+disputent la machine à l'émulateur et au framebuffer. `defaultRewindBudgetBytes()`
+prend ~1/16 de la RAM physique, clampé à [16 Mo, 128 Mo] — tout hôte ≥ 2 Go garde
+exactement l'ancien comportement, et une sonde impossible (WASM, libc sans
+`_SC_PHYS_PAGES`, échec) retombe sur le plafond historique plutôt que de réduire
+en silence sur une machine qu'on n'a pas su mesurer.
+
 ### Changed — passe outillage : build des tests, avertissements, CI multiplateforme, sanitizers
 
 > **Vérifié par exécution réelle.** Reconfiguration + build complet depuis zéro,

@@ -100,13 +100,21 @@ void AudioDevice::mixSources(float* output, int frameCount)
     std::memset(output, 0, static_cast<size_t>(frameCount) * sizeof(float));
 
     std::lock_guard<std::mutex> lock(sourcesMutex);
-    if (static_cast<int>(tmpBuf.size()) < frameCount)
-        tmpBuf.resize(static_cast<size_t>(frameCount));
 
-    for (AudioSource* src : sources) {
-        src->fillAudioBuffer(tmpBuf.data(), frameCount);
-        for (int i = 0; i < frameCount; ++i)
-            output[i] += tmpBuf[i];
+    // Walk the request in scratch-sized chunks instead of resizing tmpBuf to
+    // fit: this runs on the audio thread and must not allocate. Sources are
+    // stateful streams, so asking one for N frames then M more is identical to
+    // asking for N+M — chunking is invisible to them.
+    const int chunkMax = static_cast<int>(tmpBuf.size());
+    if (chunkMax <= 0) return;   // device never initialised
+
+    for (int offset = 0; offset < frameCount; offset += chunkMax) {
+        const int n = std::min(chunkMax, frameCount - offset);
+        for (AudioSource* src : sources) {
+            src->fillAudioBuffer(tmpBuf.data(), n);
+            for (int i = 0; i < n; ++i)
+                output[offset + i] += tmpBuf[i];
+        }
     }
 
     for (int i = 0; i < frameCount; ++i)
@@ -177,6 +185,9 @@ void AudioDevice::setPreferredLatencyMs(int ms)
 
 AudioDevice::AudioDevice()
 {
+    // Size the mixing scratch before the device exists, so the very first
+    // callback finds it ready. See kMixScratchFrames in the header.
+    tmpBuf.resize(static_cast<size_t>(kMixScratchFrames));
     initAudio();
 }
 

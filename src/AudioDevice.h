@@ -87,6 +87,13 @@ private:
     bool initAudio();
     void shutdownAudio();
 
+    /// Per-source scratch, sized ONCE in the constructor. `mixSources` runs on
+    /// the OS audio thread, where a heap allocation is a real-time hazard: it
+    /// can take a lock in the allocator and blow the buffer deadline. A backend
+    /// asking for more frames than this is mixed in chunks rather than growing
+    /// the buffer, so the callback never allocates whatever the period size is.
+    static constexpr int kMixScratchFrames = 8192;
+
     std::vector<AudioSource*> sources;
     mutable std::mutex sourcesMutex;
     std::vector<float> tmpBuf;

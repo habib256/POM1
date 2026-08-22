@@ -40,11 +40,26 @@
 
 namespace pom1 {
 
+/// Budget the rewind ring should default to on THIS machine: about 1/16 of
+/// physical RAM, clamped to [kMinMemoryBudgetBytes, kDefaultMemoryBudgetBytes].
+///
+/// The 128 MB ceiling predates the Raspberry Pi kiosk. A desktop has RAM to
+/// spare and keeps exactly the behaviour it always had (any host with >= 2 GB
+/// lands on the ceiling); a 1 GB Pi 3 running the kiosk gets 64 MB instead of
+/// handing an eighth of the machine to scrub history. Probed once and cached.
+/// Falls back to the ceiling wherever the host RAM cannot be read.
+std::size_t defaultRewindBudgetBytes();
+
 class RewindBuffer {
 public:
-    // Default ~128 MB budget — with 256-byte chunk deltas this is many
-    // minutes of history on a normal session. Tunable via setMemoryBudget().
+    // Ceiling for the auto-derived default, and the value every host with
+    // enough RAM gets — with 256-byte chunk deltas this is many minutes of
+    // history on a normal session. Tunable via setMemoryBudget().
     static constexpr std::size_t kDefaultMemoryBudgetBytes = 128u * 1024u * 1024u;
+    // Floor for the auto-derived default: below this the timeline is too short
+    // to be worth the capture cost, so a tiny host is better served by a small
+    // ring than by none.
+    static constexpr std::size_t kMinMemoryBudgetBytes = 16u * 1024u * 1024u;
     // Force a fresh keyframe at least this often so a seek replays a bounded
     // number of deltas and eviction granularity stays reasonable.
     static constexpr std::size_t kKeyframeInterval = 60;
@@ -124,7 +139,7 @@ private:
     std::vector<uint8_t> lastBlob;             // reconstruction of the newest frame
     std::size_t          framesSinceKeyframe = 0;
     std::size_t          storedBytes_ = 0;
-    std::size_t          memoryBudget = kDefaultMemoryBudgetBytes;
+    std::size_t          memoryBudget = defaultRewindBudgetBytes();
 };
 
 } // namespace pom1

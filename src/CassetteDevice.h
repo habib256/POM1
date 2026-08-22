@@ -11,6 +11,7 @@
 #include <atomic>
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -32,7 +33,11 @@ public:
     }
 
     CassetteDevice();
-    ~CassetteDevice() override = default;
+    /// Not `= default`: a mounted stream tape owns a live `ma_decoder`, and
+    /// only `ma_decoder_uninit` releases the backend's buffers and file handle.
+    /// Destroying the owning pointer alone leaks them (the nightly ASan job
+    /// runs with detect_leaks=1). Defined in the .cpp, next to closeAudioStream.
+    ~CassetteDevice() override;
 
     /// Full reset of every cassette-side state (loaded tape preserved,
     /// recording and playback progress WIPED). Called at construction
@@ -407,7 +412,12 @@ private:
     // flips it on load/eject — atomic to make that mode probe race-free.
     std::atomic<bool> audioStreamMode{false};
     bool audioStreamDecoderOpen = false;
-    ma_decoder audioStreamDecoder{};
+    /// Heap-owned so a fresh decoder can be built OUTSIDE audioStreamMutex and
+    /// swapped in under a short lock (see loadAudioStream). A by-value
+    /// ma_decoder could not be moved in after init — miniaudio's data-source
+    /// base holds pointers into the object itself, so its address must not
+    /// change once ma_decoder_init_file has run.
+    std::unique_ptr<ma_decoder> audioStreamDecoder;
     uint64_t audioStreamCursor = 0;       // frames consumed so far
     uint64_t audioStreamTotalFrames = 0;  // reported by decoder; 0 if unknown
 

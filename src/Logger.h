@@ -22,8 +22,10 @@
 #ifndef POM1_LOGGER_H
 #define POM1_LOGGER_H
 
+#include <atomic>
 #include <cstddef>
 #include <deque>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -89,16 +91,53 @@ private:
     std::size_t cap;
 };
 
-/// Forwards each entry to two child loggers (e.g. stream + ring buffer).
-/// The owners keep the children alive; TeeLogger holds non-owning pointers.
+/// Appends every entry to a file, one line per entry, with a wall-clock stamp.
+///
+/// This is the ONLY sink that outlives the process. StreamLogger writes to
+/// stdout, which goes nowhere when POM1 is launched from Finder, Explorer or a
+/// desktop shortcut; RingBufferLogger dies with the process. Without a file
+/// sink a user has nothing to attach to a bug report — and that is true of an
+/// ordinary misbehaviour ("the SID card is silent"), not just of a crash.
+///
+/// One file per session: an existing log is rotated to `<path>.1` when this
+/// opens, so the previous run stays inspectable after a restart.
+///
+/// Never throws and never fails loudly: a logging sink that can take the
+/// application down is worse than no sink, so an unopenable path degrades to a
+/// silent no-op and `isOpen()` reports it.
+class FileLogger : public Logger
+{
+public:
+    /// Creates the parent directory if needed and rotates any existing file.
+    explicit FileLogger(const std::string& path);
+    ~FileLogger() override;
+
+    void log(LogLevel level, const char* tag, const std::string& message) override;
+
+    bool isOpen() const;
+    const std::string& path() const { return filePath; }
+
+    void setMinLevel(LogLevel l) { minLevel = l; }
+
+private:
+    mutable std::mutex m;
+    std::string filePath;
+    std::unique_ptr<std::ofstream> out;   // null when the file could not be opened
+    std::atomic<LogLevel> minLevel{LogLevel::Debug};
+};
+
+/// Forwards each entry to up to three child loggers (stream + ring buffer +
+/// file). The owners keep the children alive; TeeLogger holds non-owning
+/// pointers, and a null child is simply skipped.
 class TeeLogger : public Logger
 {
 public:
-    TeeLogger(Logger* a, Logger* b) : a(a), b(b) {}
+    TeeLogger(Logger* a, Logger* b, Logger* c = nullptr) : a(a), b(b), c(c) {}
     void log(LogLevel level, const char* tag, const std::string& message) override;
 private:
     Logger* a;
     Logger* b;
+    Logger* c;
 };
 
 // ---------------------------------------------------------------------------
@@ -117,6 +156,15 @@ void initDefaultTeeLogger();
 /// Process-wide ring buffer captured by initDefaultTeeLogger(). The debug UI
 /// snapshots it for display. Always exists (function-local static).
 RingBufferLogger& uiRingBuffer();
+
+/// Process-wide file sink installed by initDefaultTeeLogger(), writing to
+/// `logs/pom1.log` relative to the working directory — the same convention
+/// `ini/` and `screenshots/` already use, and one that lands inside
+/// `~/Library/Application Support/POM1/` on macOS because the app chdirs there
+/// at startup. Not installed under WASM, where the filesystem is virtual and
+/// discarded on reload. Always exists; check `isOpen()` before promising a user
+/// the file is there.
+FileLogger& sessionFileLog();
 
 } // namespace pom1
 

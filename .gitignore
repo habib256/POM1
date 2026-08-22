@@ -172,3 +172,7 @@ roms/codetank/CODETANKDEV.txt
 # the CMake toolchain uses build/vcpkg_installed instead. Neither belongs in git
 # — vcpkg.json + its builtin-baseline are what pin the versions.
 vcpkg_installed/
+
+# Session logs written by FileLogger (logs/pom1.log + one rotation). Support
+# artefacts, never sources.
+logs/

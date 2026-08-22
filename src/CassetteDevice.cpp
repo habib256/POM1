@@ -156,7 +156,7 @@ void CassetteDevice::fillAudioBuffer(float* output, int frameCount)
             return;
         }
         ma_uint64 framesRead = 0;
-        ma_decoder_read_pcm_frames(&audioStreamDecoder,
+        ma_decoder_read_pcm_frames(audioStreamDecoder.get(),
                                    output,
                                    static_cast<ma_uint64>(frameCount),
                                    &framesRead);
@@ -459,7 +459,7 @@ void CassetteDevice::seekRelativeSeconds(double deltaSeconds)
         newFrame >= static_cast<int64_t>(audioStreamTotalFrames)) {
         newFrame = static_cast<int64_t>(audioStreamTotalFrames) - 1;
     }
-    if (ma_decoder_seek_to_pcm_frame(&audioStreamDecoder,
+    if (ma_decoder_seek_to_pcm_frame(audioStreamDecoder.get(),
                                      static_cast<ma_uint64>(newFrame)) != MA_SUCCESS) {
         return;
     }
@@ -723,7 +723,7 @@ void CassetteDevice::rewindTape()
     if (audioStreamMode) {
         std::lock_guard<std::mutex> lock(audioStreamMutex);
         if (audioStreamDecoderOpen) {
-            ma_decoder_seek_to_pcm_frame(&audioStreamDecoder, 0);
+            ma_decoder_seek_to_pcm_frame(audioStreamDecoder.get(), 0);
         }
         audioStreamCursor = 0;
         playbackActive = false;
@@ -1182,48 +1182,79 @@ bool CassetteDevice::pcmToDurations(const std::vector<float>& mono,
 
 bool CassetteDevice::loadAudioStream(const std::string& path)
 {
-    closeAudioStream();
-    loadedDurations.clear();
-    std::lock_guard<std::mutex> lock(audioStreamMutex);
-
-    // Decode to mono float32 at the device's output sample rate so the
-    // audio callback can push samples straight to the mixer. miniaudio
-    // resamples internally when the source rate differs.
+    // Build the decoder BEFORE taking audioStreamMutex. `ma_decoder_init_file`
+    // opens the file and probes its format, and `ma_decoder_get_length_in_pcm_
+    // frames` can walk an entire MP3 to count its frames — hundreds of ms off a
+    // Pi's SD card. The audio callback needs this same mutex every buffer
+    // period (~2.7 ms at 128 frames / 48 kHz), so holding it across that work
+    // starved the callback and made inserting a tape audibly drop out. Note the
+    // failure is neither a lock-order inversion nor a data race, so neither
+    // LockOrder.h nor TSan can see it: it is purely how LONG the lock is held.
+    // Same discipline as SID — do the slow part unlocked, swap under a short
+    // lock, and retire the old object once the lock is released.
+    //
+    // Decode to mono float32 at the device's output sample rate so the audio
+    // callback can push samples straight to the mixer. miniaudio resamples
+    // internally when the source rate differs.
+    auto fresh = std::make_unique<ma_decoder>();
     ma_decoder_config cfg = ma_decoder_config_init(
         ma_format_f32, 1, audioOutputSampleRate);
-    if (ma_decoder_init_file(path.c_str(), &cfg, &audioStreamDecoder) != MA_SUCCESS) {
+    if (ma_decoder_init_file(path.c_str(), &cfg, fresh.get()) != MA_SUCCESS) {
+        // Same outcome as before this was reordered: a failed load ejects
+        // whatever was mounted rather than leaving a half-swapped deck.
+        closeAudioStream();
+        loadedDurations.clear();
         lastError = "Cannot decode audio: " + path;
         return false;
     }
-    audioStreamDecoderOpen = true;
-    audioStreamCursor = 0;
     ma_uint64 total = 0;
-    if (ma_decoder_get_length_in_pcm_frames(&audioStreamDecoder, &total) != MA_SUCCESS) {
+    if (ma_decoder_get_length_in_pcm_frames(fresh.get(), &total) != MA_SUCCESS) {
         total = 0; // some formats (Ogg streams) can't report a length
     }
-    audioStreamTotalFrames = total;
-    audioStreamMode   = true;
-    loadedTapePath    = path;
-    loadedTapeReady   = true;
-    playbackArmed     = false;
-    playbackActive    = false;
-    loadedInitialLevel = false;
-    // Entering stream mode — flush any pending pulse-mode audio segments.
-    stopPulseAudio();
-    fireClickIfModeChanged();
+    loadedDurations.clear();
+
+    std::unique_ptr<ma_decoder> retired;
+    {
+        std::lock_guard<std::mutex> lock(audioStreamMutex);
+        retired = std::move(audioStreamDecoder);
+        audioStreamDecoder = std::move(fresh);
+        audioStreamDecoderOpen = true;
+        audioStreamCursor = 0;
+        audioStreamTotalFrames = total;
+        audioStreamMode   = true;
+        loadedTapePath    = path;
+        loadedTapeReady   = true;
+        playbackArmed     = false;
+        playbackActive    = false;
+        loadedInitialLevel = false;
+        // Entering stream mode — flush any pending pulse-mode audio segments.
+        stopPulseAudio();
+        fireClickIfModeChanged();
+    }
+    if (retired) ma_decoder_uninit(retired.get());
     lastError.clear();
     return true;
 }
 
+CassetteDevice::~CassetteDevice()
+{
+    closeAudioStream();
+}
+
 void CassetteDevice::closeAudioStream()
 {
-    std::lock_guard<std::mutex> lock(audioStreamMutex);
-    if (audioStreamDecoderOpen) {
-        ma_decoder_uninit(&audioStreamDecoder);
+    // Steal the decoder under the lock, tear it down outside it:
+    // `ma_decoder_uninit` frees the backend's buffers and closes the file, and
+    // the audio callback may be spinning on this mutex while that happens.
+    std::unique_ptr<ma_decoder> retired;
+    {
+        std::lock_guard<std::mutex> lock(audioStreamMutex);
+        retired = std::move(audioStreamDecoder);
         audioStreamDecoderOpen = false;
+        audioStreamCursor = 0;
+        audioStreamTotalFrames = 0;
     }
-    audioStreamCursor = 0;
-    audioStreamTotalFrames = 0;
+    if (retired) ma_decoder_uninit(retired.get());
 }
 
 bool CassetteDevice::loadAiffTape(const std::string& path)

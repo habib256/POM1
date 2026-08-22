@@ -40,6 +40,10 @@
 #if defined(__clang__) || defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+// stb initialise ses stbi__write_context par `= { 0 }` : 24 hits
+// -Wmissing-field-initializers dans du code vendorisé, qu'un simple
+// drop-in de la prochaine version réintroduirait.
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 #endif
 #include "third_party/stb/stb_image_write.h"
 #if defined(__clang__) || defined(__GNUC__)
@@ -119,7 +123,6 @@ static void pom1_signal_handler(int)
 static std::string find_app_icon_path()
 {
     namespace fs = std::filesystem;
-    static const char kFile[] = "icon.png";
 
     auto try_path = [](const fs::path& p) -> std::string {
         std::error_code ec;
@@ -141,6 +144,7 @@ static std::string find_app_icon_path()
     }
 
 #if defined(_WIN32)
+    static const char kFile[] = "icon.png";
     char buf[MAX_PATH];
     DWORD n = GetModuleFileNameA(nullptr, buf, MAX_PATH);
     if (n > 0 && n < MAX_PATH) {
@@ -842,14 +846,22 @@ static int runHeadless(pom1::CliPlan& plan)
 
 int main(int argc, char* argv[])
 {
-    // Install the Tee(stream + ring) logger so every subsystem message lands
-    // both in stdout/stderr and in the ring buffer the debug console reads.
-    pom1::initDefaultTeeLogger();
-    pom1::log().info("POM1", "v" POM1_VERSION_STRING " - Apple 1 Emulator (Dear ImGui)");
-
 #if !POM1_IS_WASM && defined(__APPLE__)
+    // MUST precede the logger: this chdirs into ~/Library/Application Support/
+    // POM1/, and the logger's file sink resolves `logs/pom1.log` against the
+    // working directory. Installed the other way round, a Finder launch wrote
+    // its log next to wherever Finder happened to start us. It logs nothing
+    // itself, so nothing is lost by running it first.
     pom1_macos_provision_user_data_dir();
 #endif
+
+    // Install the Tee(stream + ring + file) logger so every subsystem message
+    // lands in stdout/stderr, in the ring buffer the debug console reads, and
+    // in logs/pom1.log — the only one of the three that outlives the process.
+    pom1::initDefaultTeeLogger();
+    pom1::log().info("POM1", "v" POM1_VERSION_STRING " - Apple 1 Emulator (Dear ImGui)");
+    if (pom1::sessionFileLog().isOpen())
+        pom1::log().info("POM1", "session log: " + pom1::sessionFileLog().path());
 
     // Parse command-line arguments via the CLI dispatcher. The dispatcher
     // owns every verb — boot-time (preset, card overrides, cassette paths,

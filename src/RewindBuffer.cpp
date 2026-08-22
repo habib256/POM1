@@ -5,11 +5,57 @@
 
 #include "RewindBuffer.h"
 
+#include "POM1Build.h"
+
 #include <cstring>
 
 #include "SnapshotIO.h"   // kSnapshotMagic — header size
 
+#if !POM1_IS_WASM
+#  if defined(_WIN32)
+#    include <windows.h>
+#  else
+#    include <unistd.h>
+#  endif
+#endif
+
 namespace pom1 {
+
+std::size_t defaultRewindBudgetBytes()
+{
+    // Cached: the answer cannot change while the process runs, and this is
+    // reached from a member initialiser.
+    static const std::size_t cached = [] {
+        constexpr std::size_t kCeil = RewindBuffer::kDefaultMemoryBudgetBytes;
+        std::size_t physical = 0;
+
+#if !POM1_IS_WASM
+#  if defined(_WIN32)
+        MEMORYSTATUSEX st{};
+        st.dwLength = sizeof(st);
+        if (GlobalMemoryStatusEx(&st))
+            physical = static_cast<std::size_t>(st.ullTotalPhys);
+#  elif defined(_SC_PHYS_PAGES) && defined(_SC_PAGE_SIZE)
+        const long pages    = ::sysconf(_SC_PHYS_PAGES);
+        const long pageSize = ::sysconf(_SC_PAGE_SIZE);
+        if (pages > 0 && pageSize > 0)
+            physical = static_cast<std::size_t>(pages) *
+                       static_cast<std::size_t>(pageSize);
+#  endif
+#endif
+        // Unknown RAM (WASM, an unsupported libc, a failed probe) keeps the
+        // historical constant — never silently shrink on a machine we simply
+        // could not measure.
+        if (physical == 0) return kCeil;
+
+        std::size_t budget = physical / 16u;
+        if (budget > kCeil) budget = kCeil;
+        if (budget < RewindBuffer::kMinMemoryBudgetBytes)
+            budget = RewindBuffer::kMinMemoryBudgetBytes;
+        return budget;
+    }();
+    return cached;
+}
 
 namespace {
 
