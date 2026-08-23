@@ -23,9 +23,11 @@
 //     ever has to line up against a structurally identical predecessor.
 //
 // Threading: RewindBuffer has no internal locking. EmulationController owns
-// the instance and only ever touches it under stateMutex (capture from the
-// emulation slice, reconstruct/seek from the UI thread routed through the
-// controller). Keep it that way — see the mutex-order note in
+// the instance and only ever touches it under its rewindMutex (rank Rewind,
+// below stateMutex): the emulation slice serialises the state under
+// stateMutex, then releases it and runs capture() — the delta encoding, the
+// expensive half — under rewindMutex alone; the UI's reconstruct/seek/
+// truncate take rewindMutex inside stateMutex. See the mutex-order note in
 // EmulationController.h.
 
 #ifndef POM1_REWIND_BUFFER_H

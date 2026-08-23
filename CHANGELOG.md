@@ -10,6 +10,24 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — la capture du rewind n'encode plus sous `stateMutex`
+
+`runEmulationSlice` sérialisait **et** encodait en delta ~80 Ko quatre fois par
+seconde en tenant `stateMutex` — un pic de latence périodique sur tout appel UI qui
+voulait le verrou, de la même famille que le défaut `CassetteDevice` d'août : ni
+`LockOrder.h` ni TSan ne le voient, seule la lecture du chemin d'appel le trouve.
+La capture est maintenant en deux temps : la copie des pages (`saveSnapshotToBuffer`,
+le seul pas qui ait besoin que la machine ne bouge pas) reste sous `stateMutex` ; le
+verrou est relâché ; l'encodage delta + l'éviction (la moitié coûteuse, qui ne touche
+que le tampon) tournent sous un nouveau **`rewindMutex`** de rang 25 — entre `State`
+(30) et `Keyboard` (20), pris à l'intérieur de `stateMutex` par les chemins UI
+(seek/resume/clear). Un **compteur de génération** bumpé par toute édition de la
+timeline (enable/clear/troncature « resume here ») retire un blob copié avant
+l'édition et encodé après : il ne sera jamais ajouté comme trame « future » derrière
+la nouvelle tête. `lock_order_smoke` épingle les trois nestings réels et l'inversion
+`rewind → state` (5 inversions attrapées). Non mesuré au chronomètre — la propriété
+est structurelle : ce qui reste sous `stateMutex` est une copie mémoire, plus un diff.
+
 ### Changed — l'enregistrement du rewind est désactivé par défaut
 
 La bande timeline de la barre d'outils armait l'enregistrement au premier rendu

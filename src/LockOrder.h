@@ -46,6 +46,7 @@ namespace pom1 {
 enum class LockRank : int {
     Snapshot = 10,   ///< SnapshotPublisher::snapshotMutex -- innermost
     Keyboard = 20,   ///< KeyboardController::keyMutex
+    Rewind   = 25,   ///< EmulationController::rewindMutex -- delta encoding off the state lock
     State    = 30,   ///< EmulationController::stateMutex -- outermost
 };
 

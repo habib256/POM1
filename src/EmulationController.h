@@ -631,12 +631,25 @@ private:
     double telemetryStallSeconds = 0.0;
 
     // ── State rewind ──────────────────────────────────────────────────────
-    // rewindBuffer + rewindCaptureAccum are touched only under stateMutex
-    // (capture in the slice, seek/clear via the public API). The atomics
-    // mirror buffer status for lock-free reads from the UI thread.
+    // rewindBuffer is touched only under rewindMutex (rank Rewind, taken
+    // INSIDE stateMutex when both are needed). The slice used to serialise
+    // AND delta-encode ~80 KB four times a second while holding stateMutex —
+    // a periodic latency spike on every UI call that wanted the lock. Now the
+    // slice only copies the state under stateMutex (saveSnapshotToBuffer),
+    // releases it, and encodes the delta under rewindMutex alone.
+    // rewindGeneration_ is bumped (under stateMutex) by every operation that
+    // rewrites the timeline — enable/clear/truncate/resume — so a blob copied
+    // before such an edit and encoded after it is dropped, never appended as
+    // a stale "future" frame behind the new head. rewindCaptureAccum stays
+    // under stateMutex. The other atomics mirror buffer status for lock-free
+    // reads from the UI thread.
     static constexpr double kRewindCaptureIntervalSec = 0.25;  // ~4 frames/s
+    mutable pom1::RankedMutex<pom1::LockRank::Rewind> rewindMutex;
     pom1::RewindBuffer rewindBuffer;
     double rewindCaptureAccum = 0.0;
+    std::atomic<uint64_t>    rewindGeneration_{ 0 };
+    // REQUIRES rewindMutex held: refresh the status atomics from the buffer.
+    void publishRewindStatusLocked();
     std::atomic<bool>        rewindEnabled_   { false };
     std::atomic<bool>        rewindPreviewing_{ false };
     std::atomic<std::size_t> rewindFrameCount_{ 0 };

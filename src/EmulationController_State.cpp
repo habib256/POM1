@@ -182,6 +182,14 @@ std::vector<std::string> EmulationController::romFallbacksUsed() const
     return memory->romFallbacksUsed();
 }
 
+void EmulationController::publishRewindStatusLocked()
+{
+    const std::size_t n = rewindBuffer.frameCount();
+    rewindFrameCount_.store(n);
+    rewindStoredBytes_.store(rewindBuffer.storedBytes());
+    rewindPos_.store(n ? n - 1 : 0);
+}
+
 void EmulationController::setRewindEnabled(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -189,25 +197,23 @@ void EmulationController::setRewindEnabled(bool enabled)
     rewindEnabled_.store(enabled);
     rewindPreviewing_.store(false);
     rewindCaptureAccum = 0.0;
+    rewindGeneration_.fetch_add(1);
+    std::lock_guard<pom1::RankedMutex<pom1::LockRank::Rewind>> rlock(rewindMutex);
     if (!enabled) {
         rewindBuffer.clear();
-        rewindFrameCount_.store(0);
-        rewindStoredBytes_.store(0);
-        rewindPos_.store(0);
     } else {
         // Seed with the current state so the timeline isn't empty.
         rewindBuffer.capture(memory->saveSnapshotToBuffer(cpu.get()));
-        const std::size_t n = rewindBuffer.frameCount();
-        rewindFrameCount_.store(n);
-        rewindStoredBytes_.store(rewindBuffer.storedBytes());
-        rewindPos_.store(n ? n - 1 : 0);
     }
+    publishRewindStatusLocked();
 }
 
 void EmulationController::setRewindMemoryBudgetMB(int megabytes)
 {
     if (megabytes < 1) megabytes = 1;
-    std::lock_guard<PriorityMutex> lock(stateMutex);
+    // Eviction only drops leading segments: the head stays the head, so the
+    // generation is untouched and a staged capture remains valid.
+    std::lock_guard<pom1::RankedMutex<pom1::LockRank::Rewind>> rlock(rewindMutex);
     rewindBuffer.setMemoryBudget(static_cast<std::size_t>(megabytes) * 1024u * 1024u);
     const std::size_t n = rewindBuffer.frameCount();
     rewindFrameCount_.store(n);
@@ -236,7 +242,11 @@ EmulationController::RewindStatus EmulationController::getRewindStatus() const
 void EmulationController::rewindRestoreFrame(std::size_t pos)
 {
     // REQUIRES stateMutex held by caller.
-    std::vector<uint8_t> blob = rewindBuffer.reconstruct(pos);
+    std::vector<uint8_t> blob;
+    {
+        std::lock_guard<pom1::RankedMutex<pom1::LockRank::Rewind>> rlock(rewindMutex);
+        blob = rewindBuffer.reconstruct(pos);
+    }
     if (blob.empty()) return;
     std::string err;
     if (memory->loadSnapshotFromBuffer(blob, err, cpu.get())) {
@@ -248,7 +258,7 @@ void EmulationController::rewindRestoreFrame(std::size_t pos)
 void EmulationController::rewindSeekTo(std::size_t pos)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
-    if (pos >= rewindBuffer.frameCount()) return;
+    if (pos >= rewindFrameCount_.load()) return;
     // Pause on the previewed frame; capture stays suppressed while previewing.
     runRequested.store(false);
     cpu->stop();
@@ -260,16 +270,18 @@ void EmulationController::rewindResumeHere(std::size_t pos)
 {
     {
         std::lock_guard<PriorityMutex> lock(stateMutex);
-        const std::size_t n = rewindBuffer.frameCount();
+        const std::size_t n = rewindFrameCount_.load();
         if (n == 0) return;
         if (pos >= n) pos = n - 1;
         rewindRestoreFrame(pos);
         // Discard the rewound-past future — new capture continues from here.
-        rewindBuffer.truncateAfter(pos);
-        const std::size_t m = rewindBuffer.frameCount();
-        rewindFrameCount_.store(m);
-        rewindStoredBytes_.store(rewindBuffer.storedBytes());
-        rewindPos_.store(m ? m - 1 : 0);
+        // The generation bump retires any capture staged before this edit.
+        rewindGeneration_.fetch_add(1);
+        {
+            std::lock_guard<pom1::RankedMutex<pom1::LockRank::Rewind>> rlock(rewindMutex);
+            rewindBuffer.truncateAfter(pos);
+            publishRewindStatusLocked();
+        }
         rewindPreviewing_.store(false);
         rewindCaptureAccum = 0.0;
         cpu->start();
@@ -282,7 +294,7 @@ void EmulationController::rewindResumeLive()
 {
     {
         std::lock_guard<PriorityMutex> lock(stateMutex);
-        const std::size_t n = rewindBuffer.frameCount();
+        const std::size_t n = rewindFrameCount_.load();
         if (n) rewindRestoreFrame(n - 1);
         rewindPreviewing_.store(false);
         rewindCaptureAccum = 0.0;
