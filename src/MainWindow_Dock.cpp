@@ -56,50 +56,27 @@ namespace {
 // window. The user can still dock any of them by hand, and that choice is
 // what gets saved.
 // ---------------------------------------------------------------------------
-enum class DockSlot { Central, Workspace, Right, Bottom };
+// The 26-row title table that used to sit here is gone: every window that has
+// a registry row now declares its dock home in that row (WindowDescriptor::dock,
+// MainWindow_Presets.cpp), so adding a window no longer means remembering to
+// come back here. DockSlot itself moved to MainWindow_ImGui.h for the same
+// reason — the registry has to be able to name it.
+//
+// Exactly two docked windows have no registry row, and both legitimately:
+// "Apple 1 Screen" is drawn unconditionally by render() (it is the machine —
+// there is no show* flag to toggle), and "Memory Search" belongs to
+// MemoryViewer_ImGui, which owns its own showSearch flag. They keep a table,
+// and it is two rows long rather than twenty-six.
+using DockSlot = MainWindow_ImGui::DockSlot;
 
 struct DockAssignment {
     const char* title;   // exact ImGui::Begin() title
     DockSlot    slot;
 };
 
-constexpr DockAssignment kDockLayout[] = {
-    // --- central: the machine itself ---------------------------------------
-    { "Apple 1 Screen",                        DockSlot::Central   },
-
-    // --- workspace: card framebuffers + their editors ----------------------
-    { "POM1 Bench",                            DockSlot::Workspace },
-    { "Uncle Bernie's GEN2 HGR Graphic Card",  DockSlot::Workspace },
-    { "P-LAB Graphic Card (TMS9918)",          DockSlot::Workspace },
-    { "SWTPC GT-6144 Graphic Terminal",        DockSlot::Workspace },
-    { "HGR Paint Editor",                      DockSlot::Workspace },
-    { "HGR Sprite Editor",                     DockSlot::Workspace },
-    { "TMS9918 Paint Editor",                  DockSlot::Workspace },
-    { "TMS9918 Sprite Editor",                 DockSlot::Workspace },
-    { "SID Tracker",                           DockSlot::Workspace },
-    { "Beeper SFX Editor",                     DockSlot::Workspace },
-    { "Apple-1 Cassette Deck",                 DockSlot::Workspace },
-    // Wide by construction: the grid and its legend sit SIDE BY SIDE with no
-    // wrapping or horizontal scroll, so in the narrow inspector column the
-    // legend gets clipped mid-entry ("…SD CARD OS ROM (8KB EEPROI").
-    { "Memory Map Grid",                       DockSlot::Workspace },
-
-    // --- right column: inspectors ------------------------------------------
-    { "Memory Viewer",                         DockSlot::Right     },
-    { "Memory Search",                         DockSlot::Right     },
-    { "State Rewind",                          DockSlot::Right     },
-    { "TMS9918 VDP Inspector",                 DockSlot::Right     },
-    { "Silicon Strict Inspector",              DockSlot::Right     },
-    { "P-LAB CodeTank Library",                DockSlot::Right     },
-
-    // --- bottom strip: consoles, printers, serial peripherals --------------
-    { "CPU Debug Console",                     DockSlot::Bottom    },
-    { "SWTPC PR-40 Printer",                   DockSlot::Bottom    },
-    { "P-LAB Terminal Card",                   DockSlot::Bottom    },
-    { "P-LAB Wi-Fi Modem",                     DockSlot::Bottom    },
-    { "P-LAB I/O Board & RTC",                 DockSlot::Bottom    },
-    { "IEC Disk",                              DockSlot::Bottom    },
-    { "Telemetry Side Channel",                DockSlot::Bottom    },
+constexpr DockAssignment kUnregisteredDockLayout[] = {
+    { "Apple 1 Screen", DockSlot::Central },   // always drawn; no show* flag
+    { "Memory Search",  DockSlot::Right   },   // owned by MemoryViewer_ImGui
 };
 
 } // namespace
@@ -182,15 +159,28 @@ void MainWindow_ImGui::buildDefaultDockLayout(ImGuiID dockspaceId)
     ImGuiID bottom  = ImGui::DockBuilderSplitNode(central, ImGuiDir_Down,  0.26f, nullptr, &central);
     ImGuiID work    = ImGui::DockBuilderSplitNode(central, ImGuiDir_Right, 0.52f, nullptr, &central);
 
-    for (const DockAssignment& a : kDockLayout) {
-        ImGuiID target = central;
-        switch (a.slot) {
-        case DockSlot::Central:   target = central; break;
-        case DockSlot::Workspace: target = work;    break;
-        case DockSlot::Right:     target = right;   break;
-        case DockSlot::Bottom:    target = bottom;  break;
+    auto nodeFor = [&](DockSlot slot) -> ImGuiID {
+        switch (slot) {
+        case DockSlot::Central:   return central;
+        case DockSlot::Workspace: return work;
+        case DockSlot::Right:     return right;
+        case DockSlot::Bottom:    return bottom;
+        case DockSlot::Float:     break;
         }
-        ImGui::DockBuilderDockWindow(a.title, target);
+        return 0;   // Float — leave the window undocked
+    };
+
+    for (const DockAssignment& a : kUnregisteredDockLayout)
+        ImGui::DockBuilderDockWindow(a.title, nodeFor(a.slot));
+
+    // Tab order inside a node follows registry order, which is grouped by kind
+    // (tools, then card panels) rather than by the old table's hand-written
+    // sequence. Only this fallback builder is affected — the shipped profiles
+    // boot on their curated [Docking][Data], and a user's own arrangement is
+    // whatever they saved.
+    for (const auto& d : windowRegistry()) {
+        if (d.dock == DockSlot::Float) continue;
+        ImGui::DockBuilderDockWindow(d.title, nodeFor(d.dock));
     }
 
     ImGui::DockBuilderFinish(dockspaceId);

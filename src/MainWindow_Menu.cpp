@@ -851,6 +851,70 @@ void MainWindow_ImGui::renderMenuBar()
             ImGui::EndMenu();
         }
 
+        // ── Windows — generated from windowRegistry(), never hand-listed ─────
+        //
+        // POM1 had no Windows menu: the toggles were spread across eight other
+        // menus, covering 47 of the 68 windows. The 21 with no menu entry at all
+        // were reachable only from a toolbar chip or a side door — and nine of
+        // them were the CARD PANELS (GEN2 HGR, TMS9918, GT-6144, IEC, Wi-Fi
+        // Modem, Terminal Card, PR-40, A1-IO & RTC, Juke-Box), whose panel you
+        // could close and then have no menu to reopen it from. The CPU Debug
+        // Console was another. One loop over the registry fixes that
+        // permanently: a window added to the table is in this menu the same day,
+        // with no second list to remember. (The nine remaining absentees are
+        // K::Dialog rows, excluded below on purpose.)
+        //
+        // The contextual entries elsewhere are deliberately LEFT ALONE. They
+        // are not a duplicate list to be mechanically folded in — Help ▸
+        // Tutorials carries editorial labels ("Integer BASIC: write your first
+        // program", not "Tutorial: Integer BASIC") and a thematic grouping by
+        // separator that no `kind` field encodes. Generating over them would
+        // trade real curation for uniformity. What changes is their status:
+        // they are now a curated shortcut, not the only way in, so forgetting
+        // one no longer strands a window.
+        if (ImGui::BeginMenu("Windows")) {
+            using K = WindowKind;
+            struct Group { K kind; const char* label; };
+            static constexpr Group kGroups[] = {
+                { K::Tool,       "Tools"       },
+                { K::Peripheral, "Cards"       },
+                { K::Tutorial,   "Tutorials"   },
+                { K::Info,       "Reference"   },
+            };
+            bool first = true;
+            for (const Group& g : kGroups) {
+                bool headerDone = false;
+                for (const auto& d : windowRegistry()) {
+                    if (d.kind != g.kind) continue;
+#if POM1_IS_WASM
+                    if (d.desktopOnly) continue;
+#endif
+                    if (!headerDone) {
+                        if (!first) ImGui::Separator();
+                        ImGui::TextDisabled("%s", g.label);
+                        headerDone = true;
+                        first = false;
+                    }
+                    // The gate is shown, not enforced: a card panel whose card is
+                    // unplugged still toggles (the flag is the user's intent and
+                    // is remembered), it simply will not draw until the card is
+                    // plugged. Greying it out silently would look like a bug.
+                    const bool gated = d.gate && !(this->*(d.gate));
+                    if (gated) ImGui::BeginDisabled();
+                    ImGui::MenuItem(d.title, nullptr, &(this->*(d.show)));
+                    if (gated) {
+                        ImGui::EndDisabled();
+                        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                            ImGui::SetTooltip("Plug the card first (Hardware menu)");
+                    }
+                }
+            }
+            // K::Dialog is omitted on purpose: those are transient file/config
+            // operations reached from the action that needs them, and their
+            // presence is not even persisted (persistPresence=false).
+            ImGui::EndMenu();
+        }
+
         if (ImGui::BeginMenu("Presets")) {
             auto presetItem = [&](int i) {
                 char ramLabel[24];

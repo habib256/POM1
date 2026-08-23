@@ -546,6 +546,41 @@ bool MainWindow_ImGui::osWindowIsFullscreen() const
     return false;
 }
 
+// ---------------------------------------------------------------------------
+// Registry-driven window dispatch.
+//
+// One loop replacing 51 hand-written `if (showX) renderX();` lines. The three
+// conditions it applies are exactly what those lines said, now as data:
+//
+//   gate        — the card must be plugged (`jukeBoxEnabled && showJukeBox`).
+//                 Separate from `show` on purpose: closing a panel must not
+//                 unplug its card, and unplugging must not forget the panel
+//                 was open, so the two flags cannot be merged.
+//   desktopOnly — the old `#if !POM1_IS_WASM` around a call site. Compiled out
+//                 rather than tested at runtime, as before.
+//   render      — nullptr for the windows drawn by a bespoke block in render()
+//                 (they need geometry from DisplaySize, a card auto-plugged on
+//                 open, or an else-branch on close).
+//
+// Submission order is now registry order rather than the old hand-written
+// sequence. That is safe: Dear ImGui derives z-order from its focus list, not
+// from the order Begin() is called in, and each bespoke block keeps its own
+// SetNextWindowSize/applyPendingLayout immediately before its Begin(). The one
+// ordering rule that IS load-bearing — renderDockSpace() before the first
+// dockable Begin() — is unaffected: it runs at the top of render().
+void MainWindow_ImGui::renderRegisteredWindows()
+{
+    for (const auto& d : windowRegistry()) {
+        if (!d.render) continue;                       // bespoke block below
+#if POM1_IS_WASM
+        if (d.desktopOnly) continue;
+#endif
+        if (d.gate && !(this->*(d.gate))) continue;    // card unplugged
+        if (!(this->*(d.show))) continue;              // user closed it
+        (this->*(d.render))();
+    }
+}
+
 void MainWindow_ImGui::render()
 {
     float deltaTime = ImGui::GetIO().DeltaTime;
@@ -823,54 +858,20 @@ void MainWindow_ImGui::render()
         renderDebugDialog();
     }
 
-    // Timeline rewind (scrub through recent emulation history)
-#if !POM1_IS_WASM
-    if (showRewindTimeline) renderRewindTimelineWindow();   // rewind is desktop-only
-#endif
+    // Every window whose drawing is a bare member call is dispatched from the
+    // registry (windowRegistry(), MainWindow_Presets.cpp) — 51 hand-written
+    // `if (showX) renderX();` lines used to sit here, a fourth recitation of the
+    // same window set alongside persistence, the menus and kDockLayout[]. The
+    // windows still drawn by hand below are the ones that need surrounding
+    // state: geometry from DisplaySize, a card auto-plugged on open, or an
+    // else-branch on close. Their rows carry render == nullptr.
+    renderRegisteredWindows();
 
     // Carte mémoire
-    if (showMemoryMapGrid) renderMemoryMapGridWindow();
-    if (showMemoryBar) renderMemoryBarWindow();
-    if (showMemoryBarH) renderMemoryBarHorizontalWindow();
 
     // Dialogues
-    if (showAbout) renderAboutDialog();
-    if (showSpecialThanks) renderSpecialThanksWindow();
-    if (showHardwareReference) renderHardwareReferenceWindow();
-    if (showSoftwareReference) renderSoftwareReferenceWindow();
-    if (showShortcutsHelp) renderShortcutsHelpWindow();
-    if (showWelcome) renderWelcomeWindow();
-    if (showTutorialIntegerBasic) renderTutorialIntegerBasicWindow();
-    if (showTutorialApplesoft) renderTutorialApplesoftWindow();
-    if (showTutorialMicroSD) renderTutorialMicroSDWindow();
-    if (showTutorialCassette) renderTutorialCassetteWindow();
-    if (showTutorialModemBBS) renderTutorialModemBBSWindow();
-    if (showTutorialGT6144) renderTutorialGT6144Window();
-    if (showTutorialPR40) renderTutorialPR40Window();
-    if (showTutorialTMS9918) renderTutorialTMS9918Window();
-    if (showTutorialA1IORTC) renderTutorialA1IORTCWindow();
-    if (showTutorialSID) renderTutorialSIDWindow();
-    if (showTutorialGEN2HGR) renderTutorialGEN2HGRWindow();
-    if (showTutorialCFFA1) renderTutorialCFFA1Window();
-    if (showTutorialJukeBox) renderTutorialJukeBoxWindow();
-    if (showTutorialTerminalCard) renderTutorialTerminalCardWindow();
-    if (showTutorialKrusader) renderTutorialKrusaderWindow();
-    if (showTutorialIECCard) renderTutorialIECCardWindow();
-    if (iecCardEnabled && showIECCard) renderIECCardWindow();
     // The eight simple photo windows are table-driven (see photoWindowDefs()).
     renderSimplePhotoWindows();
-    if (showKeyboardPhoto) renderKeyboardPhotoWindow();
-    if (showScreenConfig) renderScreenConfigDialog();
-    if (showCrtSettings) renderCrtSettingsWindow();
-    if (showMemoryConfig) renderMemoryConfigDialog();
-    if (showLoadDialog) renderLoadDialog();
-    if (showLoadTapeDialog) renderLoadTapeDialog();
-    if (showCassetteDeck) renderCassetteDeckWindow();
-    if (showSaveDialog) renderSaveDialog();
-    if (showSaveTapeDialog) renderSaveTapeDialog();
-    if (showLoadSnapshotDialog) renderLoadSnapshotDialog();
-    if (showSaveSnapshotDialog) renderSaveSnapshotDialog();
-    if (graphicsCardEnabled && showGraphicsCard) renderGraphicsCardWindow();
     if (showHGRPaintEditor) {
         // Opening the editor implies you want the GEN2 HGR card live so strokes
         // appear on screen — auto-enable it, mirroring the file-dialog behaviour.
@@ -975,20 +976,8 @@ void MainWindow_ImGui::render()
         emulation->setSidLivePreview(false);       // closed: stop clocking the SID
         sidTrackerEditor->onWindowHidden();        // closed: release the keyboard grab
     }
-    if (tms9918Enabled && showTMS9918) renderTMS9918Window();
     // DevBench inspector: always available (reads the value snapshot, not the
     // live card) so it can be opened even when the TMS9918 is unplugged.
-    if (showTMS9918Inspector) renderTMS9918InspectorWindow();
-    if (gt6144Enabled && showGT6144) renderGT6144Window();
-    if (wifiModemEnabled && showWiFiModem) renderWiFiModemWindow();
-    if (terminalCardEnabled && showTerminalCard) renderTerminalCardWindow();
-    if (showTelemetry) renderTelemetryWindow();
-    if (showBench) renderBenchWindow();   // WASM: Wozmon-hex only (no cc65) — see Pom1BenchHost
-    if (pr40Enabled && showPR40) renderPR40Window();
-    if (a1ioRtcEnabled && showA1IO_RTC) renderA1IO_RTCWindow();
-    if (jukeBoxEnabled && showJukeBox) renderJukeBoxWindow();
-    if (showCodeTankLibrary) renderCodeTankLibraryWindow();
-    if (showSiliconStrictWindow) renderSiliconStrictWindow();
 
     // Barre de statut
     renderStatusBar();
