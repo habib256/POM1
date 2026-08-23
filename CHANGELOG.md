@@ -10,6 +10,120 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — un seul jeu de macros pour l'app, `pom1_core` et les 50 cibles de test
+
+> **Vérifié par sonde.** Une macro témoin ajoutée temporairement à la cible
+> `INTERFACE` puis relue dans `compile_commands.json` : **115 TU de l'app + 227 TU
+> de tests** la reçoivent, 19 des 20 TU vendored ne la reçoivent pas — le vendored
+> reste hors périmètre exactement comme avant. `ctest` → 95/95.
+
+`NOMINMAX`, `WIN32_LEAN_AND_MEAN`, `_CRT_SECURE_NO_WARNINGS` et `/utf-8` étaient
+posés par `target_compile_definitions(${PROJECT_NAME} …)`, donc sur la **cible POM1
+seule** : `pom1_core` et les 50 cibles de test compilaient les mêmes `.cpp` sous un
+autre jeu de macros. Le symptôme était déjà visible dans les sources — **six fichiers**
+portaient un préambule `#ifndef NOMINMAX` écrit à la main (`RewindBuffer.cpp`,
+`SocketHandle.h`, `AudioDevice.cpp`, `main_imgui.cpp`, `MainWindow_Dialogs.cpp`,
+`NativeFileDialog.cpp`), six fichiers ayant payé la même leçon séparément. C'est la
+forme d'un défaut de système de build, pas d'un défaut de source.
+
+La divergence a cessé d'être théorique le 22 août 2026, quand `ctest` s'est mis à
+tourner sous Windows : un jeu de macros qui diffère entre l'app et ses tests devient
+une source de rouge en CI qui ne se reproduit pas sur Linux.
+
+Une bibliothèque `INTERFACE` **`pom1_build_flags`** porte désormais ces quatre
+réglages ; l'app, `basicc` et — par `link_libraries()` à portée répertoire —
+`pom1_core` et les 50 cibles de test la lient. Le correctif ne peut pas pourrir :
+une nouvelle cible reçoit les flags ou il lui manque une ligne visible.
+
+Corollaire du même défaut : `GL_SILENCE_DEPRECATION` était recopié **50 fois** dans
+`tests/CMakeLists.txt`, un bloc `if(APPLE)` de quatre lignes par cible. Il est énoncé
+une fois, à portée répertoire (2 200 → **2 046 lignes**). La copie de l'app reste
+par-cible et conditionnelle : elle n'y vaut que pour le chemin macOS-OpenGL hérité.
+
+### Changed — `Memory.h` ne tire plus les onze en-têtes de cartes
+
+> **Mesuré avant/après**, `touch` puis reconstruction complète sur 16 cœurs.
+> `ctest` → 95/95, zéro avertissement.
+
+`Memory` possède tous les périphériques, donc `Memory.h` est l'endroit naturel où un
+en-tête de carte finit par atterrir — et onze l'avaient fait. Le fichier le plus
+largement inclus du projet était devenu propriétaire transitif de toute la flotte :
+
+| `touch src/…` | avant | après |
+|---|---|---|
+| `CassetteDevice.h` | 105 TU | **20 TU** |
+| `D64Image.h` | 105 TU | **23 TU** |
+| `MicroSD.h` | 105 TU | **24 TU** |
+| `JukeBox.h` | **105 TU / 5 min 21 s CPU** | **57 TU / 20 s** |
+
+Rien de tout cela n'était structurel. `std::unique_ptr<T>` n'exige `T` complet qu'à
+l'instanciation du deleter, c'est-à-dire au destructeur — et `~Memory()` est
+hors-ligne dans `Memory.cpp` depuis longtemps. Les getters *inline* d'une ligne ne
+l'exigent pas davantage : lier une référence à une lvalue de type incomplet est
+bien formé, ce que `TMS9918` et cinq autres cartes prouvaient déjà en étant
+forward-déclarées **avec** leurs getters inline. Les onze includes étaient de la
+pure accrétion.
+
+`JukeBox` et `CodeTank` étaient les deux derniers verrous, pour une raison qui ne se
+contourne pas par déclaration anticipée : ils publiaient des types **imbriqués**
+(`JukeBox::Jumper`, `JukeBox::ChipMode`, `CodeTank::Jumper`) présents dans des
+signatures de `Memory`. Ces trois enums vivent désormais à portée namespace dans un
+nouveau **`src/CardTypes.h`** — un en-tête sans dépendances. Chaque carte conserve un
+alias membre (`using Jumper = pom1::JukeBoxJumper;`), donc les **145 sites** qui
+écrivent `JukeBox::Jumper` n'ont pas changé d'un caractère.
+
+Rayon d'impact total : **7 TU** ont dû nommer un en-tête qu'ils utilisaient déjà
+(4 dans `src/`, 3 tests) — c'est le bon sens de la dépendance. Quatre getters faisant
+un accès membre (`jukeBox->getJumper()`) sont passés hors-ligne : eux exigent
+réellement le type complet. `Peripheral.h`, qui arrivait par ricochet via `JukeBox.h`,
+est maintenant nommé.
+
+Reste ouvert (→ `TODO.md`) : `JukeBox.h` / `CodeTank.h` s'arrêtent à 57 TU et non ~20,
+retenus par `EmulationSnapshot.h` qui a besoin de `JukeBox::Snapshot` — des structs
+imbriqués par valeur, le même blocage un cran plus haut.
+
+### Added — `crt_params_sync` : la pile CRT n'est plus le seul sous-système sans test
+
+> **Vérifié par mutation.** Quatre dérives semées une par une — bouton ajouté à
+> `CrtParams` seul, knob retiré du shader MSL, uniform GLSL déclaré mais plus
+> alimenté, les deux structs MSL désaccordées — **quatre détectées**, arbre restauré
+> vert. Un garde qui ne se déclenche jamais se lit comme de la couverture sans en
+> fournir.
+
+Douze flottants et un enum pilotent le post-traitement CRT, en **trois copies tenues
+à la main** : `CrtParams.h`, le GLSL de `CrtEffectStack.cpp` (`uBrightness`…) et le MSL
+de `CrtEffectStackMetal.mm` (`brightness`…). `CLAUDE.md` énonçait la règle noir sur
+blanc — « un bouton ajouté à l'un doit l'être à l'autre ou macOS diverge
+silencieusement » — et rien ne la vérifiait. Le mode de défaillance est par
+construction invisible sur les machines CI Linux et Windows : seul un Mac exécute le
+chemin MSL.
+
+`tools/check_crt_params.py` (cinquième garde de la famille `version_sync` /
+`imgui_pin_sync` / `doc_paths_sync` / `cli_flags_sync`) vérifie les 13 réglages dans
+les deux sens, plus le cas « déclaré mais jamais téléversé » — un uniform présent que
+personne n'alimente étant exactement la divergence silencieuse visée. Les noms ne se
+correspondent pas un à un (`shadowMaskStrength` → `uShadowStrength` →
+`shadowStrength`) : la table de correspondance du script est la documentation qui
+manquait autant qu'elle est le contrôle.
+
+### Fixed — deux valeurs restaurées d'un snapshot sans repasser par leur borne
+
+> `ctest` → 95/95. Défauts trouvés par balayage systématique des sites de
+> désérialisation, pas par un rapport d'utilisateur.
+
+**`PR40Printer::deserialize`** était le dernier `static_cast<Enum>(r.readU8())` du
+dépôt sans contrôle de plage. Les cinq autres sites valident tous
+(`MicroSD` ×2, `IECCard` ×2, `JukeBox`) : un enum de classe dont les énumérateurs
+couvrent 0..2 n'a pas de valeur 3, donc y couler un octet corrompu est un
+comportement indéfini. Aligné sur la forme des autres.
+
+**`MicroSD::deserialize`** restaurait `writeExpectedLen` en `u16` brut, alors que le
+chemin vivant refuse tout ce qui dépasse `MAX_WRITE_SIZE` (32 Ko) avec
+*« FILE TOO LARGE »*. Un snapshot corrompu pouvait donc reprendre un transfert avec
+une cible de 64 Ko que la machine en marche n'aurait jamais acceptée — borné et sans
+gravité, mais c'est un invariant de périphérique que le chargeur ne rétablissait pas.
+
+
 ### Changed — GitHub Pages sert un artefact bâti par la CI, plus une branche du dépôt
 
 > **Vérifié sur le site en ligne.** Deux runs `Deploy Pages` verts, puis probe HTTP :

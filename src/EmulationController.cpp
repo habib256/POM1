@@ -20,6 +20,7 @@
 #include "RomLoader.h"
 #include "TMS9918.h"
 #include "TelemetryPort.h"   // complete type for memory->getTelemetryPort()
+#include "CassetteDevice.h"  // complete type for memory->getCassetteDevice()
 #include "Logger.h"
 
 #include <algorithm>

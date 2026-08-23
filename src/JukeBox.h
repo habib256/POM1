@@ -43,6 +43,7 @@
 #ifndef POM1_JUKEBOX_H
 #define POM1_JUKEBOX_H
 
+#include "CardTypes.h"
 #include "Peripheral.h"
 
 #include <algorithm>
@@ -57,18 +58,16 @@ public:
 
     // Jumper position: which part of a 32 kB page is visible in the CPU
     // address space.
-    enum class Jumper : uint8_t {
-        RAM16_ROM32 = 0,  // $4000-$BFFF (32 kB), RAM to $3FFF
-        RAM32_ROM16 = 1,  // $8000-$BFFF (16 kB), RAM to $7FFF
-    };
+    // Definitions live at namespace scope in CardTypes.h so Memory.h can name
+    // them without including this header (a nested type cannot be forward-
+    // declared, and these two were what kept JukeBox.h in ~105 TU). The aliases
+    // keep every existing `JukeBox::Jumper` / `JukeBox::ChipMode` spelling valid.
+    using Jumper = pom1::JukeBoxJumper;
 
     // Physical chip socketed on the card. Per Parmigiani/Rosselli you
     // physically swap between one and the other; POM1 exposes it as a
     // user-selectable mode because the emulator has no socket.
-    enum class ChipMode : uint8_t {
-        Flash        = 0, // Paged read-only, 16 kB to 512 kB (default).
-        EEPROM28C256 = 1, // Single-page 32 kB 28c256, writable.
-    };
+    using ChipMode = pom1::JukeBoxChipMode;
 
     static constexpr size_t   kPageSize              = 0x8000;   // 32 kB
     static constexpr size_t   kSubPageSize           = 0x4000;   // 16 kB

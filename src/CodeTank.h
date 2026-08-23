@@ -29,6 +29,7 @@
 #ifndef POM1_CODETANK_H
 #define POM1_CODETANK_H
 
+#include "CardTypes.h"
 #include "Peripheral.h"
 
 #include <cstdint>
@@ -43,10 +44,8 @@ public:
     // Physical board jumper: which half of the 32 kB 28c256 is wired into
     // the fixed 16 kB CPU window. Real hardware needs a power-off and
     // jumper move; POM1 hot-swaps because there is no socket.
-    enum class Jumper : uint8_t {
-        Lower16 = 0,  // file offset $0000-$3FFF visible at $4000-$7FFF
-        Upper16 = 1,  // file offset $4000-$7FFF visible at $4000-$7FFF
-    };
+    // Definition at namespace scope in CardTypes.h — see the note in JukeBox.h.
+    using Jumper = pom1::CodeTankJumper;
 
     static constexpr size_t   kRomSize  = 0x8000;   // 32 kB (28c256)
     static constexpr size_t   kHalfSize = 0x4000;   // 16 kB (one bank)

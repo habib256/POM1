@@ -1313,7 +1313,13 @@ void MicroSD::deserialize(pom1::SnapshotReader& r)
     dirEntryIndex   = static_cast<size_t>(r.readU32());
     dirIsLs         = r.readU8() != 0;
     writeFilename   = r.readString();
-    writeExpectedLen = r.readU16();
+    // Re-apply the live path's own ceiling (the WRITE_RECV_LEN handler refuses
+    // anything above MAX_WRITE_SIZE with "FILE TOO LARGE"). Restoring the raw
+    // u16 let a corrupt snapshot resume a transfer with a 64 KB target the
+    // running machine would never have accepted — bounded and harmless, but a
+    // device invariant the loader was not re-establishing.
+    writeExpectedLen = std::min<uint16_t>(r.readU16(),
+                                          static_cast<uint16_t>(MAX_WRITE_SIZE));
     writeLenBytesReceived = static_cast<int>(r.readU32());
     writeDataBuffer = r.readByteVector();
     dirIdleCycles   = static_cast<int>(r.readU32());

@@ -34,9 +34,43 @@
 #include <cstddef>
 #include <utility>
 #include <atomic>
-#include "AudioDevice.h"
-#include "CassetteDevice.h"
-#include "SID.h"
+
+// ── Cards are held by unique_ptr and forward-declared ────────────────────────
+//
+// Memory owns every peripheral, so Memory.h is the natural place for a card
+// header to end up — and eleven of them had. That made this file, the most
+// widely-included header in the project, the transitive owner of the whole
+// card fleet: `touch src/JukeBox.h` recompiled 105 translation units (5 min 21 s
+// of CPU, measured 23 août 2026) although only 15 name JukeBox at all, and
+// D64Image.h — reached through IECCard.h -> Drive1541.h — was pulled into ~37
+// TUs to serve 3.
+//
+// None of it was structural. `std::unique_ptr<T>` needs T complete only where
+// the deleter is instantiated, i.e. in the destructor — and `~Memory()` has
+// been out-of-line in Memory.cpp for a long time. The inline one-line getters
+// (`return *cassetteDevice;`) do NOT require it either: binding a reference to
+// an lvalue of incomplete type is well-formed. TMS9918 & friends below were
+// already proving that. So the includes were pure accretion.
+//
+// JukeBox and CodeTank were the last two holdouts: they published NESTED types
+// (`JukeBox::Jumper`, `JukeBox::ChipMode`, `CodeTank::Jumper`) used in the
+// signatures here, and a nested type cannot be forward-declared. Those three
+// enums now live at namespace scope in CardTypes.h — a header with no
+// dependencies of its own — so the signatures below name pom1::JukeBoxJumper &
+// co. and both card headers are gone too. Each card keeps a member alias
+// (`using Jumper = pom1::JukeBoxJumper;`), so all 164 existing call sites still
+// spell it `JukeBox::Jumper` and none of them had to change.
+// Gen2VideoScanner stays: it is a BY-VALUE member.
+//
+// The rule for anything added later: a card belongs in this list, not in an
+// #include. A TU that needs a card's definition includes that card's header.
+class AudioDevice;
+class CassetteDevice;
+class CFFA1;
+class CodeTank;
+class GT6144;
+class JukeBox;
+class MicroSD;
 class TMS9918;
 class WiFiModem;
 class TerminalCard;
@@ -44,13 +78,12 @@ class TelemetryPort;
 class A1IO_RTC;
 class PR40Printer;
 class M6502;
-#include "CFFA1.h"
-#include "CodeTank.h"
-#include "GT6144.h"
-#include "JukeBox.h"
-#include "IECCard.h"
-#include "MicroSD.h"
-#include "Gen2VideoScanner.h"
+namespace pom1 { class SID; class IECCard; }
+
+#include "CardTypes.h"         // JukeBoxJumper / JukeBoxChipMode / CodeTankJumper
+#include "Peripheral.h"        // pom1::Peripheral* in the CardSlot table below
+                               // (it used to arrive by accident via JukeBox.h)
+#include "Gen2VideoScanner.h"  // by-value member
 #include <array>
 
 namespace pom1 { class SnapshotWriter; class SnapshotReader; }
@@ -516,18 +549,18 @@ public:
     // Jumper position (runtime-toggleable). Changing it disables the active
     // PeripheralBus range and enables the other one — addresses between
     // $4000-$7FFF and $8000-$BFFF swap between RAM and ROM.
-    void setJukeBoxJumper(JukeBox::Jumper j);
-    JukeBox::Jumper getJukeBoxJumper() const { return jukeBox->getJumper(); }
+    void setJukeBoxJumper(pom1::JukeBoxJumper j);
+    pom1::JukeBoxJumper getJukeBoxJumper() const;   // out-of-line: member access needs JukeBox complete
     // EEPROM RW jumper. No bus change; writable only controls whether writes
     // in the ROM window land in the ROM buffer (and on disk). Ignored in
     // Flash chip mode (flash is always read-only in POM1).
     void setJukeBoxWritable(bool w);
-    bool isJukeBoxWritable() const { return jukeBox->isWritable(); }
+    bool isJukeBoxWritable() const;                 // idem
     // Physical chip selection — Flash (paged, 16 kB..512 kB) or 28c256
     // EEPROM (single-page, writable). Switching modes clears the ROM
     // buffer; a subsequent loadJukeBoxRom() picks a fresh image.
-    void setJukeBoxChipMode(JukeBox::ChipMode m);
-    JukeBox::ChipMode getJukeBoxChipMode() const { return jukeBox->getChipMode(); }
+    void setJukeBoxChipMode(pom1::JukeBoxChipMode m);
+    pom1::JukeBoxChipMode getJukeBoxChipMode() const;  // idem
     // Load a Juke-Box ROM file (up to 512 kB in flash mode, exactly 32 kB
     // in EEPROM mode). Populates `lastError` on failure.
     int loadJukeBoxRom(void);  // default path: roms/jukebox.rom
@@ -553,8 +586,8 @@ public:
     const CodeTank& getCodeTank() const { return *codeTank; }
     void setCodeTankEnabled(bool b);
     bool isCodeTankEnabled() const { return codeTankEnabled; }
-    void setCodeTankJumper(CodeTank::Jumper j);
-    CodeTank::Jumper getCodeTankJumper() const { return codeTank->getJumper(); }
+    void setCodeTankJumper(pom1::CodeTankJumper j);
+    pom1::CodeTankJumper getCodeTankJumper() const;    // out-of-line: member access needs CodeTank complete
     // Hot-load a 32 kB CodeTank ROM by path (used by the CodeTank Library
     // window). Empty path falls back to the default probe candidates.
     int loadCodeTankRom(const std::string& path = std::string());

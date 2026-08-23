@@ -20,6 +20,7 @@
 // Memory holds unique_ptrs to these (forward-declared in Memory.h); destructor
 // needs the complete types.
 #include "A1IO_RTC.h"
+#include "CassetteDevice.h"
 #include "CFFA1.h"
 #include "CpuClock.h"
 #include "DisplayDevice.h"

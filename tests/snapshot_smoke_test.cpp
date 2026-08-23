@@ -45,6 +45,7 @@
 #include "GT6144.h"
 #include "JukeBox.h"
 #include "CodeTank.h"
+#include "CassetteDevice.h"
 #include "CFFA1.h"
 #include "MicroSD.h"
 #include "SID.h"

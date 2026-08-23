@@ -31,6 +31,23 @@ if(UNIX)
     link_libraries(Threads::Threads ${CMAKE_DL_LIBS})
 endif()
 
+# Portability macros, directory-scoped so pom1_core and every test target below
+# compiles POM1's sources under the SAME macro set as the app. Defined as an
+# INTERFACE target in the top-level CMakeLists; see the long note there for why
+# a per-target copy is not good enough (C2589 on RewindBuffer.cpp, 22 août
+# 2026: the app built, three test binaries did not).
+link_libraries(pom1_build_flags)
+
+# Apple deprecated the whole OpenGL API in 10.14. The peripheral .cpp files
+# transitively include it, so every test target needs the silencer — it used to
+# be a four-line `if(APPLE)` block repeated verbatim 50 times below, once per
+# target. Directory-scoped, it is stated once and a new test target cannot
+# forget it. (The app's own copy stays per-target and conditional: there it is
+# deliberately applied only on the legacy POM1_RENDERER=opengl macOS path.)
+if(APPLE)
+    add_compile_definitions(GL_SILENCE_DEPRECATION)
+endif()
+
 # -- Klaus Dormann 6502 functional test ---------------------------------------
 # Downloads the pre-assembled test binary once at configure time, builds a
 # minimal runner that links against POM1's M6502 + Memory + peripheral core,
@@ -113,11 +130,6 @@ target_include_directories(pom1_core PRIVATE
 # directory PUBLIC, so linking it here is how the object library gets the path.
 # An OBJECT library takes the usage requirements without producing a link step.
 target_link_libraries(pom1_core PRIVATE libresidfp_static)
-if(APPLE)
-    # Same OpenGL-deprecation silencer the test targets apply; the peripheral
-    # .cpp files transitively include it.
-    target_compile_definitions(pom1_core PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 
 # Every `add_executable(... ${POM1_TEST_CORE_SOURCES})` below is unchanged — the
 # variable now expands to the compiled objects instead of the source paths.
@@ -138,11 +150,6 @@ target_include_directories(test_klaus_6502 PRIVATE
 )
 target_link_libraries(test_klaus_6502 PRIVATE libresidfp_static)
 
-if(APPLE)
-    # Same OpenGL-deprecation silencer the main target uses, because the
-    # peripheral .cpp files transitively include it.
-    target_compile_definitions(test_klaus_6502 PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_klaus_6502 PRIVATE ws2_32)
 endif()
@@ -167,9 +174,6 @@ target_include_directories(test_cpu_harte PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_cpu_harte PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_cpu_harte PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_cpu_harte PRIVATE ws2_32)
 endif()
@@ -190,9 +194,6 @@ target_include_directories(test_cpu_interrupt PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_cpu_interrupt PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_cpu_interrupt PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_cpu_interrupt PRIVATE ws2_32)
 endif()
@@ -212,9 +213,6 @@ target_include_directories(test_cpu_pc_length PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_cpu_pc_length PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_cpu_pc_length PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_cpu_pc_length PRIVATE ws2_32)
 endif()
@@ -231,9 +229,6 @@ target_include_directories(test_cpu_illegal_cycles PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_cpu_illegal_cycles PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_cpu_illegal_cycles PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_cpu_illegal_cycles PRIVATE ws2_32)
 endif()
@@ -345,9 +340,6 @@ target_include_directories(test_gen2_frame_latch PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui)
 target_link_libraries(test_gen2_frame_latch PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_gen2_frame_latch PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_gen2_frame_latch PRIVATE ws2_32)
 endif()
@@ -367,9 +359,6 @@ target_include_directories(test_gen2_beam_scanline PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/imgui)
 target_link_libraries(test_gen2_beam_scanline PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_gen2_beam_scanline PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_gen2_beam_scanline PRIVATE ws2_32)
 endif()
@@ -394,9 +383,6 @@ target_include_directories(test_gen2_softswitch_msb PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_gen2_softswitch_msb PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_gen2_softswitch_msb PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_gen2_softswitch_msb PRIVATE ws2_32)
 endif()
@@ -487,9 +473,6 @@ target_include_directories(test_memory_dualram PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_memory_dualram PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_memory_dualram PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_memory_dualram PRIVATE ws2_32)
 endif()
@@ -517,9 +500,6 @@ target_include_directories(test_rom_fallback PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_rom_fallback PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_rom_fallback PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_rom_fallback PRIVATE ws2_32)
 endif()
@@ -536,9 +516,6 @@ target_include_directories(test_reset_vectors PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_reset_vectors PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_reset_vectors PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_reset_vectors PRIVATE ws2_32)
 endif()
@@ -563,9 +540,6 @@ target_include_directories(test_bench_basic_inject PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_bench_basic_inject PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_bench_basic_inject PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_bench_basic_inject PRIVATE ws2_32)
 endif()
@@ -590,9 +564,6 @@ target_include_directories(test_bench_logo_inject PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_bench_logo_inject PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_bench_logo_inject PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_bench_logo_inject PRIVATE ws2_32)
 endif()
@@ -612,9 +583,6 @@ target_include_directories(test_applesoft_gen2 PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_applesoft_gen2 PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_applesoft_gen2 PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_applesoft_gen2 PRIVATE ws2_32)
 endif()
@@ -636,9 +604,6 @@ target_include_directories(test_applesoft_tms9918 PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_applesoft_tms9918 PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_applesoft_tms9918 PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_applesoft_tms9918 PRIVATE ws2_32)
 endif()
@@ -662,9 +627,6 @@ target_include_directories(test_basic_compiler PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_basic_compiler PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_basic_compiler PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_basic_compiler PRIVATE ws2_32)
 endif()
@@ -687,9 +649,6 @@ target_include_directories(test_bench_basic_tokenize PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_bench_basic_tokenize PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_bench_basic_tokenize PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_bench_basic_tokenize PRIVATE ws2_32)
 endif()
@@ -711,9 +670,6 @@ target_include_directories(test_bench_basic_tokenize_integer PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_bench_basic_tokenize_integer PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_bench_basic_tokenize_integer PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_bench_basic_tokenize_integer PRIVATE ws2_32)
 endif()
@@ -733,9 +689,6 @@ target_include_directories(test_integer_detok PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_integer_detok PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_integer_detok PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_integer_detok PRIVATE ws2_32)
 endif()
@@ -753,9 +706,6 @@ target_include_directories(test_integer_roundtrip PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_integer_roundtrip PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_integer_roundtrip PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_integer_roundtrip PRIVATE ws2_32)
 endif()
@@ -773,9 +723,6 @@ target_include_directories(test_integer_oracle PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_integer_oracle PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_integer_oracle PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_integer_oracle PRIVATE ws2_32)
 endif()
@@ -838,9 +785,6 @@ target_include_directories(test_basic_native_run PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_basic_native_run PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_basic_native_run PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_basic_native_run PRIVATE ws2_32)
 endif()
@@ -864,9 +808,6 @@ target_include_directories(test_bench_basic_native PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_bench_basic_native PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_bench_basic_native PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_bench_basic_native PRIVATE ws2_32)
 endif()
@@ -890,9 +831,6 @@ target_include_directories(test_bench_basic_native_lores PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_bench_basic_native_lores PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_bench_basic_native_lores PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_bench_basic_native_lores PRIVATE ws2_32)
 endif()
@@ -914,9 +852,6 @@ target_include_directories(test_bench_basic_native_lores_tms PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_bench_basic_native_lores_tms PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_bench_basic_native_lores_tms PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_bench_basic_native_lores_tms PRIVATE ws2_32)
 endif()
@@ -936,9 +871,6 @@ target_include_directories(test_basic_float_runtime PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_basic_float_runtime PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_basic_float_runtime PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_basic_float_runtime PRIVATE ws2_32)
 endif()
@@ -962,9 +894,6 @@ target_include_directories(test_basic_native_bench PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_basic_native_bench PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_basic_native_bench PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_basic_native_bench PRIVATE ws2_32)
 endif()
@@ -985,9 +914,6 @@ target_include_directories(test_sid_audio PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_sid_audio PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_sid_audio PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_sid_audio PRIVATE ws2_32)
 endif()
@@ -1010,9 +936,6 @@ target_include_directories(test_aci_tape_loading PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_aci_tape_loading PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_aci_tape_loading PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_aci_tape_loading PRIVATE ws2_32)
 endif()
@@ -1042,9 +965,6 @@ target_include_directories(test_extended_aci PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_extended_aci PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_extended_aci PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_extended_aci PRIVATE ws2_32)
 endif()
@@ -1073,9 +993,6 @@ target_include_directories(test_aci_tape_saving PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_aci_tape_saving PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_aci_tape_saving PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_aci_tape_saving PRIVATE ws2_32)
 endif()
@@ -1098,9 +1015,6 @@ target_include_directories(test_pr40_printer PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_pr40_printer PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_pr40_printer PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_pr40_printer PRIVATE ws2_32)
 endif()
@@ -1122,9 +1036,6 @@ target_include_directories(test_terminal_card_injection PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_terminal_card_injection PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_terminal_card_injection PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_terminal_card_injection PRIVATE ws2_32)
 endif()
@@ -1429,9 +1340,6 @@ target_include_directories(test_codetank_tms9918_dependency PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_codetank_tms9918_dependency PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_codetank_tms9918_dependency PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_codetank_tms9918_dependency PRIVATE ws2_32)
 endif()
@@ -1455,9 +1363,6 @@ target_include_directories(test_snapshot_smoke PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_snapshot_smoke PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_snapshot_smoke PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_snapshot_smoke PRIVATE ws2_32)
 endif()
@@ -1484,9 +1389,6 @@ target_include_directories(test_hex_dump_multi_zone PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_hex_dump_multi_zone PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_hex_dump_multi_zone PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_hex_dump_multi_zone PRIVATE ws2_32)
 endif()
@@ -1509,9 +1411,6 @@ target_include_directories(test_hex_dump_extension PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_hex_dump_extension PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_hex_dump_extension PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_hex_dump_extension PRIVATE ws2_32)
 endif()
@@ -1533,9 +1432,6 @@ target_include_directories(test_hex_dump_turbotype PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_hex_dump_turbotype PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_hex_dump_turbotype PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_hex_dump_turbotype PRIVATE ws2_32)
 endif()
@@ -1559,9 +1455,6 @@ target_include_directories(test_intel_hex PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_intel_hex PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_intel_hex PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_intel_hex PRIVATE ws2_32)
 endif()
@@ -1585,9 +1478,6 @@ target_include_directories(test_woz_backspace PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_woz_backspace PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_woz_backspace PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_woz_backspace PRIVATE ws2_32)
 endif()
@@ -1611,9 +1501,6 @@ target_include_directories(test_pia_ddr PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_pia_ddr PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_pia_ddr PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_pia_ddr PRIVATE ws2_32)
 endif()
@@ -1646,9 +1533,6 @@ target_include_directories(test_measured_cpu_rate PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_measured_cpu_rate PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_measured_cpu_rate PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_measured_cpu_rate PRIVATE ws2_32)
 endif()
@@ -1671,9 +1555,6 @@ target_include_directories(test_msbasic PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_msbasic PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_msbasic PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_msbasic PRIVATE ws2_32)
 endif()
@@ -1696,9 +1577,6 @@ target_include_directories(test_ehbasic PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_ehbasic PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_ehbasic PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_ehbasic PRIVATE ws2_32)
 endif()
@@ -1723,9 +1601,6 @@ target_include_directories(test_cpu_breakpoint PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_cpu_breakpoint PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_cpu_breakpoint PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_cpu_breakpoint PRIVATE ws2_32)
 endif()
@@ -1745,9 +1620,6 @@ target_include_directories(test_watchpoint PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_watchpoint PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_watchpoint PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_watchpoint PRIVATE ws2_32)
 endif()
@@ -1768,9 +1640,6 @@ target_include_directories(test_iec_snapshot PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_iec_snapshot PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_iec_snapshot PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_iec_snapshot PRIVATE ws2_32)
 endif()
@@ -1820,9 +1689,6 @@ target_include_directories(test_rewind_buffer PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_rewind_buffer PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_rewind_buffer PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_rewind_buffer PRIVATE ws2_32)
 endif()
@@ -2023,6 +1889,29 @@ if(Python3_FOUND)
     set_tests_properties(cli_flags_sync PROPERTIES TIMEOUT 60)
 endif()
 
+# crt_params_sync -- fifth guard of the version_sync / imgui_pin_sync /
+# doc_paths_sync / cli_flags_sync family, and the first test of ANY kind to
+# touch the CRT effect stack. Twelve floats and one enum live in three
+# hand-maintained copies: CrtParams.h (the struct the UI edits), the GLSL in
+# CrtEffectStack.cpp (uBrightness...) and the MSL in CrtEffectStackMetal.mm
+# (brightness...). The names do not correspond one-to-one -- shadowMaskStrength
+# -> uShadowStrength -> shadowStrength -- so the mapping table in the script is
+# the documentation that was missing as much as it is the check.
+#
+# CLAUDE.md already stated the rule ("a knob added to one must be added to the
+# other or macOS silently diverges"); nothing enforced it, and the failure mode
+# is invisible on the Linux and Windows CI machines by construction -- only a
+# Mac renders the MSL path. Checked both directions plus "declared but never
+# uploaded", and mutation-tested (4 seeded drifts, all caught) so the guard is
+# known to fire rather than merely known to pass.
+if(Python3_FOUND)
+    add_test(NAME crt_params_sync
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/check_crt_params.py"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(crt_params_sync PROPERTIES TIMEOUT 60)
+endif()
+
 # mainwindow_logic_smoke -- the pure logic extracted from MainWindow_ImGui.
 # The UI is excluded from every other test binary (see the note at the top of
 # this file), which left POM1's largest layer uncovered — and it is where the
@@ -2142,9 +2031,6 @@ target_include_directories(test_cli_dispatcher PRIVATE
     ${CMAKE_SOURCE_DIR}/imgui
 )
 target_link_libraries(test_cli_dispatcher PRIVATE libresidfp_static)
-if(APPLE)
-    target_compile_definitions(test_cli_dispatcher PRIVATE GL_SILENCE_DEPRECATION)
-endif()
 if(WIN32)
     target_link_libraries(test_cli_dispatcher PRIVATE ws2_32)
 endif()
