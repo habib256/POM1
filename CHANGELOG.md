@@ -10,6 +10,74 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — le registre de panneaux devient la liste unique des 68 fenêtres
+
+> **Vérifié par A/B à l'exécution**, la seule preuve disponible ici : POM1 lancé 20 s
+> sous Xvfb sur le preset *Fantasy* (toutes cartes branchées), avant et après, à partir
+> du même `ini/`. **49 fenêtres soumises et 58 états ouvert/fermé identiques**, et la
+> **partition de dock identique** sur un second A/B parti d'un `ini/` vide (ce qui force
+> `buildDefaultDockLayout()`). Plus une équivalence statique du dispatch contre `HEAD` :
+> 51 triplets (flag, fonction, garde), aucun perdu, aucun apparu. `ctest` 95 → 96.
+
+`MainWindow_ImGui` fait **17 135 lignes réparties sur 16 TU** — plus que le
+`MainWindow.cpp` de POM2 dont il a été scindé par imitation. Les passes de scission
+successives étaient du *code motion* pur, ce que `CLAUDE.md` assume explicitement :
+le couplage n'a jamais bougé. Le vrai symptôme n'était pas la taille des fichiers mais
+que les **68 fenêtres étaient récitées à la main dans quatre endroits** — la table de
+persistance, 51 lignes `if (showX) renderX();`, les bascules éparpillées dans huit
+menus, et les 26 lignes de `kDockLayout[]`. Quatre listes sur un même ensemble : c'est
+ainsi qu'une fenêtre finit ouvrable mais non sauvegardée, ou sauvegardée et absente des
+menus, chaque oubli étant silencieux.
+
+**La table existait déjà** — `WindowDescriptor { key, title, show, kind, persistPresence }`,
+68 lignes couvrant les 68 flags, zéro orphelin de part et d'autre — mais elle n'avait
+qu'**un seul consommateur** : la persistance ini. Elle porte désormais aussi `render`
+(pointeur sur méthode), `gate` (le flag *carte branchée* du `if (jukeBoxEnabled && …)`,
+gardé distinct de `show` : fermer un panneau ne doit pas débrancher la carte, et
+débrancher ne doit pas oublier que le panneau était ouvert), `desktopOnly` (l'ancien
+`#if !POM1_IS_WASM` autour d'un site d'appel) et `dock` (la place d'usine).
+
+Ce qui disparaît : les **51 lignes de dispatch** (une boucle), les **26 lignes de
+`kDockLayout[]`** (le slot est dans la ligne ; il reste une table résiduelle de **deux**
+entrées, pour les deux fenêtres dockées sans ligne de registre — « Apple 1 Screen »,
+toujours dessinée sans flag, et « Memory Search », qui appartient à `MemoryViewer_ImGui`).
+Les 17 fenêtres à `render == nullptr` gardent leur bloc dédié : elles ont besoin d'un
+état d'entourage (géométrie tirée de `DisplaySize`, carte auto-branchée à l'ouverture,
+branche `else` à la fermeture) qu'un appel de méthode nu ne porte pas.
+
+L'ordre de soumission suit désormais l'ordre du registre. C'est sans effet : Dear ImGui
+tire l'ordre de profondeur de sa liste de focus, pas de l'ordre des `Begin()`, et chaque
+bloc dédié garde son `SetNextWindowSize`/`applyPendingLayout` juste avant son `Begin()`.
+La seule règle d'ordre porteuse — `renderDockSpace()` avant le premier `Begin()` dockable —
+est intacte.
+
+### Added — un menu *Windows*, généré, et `window_registry_sync` pour le tenir
+
+POM1 n'avait **pas de menu Fenêtres** : les bascules vivaient dans huit autres menus et
+couvraient 47 des 68 fenêtres. Les 21 restantes n'avaient aucune entrée de menu — dont
+**les neuf panneaux de cartes** (GEN2 HGR, TMS9918, GT-6144, IEC, Wi-Fi Modem, Terminal
+Card, PR-40, A1-IO & RTC, Juke-Box) et la console de débogage : une fois le panneau
+fermé, aucun menu ne permettait de le rouvrir. Le menu est une boucle sur le registre,
+groupée par `kind`, avec le `gate` **montré et non imposé** (un panneau de carte
+débranchée se bascule quand même — le flag est l'intention de l'utilisateur, et il est
+mémorisé).
+
+Les entrées contextuelles existantes sont **délibérément laissées en place**. Ce n'est
+pas une liste parallèle à replier mécaniquement : *Help ▸ Tutorials* porte des libellés
+éditoriaux (« Integer BASIC: write your first program », pas « Tutorial: Integer BASIC »)
+et un regroupement thématique par séparateurs qu'aucun champ `kind` n'encode. Les
+générer échangerait de la curation contre de l'uniformité. Ce qui change est leur statut :
+elles deviennent un raccourci curaté, plus la seule porte d'entrée.
+
+**`tools/check_window_registry.py`** (ctest `window_registry_sync`) est le premier
+contrôle de quelque nature que ce soit à atteindre `MainWindow` — la plus grosse couche
+de POM1 est exclue de tous les binaires de test, donc un script qui lit les sources n'est
+pas un pis-aller, c'est le seul outil disponible. Il assère que chaque flag `show*` a une
+ligne, que chaque ligne peut réellement dessiner (un `render` ou un bloc dédié nommé), et
+que la ligne `if (showX) renderX();` **ne revient pas** — la cinquième liste qui
+recommence. Vérifié falsifiable : 3 dérives semées, 3 détectées.
+
+
 ### Changed — un seul jeu de macros pour l'app, `pom1_core` et les 50 cibles de test
 
 > **Vérifié par sonde.** Une macro témoin ajoutée temporairement à la cible

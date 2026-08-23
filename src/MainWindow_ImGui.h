@@ -179,15 +179,55 @@ public:
     // here — tutorials, peripheral panels and info/photo windows are covered
     // automatically; only the transient file/config dialogs opt out via
     // persistPresence=false (excluded by data, never by silent omission).
+    //
+    // The table was built for persistence and used for nothing else; `render`
+    // and `gate` are what turn it into the panel registry it already looked
+    // like. Before them, the same 68 windows were recited by hand in three more
+    // places — 51 `if (showX) renderX();` lines in render(), the toggles
+    // scattered across eight menus, and kDockLayout[] — four parallel lists to
+    // keep in step, which is how a window ends up openable but unsaved, or
+    // saved but absent from the menu.
     enum class WindowKind { Tool, Peripheral, Tutorial, Info, Dialog };
+    // Where buildDefaultDockLayout() parks the window when it has to build the
+    // factory arrangement from scratch (fresh profile, a legacy pre-docking ini,
+    // or Settings ▸ Reset Windows Layout ▸ "Docking only"). `Float` means "not
+    // workspace furniture" — tutorials, photo viewers, About/Welcome, settings
+    // panels and transient dialogs are read-then-dismiss. Lived in
+    // MainWindow_Dock.cpp as a private enum next to a 26-row title table; the
+    // table is gone and the slot rides in the registry row, so a new window
+    // declares its dock home in the same place it declares everything else.
+    enum class DockSlot { Float, Central, Workspace, Right, Bottom };
     struct WindowDescriptor {
         const char* key;                 // stable persistence key (never rename)
         const char* title;               // ImGui Begin() title
         bool MainWindow_ImGui::* show;   // backing show* flag
         WindowKind  kind;
         bool        persistPresence;     // open/closed saved in the per-preset profile?
+
+        // Rendering. `render == nullptr` means the window is drawn by a bespoke
+        // block in render() — it needs surrounding state (geometry computed from
+        // DisplaySize, a card auto-plugged on open, an else-branch on close) that
+        // a bare member call cannot carry. Those blocks stay where they are; the
+        // row still exists so persistence and the menu keep covering it.
+        void (MainWindow_ImGui::*render)() = nullptr;
+        // Card-enable flag that must ALSO be true for the window to draw. This is
+        // the `if (jukeBoxEnabled && showJukeBox)` half of the old dispatch: the
+        // show* flag is the user's intent, the gate is whether the card is
+        // plugged. Keeping them separate is deliberate — closing the panel must
+        // not unplug the card, and unplugging must not forget the panel was open.
+        bool MainWindow_ImGui::*gate = nullptr;
+        // Desktop-only (the old `#if !POM1_IS_WASM` around the call site).
+        bool desktopOnly = false;
+        // Factory dock home. Default Float = stays floating, which is what the
+        // old table expressed by simply not listing the window.
+        DockSlot dock = DockSlot::Float;
     };
     static const std::vector<WindowDescriptor>& windowRegistry();
+
+    /// Draw every registry row that owns a `render` member. Replaces the 51
+    /// hand-written dispatch lines; the bespoke blocks in render() cover the
+    /// rest. Called from render() at the point the first of those lines sat.
+    void renderRegisteredWindows();
 
     // The subset of windowRegistry() whose presence is persisted, as a
     // {stable key → live show* flag} list bound to this instance. Consumed by

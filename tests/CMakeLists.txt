@@ -1912,6 +1912,22 @@ if(Python3_FOUND)
     set_tests_properties(crt_params_sync PROPERTIES TIMEOUT 60)
 endif()
 
+# window_registry_sync -- sixth guard of the version_sync family, and the only
+# check of any kind that reaches MainWindow. POM1's largest layer (17 000 lines
+# across 16 TUs, 68 windows) is deliberately excluded from every test binary, so
+# a script that reads the sources is not a second-best here — it is the only
+# tool available. It pins that windowRegistry() stays the SINGLE window list:
+# every show* flag has a row, every row can actually draw, and the 51-line
+# `if (showX) renderX();` dispatch does not come back. Mutation-tested (3 seeded
+# drifts, all caught).
+if(Python3_FOUND)
+    add_test(NAME window_registry_sync
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/check_window_registry.py"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(window_registry_sync PROPERTIES TIMEOUT 60)
+endif()
+
 # mainwindow_logic_smoke -- the pure logic extracted from MainWindow_ImGui.
 # The UI is excluded from every other test binary (see the note at the top of
 # this file), which left POM1's largest layer uncovered — and it is where the
