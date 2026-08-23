@@ -41,6 +41,13 @@
 #include "CFFA1.h"
 #include "GT6144.h"
 #include "JukeBox.h"
+#include "CodeTank.h"
+// Cards Memory.h now only forward-declares (see the note at the top of that
+// header): the TU that constructs and drives them names their headers itself.
+#include "AudioDevice.h"
+#include "CassetteDevice.h"
+#include "SID.h"
+#include "IECCard.h"
 //#include "configuration.h"
 //#include "pia6820.h"
 
@@ -2258,6 +2265,15 @@ void Memory::setJukeBoxEnabled(bool b)
     }
 }
 
+// The three JukeBox / CodeTank getters below are out-of-line for one reason:
+// they do MEMBER ACCESS on the card (`jukeBox->getJumper()`), which needs the
+// complete type, unlike the getters that merely return a reference to an
+// incomplete one (`return *cassetteDevice;`). Memory.h forward-declares both
+// cards now — see the note at the top of that header.
+pom1::JukeBoxJumper Memory::getJukeBoxJumper() const { return jukeBox->getJumper(); }
+bool Memory::isJukeBoxWritable() const { return jukeBox->isWritable(); }
+pom1::JukeBoxChipMode Memory::getJukeBoxChipMode() const { return jukeBox->getChipMode(); }
+
 void Memory::setJukeBoxJumper(JukeBox::Jumper j)
 {
     if (jukeBox->getJumper() == j) return;
@@ -2370,6 +2386,8 @@ void Memory::setCodeTankEnabled(bool b)
         }
     }
 }
+
+pom1::CodeTankJumper Memory::getCodeTankJumper() const { return codeTank->getJumper(); }
 
 void Memory::setCodeTankJumper(CodeTank::Jumper j)
 {

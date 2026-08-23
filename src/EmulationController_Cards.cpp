@@ -21,6 +21,9 @@
 #include "RomLoader.h"
 #include "TMS9918.h"
 #include "TelemetryPort.h"   // complete type for memory->getTelemetryPort()
+#include "CassetteDevice.h"  // complete type for memory->getCassetteDevice()
+#include "MicroSD.h"         // complete type for memory->getMicroSD()
+#include "IECCard.h"         // complete type for memory->getIECCard()
 #include "Logger.h"
 
 #include <algorithm>

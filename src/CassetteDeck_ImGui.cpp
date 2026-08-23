@@ -11,6 +11,7 @@
 #include "CassetteDeck_ImGui.h"
 
 #include "EmulationController.h"
+#include "CassetteDevice.h"   // complete type: CassetteDevice::TapeInfo & co.
 #include "EmulationSnapshot.h"
 #include "IconsFontAwesome6.h"
 

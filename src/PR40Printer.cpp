@@ -132,7 +132,14 @@ void PR40Printer::serialize(pom1::SnapshotWriter& w) const
 void PR40Printer::deserialize(pom1::SnapshotReader& r)
 {
     std::lock_guard<std::mutex> lock(cardMutex);
-    mode               = static_cast<SwitchMode>(r.readU8());
+    // Same clamp-the-untrusted-enum form the other cards use (MicroSD's
+    // mcuPhase / nextPhaseAfterResponse, IECCard's rxPhase_ / txPhase_,
+    // JukeBox's chipMode): a scoped enum whose enumerators span 0..2 has no
+    // value 3+, so casting a corrupt byte into it is undefined behaviour. This
+    // was the one restore site in the codebase still missing the guard.
+    { uint8_t v = r.readU8();
+      mode = (v <= static_cast<uint8_t>(SwitchMode::PrintOnly))
+                 ? static_cast<SwitchMode>(v) : SwitchMode::Off; }
     // Clamp the untrusted snapshot value: flushLineLocked() indexes fifo[40]
     // up to fifoLevel, so an out-of-range value would read out of bounds.
     fifoLevel          = std::min<int>(r.readU8(), kFifoCapacity);

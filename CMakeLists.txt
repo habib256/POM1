@@ -611,6 +611,40 @@ else()
     endif()
 endif()
 
+# ── pom1_build_flags — portability macros shared by EVERY family of targets ──
+#
+# These are not preferences, they are correctness switches for the Windows
+# headers, and they must be identical wherever POM1's own .cpp files are
+# compiled. They used to be set with target_compile_definitions() on the POM1
+# executable ALONE, so `pom1_core` and the 50 test targets compiled the very
+# same sources under a different set of macros. The 22 août 2026 breakage is
+# the canonical symptom: POM1.exe built cleanly while test_rewind_buffer,
+# test_cli_dispatcher and test_measured_cpu_rate all died on RewindBuffer.cpp
+# with C2589 — `min`/`max` as macros out of windows.h, exactly what NOMINMAX
+# exists to prevent. Six source files had already grown their own hand-rolled
+# `#ifndef NOMINMAX` preamble (RewindBuffer.cpp, SocketHandle.h,
+# AudioDevice.cpp, main_imgui.cpp, MainWindow_Dialogs.cpp,
+# NativeFileDialog.cpp) — six files that each paid the same lesson separately,
+# which is the shape of a build-system defect, not of a source defect.
+#
+# The divergence stopped being theoretical when ctest started running on
+# Windows (ci.yml, 22 août 2026): a macro set that differs between the app and
+# its tests is now a live source of red that does not reproduce on Linux.
+#
+# An INTERFACE library is the fix that cannot rot: it is linked, so a new
+# target either picks the flags up or is visibly missing a line.
+add_library(pom1_build_flags INTERFACE)
+if(MSVC)
+    # NOMINMAX: évite que windows.h définisse min/max (casse std::min / std::max).
+    # WIN32_LEAN_AND_MEAN: réduit les en-têtes Windows (moins de collisions avec le code C++).
+    target_compile_definitions(pom1_build_flags INTERFACE
+        _CRT_SECURE_NO_WARNINGS
+        NOMINMAX
+        WIN32_LEAN_AND_MEAN
+    )
+    target_compile_options(pom1_build_flags INTERFACE /utf-8)
+endif()
+
 set(POM1_OWN_SOURCES
     ${SOURCES}
     ${POM1_RENDERER_SOURCES}
@@ -632,6 +666,11 @@ set_source_files_properties(${POM1_OWN_SOURCES} PROPERTIES
 # static lib propagates ${SRC_DIR}/third_party/libresidfp/src to consumers,
 # so SID.cpp can include "residfp/residfp_defs.h" and the upstream SID.h.
 target_link_libraries(${PROJECT_NAME} libresidfp_static)
+
+# Portability macros — same INTERFACE target the tests link, so the app and the
+# 50 test binaries compile POM1's sources under one macro set. See the
+# pom1_build_flags block above.
+target_link_libraries(${PROJECT_NAME} pom1_build_flags)
 
 # miniaudio (AudioDevice.cpp) dlopens its ALSA/Pulse/JACK backends and spawns
 # threads — link libdl/libpthread EXPLICITLY instead of riding on whatever the
@@ -1032,16 +1071,11 @@ else()
             PROPERTIES COMPILE_FLAGS "-fno-objc-arc -Wno-deprecated-declarations")
     endif()
 
-    if(MSVC)
-        # NOMINMAX: évite que windows.h définisse min/max (casse std::min / std::max).
-        # WIN32_LEAN_AND_MEAN: réduit les en-têtes Windows (moins de collisions avec le code C++).
-        target_compile_definitions(${PROJECT_NAME} PRIVATE
-            _CRT_SECURE_NO_WARNINGS
-            NOMINMAX
-            WIN32_LEAN_AND_MEAN
-        )
-        target_compile_options(${PROJECT_NAME} PRIVATE /utf-8)
-    endif()
+    # (MSVC portability macros — _CRT_SECURE_NO_WARNINGS / NOMINMAX /
+    # WIN32_LEAN_AND_MEAN / /utf-8 — moved to the pom1_build_flags INTERFACE
+    # target above, which the app, pom1_core and every test target link. They
+    # were set here on ${PROJECT_NAME} alone, which is what let the app and its
+    # own tests compile the same sources under different macros.)
 
     # Compiler flags (pkg-config only)
     if(NOT glfw3_FOUND)
@@ -1058,6 +1092,8 @@ else()
             ${POM1_SRC_DIR}/BasicTokeniserApplesoft.cpp
             ${POM1_SRC_DIR}/BasicCompilerApplesoft.cpp)
         target_include_directories(basicc PRIVATE ${POM1_SRC_DIR})
+        # Third family of targets compiling POM1 sources — same macro set.
+        target_link_libraries(basicc PRIVATE pom1_build_flags)
     endif()
 
     # Tests — native-only (Emscripten runs in the browser, ctest on host).
