@@ -827,11 +827,32 @@ static int runHeadless(pom1::CliPlan& plan)
 
     // No frame dump: if cycle-scheduled pastes were given (e.g. paired with
     // --telemetry-log to capture the resulting output stream), replay them up to
-    // the last scheduled cycle before dropping into the idle wait.
+    // the last scheduled cycle before dropping into the idle wait. With
+    // --exit-after-cycles the budget is that flag (pastes past it are skipped).
     if (!plan.timedPastes.empty()) {
         uint64_t maxPaste = 0;
         for (const auto& p : plan.timedPastes) maxPaste = std::max(maxPaste, p.cycle);
-        runCyclesWithTimedPastes(emu, maxPaste, plan.timedPastes);
+        const uint64_t budget = plan.exitAfterCycles > 0
+                                    ? static_cast<uint64_t>(plan.exitAfterCycles)
+                                    : maxPaste;
+        runCyclesWithTimedPastes(emu, budget, plan.timedPastes);
+    }
+    else if (plan.exitAfterCycles > 0) {
+        emu.runCyclesSync(static_cast<uint64_t>(plan.exitAfterCycles));
+    }
+
+    // Bounded run (--exit-after-cycles): the machine booted, every plugged card
+    // survived N cycles of the Monitor / BASIC / card ROM, nothing crashed or
+    // deadlocked. That is the whole assertion of the headless preset matrix —
+    // exit 0 here, never fall into the signal wait.
+    if (plan.exitAfterCycles > 0) {
+        EmulationSnapshot snap;
+        emu.copySnapshot(snap);
+        char msg[96];
+        std::snprintf(msg, sizeof(msg), "headless run complete — %d cycles, PC=$%04X",
+                      plan.exitAfterCycles, (unsigned)snap.programCounter);
+        pom1::log().info("POM1", msg);
+        return 0;
     }
 
     std::signal(SIGINT,  pom1_headless_signal_handler);

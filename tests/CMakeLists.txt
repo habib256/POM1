@@ -1759,6 +1759,22 @@ if(Python3_FOUND)
     set_tests_properties(gfx_regress_gen2_testcard PROPERTIES
                          TIMEOUT 60 SKIP_RETURN_CODE 77)
 
+    # ── headless_preset_matrix — boot every preset with no display ────────────
+    # The widest test in the suite for its cost: `--headless --preset N
+    # --exit-after-cycles 2000000` for each of the 13 presets, asserting exit 0,
+    # no ERROR log line and the CPU parked in the Woz Monitor ($FF00-$FFFF).
+    # Covers applyHeadlessConfig's full card fan-out (RAM profile, jumpers, plug
+    # cascades, Parmigiani evictions, every card's reset + bus registration) —
+    # the path that breaks when a card is added, and which no unit test reached
+    # before (46 of 109 TUs entered no test binary, August 2026).
+    add_test(NAME headless_preset_matrix
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/test_headless_presets.py"
+                     --pom1 "$<TARGET_FILE:pom1_imgui>" --verbose
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(headless_preset_matrix PROPERTIES
+                         TIMEOUT 300 SKIP_RETURN_CODE 77)
+
     # ── size_report_smoke — tools/size_report.py + the DevBench archive link ──
     # Rebuilds the gen2c runtime archive from dev/bench/gen2c.json (pins the
     # spec: every listed source must exist and compile), links a text-only
