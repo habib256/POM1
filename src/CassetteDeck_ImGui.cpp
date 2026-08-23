@@ -60,7 +60,6 @@ constexpr ImU32 kGlyphRecActive = IM_COL32(234,  60,  52, 255); // engaged → r
 constexpr ImU32 kCounterBg      = IM_COL32( 10,   8,   4, 255);
 constexpr ImU32 kCounterRim     = IM_COL32( 50,  50,  54, 255);
 constexpr ImU32 kCounterDigit   = IM_COL32(232, 176,  72, 255);
-constexpr ImU32 kCounterDigitDim = IM_COL32( 64,  46,  18, 255);
 constexpr ImU32 kBadgeBorder    = IM_COL32(200, 202, 206, 255);
 constexpr ImU32 kBadgeText      = IM_COL32(210, 212, 216, 255);
 constexpr ImU32 kCompartmentLip = IM_COL32(  4,   4,   6, 255);
@@ -74,7 +73,6 @@ struct Rect { float x0, y0, x1, y1; };
 // Speaker grille removed — it was decorative-only and ate ~230 px of vertical
 // space. Everything below shifts up by 236 px to keep the counter/cassette/keys
 // sitting on the same deck.
-constexpr Rect kCounterBarR {   9.0f,  14.0f, 369.0f,  70.0f };
 constexpr Rect kBrandBadgeR { 306.0f,  30.0f, 360.0f,  56.0f };
 constexpr Rect kCounterWinR { 148.0f,  26.0f, 212.0f,  60.0f };
 // REC LED — sits in the counter bar where the MIC switch used to live, on

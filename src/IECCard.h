@@ -121,7 +121,7 @@ private:
     // Debug counters (used only when POM1_IEC_DEBUG=1; mutable so const
     // reader path can bump them). No-op overhead is one increment per
     // PORTB read otherwise.
-    mutable unsigned long dbgPortBReads_ = 0;
+    [[maybe_unused]] mutable unsigned long dbgPortBReads_ = 0;
 
     // Edge-driven FSM helpers.
     void evaluateEdges(uint8_t portB, uint8_t ddrB);

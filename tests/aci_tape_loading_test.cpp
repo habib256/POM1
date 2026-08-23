@@ -243,10 +243,8 @@ int main(int argc, char** argv)
     constexpr int64_t kCycleBudget = 200'000'000LL;
     int64_t cyclesConsumed = 0;
 
-    // Track progress — if no bytes land in $E000-$EFFF for 50 M cycles after
-    // some signs of tape activity, bail out early with a diagnostic.
+    // Track progress: log each time new bytes land in the load window.
     int lastNonZero = 0;
-    int64_t cyclesSinceProgress = 0;
 
     // PC trace counters — buckets the CPU's location across the run so we
     // can tell where the time is being spent (Wozmon stuck waiting? ACI
@@ -310,9 +308,6 @@ int main(int argc, char** argv)
                         static_cast<long long>(cyclesConsumed), nz,
                         loadFrom, loadTo, pc);
             lastNonZero = nz;
-            cyclesSinceProgress = 0;
-        } else {
-            cyclesSinceProgress += actual;
         }
 
         // Early stop if signature matches AND we've seen reasonable

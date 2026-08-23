@@ -1007,12 +1007,10 @@ void MainWindow_ImGui::renderMemoryBarWindow()
     // First pass: compute natural (proportional) height, clamp to minRegionH
     const float availH = std::max(100.0f, ImGui::GetContentRegionAvail().y - 4.0f);
     std::vector<float> regionH(flat.size());
-    float totalNatural = 0.0f;
     float totalClamped = 0.0f;
     for (size_t i = 0; i < flat.size(); ++i) {
         float natural = (static_cast<float>(flat[i].end - flat[i].start + 1) / 65536.0f) * availH;
         regionH[i] = std::max(natural, minRegionH);
-        totalNatural += natural;
         totalClamped += regionH[i];
     }
     // Scale large regions down so everything fits within availH if clamping expanded the total

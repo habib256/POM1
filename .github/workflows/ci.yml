@@ -130,13 +130,13 @@ jobs:
         run: tools/ensure_imgui.sh imgui
 
       - name: Build POM1 (Metal backend, the macOS default)
-        # NOT -DPOM1_WERROR=ON, deliberately. The tree was measured clean under
-        # GCC's -Wall -Wextra; AppleClang's is a different set, and promising a
-        # gate on an unmeasured warning list would mean shipping a workflow that
-        # fails on its first run. The flags are still ON, so the warnings show up
-        # in this log — read them once, fix them, then add the -Werror here.
+        # -DPOM1_WERROR=ON since 23 août 2026: the tree was measured under
+        # AppleClang 17 (39 warnings at 10 sites — unused constants, a stale
+        # lambda capture, set-but-unread counters, the Metal stub's untouched
+        # GL fields) and cleaned, so this gate starts green. Vendored code
+        # under src/third_party stays outside the -Werror scope (CMakeLists).
         run: |
-          cmake -S . -B build
+          cmake -S . -B build -DPOM1_WERROR=ON
           cmake --build build -j"$(sysctl -n hw.ncpu)"
 
       - name: Run ctest (Metal build)
