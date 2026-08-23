@@ -318,7 +318,6 @@ private:
     bool showSidTracker = false;        // SID tracker
     bool showDebugger = false;
     bool showRewindTimeline = false;   // State-rewind timeline / scrub panel
-    bool rewindAutoStarted = false;    // one-shot: the toolbar timeline band auto-enables recording
     bool showAbout = false;
     bool showSpecialThanks = false;
     bool showHardwareReference = false;

@@ -1700,13 +1700,11 @@ void MainWindow_ImGui::renderToolbar()
         // rewound-past future). Sizes itself to the gap up to the About button.
         {
             ImGui::SameLine();
-            EmulationController::RewindStatus rw = emulation->getRewindStatus();
-            // One-shot: make the band live out of the box. The user can still
-            // turn recording off in CPU → State Rewind; we don't re-force it.
-            if (!rewindAutoStarted) {
-                rewindAutoStarted = true;
-                if (!rw.enabled) { emulation->setRewindEnabled(true); rw = emulation->getRewindStatus(); }
-            }
+            // Recording is OFF by default (23 août 2026): the capture serialises
+            // ~80 KB four times a second under stateMutex — a periodic latency
+            // spike every user paid for a feature few use. The band shows
+            // "timeline (off)" and CPU → State Rewind turns it on.
+            const EmulationController::RewindStatus rw = emulation->getRewindStatus();
             ImGuiStyle& style  = ImGui::GetStyle();
             const float aboutW = ImGui::CalcTextSize(ICON_FA_CIRCLE_INFO).x + style.FramePadding.x * 2.0f;
             const float aboutX = io.DisplaySize.x - aboutW - style.WindowPadding.x;

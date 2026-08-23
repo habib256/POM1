@@ -10,6 +10,15 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — l'enregistrement du rewind est désactivé par défaut
+
+La bande timeline de la barre d'outils armait l'enregistrement au premier rendu
+(`rewindAutoStarted`), donc chaque utilisateur payait la capture — ~80 Ko sérialisés
+quatre fois par seconde **sous `stateMutex`** (`TODO.md`, « Capture du rewind sous
+`stateMutex` ») — pour une fonction que peu ouvrent. La bande affiche désormais
+`timeline (off)` et CPU → State Rewind → « Enable rewind recording » l'active ; rien
+d'autre ne change (`rewind_buffer_smoke` vert).
+
 ### Added — matrice headless des 13 presets (`headless_preset_matrix`)
 
 > **Mesuré** : 13/13 presets bootent et se garent dans la boucle clavier du Woz Monitor
