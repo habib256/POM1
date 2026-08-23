@@ -32,6 +32,7 @@ namespace {
 RankedMutex<LockRank::State>    stateM;
 RankedMutex<LockRank::Keyboard> keyM;
 RankedMutex<LockRank::Snapshot> snapM;
+RankedMutex<LockRank::Rewind>   rewM;
 
 #if POM1_HAVE_FORK && POM1_LOCK_ORDER_CHECKS
 // Runs `fn` in a child process; returns true iff the child died on SIGABRT
@@ -89,6 +90,22 @@ int main()
         std::lock_guard<decltype(snapM)>  c(snapM);
     }
 
+    // Rewind (rank 25) slots between State and Keyboard. The emulation slice
+    // takes it ALONE after releasing stateMutex (delta encoding off the state
+    // lock); the UI's seek path takes it inside stateMutex, and
+    // rewindRestoreFrame then publishes under snapshotMutex — so the real
+    // nestings are rewind-alone, state > rewind, and state > rewind > snapshot.
+    { std::lock_guard<decltype(rewM)> r(rewM); }
+    {
+        std::lock_guard<decltype(stateM)> a(stateM);
+        std::lock_guard<decltype(rewM)>   r(rewM);
+    }
+    {
+        std::lock_guard<decltype(stateM)> a(stateM);
+        std::lock_guard<decltype(rewM)>   r(rewM);
+        std::lock_guard<decltype(snapM)>  c(snapM);
+    }
+
     // Releasing must have unwound the thread's stack completely; if it did not,
     // the very next legal acquisition below would trip.
     { std::lock_guard<decltype(stateM)> a(stateM); }
@@ -122,6 +139,13 @@ int main()
         std::lock_guard<decltype(keyM)>  b(keyM);
     }) && "snapshot-then-keyboard inversion was NOT caught");
 
+    // rewindMutex then stateMutex: the slice must never re-enter the state
+    // lock while encoding — that is the whole point of moving capture out.
+    assert(abortsInChild([] {
+        std::lock_guard<decltype(rewM)>   r(rewM);
+        std::lock_guard<decltype(stateM)> a(stateM);
+    }) && "rewind-then-state inversion was NOT caught");
+
     // Equal rank is an inversion too: two locks of the same rank have no
     // defined order between them, so nesting them is exactly as unsafe.
     static RankedMutex<LockRank::Keyboard> keyM2;
@@ -138,7 +162,7 @@ int main()
         std::lock_guard<decltype(snapM)>  c(snapM);
     }) && "the DOCUMENTED order aborted — the checker is inverted");
 
-    printf("lock_order_smoke: OK (4 inversions caught, legal order accepted)\n");
+    printf("lock_order_smoke: OK (5 inversions caught, legal order accepted)\n");
     return 0;
 #endif
 }

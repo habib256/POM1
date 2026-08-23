@@ -625,6 +625,10 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
     // acted on after the lock is released (hardReset/softReset re-acquire stateMutex,
     // so they must run lock-free to avoid self-deadlock on the non-recursive mutex).
     bool termHardReset = false;
+    // State-rewind capture, staged under stateMutex and encoded after it
+    // (see the rewindMutex note in the header). Empty = nothing to encode.
+    std::vector<uint8_t> rewindBlob;
+    uint64_t rewindBlobGeneration = 0;
     bool termSoftReset = false;
     bool termClearScreen = false;
     {
@@ -720,15 +724,30 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
             rewindCaptureAccum += elapsedSeconds;
             if (rewindCaptureAccum >= kRewindCaptureIntervalSec) {
                 rewindCaptureAccum = 0.0;
-                rewindBuffer.capture(memory->saveSnapshotToBuffer(cpu.get()));
-                const std::size_t n = rewindBuffer.frameCount();
-                rewindFrameCount_.store(n);
-                rewindStoredBytes_.store(rewindBuffer.storedBytes());
-                rewindPos_.store(n ? n - 1 : 0);
+                // Copy the pages here — the state must not move under us —
+                // but encode the delta below, once stateMutex is released.
+                rewindBlob = memory->saveSnapshotToBuffer(cpu.get());
+                rewindBlobGeneration = rewindGeneration_.load();
             }
         }
 #endif
     }
+
+#if !POM1_IS_WASM
+    // Delta-encode the staged rewind frame OUTSIDE stateMutex: this is the
+    // expensive half of a capture (keyframe-vs-delta diff over the whole blob +
+    // eviction), and nothing in it needs the machine state — only the buffer.
+    // A timeline edit that landed in between (resume-here truncation, disable,
+    // clear) bumps the generation; the blob then belongs to a future that no
+    // longer exists and is dropped rather than appended behind the new head.
+    if (!rewindBlob.empty()) {
+        std::lock_guard<pom1::RankedMutex<pom1::LockRank::Rewind>> rlock(rewindMutex);
+        if (rewindBlobGeneration == rewindGeneration_.load()) {
+            rewindBuffer.capture(rewindBlob);
+            publishRewindStatusLocked();
+        }
+    }
+#endif
 
     // Park on the lock-step ACK without busy-spinning (this slice did no CPU
     // work). 1 ms keeps ACK latency low without pegging a core.
