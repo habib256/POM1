@@ -80,7 +80,6 @@ int main(int argc, char** argv) {
 
     uint32_t pass = 0, fail = 0, funcFail = 0, cycOnlyFail = 0;
     int opFail[256] = {0}, opTotal[256] = {0}, opCycFail[256] = {0};
-    int shown = 0;
     for (uint32_t i = 0; i < count && r.ok; ++i) {
         const uint8_t  op  = r.u8();
         const State    ini = readState(r);
@@ -118,7 +117,7 @@ int main(int argc, char** argv) {
         if (!funcGood) ++funcFail; else { ++cycOnlyFail; ++opCycFail[op]; }
         static bool opShown[256] = {false};
         if (!opShown[op]) {
-            opShown[op] = true; ++shown;
+            opShown[op] = true;
             std::fprintf(stderr,
                 "FAIL op=%02X %s pc %04X->%04X(exp %04X) a=%02X(%02X) x=%02X(%02X) y=%02X(%02X) "
                 "s=%02X(%02X) p=%02X(%02X) cyc=%d(exp%d)\n",

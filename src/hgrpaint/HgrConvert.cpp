@@ -89,15 +89,6 @@ inline uint32_t avgRgba(Rgb a, Rgb b)
     return (uint32_t(0xFFu) << 24) | (bl << 16) | (g << 8) | r;
 }
 
-// CAM16-UCS arithmetic helpers (the in-candidate scoring walk works in this
-// perceptual space; the committed error diffusion works in linear RGB).
-inline Cam16Ucs operator+(const Cam16Ucs& a, const Cam16Ucs& b)
-{ return {a.J + b.J, a.a + b.a, a.b + b.b}; }
-inline Cam16Ucs operator-(const Cam16Ucs& a, const Cam16Ucs& b)
-{ return {a.J - b.J, a.a - b.a, a.b - b.b}; }
-inline Cam16Ucs scale(const Cam16Ucs& a, float s)
-{ return {a.J * s, a.a * s, a.b * s}; }
-
 // Perceptual cost with the chroma axes weighted by `cw`. CAM16-UCS alone makes a
 // same-lightness colour "nearest" to a neutral mid-grey (e.g. bright magenta vs
 // 50% grey), so flat greys dither into magenta/green confetti instead of clean

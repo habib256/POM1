@@ -10,6 +10,44 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — matrice headless des 13 presets (`headless_preset_matrix`)
+
+> **Mesuré** : 13/13 presets bootent et se garent dans la boucle clavier du Woz Monitor
+> (`PC=$FF29`) en **3,1 s** pour toute la matrice. `ctest` 96 → 97.
+
+Le mode `--headless` existait, complet (presets, cartes, verbes différés), et **aucun
+test ne l'appelait** : 46 des 109 TU — la moitié du code — n'entraient dans aucun
+binaire de test, et le fan-out « ajouter une carte » (profil RAM, cavaliers, cascades
+TMS9918→CodeTank / ACI→ACI étendue / microSD→IEC, évictions Parmigiani, reset et
+enregistrement bus de chaque carte) ne cassait que chez un utilisateur. Il manquait une
+seule brique : le mode headless n'avait d'issue qu'un signal ou un `--dump-*-frame`.
+
+- **`--exit-after-cycles <N>`** (`CliDispatcher` + `runHeadless`) : après les verbes
+  différés, exécute exactement N cycles émulés sur le thread appelant, journalise
+  `headless run complete — N cycles, PC=$xxxx` et sort 0. Implique `--headless` ;
+  avec `--paste-at-cycle` il devient le budget de rejeu. Documenté dans `doc/CLI.md`
+  (`cli_flags_sync` + `doc_paths_sync` verts).
+- **`tools/test_headless_presets.py`** : lit `--list-presets` (jamais de compte en
+  dur), boote chaque preset avec 2 M cycles, exige sortie 0, aucune ligne `ERROR`, et
+  **le CPU dans `$FF00-$FFFF`** — le Monitor a atteint son prompt, ce qui prouve que
+  la ROM, la RAM et chaque carte branchée ont survécu au boot. Skip 77 sans binaire.
+
+### Changed — `-Werror` sur le job macOS
+
+L'arbre mesuré sous AppleClang 17 donnait **39 avertissements sur 10 sites**, tous
+du code mort ou presque : deux constantes et un rectangle du magnétophone jamais
+dessinés, les trois helpers CAM16-UCS de `HgrConvert` que le commentaire disait
+utilisés par la marche de scoring (elle travaille en RGB linéaire), une capture de
+lambda sur des `constexpr`, deux compteurs incrémentés et jamais lus dans les tests
+(`cyclesSinceProgress`, `shown`), `totalNatural` dans la barre mémoire, et les 27
+champs GL de `CrtEffectStack` que le stub Metal ne touche pas par conception — ce
+dernier traité par un pragma **avant** l'include, pas par un `#if POM1_HAS_METAL`
+dans l'en-tête : la définition est à portée de cible, et une classe dont la
+disposition en dépend est exactement la divergence que le bloc `pom1_build_flags`
+documente. `kAboutPhotoFile` redevient la source unique du chemin de la photo About
+(quatre littéraux dupliqués le contournaient). `ci.yml` → `macos` passe
+`-DPOM1_WERROR=ON` ; Windows reste à mesurer (`TODO.md`).
+
 ### Changed — le registre de panneaux devient la liste unique des 68 fenêtres
 
 > **Vérifié par A/B à l'exécution**, la seule preuve disponible ici : POM1 lancé 20 s

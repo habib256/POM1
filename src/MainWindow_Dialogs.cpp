@@ -118,8 +118,7 @@ static std::string find_pic_file_path(const char* relBasename)
 static std::string find_about_photo_jpeg_path()
 {
 #if POM1_IS_WASM
-    (void)kAboutPhotoFile;
-    return std::string("pic/schlumberger-2-apple-1.jpg");
+    return std::string("pic/") + kAboutPhotoFile;
 #else
     namespace fs = std::filesystem;
 
@@ -130,14 +129,9 @@ static std::string find_about_photo_jpeg_path()
         return {};
     };
 
-    static const char* const rel_candidates[] = {
-        "pic/schlumberger-2-apple-1.jpg",
-        "../pic/schlumberger-2-apple-1.jpg",
-        "../../pic/schlumberger-2-apple-1.jpg",
-        "../../../pic/schlumberger-2-apple-1.jpg",
-    };
-    for (const char* r : rel_candidates) {
-        std::string s = try_path(fs::path(r));
+    static const char* const rel_dirs[] = { "pic", "../pic", "../../pic", "../../../pic" };
+    for (const char* r : rel_dirs) {
+        std::string s = try_path(fs::path(r) / kAboutPhotoFile);
         if (!s.empty())
             return s;
     }

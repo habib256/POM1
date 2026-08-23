@@ -59,7 +59,7 @@ void MainWindow_ImGui::evictMemoryMapRegionsForJukeBox()
 {
     constexpr uint16_t kWinLo = 0x4000;
     constexpr uint16_t kWinHi = 0xBFFF;
-    auto overlaps = [kWinLo, kWinHi](uint16_t s, uint16_t e) {
+    auto overlaps = [](uint16_t s, uint16_t e) {
         return s <= kWinHi && e >= kWinLo;
     };
     loadedRoms.erase(

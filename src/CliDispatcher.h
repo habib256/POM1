@@ -137,6 +137,11 @@ struct CliPlan {
     std::string                        dumpTmsPath;
     int                                dumpAfterCycles = 0;   // --dump-after-cycles N: run exactly N emulated cycles before the capture (deterministic, host-independent regression); 0 = fall back to wall-clock --dump-settle-ms
     int                                dumpSettleMs = 1000;
+    // --exit-after-cycles N: headless run budget — run exactly N emulated cycles
+    // after the deferred verbs, then exit 0 (host-independent "boot and live"
+    // smoke for every preset; see tools/test_headless_presets.py). Implies
+    // --headless. 0 = idle until SIGINT/SIGTERM (the historical behaviour).
+    int                                exitAfterCycles = 0;
     std::string                        initialTapePath;
     bool                               initialTapeAutoPlay = false;
     std::string                        saveTapePath;

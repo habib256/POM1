@@ -3,6 +3,17 @@
 // Pom1 Apple 1 Emulator
 // Copyright (C) 2000-2026 Verhille Arnaud
 
+// The Metal build compiles only the inert stubs below, so the GL resource
+// handles + uniform slots the header declares are, by design, never touched.
+// The header must NOT grow a POM1_HAS_METAL branch around them: the define is
+// target-scoped, and a class whose layout depends on it is the exact
+// divergence the pom1_build_flags block in CMakeLists warns about. Silence the
+// one diagnostic instead — it is raised at the declaration, so the pragma has
+// to precede the include.
+#if defined(POM1_HAS_METAL) && defined(__clang__)
+#pragma clang diagnostic ignored "-Wunused-private-field"
+#endif
+
 #include "CrtEffectStack.h"
 #include "OpenGLShader.h"
 #include "Logger.h"

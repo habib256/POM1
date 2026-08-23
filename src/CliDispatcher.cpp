@@ -270,6 +270,7 @@ constexpr CliFlagHelp kCliFlagHelp[] = {
     {'A', "--dump-tms-frame <path>",            "Headless: same for the TMS9918 framebuffer."},
     {'A', "--dump-after-cycles <N>",            "Deterministic settle before a --dump-*-frame capture."},
     {'A', "--dump-settle-ms <N>",               "Wall-clock settle before a --dump-*-frame capture (default 1000)."},
+    {'A', "--exit-after-cycles <N>",            "Headless: run exactly N emulated cycles after the deferred verbs, then exit 0."},
     {'A', "--tape <path>",                      "Preload a cassette and auto-Play (.aci .wav .aiff .ogg .mp3 .flac)."},
     {'A', "--save-tape <path>",                 "Dump the deck on clean shutdown."},
     {'A', "--save-tape-format <aci|wav>",       "Format for --save-tape."},
@@ -474,6 +475,17 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& cleanExitOut)
                 return std::nullopt;
             }
             plan.dumpAfterCycles = n;
+            continue;
+        }
+        if (arg == "--exit-after-cycles") {
+            if (!needArg(i, "--exit-after-cycles")) return std::nullopt;
+            int n = 0;
+            if (!parseIntPositive(argv[++i], n)) {
+                logAndFail("--exit-after-cycles expects a positive integer (CPU cycles)");
+                return std::nullopt;
+            }
+            plan.exitAfterCycles = n;
+            plan.headless = true;   // a bounded run is a headless one-shot
             continue;
         }
         if (arg == "--preset" || arg == "-p") {
