@@ -80,6 +80,11 @@ void SID::reset()
 void SID::writeRegister(uint8_t reg, uint8_t value)
 {
     if (reg >= kNumRegisters) return;
+    // Land the write at the RIGHT cycle. Everything the CPU has executed since
+    // the last flush must reach the chip BEFORE this new register value, or a
+    // note-on is heard up to kCatchUpCycles early — the one place where the
+    // catch-up accumulator would be observable if it were not flushed here.
+    flushPendingCycles();
     std::lock_guard<std::mutex> lock(chipMutex);
     shadowRegs[reg] = value;
     chip->write(reg, value);
@@ -88,6 +93,9 @@ void SID::writeRegister(uint8_t reg, uint8_t value)
 uint8_t SID::readRegister(uint8_t reg)
 {
     if (reg >= kNumRegisters) return 0;
+    // Same reasoning as writeRegister: OSC3/ENV3 read back the chip's state at
+    // the current cycle, so the chip has to BE at the current cycle first.
+    flushPendingCycles();
     std::lock_guard<std::mutex> lock(chipMutex);
     return chip->read(reg);
 }
@@ -96,8 +104,25 @@ void SID::advanceCycles(int cycles)
 {
     if (cycles <= 0) return;
 
-    std::lock_guard<std::mutex> lock(chipMutex);
+    // Called once per 6502 instruction — see kCatchUpCycles in SID.h for why
+    // this accumulates instead of clocking the chip straight away.
+    pendingCycles += cycles;
+    if (pendingCycles < kCatchUpCycles) return;
+    flushPendingCycles();
+}
 
+void SID::flushPendingCycles()
+{
+    const int cycles = pendingCycles;
+    pendingCycles = 0;
+    if (cycles <= 0) return;
+
+    std::lock_guard<std::mutex> lock(chipMutex);
+    clockChipLocked(cycles);
+}
+
+void SID::clockChipLocked(int cycles)
+{
     short staging[kStagingShorts];
     int remaining = cycles;
     while (remaining > 0) {
@@ -143,6 +168,9 @@ void SID::fillAudioBuffer(float* output, int frameCount)
 void SID::setChipModel(ChipModel m)
 {
     if (m == currentModel.load(std::memory_order_relaxed)) return;
+    // Clock the outgoing chip up to date before it is destroyed: those cycles
+    // belong to the 6581 the program was playing, not to the 8580 replacing it.
+    flushPendingCycles();
     std::lock_guard<std::mutex> lock(chipMutex);
     rebuildChip(m);
     // Restore last-written register state so a music program in flight

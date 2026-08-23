@@ -281,6 +281,11 @@ public:
     };
     void setRewindEnabled(bool enabled);
     bool isRewindEnabled() const { return rewindEnabled_.load(); }
+
+    /// ROM files served from the compiled-in fallback because the file was not
+    /// found (see Memory::romFallbacksUsed). Read once at boot by the UI to
+    /// tell the user their `roms/` directory is not where POM1 is looking.
+    std::vector<std::string> romFallbacksUsed() const;
     void setRewindMemoryBudgetMB(int megabytes);
     RewindStatus getRewindStatus() const;
     void rewindSeekTo(std::size_t pos);       // preview: pause + restore frame

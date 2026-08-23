@@ -501,6 +501,32 @@ set_tests_properties(memory_dualram_smoke PROPERTIES TIMEOUT 10)
 # Pins that configureResetVectors only sets $FFFC/$FFFD (RESET), leaving the
 # WozMonitor.rom NMI ($0F00) and IRQ ($0000) intact. P-LAB IRQ-driven programs
 # that install a trampoline at $0000 break if IRQ is overwritten.
+# ── ROM fallback: POM1 outside its own folder ────────────────────────────────
+# Launched from anywhere but its directory, POM1 used to log "Cannot find ROM
+# file: WozMonitor.rom" and boot a machine with $FF00 empty — a black window
+# whose only explanation sat in a log file. The Monitor now has a compiled-in
+# fallback like the ACI already had; this pins that the copy is byte-identical
+# to roms/WozMonitor.rom (drift guard) and that the substitution is reported
+# through romFallbacksUsed(), which is what the UI banner reads.
+add_executable(test_rom_fallback
+    rom_fallback_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_rom_fallback PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_rom_fallback PRIVATE libresidfp_static)
+if(APPLE)
+    target_compile_definitions(test_rom_fallback PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+if(WIN32)
+    target_link_libraries(test_rom_fallback PRIVATE ws2_32)
+endif()
+add_test(NAME rom_fallback_smoke COMMAND test_rom_fallback
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(rom_fallback_smoke PROPERTIES TIMEOUT 30)
+
 add_executable(test_reset_vectors
     reset_vectors_smoke_test.cpp
     ${POM1_TEST_CORE_SOURCES}

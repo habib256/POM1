@@ -174,6 +174,14 @@ bool EmulationController::loadSnapshot(const std::string& path, std::string& err
 
 // ── State rewind ──────────────────────────────────────────────────────────
 
+std::vector<std::string> EmulationController::romFallbacksUsed() const
+{
+    // Copied under the state lock: the emulation thread may be re-loading ROMs
+    // (a preset switch defers its card plug by 15 frames) while the UI asks.
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->romFallbacksUsed();
+}
+
 void EmulationController::setRewindEnabled(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

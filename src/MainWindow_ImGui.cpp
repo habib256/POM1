@@ -554,6 +554,27 @@ void MainWindow_ImGui::render()
     if (!uiSettingsLoaded_) {
         uiSettingsLoaded_ = true;
         loadUiSettings();
+
+        // A ROM POM1 could not find is served from a compiled-in copy, which
+        // keeps the machine bootable — but silently, and the machine is then not
+        // the one the user thinks they have (only the Monitor and the two ACI
+        // pages have fallbacks; BASIC and the card ROMs simply are not there).
+        // The cause is almost always the executable running outside its own
+        // directory. Said ONCE, on the first frame, and left on screen: a
+        // timed-out message would be gone before the user finished reading the
+        // black screen that prompted them to look.
+        const std::vector<std::string> fallbacks = emulation->romFallbacksUsed();
+        if (!fallbacks.empty()) {
+            std::string list;
+            for (const auto& f : fallbacks) {
+                if (!list.empty()) list += ", ";
+                list += f;
+            }
+            setStatusMessage("ROMs not found (" + list + ") - built-in copies used. "
+                             "Is POM1 running outside its own folder?", 0.0f);
+            pom1::log().warn("POM1", "ROM fallback in use: " + list +
+                                     " - check the working directory (roms/ not found)");
+        }
     }
     // Follow the monitor's content scale (window dragged to a HiDPI screen, OS
     // scale changed). No-op unless it actually moved — see setUiDpiScale.

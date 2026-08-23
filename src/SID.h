@@ -125,6 +125,25 @@ private:
     /// overflows. 4096 cycles ≈ 178 samples max @ 44.1 kHz.
     static constexpr int kMaxCyclesPerBatch = 4096;
 
+    /// Catch-up granularity: how many emulated cycles may pile up before the
+    /// chip is clocked. `Memory::advanceCycles` is called ONCE PER 6502
+    /// INSTRUCTION (M6502.cpp), i.e. every 2-7 cycles, so clocking the chip
+    /// straight from there meant ~300 000 chip->clock() calls and ~300 000
+    /// chipMutex lock/unlock pairs per emulated second — with batches so small
+    /// that kMaxCyclesPerBatch above never once applied. Measured cost of that
+    /// arrangement (august 2026, idle Wozmon loop, nothing writing to the SID):
+    /// **+15.6 points of one core**, more than the rest of the emulator put
+    /// together, and enough to matter on the Raspberry Pi kiosk.
+    ///
+    /// So cycles accumulate and the chip is clocked in one go. Fidelity is
+    /// preserved where it is OBSERVABLE: every register read or write flushes
+    /// the accumulator first, so a note-on is still clocked into the chip at
+    /// the exact cycle the CPU wrote it. Same pattern as the TMS9918's beam
+    /// catch-up. 1024 cycles ≈ 1 ms of emulated time ≈ 44 samples at 44.1 kHz,
+    /// against a 16 384-sample ring (~370 ms), so the audio thread never sees
+    /// the difference.
+    static constexpr int kCatchUpCycles = 1024;
+
     /// Ring buffer between the emulation thread (producer, advanceCycles)
     /// and the audio thread (consumer, fillAudioBuffer). 16384 samples ≈
     /// 370 ms at 44.1 kHz — enough to absorb audio jitter without adding
@@ -154,6 +173,22 @@ private:
     /// reads from the ring via atomic head/tail, so chip->clock() in
     /// advanceCycles can run unblocked.
     mutable std::mutex chipMutex;
+
+    /// Emulated cycles run but not yet clocked into the chip. Producer-side
+    /// only: written by advanceCycles() on the emulation thread and by the
+    /// flush sites, which are either that same thread or a UI-thread path that
+    /// already holds EmulationController::stateMutex (snapshot restore, chip
+    /// swap) with the emulation thread parked. Deliberately NOT atomic —
+    /// making it so would advertise a concurrency that does not exist.
+    int pendingCycles = 0;
+
+    /// Clock everything accumulated so far, then reset. Takes chipMutex, so
+    /// callers must NOT already hold it.
+    void flushPendingCycles();
+
+    /// Clock `cycles` into the chip and push the produced samples to the ring.
+    /// chipMutex must already be held.
+    void clockChipLocked(int cycles);
 
     void rebuildChip(ChipModel m);
 };

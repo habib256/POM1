@@ -240,6 +240,14 @@ public:
     // Last ROM loading error (empty if no error)
     const std::string& getLastError() const { return lastError; }
 
+    /// ROM files POM1 could not find and served from its compiled-in copy
+    /// instead (Woz Monitor, ACI, Extended ACI). Empty on a normal launch.
+    /// Non-empty means the binary is running somewhere its `roms/` directory
+    /// is not — the ordinary consequence of copying the executable out of its
+    /// folder — and the UI says so instead of leaving the user with a machine
+    /// that boots but is not the one they think they have.
+    const std::vector<std::string>& romFallbacksUsed() const { return romFallbacksUsed_; }
+
     // ─────────────────────────────────────────────────────────────────
     // Snapshot save/load — see SnapshotIO.h for the file format.
     //
@@ -774,6 +782,11 @@ private :
         return false;
     }
     std::string lastError;
+
+    /// See romFallbacksUsed(). Appended by noteRomFallback(), deduplicated so a
+    /// preset switch (which re-loads every ROM) cannot grow it without bound.
+    std::vector<std::string> romFallbacksUsed_;
+    void noteRomFallback(const char* filename);
     std::unique_ptr<CassetteDevice> cassetteDevice;
     // All expansion cards start UNPLUGGED. MainWindow::applyMachineConfig
     // re-plugs them 15 frames after the CPU has been running — plugging a
