@@ -130,6 +130,38 @@ int main()
         assert(d.labels[1].first == 0x0308 && d.labels[1].second == "echo");
     }
 
+    // ── 4b. File selection is deterministic, and exact beats basename ────
+    // `files` is hashed, so "the first match found" would be a hash detail:
+    // with several records sharing a basename the chosen line table could
+    // differ between two runs of the same build. Lowest id wins, and an exact
+    // path match wins over any basename match whatever the record order.
+    {
+        // Two same-basename records (ids 7 and 3, listed high-id first) and
+        // NO exact match: id 3 must win, not "whichever the map yields".
+        const std::string amb =
+            "version\tmajor=2,minor=0\n"
+            "file\tid=7,name=\"/other/dir/prog.s\",size=1,mtime=0x0,mod=0\n"
+            "file\tid=3,name=\"/third/dir/prog.s\",size=1,mtime=0x0,mod=0\n"
+            "seg\tid=0,name=\"CODE\",start=0x000400,size=0x0002,addrsize=absolute,"
+            "type=rw,oname=\"p.bin\",ooffs=0\n"
+            "span\tid=0,seg=0,start=0,size=1\n"
+            "span\tid=1,seg=0,start=1,size=1\n"
+            "line\tid=0,file=7,line=50,span=0\n"
+            "line\tid=1,file=3,line=60,span=1\n";
+        const DbgLineInfo d = parseDbgFile(amb, "/staged/prog.s");
+        assert(d.ok);
+        assert(d.lineForAddr(0x0401) == 60);   // id 3's record
+        assert(d.lineForAddr(0x0400) == -1);   // id 7's record ignored
+        // An exact match added later still wins over both basename matches.
+        const std::string exact = amb +
+            "file\tid=9,name=\"/staged/prog.s\",size=1,mtime=0x0,mod=0\n"
+            "span\tid=2,seg=0,start=0,size=2\n"
+            "line\tid=2,file=9,line=99,span=2\n";
+        const DbgLineInfo e = parseDbgFile(exact, "/staged/prog.s");
+        assert(e.ok);
+        assert(e.lineForAddr(0x0400) == 99 && e.lineForAddr(0x0401) == 99);
+    }
+
     // ── 5. Refusals: not a dbgfile / unknown source / no -g line data ────
     {
         const DbgLineInfo d = parseDbgFile("hello world\n", "prog.s");
