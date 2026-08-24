@@ -2007,6 +2007,23 @@ if(Python3_FOUND)
     set_tests_properties(crt_params_sync PROPERTIES TIMEOUT 60)
 endif()
 
+# shortcuts_sync -- guards an invariant CLAUDE.md states and nothing enforced:
+# shortcuts[] must never hold a CTRL+letter chord. handleGlfwKey dispatches the
+# table BEFORE the Apple-1 sees the key, so such an entry shadows that letter's
+# ASCII control code and makes it untypeable on the emulated machine (Ctrl-C =
+# Integer BASIC break, Ctrl-H = Applesoft Lite's line editor). The failure is
+# SILENT -- green build, green tests, a control code that quietly stops working
+# -- and it has already shipped once: Ctrl+O/S/V/Q were removed after they were
+# found eating $0F/$13/$16/$11. The table lives in a UI translation unit no
+# test binary links, so a source-reading script is the only place this fits.
+if(Python3_FOUND)
+    add_test(NAME shortcuts_sync
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/check_shortcuts.py"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(shortcuts_sync PROPERTIES TIMEOUT 30)
+endif()
+
 # window_registry_sync -- sixth guard of the version_sync family, and the only
 # check of any kind that reaches MainWindow. POM1's largest layer (17 000 lines
 # across 16 TUs, 68 windows) is deliberately excluded from every test binary, so

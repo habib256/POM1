@@ -10,6 +10,25 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — `shortcuts_sync` : l'invariant « jamais de CTRL+lettre » cesse d'être une simple consigne
+
+Trouvé en passant l'audit du débogage à un balayage **général** : `CLAUDE.md` et un
+commentaire au-dessus de la table disent tous deux « n'ajoutez JAMAIS un accord
+CTRL+lettre à `shortcuts[]` », et rien ne l'empêchait. `handleGlfwKey` distribue les
+raccourcis **avant** que l'Apple-1 ne voie la touche, donc une telle entrée masque le
+code de contrôle ASCII de cette lettre et le rend **intypable sur la machine
+émulée** — Ctrl-C (interruption d'Integer BASIC) et Ctrl-H (éditeur de ligne
+d'Applesoft Lite) étant ceux qu'on remarque. La panne est **silencieuse** : build
+vert, tests verts, et un code de contrôle qui cesse discrètement de fonctionner.
+Ce n'est pas hypothétique — `Ctrl+O/S/V/Q` (Charger/Sauver/Coller/Quitter) ont été
+livrés puis retirés après qu'on les a trouvés en train d'avaler `$0F`, `$13` (XOFF),
+`$16` et `$11` (XON). La table vit dans une TU d'interface qu'aucun binaire de test
+ne lie, donc `tools/check_shortcuts.py` la lit comme texte — même forme que
+`check_crt_params.py` / `check_window_registry.py`. Les accords de touches de
+fonction restent autorisés (F1-F12 ne sont pas de l'ASCII), donc `Ctrl+F5` garde son
+raccourci. **Vérifié par mutation** : réintroduire le `Ctrl+S` historique fait
+rougir la garde, qui nomme le `$13` masqué.
+
 ### Fixed — chasse n°14 : le suivi du PC pointait des lignes d'un programme qui ne tournait pas
 
 Encore une « limite connue » écrite sans être mesurée — j'avais noté qu'un
