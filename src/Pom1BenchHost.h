@@ -6,6 +6,7 @@
 #define POM1_BENCH_HOST_H
 
 #include "IBenchHost.h"
+#include "DbgFile.h"     // pom1::DbgLineInfo (source-level debugging line table)
 #include "POM1Build.h"   // POM1_IS_WASM (native-compile path is desktop-only)
 
 #include <cstdint>
@@ -75,6 +76,14 @@ public:
     std::string cpuStep() override;
     void cpuRun() override;
     bool cpuIsRunning() const override;
+
+    // Source-level debugging — the asm build path assembles with `ca65 -g` and
+    // links with `ld65 --dbgfile`, whose parsed line table (src/DbgFile.h)
+    // backs these four (desktop only; the WASM cc65 path has no dbgfile yet).
+    bool debugLineInfo() const override;
+    int  sourceLineForPc() const override;
+    int  toggleLineBreakpoint(int line) override;
+    int  breakpointLine() const override;
     std::string browseDir() const override;
     bool pickFilePath(bool forSave, const std::string& title,
                       const std::string& filterDesc, const std::string& extCsv,
@@ -175,6 +184,14 @@ private:
     // paths, cleared when any non-LOGO target disturbs the machine). Gates the
     // Bench's interactive REPL input (replActive/replSend).
     bool logoReplActive_ = false;
+
+    // Source-level debugging: line table of the LAST successful asm build
+    // (ca65 -g + ld65 --dbgfile, parsed by pom1::parseDbgFile). Reset at the
+    // start of every build so a failed or injection build never leaves a
+    // stale mapping; the armed line breakpoint is dropped with it (the
+    // rebuilt program's addresses moved under it).
+    pom1::DbgLineInfo dbgInfo_;
+    int dbgBreakpointLine_ = -1;   // 1-based armed line, -1 = none
 
     // Cold/warm BASIC start toggle (CodeBench "Warm" checkbox; default cold). When
     // set, injectBasic re-enters the resident interpreter via its WARM entry

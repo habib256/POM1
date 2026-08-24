@@ -10,6 +10,33 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — débogage au niveau source dans le DevBench (asm, desktop)
+
+L'écart le plus net entre ce que POM1 avait et ce qu'il pouvait être : le Bench
+compilait avec la vraie chaîne cc65, exécutait sur le vrai 6502, puis laissait
+l'utilisateur seul avec des adresses hexadécimales. Toutes les pièces existaient —
+il manquait la correspondance ligne ↔ adresse et le câblage. Le chemin asm assemble
+désormais avec **`ca65 -g`** et lie avec **`ld65 --dbgfile`** (simple et dual-bank),
+et le nouveau module pur **`src/DbgFile.cpp`** parse le format v2 (records
+file/seg/span/line/sym) en deux tables : adresse → ligne source et ligne → adresse,
+avec accrochage vers l'avant (cliquer un commentaire arme la ligne de code
+suivante). Dans le Bench : un bouton **point d'arrêt** (● rouge) arme/désarme
+l'unique breakpoint CPU de la machine à la ligne du curseur (marqueur dans la
+gouttière, statut « Breakpoint armed at line N ») ; **Step** annonce la ligne
+atteinte et le curseur de l'éditeur **suit le PC** tant que le CPU est arrêté ; les
+**étiquettes du programme** (records `sym type=lab`, y compris celles des modules
+EXTRA_ASM) sont versées d'office dans le `SymbolTable` du désassembleur — plus de
+`.lbl` VICE à charger à la main. Un buffer édité ou un autre onglet invalide la
+table (les décorations disparaissent jusqu'au prochain Verify/Run) ; un rebuild
+retire le breakpoint ligne qu'il rend caduc, sans toucher un breakpoint posé par la
+fenêtre Debug. Le seam `IBenchHost` gagne quatre virtuals à défaut neutre — le
+module portable reste ignorant de cc65. Épinglé par **`dbgfile_smoke`** (miniature
+manuscrite : tables, accrochage, refus) et **`bench_cc65_smoke`** (cc65-gated :
+parse la VRAIE sortie `ld65 --dbgfile` d'un fixture `ca65 -g` — et premier test de
+`Pom1BenchCc65.cpp`, dont la moitié de l'assertion est qu'il linke sans UI, part A
+sur les micro-parseurs Makefile/.sketch.json/cfg et les specs C embarquées).
+Restent ouverts (TODO) : cibles C, WASM, points d'arrêt multiples.
+
 ### Changed — `pic/` sort du préchargement WASM : le premier pixel passe de 14 à ~7 Mo
 
 `pic/` pesait **6,9 des 14,0 Mo gzip** que chaque visiteur téléchargeait — la moitié

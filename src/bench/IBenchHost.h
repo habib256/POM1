@@ -174,6 +174,27 @@ public:
     // halted → cpuRun(); ■ when running → stop()) instead of two buttons.
     virtual bool cpuIsRunning() const { return false; }
 
+    // ---- Source-level debugging (optional). A host whose toolchain emits
+    //      line info (POM1: ca65 -g + ld65 --dbgfile) maps the LAST BUILT
+    //      source's lines to addresses and back; CodeBench then offers a
+    //      breakpoint toggle at the cursor line and follows the PC in the
+    //      editor while stepping. The mapping describes the last successful
+    //      build — edits since then shift lines, so hosts should expect
+    //      CodeBench to hide the affordances on a dirty buffer. ----
+    // True when the last successful build produced a usable line table.
+    virtual bool debugLineInfo() const { return false; }
+    // 1-based source line the halted CPU's PC sits on; -1 while running or
+    // when the PC is outside the built program.
+    virtual int  sourceLineForPc() const { return -1; }
+    // Toggle a breakpoint at `line` (1-based), snapping FORWARD past
+    // comment/blank lines to the next line that generated code. Returns the
+    // armed line, or -1 when the toggle cleared it (or nothing could be
+    // armed). One breakpoint at a time — mirrors POM1's single CPU breakpoint.
+    virtual int  toggleLineBreakpoint(int /*line*/) { return -1; }
+    // The armed breakpoint's line, -1 if none (or no longer valid — e.g. the
+    // host's own debug UI re-armed the CPU breakpoint somewhere else).
+    virtual int  breakpointLine() const { return -1; }
+
     // Directory the Open/Save file browser starts in (e.g. the project's dev/
     // tree). "" or "." = current working directory.
     virtual std::string browseDir() const { return "."; }
