@@ -2280,8 +2280,14 @@ void Pom1BenchHost::cpuRun()
     // TOP of its loop), so the Bench's ▶ looked dead after a hit. Same recipe
     // as the Debug window's Continue: step past the address, then free-run —
     // the breakpoint stays armed for the next pass.
+    //
+    // Deliberately NOT conditioned on isCpuBreakpointTripped(): a rebuild
+    // while parked at the breakpoint re-arms it (which resets the trip
+    // latch), and resuming from PC == armed address insta-retrips whatever
+    // the latch says. "Stopped, parked exactly on the armed address" is the
+    // whole condition.
     auto* emu = mw_->emulation.get();
-    if (emu && emu->isCpuBreakpointTripped() && emu->hasCpuBreakpoint() &&
+    if (emu && !mw_->cpuRunning && emu->hasCpuBreakpoint() &&
         mw_->uiSnapshot.programCounter == emu->getCpuBreakpoint())
         mw_->stepCpu();
     mw_->startCpu();  // resume free-running (same as the CPU menu's Run)

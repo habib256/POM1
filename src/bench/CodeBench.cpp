@@ -180,10 +180,19 @@ void CodeBench::applyResult(const BuildResult& r)
     d->errorLines.clear();
     for (const auto& e : r.errors) { em[e.first] = e.second; d->errorLines.push_back(e.first); }
     d->editor->SetErrorMarkers(em);
-    // The host's line table (source-level debugging) describes the build that
-    // just finished, i.e. THIS tab's contents — remember which one, so the
-    // breakpoint marker / PC-follow never decorate a different tab.
-    dbgDocUid_ = host_->debugLineInfo() ? d->uid : -1;
+    // NOTE: the debug-doc claim (dbgDocUid_) does NOT live here on purpose.
+    // applyResult also runs for results that are not builds (a Mode switch's
+    // selectTargetExplicit) — claiming cur() there would hand a still-alive
+    // line table from an EARLIER build to whatever tab happens to be active.
+    // Only the build sites (Verify / Run / the async pollBuild completion)
+    // call claimDbgDoc(), because only they made the mapping describe cur().
+    dbgLastPcLine_ = -1;
+}
+
+void CodeBench::claimDbgDoc()
+{
+    Doc* d = cur();
+    dbgDocUid_ = (host_->debugLineInfo() && d) ? d->uid : -1;
     dbgLastPcLine_ = -1;
 }
 
@@ -396,7 +405,7 @@ void CodeBench::render(const char* title, bool* open)
     // Drive any in-flight async build (web/WASM cc65): poll until it finishes.
     if (buildPolling_) {
         BuildResult pr = host_->pollBuild();
-        if (!pr.pending) { applyResult(pr); buildPolling_ = false; }
+        if (!pr.pending) { applyResult(pr); claimDbgDoc(); buildPolling_ = false; }
     }
 
     // All tabs closed: there is no active document. Show the bench window with the
@@ -575,6 +584,7 @@ void CodeBench::render(const char* title, bool* open)
         host_->setActiveSourcePath(doc.path);
         BuildResult r = host_->verify(doc.targetIndex, doc.editor->GetText(), fallbackAddr_);
         buildPolling_ = r.pending; applyResult(r);
+        if (!r.pending) claimDbgDoc();   // this build mapped THIS tab's text
     };
     auto doUpload = [&]() {
         if (doc.isMarkdown)      { status_ = "Markdown is a document — nothing to build"; statusOk_ = false; return; }
@@ -582,6 +592,7 @@ void CodeBench::render(const char* title, bool* open)
         host_->setActiveSourcePath(doc.path);
         BuildResult r = host_->upload(doc.targetIndex, doc.editor->GetText(), fallbackAddr_);
         buildPolling_ = r.pending; applyResult(r);
+        if (!r.pending) claimDbgDoc();   // this build mapped THIS tab's text
     };
 
     // ---- Teal toolbar with labelled action pills + circular icon buttons ----
