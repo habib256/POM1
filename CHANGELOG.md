@@ -10,6 +10,23 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — `headless_preset_matrix` ne pouvait pas passer sur Windows (tiret cadratin + encodage local)
+
+Suite directe du correctif MSVC : une fois le build Windows réparé, `ctest` a pu
+s'exécuter là-bas **pour la première fois depuis que ce job existe**, et un test est
+tombé — les 13 presets rapportés en échec avec « no 'headless run complete' line »,
+alors que la ligne était **bien présente**, visible dans le journal juste sous chaque
+échec. `tools/test_headless_presets.py` la cherchait avec un motif contenant un
+**tiret cadratin** (`—`, U+2014), et `subprocess.run(text=True)` décode avec
+l'encodage préféré de la machine : **cp1252 sur Windows**, quand POM1 écrit de
+l'UTF-8. Le tiret arrivait donc en `â€"` et la recherche ne pouvait jamais aboutir.
+Deux corrections, chacune suffisante et gardées toutes les deux : l'encodage est
+**explicite** (`encoding="utf-8", errors="replace"`), et le motif accepte n'importe
+quel séparateur (`\D+`) — l'assertion porte sur le compteur de cycles et le PC, pas
+sur la ponctuation du message, et lier un test multiplateforme à un caractère
+non-ASCII est précisément ce qui l'a cassé. Vérifié en rejouant le décodage cp1252
+exact : l'ancien motif ne correspond pas, le nouveau si.
+
 ### Fixed — le build Windows était cassé sur `main` (C3493, capture implicite)
 
 Trouvé en regardant enfin la CI : le job `windows` échouait **avant** le travail

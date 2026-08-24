@@ -27,7 +27,7 @@ MONITOR_LO, MONITOR_HI = 0xFF00, 0xFFFF
 
 def list_presets(pom1):
     out = subprocess.run([pom1, "--list-presets"], capture_output=True, text=True,
-                         timeout=30).stdout
+                         encoding="utf-8", errors="replace", timeout=30).stdout
     presets = []
     for m in re.finditer(r"^\s+(\d+):\s+(.*)$", out, re.M):
         presets.append((int(m.group(1)), m.group(2).strip()))
@@ -37,12 +37,23 @@ def list_presets(pom1):
 def boot(pom1, idx, cycles):
     cmd = [pom1, "--headless", "--preset", str(idx), "--exit-after-cycles", str(cycles)]
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        # encoding is EXPLICIT: text=True alone decodes with the locale's
+        # preferred encoding, which is cp1252 on Windows while POM1 prints
+        # UTF-8. The em dash in the completion line then arrived as "â€"" and
+        # the match below could never succeed — every preset was reported as
+        # "no 'headless run complete' line" even though the line was right
+        # there in the output. errors="replace" keeps a mojibake byte from
+        # raising instead of failing the assertion it was meant to test.
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=120)
     except subprocess.TimeoutExpired:
         return False, "timeout (deadlock or the run never returned)", ""
     log = r.stdout + r.stderr
     errors = [ln for ln in log.splitlines() if " ERROR" in ln or ln.startswith("ERROR")]
-    m = re.search(r"headless run complete — (\d+) cycles, PC=\$([0-9A-Fa-f]{4})", log)
+    # \D+ rather than a literal em dash: the assertion is about the cycle
+    # count and the PC, not about which dash the message happens to use, and
+    # tying a cross-platform test to one non-ASCII character is what broke it.
+    m = re.search(r"headless run complete\D+(\d+) cycles, PC=\$([0-9A-Fa-f]{4})", log)
     if r.returncode != 0:
         return False, f"exit status {r.returncode}", log
     if errors:
