@@ -327,6 +327,22 @@ target_include_directories(test_dbgfile PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME dbgfile_smoke COMMAND test_dbgfile)
 set_tests_properties(dbgfile_smoke PROPERTIES TIMEOUT 5)
 
+# -- DevBench debugging state machine (toggle / ownership / rebuild) ----------
+# BenchDebugSession is the logic extracted OUT of Pom1BenchHost so it can be
+# tested at all — the host needs a live MainWindow, and this is where most of
+# the source-level-debugging defects lived (each caught by reading only).
+# Pins the arm/rebuild/re-arm loop, snapping, and the rule that the Debug
+# window's own breakpoint is never claimed, cleared or resurrected.
+add_executable(test_bench_debug_session
+    bench_debug_session_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/BenchDebugSession.cpp
+    ${CMAKE_SOURCE_DIR}/src/DbgFile.cpp
+)
+target_include_directories(test_bench_debug_session PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+add_test(NAME bench_debug_session_smoke COMMAND test_bench_debug_session)
+set_tests_properties(bench_debug_session_smoke PROPERTIES TIMEOUT 5)
+
 # -- GEN2 release video scanner / floating bus --------------------------------
 # Self-contained: Gen2VideoScanner has no dependency on Memory, peripherals, or
 # libresidfp. Pins the MAME scanner_address oracle for known (cycle, mode)

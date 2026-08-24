@@ -56,8 +56,7 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
     // because selectTargetExplicit's interpreter prep calls this directly —
     // possibly on the SAME preset (the Applesoft-GEN2 target shares the GEN2
     // bench's), so neither build()'s wipe nor applyTargetPreset's fires.
-    dbgInfo_ = {};
-    dbgBreakpointLine_ = -1;
+    dbg_.invalidate();
 
     // BASIC variant by target index (set in kP1Targets):
     //   7 Integer  8 Applesoft+microSD  9 Applesoft GEN2  10 Applesoft (Apple-1/CFFA1)
@@ -433,8 +432,7 @@ bench::BuildResult Pom1BenchHost::injectLogo(int target, const std::string& src,
     // Same wipe as injectBasic, same reason: the interpreter injection
     // reprograms the machine, and selectTargetExplicit reaches here directly
     // (no build(), possibly no preset change).
-    dbgInfo_ = {};
-    dbgBreakpointLine_ = -1;
+    dbg_.invalidate();
 
     const int idx = p1(target);
     const bool tms = (idx == 14);   // 14 = LOGO TMS9918 (CodeTank), 15 = LOGO GEN2 HGR

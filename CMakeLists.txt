@@ -379,6 +379,7 @@ set(SOURCES
     ${POM1_SRC_DIR}/Pom1BenchTargets.cpp
     ${POM1_SRC_DIR}/Pom1BenchCc65.cpp
     ${POM1_SRC_DIR}/DbgFile.cpp
+    ${POM1_SRC_DIR}/BenchDebugSession.cpp
     ${POM1_SRC_DIR}/Pom1BenchHost_Lang.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bench/ProcessUtil.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bench/BenchLang.cpp
