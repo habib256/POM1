@@ -56,7 +56,10 @@ successful Verify or Run:
   same one as CPU → Debug). The CPU halts when it reaches that line's
   address; the armed line shows as a marker in the gutter. After a hit, **▶
   resumes past the breakpoint** (step-then-run, the breakpoint stays armed
-  for the next pass).
+  for the next pass). The breakpoint **survives rebuilds**: Verify or Run
+  re-arm it against the fresh line table (at its possibly-moved address; the
+  console notes the re-arm) — if the line no longer produces code, it is
+  dropped and the gutter marker disappears with it.
 - **Step** (⏭) now reports the **source line** it landed on, and the editor
   cursor follows the PC while the CPU is halted — step through your own
   listing instead of a hex disassembly.

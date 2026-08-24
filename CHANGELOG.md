@@ -10,6 +10,30 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — chasse n°3 sur le débogage source : le breakpoint ne survivait à aucun rebuild
+
+Le plus grave des trois passes, trouvé en suivant le cycle de vie du breakpoint à
+travers `build()` : le flux naturel de débogage — **Verify, armer un breakpoint,
+Run** — le désarmait silencieusement et le programme filait sans s'arrêter. Deux
+mécanismes s'additionnaient : le nettoyage en tête de `build()` (chasse n°1)
+effaçait notre breakpoint sans le ré-armer, et de toute façon **tout chemin Run
+repasse par un reset qui l'efface** — `loadBinary()` « resets + runs », le chemin
+CodeTank fait un `hardReset(false)`, et `M6502::reset()` nettoie
+`breakpointActive` (comportement voulu pour les changements de preset). Même un
+simple re-Verify perdait le breakpoint. Correction : la ligne possédée est
+mémorisée en tête de build (seulement si le breakpoint CPU est bien LE NÔTRE — un
+breakpoint posé par la fenêtre Debug n'est jamais ni effacé ni écrasé), puis
+ré-armée contre la table fraîche **après le dernier reset de chaque chemin** :
+immédiatement pour Verify (aucun état machine touché), après `loadBinary` pour les
+chemins asm et dual-bank (le CPU tourne déjà — un breakpoint dans les toutes
+premières instructions peut manquer sa première passe, les boucles l'attrapent à
+la suivante), et entre le `hardReset` et le `4000R` différé pour CodeTank — la
+fenêtre idéale, le programme n'a pas démarré. La console trace le ré-armement
+(« breakpoint re-armed at line N ($XXXX) ») ; une ligne qui ne produit plus de
+code laisse le breakpoint retombé, visiblement (le marqueur suit
+`breakpointLine()`). Non testable en ctest (exige `Pom1BenchHost` + MainWindow —
+le trou UI connu) ; vérifié par lecture des quatre chemins et build vert.
+
 ### Fixed — chasse n°2 sur le débogage source : l'invariant « dirty » était le mauvais, et les macros
 
 Trois défauts de plus, dont deux sur le même invariant. **(1) Faux négatif** : les
