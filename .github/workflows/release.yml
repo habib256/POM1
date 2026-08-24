@@ -470,9 +470,17 @@ jobs:
         # manifest install into build\vcpkg_installed. That is not duplicated
         # work: the step above already populated vcpkg's binary cache, so this
         # pass just unpacks it.
+        #
+        # -DPOM1_ENABLE_TESTS=OFF: a packaging job ships POM1.exe, it does not
+        # test. Building the ~100 test binaries here costs minutes and adds a
+        # failure mode that has nothing to do with the package — vcpkg runs a
+        # `z-applocal` post-build step on every executable, and it died with
+        # MSB3075 on test_rewind_buffer.exe, failing the whole release build.
+        # (ci.yml compiles AND runs the suite on Windows; that is where tests
+        # belong. macOS already does the equivalent with `--target pom1_imgui`.)
         shell: cmd
         run: |
-          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="%VCPKG_INSTALLATION_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static
+          cmake -S . -B build -DPOM1_ENABLE_TESTS=OFF -DCMAKE_TOOLCHAIN_FILE="%VCPKG_INSTALLATION_ROOT%\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static
           cmake --build build --config Release -j
 
       - name: Package ZIP (cc65 bundled, strict)

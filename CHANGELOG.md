@@ -10,6 +10,20 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — le paquet Windows échouait en construisant des binaires de test
+
+Premier essai à blanc du packaging depuis le 9 août (déclenché à la main, exactement
+ce que le `schedule:` hebdomadaire ajouté ce matin fera tout seul) : Linux, Raspberry
+et macOS passent, **Windows tombe** — non pas sur le paquet, mais sur `vcpkg
+z-applocal`, l'étape de post-build que vcpkg attache à *chaque* exécutable, qui meurt
+en `MSB3075` sur `test_rewind_buffer.exe`. Le job de packaging construisait en effet
+l'arbre entier, ~100 binaires de test compris, alors qu'il n'expédie que `POM1.exe`.
+La configuration passe désormais `-DPOM1_ENABLE_TESTS=OFF` : le mode d'échec
+disparaît avec les cibles qui le portaient, et le job y gagne plusieurs minutes.
+macOS faisait déjà l'équivalent (`--target pom1_imgui`), ce qui explique ses 2 min 55
+face aux 7 min 40 de Windows. Les tests restent compilés **et exécutés** sur les
+trois bureaux par `ci.yml` — c'est là qu'ils ont leur place, pas dans un packager.
+
 ### Fixed — `headless_preset_matrix` ne pouvait pas passer sur Windows (tiret cadratin + encodage local)
 
 Suite directe du correctif MSVC : une fois le build Windows réparé, `ctest` a pu
