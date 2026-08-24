@@ -270,9 +270,22 @@ public:
 #endif
 
 private:
-    // Pom1 Apple I Hardware
-    std::unique_ptr<EmulationController> emulation;
+    // Pom1 Apple I Hardware.
+    //
+    // DECLARATION ORDER IS LOAD-BEARING — `screen` first, `emulation` second,
+    // because members die in reverse order and `emulation` outlives nothing.
+    // The EmulationController holds a RAW pointer to the screen (it is
+    // constructed with `screen.get()` and installs it as Memory's
+    // DisplayDevice), and its destructor is the ONLY place the emulation
+    // thread is stopped — `~MainWindow_ImGui` does not halt the CPU, and
+    // `destroyPom1()` only hands textures back. Declared the other way round,
+    // ~Screen_ImGui ran while the emulation thread was still executing, and
+    // any `$D012` write in the slice still in flight called `onChar()` on a
+    // half-destroyed object — locking its `bufferMutex` after that mutex had
+    // been destroyed. Same discipline as `Memory.h`'s AudioDevice-after-its-
+    // AudioSources rule, for the same reason. Do not reorder these two.
     std::unique_ptr<Screen_ImGui> screen;
+    std::unique_ptr<EmulationController> emulation;
 
     // Universal shader CRT post-process (opt-in). Master ON/OFF + shared knob
     // set drive a per-framebuffer effect stack (text screen + GEN2/TMS/GT-6144
