@@ -10,6 +10,26 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — `pic/` sort du préchargement WASM : le premier pixel passe de 14 à ~7 Mo
+
+`pic/` pesait **6,9 des 14,0 Mo gzip** que chaque visiteur téléchargeait — la moitié
+du bundle, pour des photos de *Aide → Photos* que la plupart n'ouvrent jamais (dont
+2,5 Mo de fichiers que **rien ne référençait** : `IMG_6708.png`,
+`applesoft-iia-400x259.jpg`). Seuls `pic/icon.png` et le logo du magnéto (visibles
+au boot) restent dans `POM1.data` ; tout le reste arrive **en HTTP à l'ouverture de
+la fenêtre** : `ensurePicFetched()` (`src/MainWindow_Dialogs.cpp`) tri-état
+Ready/Pending/Failed — Pending ne pose pas `loadTried`, donc le `ensure*Texture`
+par-frame réessaie jusqu'à l'atterrissage du fichier en MEMFS (écrit par le
+callback `emscripten_async_wget_data`, thread principal, URL relative
+percent-encodée — `SWTPC PR-40 Printer.png` porte des espaces) ; Failed retombe
+dans la branche « not found » existante ; sur desktop tout compile en « toujours
+Ready », zéro changement. Les fenêtres affichent « Downloading… » pendant le vol.
+`tools/assemble_wasm_site.sh` publie désormais `pic/` en entier à côté de la page —
+un fichier jamais référencé n'est plus téléchargé par personne. Le préchargement
+CMake devient une **allow-list assumée** (contrairement aux deny-lists de
+`sketchs/`/`dev/`) : une photo oubliée de la liste marche quand même en HTTP, elle
+n'est juste pas payée par tous les visiteurs.
+
 ### Added — essai à blanc hebdomadaire du packaging
 
 `release.yml` ne tournait que sur tag (ou dispatch manuel), donc une casse de

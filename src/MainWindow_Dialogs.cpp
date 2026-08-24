@@ -20,6 +20,11 @@
 #if POM1_IS_WASM
 #include <emscripten.h>
 #include <emscripten/html5.h>
+// The lazy pic/ fetch (ensurePicFetched below) stores its per-file state and
+// writes the downloaded bytes into MEMFS.
+#include <cstdio>
+#include <memory>
+#include <unordered_map>
 #endif
 
 #if !POM1_IS_WASM
@@ -157,6 +162,87 @@ static std::string find_about_photo_jpeg_path()
 #endif
 }
 
+// ── WASM lazy pic/ fetch ────────────────────────────────────────────────
+// Since the lazy-pic pass, POM1.data preloads only pic/icon.png and the
+// cassette-deck logo; every other pic/ file arrives over HTTP on first use,
+// from the pic/ directory published next to the page
+// (tools/assemble_wasm_site.sh). ensurePicFetched() is the whole protocol:
+// Ready   = the file is in MEMFS (preloaded, or a finished fetch) — load it;
+// Pending = the fetch is in flight — the caller must return WITHOUT setting
+//           its loadTried flag, so the per-frame ensure*Texture call retries
+//           (the idle floor still renders at ~5 Hz, so completion shows
+//           within a frame or two);
+// Failed  = the fetch errored — give up exactly like a missing file.
+// Callbacks run on the main thread (single-threaded WASM): no lock needed.
+// On desktop this compiles to "always Ready" and the callers are unchanged.
+enum class PicFetch { Ready, Pending, Failed };
+
+#if POM1_IS_WASM
+std::unordered_map<std::string, PicFetch>& picFetchStates()
+{
+    static std::unordered_map<std::string, PicFetch> states;
+    return states;
+}
+
+void picFetchOnLoad(void* arg, void* data, int size)
+{
+    std::unique_ptr<std::string> basename(static_cast<std::string*>(arg));
+    const std::string path = "pic/" + *basename;
+    bool ok = false;
+    if (data && size > 0) {
+        if (FILE* f = std::fopen(path.c_str(), "wb")) {
+            ok = std::fwrite(data, 1, static_cast<size_t>(size), f)
+                 == static_cast<size_t>(size);
+            std::fclose(f);
+        }
+    }
+    picFetchStates()[*basename] = ok ? PicFetch::Ready : PicFetch::Failed;
+    if (!ok)
+        pom1::log().warn("Images", "Could not store fetched pic/" + *basename);
+}
+
+void picFetchOnError(void* arg)
+{
+    std::unique_ptr<std::string> basename(static_cast<std::string*>(arg));
+    picFetchStates()[*basename] = PicFetch::Failed;
+    pom1::log().warn("Images", "HTTP fetch failed for pic/" + *basename);
+}
+
+PicFetch ensurePicFetched(const char* basename)
+{
+    auto& states = picFetchStates();
+    if (auto it = states.find(basename); it != states.end())
+        return it->second;
+    // Already in MEMFS? That is the two preloaded files (MEMFS does not
+    // survive a reload, so a past session's fetches don't land here).
+    const std::string path = std::string("pic/") + basename;
+    if (FILE* f = std::fopen(path.c_str(), "rb")) {
+        std::fclose(f);
+        states[basename] = PicFetch::Ready;
+        return PicFetch::Ready;
+    }
+    // Relative URL, resolved against the page like the favicon. Percent-
+    // encode the basename — "SWTPC PR-40 Printer.png" carries spaces.
+    std::string url = "pic/";
+    for (const char ch : std::string(basename)) {
+        const unsigned char c = static_cast<unsigned char>(ch);
+        if (std::isalnum(c) || c == '-' || c == '_' || c == '.') {
+            url += ch;
+        } else {
+            char enc[4];
+            std::snprintf(enc, sizeof enc, "%%%02X", c);
+            url += enc;
+        }
+    }
+    states[basename] = PicFetch::Pending;
+    emscripten_async_wget_data(url.c_str(), new std::string(basename),
+                               picFetchOnLoad, picFetchOnError);
+    return PicFetch::Pending;
+}
+#else
+PicFetch ensurePicFetched(const char*) { return PicFetch::Ready; }
+#endif
+
 // Upload an stbi-loaded RGBA8 buffer into a freshly-created renderer texture
 // (Linear filtering, CLAMP_TO_EDGE wrap — the legacy GL path used the same
 // settings). Frees the stbi buffer unconditionally so callers don't repeat
@@ -243,10 +329,15 @@ void MainWindow_ImGui::ensurePhotoTexture(int id)
     PhotoWindowState& st = photoState_[static_cast<size_t>(id)];
     if (st.tex != nullptr || st.loadTried)
         return;
-    st.loadTried = true;
     const PhotoWindowDef& def = photoWindowDefs()[static_cast<size_t>(id)];
+    const PicFetch fetched = ensurePicFetched(def.file);
+    if (fetched == PicFetch::Pending)
+        return;                     // HTTP fetch in flight — retry next frame
+    st.loadTried = true;
 
-    const std::string path = find_pic_file_path(def.file);
+    // A failed fetch routes into the same "not found" arm as a missing file.
+    const std::string path = (fetched == PicFetch::Ready)
+                                 ? find_pic_file_path(def.file) : std::string();
     if (path.empty()) {
         pom1::log().warn("Images",
             std::string(def.label) + " not found (expected pic/" + def.file + ")");
@@ -279,6 +370,9 @@ void MainWindow_ImGui::renderPhotoWindow(int id)
     if (ImGui::Begin(def.title, &(this->*def.show))) {
         if (st.tex != nullptr && st.width > 0 && st.height > 0) {
             drawFittedCenteredImage(st.tex, st.width, st.height);
+        } else if (!st.loadTried) {
+            // WASM lazy pic/: the ensure call above left the fetch in flight.
+            ImGui::TextWrapped("Downloading %s...", def.label);
         } else {
             ImGui::TextWrapped("%s not found (expected pic/%s).",
                                def.label, def.file);
@@ -299,9 +393,13 @@ void MainWindow_ImGui::ensureAboutPhotoTexture()
 {
     if (aboutPhotoTexture != 0 || aboutPhotoLoadTried)
         return;
+    const PicFetch fetched = ensurePicFetched(kAboutPhotoFile);
+    if (fetched == PicFetch::Pending)
+        return;                     // HTTP fetch in flight — retry next frame
     aboutPhotoLoadTried = true;
 
-    const std::string path = find_about_photo_jpeg_path();
+    const std::string path = (fetched == PicFetch::Ready)
+                                 ? find_about_photo_jpeg_path() : std::string();
     if (path.empty()) {
         pom1::log().warn("About", "Apple-1 photo not found (expected pic/schlumberger-2-apple-1.jpg)");
         return;
@@ -327,9 +425,13 @@ void MainWindow_ImGui::ensureAppIconTexture()
 {
     if (appIconTexture != 0 || appIconLoadTried)
         return;
+    const PicFetch fetched = ensurePicFetched(kAppIconFile);
+    if (fetched == PicFetch::Pending)
+        return;                     // HTTP fetch in flight — retry next frame
     appIconLoadTried = true;
 
-    const std::string path = find_pic_file_path(kAppIconFile);
+    const std::string path = (fetched == PicFetch::Ready)
+                                 ? find_pic_file_path(kAppIconFile) : std::string();
     if (path.empty()) {
         pom1::log().warn("Icon",
             std::string("App icon not found (expected pic/") + kAppIconFile + ")");
@@ -353,9 +455,13 @@ void MainWindow_ImGui::ensureApple50LogoTexture()
 {
     if (apple50LogoTexture != 0 || apple50LogoLoadTried)
         return;
+    const PicFetch fetched = ensurePicFetched(kApple50LogoFile);
+    if (fetched == PicFetch::Pending)
+        return;                     // HTTP fetch in flight — retry next frame
     apple50LogoLoadTried = true;
 
-    const std::string path = find_pic_file_path(kApple50LogoFile);
+    const std::string path = (fetched == PicFetch::Ready)
+                                 ? find_pic_file_path(kApple50LogoFile) : std::string();
     if (path.empty()) {
         pom1::log().warn("CassetteDeck",
             std::string("Apple 50th logo not found (expected pic/") + kApple50LogoFile + ")");
@@ -379,9 +485,13 @@ void MainWindow_ImGui::ensureKeyboardPhotoTexture()
 {
     if (keyboardPhotoTexture != 0 || keyboardPhotoLoadTried)
         return;
+    const PicFetch fetched = ensurePicFetched(kKeyboardPhotoFile);
+    if (fetched == PicFetch::Pending)
+        return;                     // HTTP fetch in flight — retry next frame
     keyboardPhotoLoadTried = true;
 
-    const std::string path = find_pic_file_path(kKeyboardPhotoFile);
+    const std::string path = (fetched == PicFetch::Ready)
+                                 ? find_pic_file_path(kKeyboardPhotoFile) : std::string();
     if (path.empty()) {
         pom1::log().warn("Images",
             std::string("Apple-1 keyboard photo not found (expected pic/") + kKeyboardPhotoFile + ")");
@@ -566,6 +676,9 @@ void MainWindow_ImGui::renderKeyboardPhotoWindow()
                         ImGui::SetTooltip("%s", k.glyphBot);
                 }
             }
+        } else if (!keyboardPhotoLoadTried) {
+            // WASM lazy pic/: the ensure call above left the fetch in flight.
+            ImGui::TextWrapped("Downloading the Apple-1 keyboard photo...");
         } else {
             ImGui::TextWrapped(
                 "Apple-1 keyboard photo not found (expected pic/%s).", kKeyboardPhotoFile);
@@ -634,9 +747,13 @@ void MainWindow_ImGui::ensurePR40MechPhotoTexture()
 {
     if (pr40MechPhotoTexture != 0 || pr40MechPhotoLoadTried)
         return;
+    const PicFetch fetched = ensurePicFetched(kPR40MechPhotoFile);
+    if (fetched == PicFetch::Pending)
+        return;                     // HTTP fetch in flight — retry next frame
     pr40MechPhotoLoadTried = true;
 
-    const std::string path = find_pic_file_path(kPR40MechPhotoFile);
+    const std::string path = (fetched == PicFetch::Ready)
+                                 ? find_pic_file_path(kPR40MechPhotoFile) : std::string();
     if (path.empty()) {
         pom1::log().warn("Images",
             std::string("SWTPC PR-40 mechanism photo not found (expected pic/") + kPR40MechPhotoFile + ")");
