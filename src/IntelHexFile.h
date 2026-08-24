@@ -111,11 +111,31 @@ inline bool ihxDecodeRecord(const std::string& line, std::vector<uint8_t>& bytes
 inline bool looksLikeIntelHex(const std::string& content)
 {
     size_t pos = 0;
+    bool first = true;
     while (pos <= content.size()) {
         const size_t nl = content.find('\n', pos);
-        const std::string line =
+        std::string line =
             detail::ihxTrim(content.substr(pos, nl == std::string::npos ? std::string::npos : nl - pos));
-        if (!line.empty()) {
+        // A UTF-8 BOM only ever precedes the very first line, and an editor on
+        // Windows adds one without asking. Left in place it made the first
+        // record fail to decode, so the whole file fell through to the WOZMON
+        // parser — which writes the record HEADERS into RAM as data.
+        if (first && line.size() >= 3 &&
+            static_cast<unsigned char>(line[0]) == 0xEF &&
+            static_cast<unsigned char>(line[1]) == 0xBB &&
+            static_cast<unsigned char>(line[2]) == 0xBF) {
+            line = detail::ihxTrim(line.substr(3));
+        }
+        first = false;
+        // Skip the comment lines assemblers and converters put at the top
+        // (`; built by ca65`, `# srec_cat …`). The WOZMON parser strips these
+        // too, so a commented Intel HEX file used to reach it looking like a
+        // hex dump and get silently mis-written: byte count, load address and
+        // record type all land in RAM as data, at whatever address happens to
+        // be current, and the load reports SUCCESS. Detection has to see past
+        // them for the "commit, then fail loudly" contract above to hold.
+        if (!line.empty() && line[0] != ';' && line[0] != '#' &&
+            line.compare(0, 2, "//") != 0) {
             std::vector<uint8_t> bytes;
             return detail::ihxDecodeRecord(line, bytes);
         }
@@ -149,8 +169,18 @@ inline bool parseIntelHex(const std::string& content, IntelHexImage& out, std::s
         pos = (nl == std::string::npos) ? content.size() + 1 : nl + 1;
         lineNo++;
 
-        const std::string line = detail::ihxTrim(raw);
-        if (line.empty()) continue;
+        std::string line = detail::ihxTrim(raw);
+        // Strip a leading UTF-8 BOM on line 1 and skip comment lines, exactly
+        // as looksLikeIntelHex does — the two MUST agree on what counts as a
+        // record, or a file the detector accepts dies here on its first line.
+        if (lineNo == 1 && line.size() >= 3 &&
+            static_cast<unsigned char>(line[0]) == 0xEF &&
+            static_cast<unsigned char>(line[1]) == 0xBB &&
+            static_cast<unsigned char>(line[2]) == 0xBF) {
+            line = detail::ihxTrim(line.substr(3));
+        }
+        if (line.empty() || line[0] == ';' || line[0] == '#' ||
+            line.compare(0, 2, "//") == 0) continue;
 
         std::vector<uint8_t> b;
         if (!detail::ihxDecodeRecord(line, b))

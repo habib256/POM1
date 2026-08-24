@@ -10,6 +10,39 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — audit général : use-after-free à la fermeture, et un Intel HEX commenté écrit n'importe où
+
+Deux vrais défauts hors du DevBench, trouvés en élargissant la chasse au projet
+entier (audit par sous-systèmes, chacun exigeant une preuve par le code plutôt
+qu'une intuition).
+
+**Use-after-free à l'arrêt.** Dans `MainWindow_ImGui`, `emulation` était déclaré
+**avant** `screen` — or les membres meurent dans l'ordre inverse, donc `screen`
+mourait en premier. Le hic : `~EmulationController` est le **seul** endroit où le
+thread d'émulation est arrêté (`~MainWindow_ImGui` n'arrête pas le CPU,
+`destroyPom1()` ne rend que des textures), et le contrôleur détient un pointeur
+**brut** vers l'écran, installé comme `DisplayDevice` de `Memory`. Pendant
+`~Screen_ImGui`, la tranche encore en vol pouvait donc exécuter une écriture
+`$D012` → `displayDevice->onChar()` → verrouillage d'un `bufferMutex` détruit.
+Crash à la fermeture dès qu'un programme produit de la sortie écran — une invite
+BASIC suffit. Corrigé par l'ordre de déclaration, la discipline que `Memory.h`
+applique déjà à `AudioDevice` face à ses `AudioSource`, avec le commentaire qui
+interdit de les réordonner.
+
+**Un Intel HEX précédé d'un commentaire était écrit en page zéro.**
+`looksLikeIntelHex` ne franchissait que les lignes **vides** — pas les commentaires
+(`; built by ca65`, ce que produisent les assembleurs et `srec_cat`) ni un BOM UTF-8
+(ce qu'ajoute un éditeur Windows sans rien demander). Le fichier échappait donc à la
+détection et repartait dans le parseur WOZMON, qui écrit les **en-têtes** des
+enregistrements — compteur d'octets, adresse de chargement, type — comme des
+**données**, à l'adresse courante. Mesuré : 24 octets écrits à `$140D` au lieu de 16
+à `$0300`, **retour succès, aucun avertissement** — exactement la corruption
+silencieuse que cet en-tête déclare empêcher. Détecteur et parseur franchissent
+désormais commentaires et BOM (les deux **doivent** s'accorder sur ce qu'est un
+enregistrement, sans quoi un fichier accepté par l'un meurt sur la première ligne de
+l'autre). `intel_hex_smoke` épingle les deux cas et **la mutation le prouve** :
+sans le correctif, l'assertion tombe sur le `$140D`.
+
 ### Added — `shortcuts_sync` : l'invariant « jamais de CTRL+lettre » cesse d'être une simple consigne
 
 Trouvé en passant l'audit du débogage à un balayage **général** : `CLAUDE.md` et un

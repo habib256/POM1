@@ -186,8 +186,28 @@ int main()
     const Image noEof = loadText(":10030000A9018510A900851185158512851385140D\n", "hex");
     assert(noEof.rc == 0 && noEof.bytes == 16 && noEof.runAddr == 0x0300);
 
+    // A comment header must not hide the file from detection. Assemblers and
+    // srec_cat put one there, and the WOZMON parser strips comments too — so a
+    // commented Intel HEX file used to slip past `looksLikeIntelHex`, reach
+    // that parser, and be written to RAM as if the record headers (byte count,
+    // load address, record type) were data, at whatever address was current,
+    // reporting SUCCESS. Detection has to see past the comment.
+    const Image commented = loadText(
+        "; built by ca65\n"
+        ":10030000A9018510A900851185158512851385140D\n"
+        ":00000001FF\n", "hex");
+    assert(commented.rc == 0);
+    assert(commented.bytes == 16 && "a commented Intel HEX file must load its 16 data bytes");
+    assert(commented.runAddr == 0x0300 && "and land at the record's own address");
+
+    // Same for a UTF-8 BOM, which a Windows editor adds without asking.
+    const Image bom = loadText(
+        "\xEF\xBB\xBF:10030000A9018510A900851185158512851385140D\n"
+        ":00000001FF\n", "hex");
+    assert(bom.rc == 0 && bom.bytes == 16 && bom.runAddr == 0x0300);
+
     std::filesystem::remove_all(scratchDir(), ec);
     std::printf("intel_hex_smoke: OK (Intel HEX detected by shape, WOZMON untouched, "
-                "malformed refused)\n");
+                "malformed refused, comment/BOM headers seen through)\n");
     return 0;
 }
