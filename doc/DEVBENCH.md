@@ -38,6 +38,28 @@ the right hardware. The tab shows a **`*`** while the sketch has unsaved edits;
 the **Save** (floppy-disk) toolbar button writes to the open file, or opens the
 Save dialog for a new sketch.
 
+### Source-level debugging (asm targets, desktop)
+
+Every asm build assembles with `ca65 -g` and links with `ld65 --dbgfile`, so the
+Bench knows which **source line** every address came from (parsed by
+`src/DbgFile.cpp`, pinned by `dbgfile_smoke` + `bench_cc65_smoke`). After a
+successful Verify or Run:
+
+- **Breakpoint** (red ● toolbar button) — toggles a breakpoint at the editor's
+  cursor line; a click on a comment/blank line arms the next line that
+  generated code. One breakpoint at a time (it is the machine's single CPU
+  breakpoint — the same one as CPU → Debug). The CPU halts when it reaches
+  that line's address; the armed line shows as a marker in the gutter.
+- **Step** (⏭) now reports the **source line** it landed on, and the editor
+  cursor follows the PC while the CPU is halted — step through your own
+  listing instead of a hex disassembly.
+- The program's **labels feed the disassembler automatically** (Memory Viewer →
+  disassembly shows `JSR your_label`), no VICE `.lbl` file to hand-load.
+
+Editing the buffer invalidates the last build's line numbers, so the marker and
+the PC-follow disappear until the next Verify/Run refreshes the mapping. C
+targets and the in-browser (WASM) cc65 don't emit the line table yet.
+
 ---
 
 ## Target Matrix

@@ -59,6 +59,11 @@ public:
     int loadSymbolsFile(const std::string& path, std::string& err) {
         return symbols.loadFile(path, err);
     }
+    /// Add one program symbol directly (the DevBench feeds the labels it
+    /// harvested from ld65's --dbgfile here — no .lbl sidecar file involved).
+    void addSymbol(uint16_t address, std::string name) {
+        symbols.add(address, std::move(name));
+    }
     /// Drop any user/program labels and restore just the built-in Apple-1
     /// defaults. Called before merging a freshly-loaded program's sibling
     /// label file so symbols from a previous program don't linger.

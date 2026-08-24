@@ -176,6 +176,11 @@ void CodeBench::applyResult(const BuildResult& r)
     d->errorLines.clear();
     for (const auto& e : r.errors) { em[e.first] = e.second; d->errorLines.push_back(e.first); }
     d->editor->SetErrorMarkers(em);
+    // The host's line table (source-level debugging) describes the build that
+    // just finished, i.e. THIS tab's contents — remember which one, so the
+    // breakpoint marker / PC-follow never decorate a different tab.
+    dbgDocUid_ = host_->debugLineInfo() ? d->uid : -1;
+    dbgLastPcLine_ = -1;
 }
 
 void CodeBench::drawNewDialog()
@@ -682,7 +687,39 @@ void CodeBench::render(const char* title, bool* open)
         ImGui::SameLine(0, 6);
         if (circleBtn(ICON_FA_FORWARD_STEP, "##benchstep", "Step (single 6502 instruction)")) {
             std::string s = host_->cpuStep();
+            // With a line table from the last build, say WHERE in the source
+            // the step landed — the whole point of source-level stepping.
+            const int pcLine = host_->sourceLineForPc();
+            if (pcLine > 0) s += " (line " + std::to_string(pcLine) + ")";
             status_ = s.empty() ? "Stepped" : s; statusOk_ = true;
+        }
+        // Source breakpoint — only when the last build produced a line table
+        // (host builds with debug info) for the CURRENT buffer contents.
+        if (host_->debugLineInfo()) {
+            ImGui::SameLine(0, 6);
+            const bool clean = !doc.dirty && doc.uid == dbgDocUid_;
+            if (circleBtn(ICON_FA_CIRCLE, "##benchbp",
+                          clean ? "Toggle breakpoint at the cursor line — the CPU halts when it\n"
+                                  "reaches that line's address (one breakpoint, from the last build).\n"
+                                  "A click on a comment/blank line arms the next code line."
+                                : "Breakpoint unavailable: this buffer doesn't match the last\n"
+                                  "build. Verify or Run to refresh the line info.",
+                          clean ? IM_COL32(235, 80, 60, 255) : IM_COL32(120, 120, 120, 255))
+                && clean) {
+                const int cursorLine = doc.editor->GetCursorPosition().mLine + 1;
+                const int before = host_->breakpointLine();
+                const int armed = host_->toggleLineBreakpoint(cursorLine);
+                if (armed > 0) {
+                    status_ = "Breakpoint armed at line " + std::to_string(armed);
+                    statusOk_ = true;
+                } else if (before > 0 && host_->breakpointLine() < 0) {
+                    status_ = "Breakpoint cleared";
+                    statusOk_ = true;
+                } else {
+                    status_ = "No code at or after line " + std::to_string(cursorLine);
+                    statusOk_ = false;
+                }
+            }
         }
     }
 
@@ -999,6 +1036,32 @@ void CodeBench::render(const char* title, bool* open)
             }
         }
     } else {
+        // ---- Source-level debugging decorations (host line table) ----------
+        // A dirty buffer invalidates the last build's line numbers, so the
+        // breakpoint marker and the PC-follow both vanish until the next
+        // Verify/Run refreshes the mapping.
+        const bool dbgLive = host_->debugLineInfo() && !act.dirty
+                             && act.uid == dbgDocUid_;
+        {
+            TextEditor::Breakpoints bps;
+            if (dbgLive) {
+                const int bp = host_->breakpointLine();
+                if (bp > 0) bps.insert(bp);
+            }
+            act.editor->SetBreakpoints(bps);
+        }
+        if (dbgLive && !host_->cpuIsRunning()) {
+            // CPU halted (breakpoint hit, Stop, or a Step): follow the PC in
+            // the editor. Move the cursor only when the line CHANGES so the
+            // user can still scroll/click around a parked machine.
+            const int pcLine = host_->sourceLineForPc();
+            if (pcLine > 0 && pcLine != dbgLastPcLine_)
+                act.editor->SetCursorPosition(TextEditor::Coordinates(pcLine - 1, 0));
+            dbgLastPcLine_ = pcLine;
+        } else {
+            dbgLastPcLine_ = -1;
+        }
+
         act.editor->Render("##benchsrc", ImVec2(avail.x, editorH), true);
 
         // Right-click context menu on the editor.

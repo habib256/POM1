@@ -1324,6 +1324,23 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     // (A BASIC target re-applies the relax inside injectBasic.)
     restoreRelaxedMachine();
 
+    // Any build invalidates the previous build's line table — the addresses a
+    // source line mapped to are about to move. Drop it AND the line breakpoint
+    // armed through it (only ours: the Debug window's own breakpoint, armed at
+    // a different address, is left alone — breakpointLine() already reports
+    // none when the CPU breakpoint isn't the one we set).
+    if (dbgBreakpointLine_ >= 0 && dbgInfo_.ok) {
+        uint16_t bpAddr = 0;
+        int snapped = -1;
+        auto* emuBp = mw_->emulation.get();
+        if (emuBp && emuBp->hasCpuBreakpoint() &&
+            dbgInfo_.addrForLine(dbgBreakpointLine_, bpAddr, snapped) &&
+            emuBp->getCpuBreakpoint() == bpAddr)
+            emuBp->clearCpuBreakpoint();
+    }
+    dbgInfo_ = {};
+    dbgBreakpointLine_ = -1;
+
     // Any non-LOGO build reprograms/hard-resets the machine → a resident LOGO REPL
     // is gone. (LOGO's own mode 6 manages the flag inside injectLogo.)
     if (t.mode != 6) logoReplActive_ = false;
@@ -1656,13 +1673,37 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         if (!toolchainOk_) { r.console = std::string("cc65 (ca65/ld65) not found.\n") + kCc65InstallHint; r.status = "cc65 missing"; return r; }
         const fs::path srcS = dir / "pom1_bench.s";
         const fs::path objO = dir / "pom1_bench.o";
-        sweep.add(srcS); sweep.add(objO);
+        const fs::path dbgP = dir / "pom1_bench.dbg";
+        sweep.add(srcS); sweep.add(objO); sweep.add(dbgP);
+        // Parse ld65's --dbgfile once a link succeeds: the line table behind
+        // the Bench's source-level debugging (breakpoint at the cursor line,
+        // PC → editor line while stepping) plus the program's labels for the
+        // disassembler — the same effect as hand-loading a .lbl sibling.
+        auto adoptDbgInfo = [&]() {
+            std::ifstream df(dbgP);
+            if (!df) return;
+            std::stringstream dss;
+            dss << df.rdbuf();
+            dbgInfo_ = pom1::parseDbgFile(dss.str(), srcS.string());
+            if (!dbgInfo_.ok) return;
+            r.console += "[ok] debug info: "
+                + std::to_string(dbgInfo_.lineToAddr.size())
+                + " source lines mapped\n";
+            if (mw_->memoryViewer) {
+                mw_->memoryViewer->resetSymbolsToDefaults();
+                for (const auto& l : dbgInfo_.labels)
+                    mw_->memoryViewer->addSymbol(l.first, l.second);
+            }
+        };
         std::ofstream(srcS, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
         // If the editor's file is a real sketch or multi-file project source (sidecar
         // .sketch.json or sibling Makefile), build it in context: its own cfg,
         // and the EXTRA_ASM siblings. Empty path / no Makefile -> bare sketch path.
         const AsmProjectCtx proj = probeAsmProject(activeSourcePath_);
-        std::string asmFlags = libFlags_;
+        // -g keeps line + symbol info in every object so ld65's --dbgfile can
+        // emit the table adoptDbgInfo() parses. Costs object size only — the
+        // linked binary is byte-identical.
+        std::string asmFlags = "-g " + libFlags_;
         std::string extraObjs;   // " obj ..." appended to the ld65 link line
         std::string cfgPath;
         if (proj.ok) {
@@ -1789,12 +1830,14 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             const fs::path base = dir / "pom1_bench_db.bin";
             const std::string loP = base.string() + ".lo", hiP = base.string() + ".hi";
             sweep.add(base); sweep.add(fs::path(loP)); sweep.add(fs::path(hiP));
-            const std::string ld = bench::shellQuote(ld65_) + " -C " + bench::shellQuote(cfgPath) + " " +
+            const std::string ld = bench::shellQuote(ld65_) + " -C " + bench::shellQuote(cfgPath) +
+                " --dbgfile " + bench::shellQuote(dbgP.string()) + " " +
                 bench::shellQuote(objO.string()) + extraObjs + " -o " + bench::shellQuote(base.string());
             rc = bench::runCapture(ld, out);
             r.console += "$ ld65 -C " + cfgPath + " (dual-bank)\n" + out;
             if (rc != 0) { r.console += humanizeCc65(out); r.status = "ld65 failed (see Build output)"; return r; }
             r.console += "[ok] assembled + linked (dual-bank)\n";
+            adoptDbgInfo();
             if (!run) { r.status = "Verify OK"; r.ok = true; return r; }
             if (t.preset >= 0) onTargetSelected(target);
             mw_->finalizePendingCardPlugs();
@@ -1822,12 +1865,14 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             return r;
         }
 
-        const std::string ld = bench::shellQuote(ld65_) + " -C " + bench::shellQuote(cfgPath) + " " +
+        const std::string ld = bench::shellQuote(ld65_) + " -C " + bench::shellQuote(cfgPath) +
+            " --dbgfile " + bench::shellQuote(dbgP.string()) + " " +
             bench::shellQuote(objO.string()) + extraObjs + " -o " + bench::shellQuote(binB.string());
         rc = bench::runCapture(ld, out);
         r.console += "$ ld65 -C " + cfgPath + "\n" + out;
         if (rc != 0) { r.console += humanizeCc65(out); r.status = "ld65 failed (see Build output)"; return r; }
         r.console += "[ok] assembled + linked\n";
+        adoptDbgInfo();
         entry = parseCfgLoadAddr(cfgPath);
         if (entry == 0) { try { entry = static_cast<uint16_t>(std::stoul(addrHex, nullptr, 16)); } catch (...) { entry = 0x0300; } }
     }
@@ -2156,6 +2201,58 @@ void Pom1BenchHost::cpuRun()
 bool Pom1BenchHost::cpuIsRunning() const
 {
     return mw_->cpuRunning;  // UI-thread mirror of the run state (friend access)
+}
+
+// ── Source-level debugging (asm builds: ca65 -g + ld65 --dbgfile) ───────────
+
+bool Pom1BenchHost::debugLineInfo() const
+{
+    return dbgInfo_.ok;
+}
+
+int Pom1BenchHost::sourceLineForPc() const
+{
+    if (!dbgInfo_.ok || mw_->cpuRunning)
+        return -1;
+    // uiSnapshot is refreshed every frame by MainWindow::render(), including
+    // while the CPU is parked on a breakpoint/step — no extra lock needed.
+    return dbgInfo_.lineForAddr(mw_->uiSnapshot.programCounter);
+}
+
+int Pom1BenchHost::toggleLineBreakpoint(int line)
+{
+    auto* emu = mw_->emulation.get();
+    if (!dbgInfo_.ok || !emu)
+        return -1;
+    uint16_t addr = 0;
+    int snapped = -1;
+    if (!dbgInfo_.addrForLine(line, addr, snapped))
+        return -1;                       // past the last code line: nothing to arm
+    if (dbgBreakpointLine_ == snapped && emu->hasCpuBreakpoint() &&
+        emu->getCpuBreakpoint() == addr) {
+        emu->clearCpuBreakpoint();       // second toggle on the same line clears
+        dbgBreakpointLine_ = -1;
+        return -1;
+    }
+    emu->setCpuBreakpoint(addr);         // the machine's single CPU breakpoint
+    dbgBreakpointLine_ = snapped;
+    return snapped;
+}
+
+int Pom1BenchHost::breakpointLine() const
+{
+    // POM1 has ONE CPU breakpoint. If the Debug window re-armed it at some
+    // other address since our toggle, the line marker no longer describes the
+    // machine — report none rather than a lie.
+    auto* emu = mw_->emulation.get();
+    if (dbgBreakpointLine_ < 0 || !dbgInfo_.ok || !emu || !emu->hasCpuBreakpoint())
+        return -1;
+    uint16_t addr = 0;
+    int snapped = -1;
+    if (!dbgInfo_.addrForLine(dbgBreakpointLine_, addr, snapped) ||
+        emu->getCpuBreakpoint() != addr)
+        return -1;
+    return dbgBreakpointLine_;
 }
 
 std::string Pom1BenchHost::browseDir() const

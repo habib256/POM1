@@ -313,6 +313,20 @@ target_include_directories(test_process_util PRIVATE ${CMAKE_SOURCE_DIR}/src/ben
 add_test(NAME process_util_smoke COMMAND test_process_util)
 set_tests_properties(process_util_smoke PROPERTIES TIMEOUT 5)
 
+# -- ld65 --dbgfile parser (DevBench source-level debugging) ------------------
+# Self-contained: pom1::parseDbgFile is pure strings-in/structs-out. Pins the
+# address<->line maps, comment-line snap-forward, label harvest and refusal
+# paths on a hand-written miniature; bench_cc65_smoke (POSIX, cc65-gated)
+# re-pins the same parser against REAL ca65 -g / ld65 --dbgfile output.
+add_executable(test_dbgfile
+    dbgfile_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/DbgFile.cpp
+)
+target_include_directories(test_dbgfile PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+add_test(NAME dbgfile_smoke COMMAND test_dbgfile)
+set_tests_properties(dbgfile_smoke PROPERTIES TIMEOUT 5)
+
 # -- GEN2 release video scanner / floating bus --------------------------------
 # Self-contained: Gen2VideoScanner has no dependency on Memory, peripherals, or
 # libresidfp. Pins the MAME scanner_address oracle for known (cycle, mode)
@@ -763,12 +777,35 @@ add_test(NAME basic_native_codegen COMMAND test_basic_native_codegen
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(basic_native_codegen PROPERTIES TIMEOUT 30)
 
-# The six cc65-gated native-compiler tests below drive ca65/ld65 through
-# mkdtemp()/<unistd.h> — POSIX-only, no MSVC equivalent. They exercise the
-# BASIC->6502 compiler (platform-independent 6502 output already pinned on
-# Linux/macOS CI), so skip building them on Windows instead of porting the
-# temp-dir plumbing.
+# The cc65-gated tests below drive ca65/ld65 through mkdtemp()/<unistd.h> —
+# POSIX-only, no MSVC equivalent. They exercise the BASIC->6502 compiler and
+# the DevBench toolchain layer (platform-independent 6502 output already
+# pinned on Linux/macOS CI), so skip building them on Windows instead of
+# porting the temp-dir plumbing.
 if(NOT WIN32)
+
+# -- DevBench cc65 layer: pure parsers + real --dbgfile output ----------------
+# First test on Pom1BenchCc65.cpp — like cli_dispatcher_smoke, half the
+# assertion is that the TU LINKS with no MainWindow/EmulationController/ImGui.
+# Part A pins the Makefile/.sketch.json/linker-cfg micro-parsers and the
+# embedded C build specs; part B (cc65-gated, skip 77) assembles a fixture
+# with `ca65 -g`, links with `ld65 --dbgfile` and feeds the real output
+# through pom1::parseDbgFile — the format-compat half of dbgfile_smoke.
+add_executable(test_bench_cc65
+    bench_cc65_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/Pom1BenchCc65.cpp
+    ${CMAKE_SOURCE_DIR}/src/Pom1BenchTargets.cpp
+    ${CMAKE_SOURCE_DIR}/src/MachinePresets.cpp
+    ${CMAKE_SOURCE_DIR}/src/DbgFile.cpp
+    ${CMAKE_SOURCE_DIR}/src/Logger.cpp
+    ${CMAKE_SOURCE_DIR}/src/bench/ProcessUtil.cpp
+)
+target_include_directories(test_bench_cc65 PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/bench)
+
+add_test(NAME bench_cc65_smoke COMMAND test_bench_cc65)
+set_tests_properties(bench_cc65_smoke PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
 
 # -- Native BASIC compiler: end-to-end run + speedup (cc65-gated) -------------
 # Builds the standalone native binary (ca65/ld65 against dev/lib/basicrt) and the
