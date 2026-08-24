@@ -807,7 +807,19 @@ if(EMSCRIPTEN)
         # and is plenty for our cold-start init.
         "${POM1_STACK_FLAG}"
         "--preload-file ${PRELOAD_DIR}/roms@roms"
-        "--preload-file ${PRELOAD_DIR}/pic@pic"
+        # pic/ is NOT preloaded wholesale: at ~7 MB raw (6.9 MB of the 14 MB
+        # gzipped download) it was HALF of what every visitor paid, for Help →
+        # Photos windows most never open. Only the two boot-visible files ride
+        # in POM1.data (app icon; cassette-deck header logo). Every other pic/
+        # file is fetched over HTTP on first use — ensurePicFetched() in
+        # MainWindow_Dialogs.cpp — from the pic/ directory that
+        # tools/assemble_wasm_site.sh publishes next to the page. This is an
+        # allow-list, unlike the sketchs/dev deny-lists above, and that is
+        # deliberate: a new photo NOT added here still works in the browser
+        # (the lazy fetch finds it beside the page); it just isn't paid for by
+        # visitors who never open its window.
+        "--preload-file ${PRELOAD_DIR}/pic/icon.png@pic/icon.png"
+        "--preload-file ${PRELOAD_DIR}/pic/50_Anniv_Apple.png@pic/50_Anniv_Apple.png"
         "--preload-file ${PRELOAD_DIR}/fonts@fonts"
         "--preload-file ${PRELOAD_DIR}/software@software"
         "--preload-file ${PRELOAD_DIR}/sdcard@sdcard"

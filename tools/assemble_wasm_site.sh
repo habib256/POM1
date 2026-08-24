@@ -31,8 +31,14 @@ done
 cp -r "$REPO_ROOT/build-wasm/cc65" "$SITE_DIR/build-wasm/cc65"
 cp "$REPO_ROOT/build-wasm/cc65_bench.js" "$REPO_ROOT/build-wasm/cc65_wasm.js" \
    "$SITE_DIR/build-wasm/"
+# The WHOLE pic/ tree is served beside the page: since the lazy-pic pass only
+# icon.png + the cassette-deck logo ride inside POM1.data, and every other
+# photo is fetched from here on first use (ensurePicFetched in
+# MainWindow_Dialogs.cpp). Copy the repo's pic/, then overlay build-wasm/pic/
+# (icon variants staged for the page itself).
 mkdir -p "$SITE_DIR/build-wasm/pic"
-cp "$REPO_ROOT/build-wasm/pic/icon.png" "$SITE_DIR/build-wasm/pic/"
+cp "$REPO_ROOT"/pic/* "$SITE_DIR/build-wasm/pic/"
+cp "$REPO_ROOT"/build-wasm/pic/* "$SITE_DIR/build-wasm/pic/"
 
 # Bare habib256.github.io/pom1/ should land on the emulator, not a 404.
 printf '<!doctype html><meta charset="utf-8">' > "$SITE_DIR/index.html"
