@@ -168,7 +168,8 @@ public:
     void setAciActive(bool active);
 
     size_t getLoadedTransitionCount() const {
-        return audioStreamMode ? static_cast<size_t>(audioStreamTotalFrames) : loadedDurations.size();
+        return audioStreamMode ? static_cast<size_t>(audioStreamTotalFrames.load(std::memory_order_relaxed))
+                               : loadedDurations.size();
     }
     bool isAudioStreamMode() const { return audioStreamMode; }
     size_t getRecordedTransitionCount() const { return recordedDurations.size(); }
@@ -306,6 +307,11 @@ private:
     /// Defaults to kWavFileSampleRate so existing callers still work before
     /// the real rate is known.
     uint32_t audioOutputSampleRate = kWavFileSampleRate;
+    // Mechanical-click waveform, synthesised once per sample rate OUTSIDE
+    // audioMutex (see playMechanicalClick). Touched only by the UI/CPU-side
+    // callers, never by the audio thread — which reads clickBuffer instead.
+    std::vector<float> clickCache_;
+    uint32_t clickCacheRate_ = 0;
 
     struct AudioSegment {
         uint32_t remainingSamples;
@@ -418,8 +424,16 @@ private:
     /// base holds pointers into the object itself, so its address must not
     /// change once ma_decoder_init_file has run.
     std::unique_ptr<ma_decoder> audioStreamDecoder;
-    uint64_t audioStreamCursor = 0;       // frames consumed so far
-    uint64_t audioStreamTotalFrames = 0;  // reported by decoder; 0 if unknown
+    // ATOMIC on purpose, and the getters below read them WITHOUT taking
+    // audioStreamMutex. SnapshotPublisher::publish reads the playback
+    // position on every frame while holding stateMutex, and the audio
+    // thread holds audioStreamMutex across ma_decoder_read_pcm_frames —
+    // whose refills fread from disk. Taking the lock to read a counter
+    // therefore parked the emulation thread (and every UI call queued
+    // behind stateMutex) on a disk read. A torn read is impossible and a
+    // one-frame-stale position is invisible in a progress readout.
+    std::atomic<uint64_t> audioStreamCursor{ 0 };      // frames consumed so far
+    std::atomic<uint64_t> audioStreamTotalFrames{ 0 }; // decoder-reported; 0 if unknown
 
     mutable std::string lastError;
 };
