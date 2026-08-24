@@ -160,7 +160,7 @@ void CassetteDevice::fillAudioBuffer(float* output, int frameCount)
                                    output,
                                    static_cast<ma_uint64>(frameCount),
                                    &framesRead);
-        audioStreamCursor += framesRead;
+        audioStreamCursor.fetch_add(framesRead, std::memory_order_relaxed);
 
         // Headroom so the file doesn't clip when mixed with SID / live
         // cassette output. -3 dB is enough for typical speech/music.
@@ -369,29 +369,44 @@ void CassetteDevice::stopPulseAudio()
 
 void CassetteDevice::playMechanicalClick()
 {
-    // ~70 ms damped thud + noise burst, synthesised into a buffer that
-    // fillAudioBuffer mixes on top of the current deck output. Sits
-    // above any speaker / recording audio so the user hears it even
-    // while a tape is playing. Cheap enough (≈ 3 kB at 48 kHz) that we
-    // can rebuild it every event without caching per sample rate.
-    std::lock_guard<std::mutex> lock(audioMutex);
+    // ~70 ms damped thud + noise burst, mixed by fillAudioBuffer on top of the
+    // current deck output so the user hears it even while a tape plays.
+    //
+    // SYNTHESISED OUTSIDE audioMutex, into a cache keyed by sample rate. It
+    // used to be built under the lock on every deck transition: a ~13 kB heap
+    // allocation plus ~3400 iterations of sin/exp/sin, while the real-time
+    // callback needs that same lock every period — and, from loadAudioStream,
+    // with audioStreamMutex held on top. The result was a dropout on every
+    // insert/eject/mode change, inaudible on a desktop and plain on the Pi
+    // kiosk. It also contradicted the rule stated in AudioDevice.h: the audio
+    // callback must not wait on slow work. The rate never changes in practice,
+    // so the second click onward costs a pointer-free swap of two members.
     const uint32_t rate = std::max<uint32_t>(1, audioOutputSampleRate);
-    const uint32_t durSamples = rate / 14;  // ≈71 ms
-    clickBuffer.assign(durSamples, 0.0f);
-    uint32_t lcg = 0xC7E5A5B7u;
-    constexpr float kTwoPi = 6.28318530718f;
-    for (uint32_t i = 0; i < durSamples; ++i) {
-        const float t = static_cast<float>(i) / static_cast<float>(rate);
-        // Fast attack (<3 ms), then exponential decay.
-        const float attack = std::min(1.0f, t * 400.0f);
-        const float decay = std::exp(-t * 30.0f);
-        lcg = lcg * 1664525u + 1013904223u;
-        const float noise = (static_cast<float>(static_cast<int32_t>(lcg)) / 2147483648.0f);
-        // ~95 Hz body resonance + mid-frequency "tick" + noise tail.
-        const float thud = std::sin(kTwoPi * 95.0f * t);
-        const float tick = std::sin(kTwoPi * 1300.0f * t) * std::exp(-t * 120.0f);
-        clickBuffer[i] = (0.45f * thud + 0.30f * tick + 0.25f * noise) * attack * decay * 0.35f;
+    if (rate != clickCacheRate_ || clickCache_.empty()) {
+        const uint32_t durSamples = rate / 14;  // ≈71 ms
+        std::vector<float> built(durSamples, 0.0f);
+        uint32_t lcg = 0xC7E5A5B7u;
+        constexpr float kTwoPi = 6.28318530718f;
+        for (uint32_t i = 0; i < durSamples; ++i) {
+            const float t = static_cast<float>(i) / static_cast<float>(rate);
+            // Fast attack (<3 ms), then exponential decay.
+            const float attack = std::min(1.0f, t * 400.0f);
+            const float decay = std::exp(-t * 30.0f);
+            lcg = lcg * 1664525u + 1013904223u;
+            const float noise = (static_cast<float>(static_cast<int32_t>(lcg)) / 2147483648.0f);
+            // ~95 Hz body resonance + mid-frequency "tick" + noise tail.
+            const float thud = std::sin(kTwoPi * 95.0f * t);
+            const float tick = std::sin(kTwoPi * 1300.0f * t) * std::exp(-t * 120.0f);
+            built[i] = (0.45f * thud + 0.30f * tick + 0.25f * noise) * attack * decay * 0.35f;
+        }
+        clickCache_ = std::move(built);
+        clickCacheRate_ = rate;
     }
+    // Only this part needs the lock, and it allocates nothing: clickBuffer is
+    // assigned from a cache of identical size after the first click, so the
+    // vector reuses its storage.
+    std::lock_guard<std::mutex> lock(audioMutex);
+    clickBuffer = clickCache_;
     clickCursor = 0;
 }
 
@@ -452,35 +467,40 @@ void CassetteDevice::seekRelativeSeconds(double deltaSeconds)
     if (!audioStreamDecoderOpen || audioOutputSampleRate == 0) return;
 
     const int64_t rate = static_cast<int64_t>(audioOutputSampleRate);
-    int64_t newFrame = static_cast<int64_t>(audioStreamCursor) +
+    int64_t newFrame = static_cast<int64_t>(audioStreamCursor.load(std::memory_order_relaxed)) +
                        static_cast<int64_t>(std::llround(deltaSeconds * static_cast<double>(rate)));
     if (newFrame < 0) newFrame = 0;
-    if (audioStreamTotalFrames > 0 &&
-        newFrame >= static_cast<int64_t>(audioStreamTotalFrames)) {
-        newFrame = static_cast<int64_t>(audioStreamTotalFrames) - 1;
+    const uint64_t totalFrames = audioStreamTotalFrames.load(std::memory_order_relaxed);
+    if (totalFrames > 0 && newFrame >= static_cast<int64_t>(totalFrames)) {
+        newFrame = static_cast<int64_t>(totalFrames) - 1;
     }
     if (ma_decoder_seek_to_pcm_frame(audioStreamDecoder.get(),
                                      static_cast<ma_uint64>(newFrame)) != MA_SUCCESS) {
         return;
     }
-    audioStreamCursor = static_cast<uint64_t>(newFrame);
+    audioStreamCursor.store(static_cast<uint64_t>(newFrame), std::memory_order_relaxed);
     audioRampInSamplesRemaining = kAudioRampInSamples;
 }
 
 double CassetteDevice::getPlaybackPositionSeconds() const
 {
+    // No audioStreamMutex here — see the counters' declaration: the audio
+    // thread holds that lock across a decoder refill (a disk read), and this
+    // is called from publish() under stateMutex on every frame.
     if (!audioStreamMode) return 0.0;
-    std::lock_guard<std::mutex> lock(audioStreamMutex);
-    if (audioOutputSampleRate == 0) return 0.0;
-    return static_cast<double>(audioStreamCursor) / static_cast<double>(audioOutputSampleRate);
+    const uint32_t rate = audioOutputSampleRate;
+    if (rate == 0) return 0.0;
+    return static_cast<double>(audioStreamCursor.load(std::memory_order_relaxed)) /
+           static_cast<double>(rate);
 }
 
 double CassetteDevice::getPlaybackTotalSeconds() const
 {
-    if (!audioStreamMode) return 0.0;
-    std::lock_guard<std::mutex> lock(audioStreamMutex);
-    if (audioOutputSampleRate == 0) return 0.0;
-    return static_cast<double>(audioStreamTotalFrames) / static_cast<double>(audioOutputSampleRate);
+    if (!audioStreamMode) return 0.0;          // lock-free, same reason as above
+    const uint32_t rate = audioOutputSampleRate;
+    if (rate == 0) return 0.0;
+    return static_cast<double>(audioStreamTotalFrames.load(std::memory_order_relaxed)) /
+           static_cast<double>(rate);
 }
 
 void CassetteDevice::previewBeep(const std::vector<std::pair<uint32_t, bool>>& pulses)
@@ -725,7 +745,7 @@ void CassetteDevice::rewindTape()
         if (audioStreamDecoderOpen) {
             ma_decoder_seek_to_pcm_frame(audioStreamDecoder.get(), 0);
         }
-        audioStreamCursor = 0;
+        audioStreamCursor.store(0, std::memory_order_relaxed);
         playbackActive = false;
         clearLiveAudioState();
         return;
@@ -1219,8 +1239,8 @@ bool CassetteDevice::loadAudioStream(const std::string& path)
         retired = std::move(audioStreamDecoder);
         audioStreamDecoder = std::move(fresh);
         audioStreamDecoderOpen = true;
-        audioStreamCursor = 0;
-        audioStreamTotalFrames = total;
+        audioStreamCursor.store(0, std::memory_order_relaxed);
+        audioStreamTotalFrames.store(total, std::memory_order_relaxed);
         audioStreamMode   = true;
         loadedTapePath    = path;
         loadedTapeReady   = true;
@@ -1251,8 +1271,8 @@ void CassetteDevice::closeAudioStream()
         std::lock_guard<std::mutex> lock(audioStreamMutex);
         retired = std::move(audioStreamDecoder);
         audioStreamDecoderOpen = false;
-        audioStreamCursor = 0;
-        audioStreamTotalFrames = 0;
+        audioStreamCursor.store(0, std::memory_order_relaxed);
+        audioStreamTotalFrames.store(0, std::memory_order_relaxed);
     }
     if (retired) ma_decoder_uninit(retired.get());
 }

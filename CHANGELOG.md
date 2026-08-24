@@ -10,6 +10,41 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — le chemin audio ne fait plus attendre le thread d'émulation
+
+Les deux défauts que l'audit général avait relevés dans `CassetteDevice` sont
+corrigés — même famille que la cicatrice d'août : une **durée** de détention de
+verrou, que ni `LockOrder.h` ni TSan ne voient, seule la lecture du chemin d'appel
+la trouve.
+
+**Publication de la position sans verrou.** `fillAudioBuffer` tient
+`audioStreamMutex` pendant `ma_decoder_read_pcm_frames`, dont les recharges font un
+`fread` disque sur le thread temps-réel ; en face, `SnapshotPublisher::publish`
+lisait la position et la durée de lecture — donc réclamait ce même verrou — **en
+tenant `stateMutex`**, à chaque trame. Avec une cassette en mode flux montée, chaque
+tranche d'émulation pouvait ainsi se bloquer sur une lecture disque tout en tenant
+le verrou d'état, et le moindre appel d'interface attendait derrière. `audioStreamCursor`
+et `audioStreamTotalFrames` deviennent des atomiques et les deux accesseurs ne
+verrouillent plus : une lecture déchirée est impossible et une position vieille d'une
+trame est invisible dans un afficheur de progression.
+
+**Clic mécanique synthétisé hors verrou.** `playMechanicalClick` allouait ~13 ko et
+enchaînait ~3400 itérations de `sin`/`exp` **sous `audioMutex`** — que le callback
+temps-réel réclame à chaque période, et, depuis `loadAudioStream`, avec
+`audioStreamMutex` par-dessus. D'où une micro-coupure à chaque transition du deck
+(insertion, éjection, programme↔flux) : négligeable sur un bureau, audible sur la
+borne Pi. La forme d'onde est désormais calculée **hors du verrou**, dans un cache
+indexé par fréquence d'échantillonnage ; le verrou ne couvre plus qu'une copie sans
+allocation (le vecteur réutilise son stockage dès le deuxième clic). Cela remet le
+code en accord avec la règle inscrite dans `AudioDevice.h` — le callback audio ne
+doit ni allouer ni attendre un travail lent.
+
+*Troisième piste de la même passe, écartée après vérification :* un
+`SetNextWindowSize(..., FirstUseEver)` qui semblait suivre un `applyPendingLayout`
+(ce qui écraserait la géométrie du preset) était un **faux positif de mon analyse** —
+les deux appels appartiennent à des fonctions différentes. L'analyse corrigée, qui
+tient compte des frontières de fonction, ne trouve aucune violation dans l'arbre.
+
 ### Fixed — audit général : use-after-free à la fermeture, et un Intel HEX commenté écrit n'importe où
 
 Deux vrais défauts hors du DevBench, trouvés en élargissant la chasse au projet
