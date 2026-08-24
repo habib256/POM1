@@ -185,6 +185,52 @@ static int partB()
     assert(hasLabel(d, 0x0309, "loop"));
     assert(hasLabel(d, 0x030C, "echo"));
 
+    // ── Which data directives the type= filter actually covers ───────────
+    // `type=` is an OPTIONAL data descriptor, not a "this is data" flag, so
+    // the coverage is a measured fact and not a rule — pin it here so a cc65
+    // change shows up as a test failure instead of a breakpoint that quietly
+    // never fires. .byte is the mass of the corpus (12 439 occurrences) and
+    // must be covered in EVERY form; .asciiz is the known residue (14).
+    const std::string dataS = dir + "/data.s";
+    const std::string dataO = dir + "/data.o", dataDbg = dir + "/data.dbg";
+    const std::string dataBin = dir + "/data.bin";
+    std::ofstream(dataS) <<
+        "        .setcpu \"6502\"\n"      // line 1
+        "start:  lda #$01\n"             // line 2  code
+        "one:    .byte $11\n"            // line 3  data
+        "many:   .byte $11,$22,$33\n"    // line 4  data
+        "str:    .byte \"abc\"\n"        // line 5  data
+        "strz:   .byte \"abc\",0\n"      // line 6  data
+        "wtab:   .word $1234\n"          // line 7  data
+        "asc:    .asciiz \"hi\"\n"       // line 8  DATA, but not covered
+        "done:   rts\n";                 // line 9  code
+    if (std::system(("ca65 -g -o " + dataO + " " + dataS).c_str()) != 0 ||
+        std::system(("ld65 -C " + cfg + " --dbgfile " + dataDbg + " -o " +
+                     dataBin + " " + dataO).c_str()) != 0) {
+        std::fprintf(stderr, "FAIL: building the data-directive fixture\n");
+        return 1;
+    }
+    std::ifstream inData(dataDbg);
+    std::stringstream ssData;
+    ssData << inData.rdbuf();
+    const pom1::DbgLineInfo dd = pom1::parseDbgFile(ssData.str(), dataS);
+    assert(dd.ok);
+    uint16_t da = 0;
+    int dl = 0;
+    // Every .byte form and .word: not a breakpoint target — a click snaps
+    // past them, all the way to the next real instruction.
+    for (int line : {3, 4, 5, 6, 7}) {
+        assert(dd.addrForLine(line, da, dl));
+        assert(dl != line);          // snapped away from the data line
+    }
+    // ...and the code around them IS mapped.
+    assert(dd.addrForLine(2, da, dl) && dl == 2 && da == 0x0300);
+    assert(dd.addrForLine(9, da, dl) && dl == 9);
+    // KNOWN RESIDUE: .asciiz carries no type descriptor, so it still maps.
+    // This assertion documents the limitation; if cc65 ever starts emitting
+    // one, it fails and the comment above needs updating (a good failure).
+    assert(dd.addrForLine(8, da, dl) && dl == 8);
+
     // ── The failure the user is most likely to meet: no -g ───────────────
     // ld65 still writes a debug file, and it still looks plausible — but its
     // `line` records carry no span=, so nothing maps. The parser must say so
