@@ -196,6 +196,10 @@ void EmulationController::hardReset(bool animateBoot)
     const bool sidWasPlugged = memory->isSIDEnabled();
     if (sidWasPlugged) memory->setSIDEnabled(false);
 
+    // RAM is about to be wiped and the ROMs reloaded: whatever program was
+    // resident is gone (see programGeneration).
+    programGeneration_.fetch_add(1, std::memory_order_relaxed);
+
     memory->resetMemory();
     memory->initMemory();
     // Flush any keystrokes still queued/buffered from a prior run so they can't be

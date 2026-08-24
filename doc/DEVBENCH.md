@@ -75,7 +75,12 @@ successful Verify or Run:
   disassembly shows `JSR your_label`), no VICE `.lbl` file to hand-load.
 
 Editing the buffer invalidates the last build's line numbers, so the marker and
-the PC-follow disappear until the next Verify/Run refreshes the mapping. C
+the PC-follow disappear until the next Verify/Run refreshes the mapping. The
+PC-follow additionally needs the built program to be the one actually **in the
+machine**: after a Verify alone (which compiles without loading), or once
+anything else replaces it (File > Load, a rewind scrub, a hard reset), it goes
+quiet rather than pointing at a line of your source that had nothing to do with
+what executed. Run it and the follow comes back. C
 targets and the in-browser (WASM) cc65 don't emit the line table yet.
 
 If the breakpoint button does **not** appear after an asm build, the console

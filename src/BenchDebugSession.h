@@ -43,15 +43,35 @@ public:
     /// applied, interpreter injected). Forgets everything, the pending
     /// re-arm included — resurrecting a breakpoint into a different program
     /// would poke an address that now means something else.
-    void invalidate() { info_ = {}; armedLine_ = -1; pendingRearm_ = -1; }
+    void invalidate()
+    {
+        info_ = {};
+        armedLine_ = -1;
+        pendingRearm_ = -1;
+        loaded_ = false;
+    }
     bool hasLineInfo() const { return info_.ok; }
     const DbgLineInfo& lineInfo() const { return info_; }
 
+    /// Record that the built program is now the one resident in the machine,
+    /// stamped with the machine's program generation at load time. A table
+    /// alone does NOT mean this: a Verify compiles without loading anything,
+    /// and the addresses it describes then belong to whatever is still
+    /// running.
+    void markProgramLoaded(uint64_t stamp) { loadedStamp_ = stamp; loaded_ = true; }
+
     /// 1-based source line for `pc`, or -1 when the PC is outside the built
-    /// program (or no table is live).
-    int lineForPc(uint16_t pc) const
+    /// program, no table is live, or the machine no longer runs the program
+    /// this table describes — `currentStamp` differing from the one recorded
+    /// at load time (a File > Load, a rewind, a hard reset, another Run).
+    /// Without that guard the PC-follow silently maps a foreign program's PC
+    /// onto this source's lines and points at a line that has nothing to do
+    /// with what executed.
+    int lineForPc(uint16_t pc, uint64_t currentStamp) const
     {
-        return info_.ok ? info_.lineForAddr(pc) : -1;
+        if (!info_.ok || !loaded_ || currentStamp != loadedStamp_)
+            return -1;
+        return info_.lineForAddr(pc);
     }
 
     // ── Toggle ──────────────────────────────────────────────────────────
@@ -121,6 +141,8 @@ private:
     DbgLineInfo info_;
     int armedLine_ = -1;      // 1-based snapped line we armed, -1 = none
     int pendingRearm_ = -1;   // line a build owes us a re-arm for, -1 = none
+    bool loaded_ = false;     // the built program was actually loaded...
+    uint64_t loadedStamp_ = 0;// ...and this is the machine's stamp back then
 };
 
 } // namespace pom1

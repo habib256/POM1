@@ -84,7 +84,7 @@ int main()
         assert(s.markerLine(kNoBp) == -1);
         assert(s.beginRebuild(kNoBp) == -1);
         assert(!s.rearm().ok);
-        assert(s.lineForPc(0x0300) == -1);
+        assert(s.lineForPc(0x0300, 0) == -1);
     }
 
     // ── 2. Toggle on, toggle off, and snapping ───────────────────────────
@@ -92,7 +92,15 @@ int main()
         BenchDebugSession s;
         s.adopt(tableA());
         assert(s.hasLineInfo());
-        assert(s.lineForPc(0x0300) == 3);
+        // A table alone is not enough: until the program is actually LOADED
+        // the PC belongs to whatever else is running.
+        assert(s.lineForPc(0x0300, 7) == -1);
+        s.markProgramLoaded(7);
+        assert(s.lineForPc(0x0300, 7) == 3);
+        // A later load / reset / rewind bumps the machine's stamp: the table
+        // no longer describes what runs, so the PC-follow must go quiet
+        // rather than point at an unrelated line of this source.
+        assert(s.lineForPc(0x0300, 8) == -1);
 
         auto on = s.toggle(3, kNoBp);
         assert(on.kind == Toggle::Armed && on.address == 0x0300 && on.line == 3);
