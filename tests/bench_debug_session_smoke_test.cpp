@@ -83,7 +83,7 @@ int main()
         assert(s.toggle(3, kNoBp).kind == Toggle::NoCode);
         assert(s.markerLine(kNoBp) == -1);
         assert(s.beginRebuild(kNoBp) == -1);
-        assert(!s.rearm(3).ok);
+        assert(!s.rearm().ok);
         assert(s.lineForPc(0x0300) == -1);
     }
 
@@ -137,17 +137,29 @@ int main()
         // Someone re-armed it elsewhere (Debug window, address $FFEF).
         const MBp stranger = armedAt(0xFFEF);
         assert(s.markerLine(stranger) == -1);        // no lying marker
-        assert(s.beginRebuild(stranger) == -1);      // not ours -> don't clear
         // Toggling our line now ARMS ours rather than clearing the stranger's.
         auto re = s.toggle(3, stranger);
         assert(re.kind == Toggle::Armed && re.address == 0x0300);
 
-        // Someone cleared it outright.
+        // Someone cleared it outright: no marker, and clicking the same line
+        // re-arms rather than reading as a toggle-off of a breakpoint that is
+        // no longer there.
         assert(s.markerLine(kNoBp) == -1);
-        assert(s.beginRebuild(kNoBp) == -1);         // nothing of ours survives
-        // Clicking the same line re-arms (rather than reading as a toggle-off
-        // of a breakpoint that is no longer there).
         assert(s.toggle(3, kNoBp).kind == Toggle::Armed);
+    }
+
+    // ── 4b. A rebuild never carries — nor clears — a stranger's breakpoint ─
+    // beginRebuild() always drops the table (a build is about to move every
+    // address); what it must NOT do is claim a breakpoint the Debug window
+    // owns. Returning -1 is what tells the host to leave it armed.
+    {
+        BenchDebugSession s;
+        s.adopt(tableA());
+        assert(s.toggle(3, kNoBp).kind == Toggle::Armed);      // ours at $0300
+        assert(s.beginRebuild(armedAt(0xFFEF)) == -1);         // not ours
+        assert(!s.rearmPending());     // nothing owed: we never armed $FFEF
+        s.adopt(tableB());
+        assert(!s.rearm().ok);         // and nothing is restored over it
     }
 
     // ── 5. The rebuild loop: arm -> rebuild -> re-arm at the NEW address ──
@@ -160,12 +172,13 @@ int main()
 
         const int carry = s.beginRebuild(armedAt(0x0300));
         assert(carry == 3);                    // ours: caller clears + carries
-        s.invalidate();                        // build starts
-        assert(!s.hasLineInfo());
+        assert(!s.hasLineInfo());              // beginRebuild dropped the table
+        assert(s.rearmPending());              // ...but owes us a re-arm
         assert(s.markerLine(armedAt(0x0300)) == -1);   // nothing to show mid-build
 
         s.adopt(tableB());                     // link finished: fresh table
-        const auto re = s.rearm(carry);
+        const auto re = s.rearm();
+        assert(!s.rearmPending());             // consumed
         assert(re.ok && re.line == 3 && re.address == 0x0310);  // moved!
         assert(s.markerLine(armedAt(0x0310)) == 3);
         // The OLD address is no longer ours — a marker keyed on it would lie.
@@ -182,9 +195,8 @@ int main()
         assert(s.toggle(5, kNoBp).kind == Toggle::Armed);      // $0302
         const int carry = s.beginRebuild(armedAt(0x0302));
         assert(carry == 5);
-        s.invalidate();
         s.adopt(tableB());
-        const auto re = s.rearm(carry);
+        const auto re = s.rearm();
         // tableB has code at lines 3 and 8; line 5 snaps forward to 8, so the
         // re-arm SUCCEEDS at the snapped line rather than vanishing. What must
         // never happen is silently keeping the stale $0302.
@@ -199,10 +211,53 @@ int main()
         BenchDebugSession s;
         s.adopt(tableA());
         assert(s.beginRebuild(kNoBp) == -1);
-        s.invalidate();
+        assert(!s.rearmPending());
         s.adopt(tableB());
-        assert(!s.rearm(-1).ok);
+        assert(!s.rearm().ok);
         assert(s.markerLine(kNoBp) == -1);
+    }
+
+    // ── 7b. A FAILED build must not lose the breakpoint ──────────────────
+    // The commonest event in development is a build that does not compile,
+    // and between the wipe at the top of a build and the re-arm after its
+    // link there are a dozen early returns (every ca65/ld65/cl65 error). The
+    // carried line therefore lives in the SESSION, not in the build's local
+    // scope: a failed build simply never calls rearm(), and the next build
+    // that succeeds honours the intent.
+    {
+        BenchDebugSession s;
+        s.adopt(tableA());
+        assert(s.toggle(3, kNoBp).kind == Toggle::Armed);      // $0300
+
+        // Build #1 starts, then fails at ca65 — no adopt(), no rearm().
+        assert(s.beginRebuild(armedAt(0x0300)) == 3);
+        assert(s.rearmPending());
+        assert(!s.hasLineInfo());
+        // Build #2 starts from that state (nothing armed to carry now) and
+        // succeeds. The pending intent from build #1 must still be honoured.
+        assert(s.beginRebuild(kNoBp) == -1);   // nothing of ours armed now...
+        assert(s.rearmPending());              // ...but the intent survives
+        s.adopt(tableB());
+        const auto re = s.rearm();
+        assert(re.ok && re.line == 3 && re.address == 0x0310);
+        assert(s.markerLine(armedAt(0x0310)) == 3);
+    }
+
+    // ── 7c. But a MACHINE change drops the pending intent ────────────────
+    // Switching profile / injecting an interpreter reprograms the machine;
+    // restoring a breakpoint into a different program would poke an address
+    // that now means something else.
+    {
+        BenchDebugSession s;
+        s.adopt(tableA());
+        assert(s.toggle(3, kNoBp).kind == Toggle::Armed);
+        assert(s.beginRebuild(armedAt(0x0300)) == 3);
+        assert(s.rearmPending());
+        s.invalidate();                        // preset applied / interpreter injected
+        assert(!s.rearmPending());
+        s.adopt(tableB());
+        assert(!s.rearm().ok);                 // nothing resurrected
+        assert(s.markerLine(armedAt(0x0310)) == -1);
     }
 
     // ── 8. invalidate() forgets the armed line, so a later re-adopt cannot

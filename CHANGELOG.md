@@ -10,6 +10,29 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — chasse n°9 : une compilation ratée perdait le point d'arrêt pour de bon
+
+Premier bug trouvé **grâce** à l'extraction de la passe précédente : en auditant le
+code le plus frais, la question « que devient la ligne à ré-armer quand un build
+échoue ? » n'avait pas de bonne réponse. Le ré-armement de la passe n°3 mémorisait
+la ligne dans une **variable locale au build** — or il y a **douze sorties
+anticipées** entre l'effacement du point d'arrêt (en tête de build) et le
+ré-armement (après l'édition de liens), une par diagnostic ca65/ld65/cl65. Autrement
+dit : point d'arrêt ligne 10, faute de frappe, Verify, `ca65` refuse → le point
+d'arrêt est effacé **et l'intention perdue** ; corriger la faute et recompiler ne le
+ramenait pas. Rater une compilation étant l'événement le plus courant du
+développement, c'était le chemin le plus fréquenté de la fonctionnalité. L'intention
+vit désormais **dans la session** : `beginRebuild()` la mémorise (et retire la table
+lui-même, puisque toutes les adresses vont bouger), `rearm()` la consomme — et un
+build qui échoue n'appelle jamais `rearm()`, ce qui est exactement ce qui fait
+survivre l'intention jusqu'au prochain build réussi. Seul `invalidate()` (la machine
+elle-même qui change : profil appliqué, interpréteur injecté) l'abandonne, parce que
+restaurer un point d'arrêt dans un autre programme piquerait une adresse qui a changé
+de sens. Épinglé par deux scénarios de `bench_debug_session_smoke` (build raté puis
+réussi ; changement de machine qui abandonne bien l'intention) — et le test a
+lui-même attrapé le changement de sémantique de `beginRebuild`, qui retire maintenant
+la table dans tous les cas.
+
 ### Changed — chasse n°8 : la machine à états du débogage sort de l'UI et devient testable (`BenchDebugSession`)
 
 Huitième passe, et la dernière zone aveugle refermée. Le constat des sept

@@ -39,10 +39,11 @@ public:
     // ── Line table lifetime ─────────────────────────────────────────────
     /// A build produced a usable table. Replaces whatever was live.
     void adopt(DbgLineInfo info) { info_ = std::move(info); }
-    /// The table no longer describes the machine (rebuild started, preset
-    /// applied, interpreter injected). Also forgets the armed line: the
-    /// addresses it named are about to move or are already gone.
-    void invalidate() { info_ = {}; armedLine_ = -1; }
+    /// The MACHINE no longer runs the program the table described (preset
+    /// applied, interpreter injected). Forgets everything, the pending
+    /// re-arm included — resurrecting a breakpoint into a different program
+    /// would poke an address that now means something else.
+    void invalidate() { info_ = {}; armedLine_ = -1; pendingRearm_ = -1; }
     bool hasLineInfo() const { return info_.ok; }
     const DbgLineInfo& lineInfo() const { return info_; }
 
@@ -84,25 +85,42 @@ public:
     int markerLine(MachineBp machine) const;
 
     // ── Rebuild ─────────────────────────────────────────────────────────
-    /// Called before a build wipes the table. Returns the line to carry over
-    /// (and whose machine breakpoint the caller must clear), or -1 when there
-    /// is nothing of ours to carry: no armed line, or the machine breakpoint
-    /// belongs to someone else — which must be left strictly alone.
-    int beginRebuild(MachineBp machine) const;
+    /// A build is starting: drop the table (its addresses are about to move)
+    /// and REMEMBER the armed line so a later rearm() can restore it.
+    /// Returns that line — whose machine breakpoint the caller must clear —
+    /// or -1 when there is nothing of ours to carry: no armed line, or the
+    /// machine breakpoint belongs to someone else, which is left strictly
+    /// alone.
+    ///
+    /// The memory is deliberately a MEMBER and not the caller's local: a
+    /// build has a dozen ways to fail before it ever links (a typo is the
+    /// commonest event in development), and each one used to lose the
+    /// breakpoint for good — the wipe had happened, the re-arm never ran.
+    /// The intent now survives failed builds and is honoured by the next one
+    /// that succeeds; only invalidate() (the machine itself changing) drops
+    /// it.
+    int beginRebuild(MachineBp machine);
 
     struct RearmResult {
         bool ok = false;
         uint16_t address = 0;
         int line = -1;        // possibly snapped to a different line
     };
-    /// Re-arm `rememberedLine` (from beginRebuild) against the freshly adopted
-    /// table. Fails — leaving the breakpoint down, visibly — when the line no
-    /// longer produces code, or when no table is live.
-    RearmResult rearm(int rememberedLine);
+    /// Re-arm the line remembered by beginRebuild() against the freshly
+    /// adopted table, snapping forward like a click does. CONSUMES the
+    /// memory either way: a fresh table settles the question, so a line that
+    /// no longer resolves leaves the breakpoint down rather than trailing a
+    /// pending intent forever. Call only after adopt() — a build that failed
+    /// must NOT call it, which is exactly how the intent survives.
+    RearmResult rearm();
+    /// True while a beginRebuild() is still waiting for its rearm() — i.e. a
+    /// build wiped a breakpoint that has not been restored yet.
+    bool rearmPending() const { return pendingRearm_ >= 0; }
 
 private:
     DbgLineInfo info_;
     int armedLine_ = -1;      // 1-based snapped line we armed, -1 = none
+    int pendingRearm_ = -1;   // line a build owes us a re-arm for, -1 = none
 };
 
 } // namespace pom1
