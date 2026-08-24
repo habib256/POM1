@@ -1953,6 +1953,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 // already running: a breakpoint within the very first
                 // instructions can miss its first pass; loops catch the next.)
                 adoptDbgInfo();
+                dbg_.markProgramLoaded(emu->programGeneration());
                 rearmDbgBreakpoint(r);
                 emu->copySnapshot(mw_->uiSnapshot);
                 if (t.preset == md::kPresetGen2Bench) mw_->showGraphicsCard = true;
@@ -2037,6 +2038,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         // started, so even a first-instruction breakpoint trips. Re-adopt
         // first: the preset apply above may have wiped the line table.
         adoptDbgInfo();
+        dbg_.markProgramLoaded(emu->programGeneration());
         rearmDbgBreakpoint(r);
         mw_->codeTankPendingWozRunAt = ImGui::GetTime() + 1.0;
         emu->copySnapshot(mw_->uiSnapshot);
@@ -2072,6 +2074,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         // running: a breakpoint within the very first instructions can miss
         // its first pass; loops catch the next one.)
         adoptDbgInfo();
+        dbg_.markProgramLoaded(emu->programGeneration());
         rearmDbgBreakpoint(r);
         emu->copySnapshot(mw_->uiSnapshot);
         if (t.preset == md::kPresetGen2Bench) mw_->showGraphicsCard = true;
@@ -2378,7 +2381,12 @@ int Pom1BenchHost::sourceLineForPc() const
         return -1;
     // uiSnapshot is refreshed every frame by MainWindow::render(), including
     // while the CPU is parked on a breakpoint/step — no extra lock needed.
-    return dbg_.lineForPc(mw_->uiSnapshot.programCounter);
+    auto* emu = mw_->emulation.get();
+    if (!emu)
+        return -1;
+    // The stamp guards against the table describing a program the machine no
+    // longer runs (Verify without Run, File > Load, a rewind scrub).
+    return dbg_.lineForPc(mw_->uiSnapshot.programCounter, emu->programGeneration());
 }
 
 int Pom1BenchHost::toggleLineBreakpoint(int line)

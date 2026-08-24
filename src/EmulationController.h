@@ -244,6 +244,19 @@ public:
                      int* bytesLoaded = nullptr,
                      std::vector<std::pair<uint16_t,uint16_t>>* zones = nullptr);
     bool loadBinary(const std::string& path, uint16_t startAddress, std::string& error, int* bytesLoaded = nullptr);
+
+    /// Monotonic stamp of "what program is in memory". Bumped by every
+    /// operation that replaces it — a binary load, a hard reset, a snapshot
+    /// restore. Callers that derived something from a program they loaded
+    /// (the DevBench's source line table, whose addresses only mean anything
+    /// for THAT image) compare the stamp they saw at load time against this
+    /// one, and stop trusting their data when it differs. Same shape as
+    /// rewindGeneration_ below, for the same reason: cheap, monotonic, and
+    /// impossible to get a false "unchanged" out of.
+    uint64_t programGeneration() const
+    {
+        return programGeneration_.load(std::memory_order_relaxed);
+    }
     /// Load a binary blob into RAM at `address`. `pauseCpu` (default true) stops
     /// the CPU and leaves it paused — DevBench's Run path relies on this (the
     /// program load must be the final memory op). Pass false to load under the
@@ -648,6 +661,10 @@ private:
     pom1::RewindBuffer rewindBuffer;
     double rewindCaptureAccum = 0.0;
     std::atomic<uint64_t>    rewindGeneration_{ 0 };
+    // See programGeneration(). Bumped by loadBinary / loadBinaryToRam /
+    // hardReset / loadSnapshotFromBuffer — every path that makes the bytes
+    // at a given address belong to a different program.
+    std::atomic<uint64_t>    programGeneration_{ 0 };
     // REQUIRES rewindMutex held: refresh the status atomics from the buffer.
     void publishRewindStatusLocked();
     std::atomic<bool>        rewindEnabled_   { false };

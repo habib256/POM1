@@ -41,6 +41,8 @@ bool EmulationController::loadBinaryToRam(const std::string& path, uint16_t addr
         publisher.publish(*memory, *cpu, runRequested.load());
         return false;
     }
+    // Bytes at these addresses now belong to a different image.
+    programGeneration_.fetch_add(1, std::memory_order_relaxed);
     publisher.publish(*memory, *cpu, runRequested.load());
     return true;
 }
@@ -114,6 +116,8 @@ bool EmulationController::loadBinary(const std::string& path, uint16_t startAddr
     memory->configureResetVectors(startAddress);
     memory->setWriteInRom(prevWriteInRom);
     preferredSoftResetVector = startAddress;
+    // A different program now occupies these addresses (see programGeneration).
+    programGeneration_.fetch_add(1, std::memory_order_relaxed);
     cpu->hardReset();
     cpu->start();
     runRequested.store(true);
@@ -250,6 +254,8 @@ void EmulationController::rewindRestoreFrame(std::size_t pos)
     if (blob.empty()) return;
     std::string err;
     if (memory->loadSnapshotFromBuffer(blob, err, cpu.get())) {
+        // Restored memory: the resident program is whatever the snapshot held.
+        programGeneration_.fetch_add(1, std::memory_order_relaxed);
         publisher.publish(*memory, *cpu, runRequested.load());
         rewindPos_.store(pos);
     }

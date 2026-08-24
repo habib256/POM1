@@ -10,6 +10,32 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — chasse n°14 : le suivi du PC pointait des lignes d'un programme qui ne tournait pas
+
+Encore une « limite connue » écrite sans être mesurée — j'avais noté qu'un
+*File → Load* hors du Bench laissait la table décrire « le dernier build », en
+présentant cela comme inoffensif. Ça ne l'est pas : la table survit au chargement,
+et `sourceLineForPc` mappe alors le PC du **nouveau** programme sur les lignes de
+**l'ancien** source. Les deux se chargent typiquement à `$0300`, donc les adresses
+se recouvrent et le curseur se pose sur une ligne parfaitement plausible — et
+fausse. Un débogueur qui montre une mauvaise ligne est pire qu'un débogueur muet.
+
+En cherchant l'étendue, le cas s'est révélé plus large et plus banal que le
+*File → Load* : **un simple Verify** adopte la table sans rien charger, si bien
+que le suivi du PC mappait déjà, dans ce cas, le programme précédent. La table
+décrivait le **binaire bâti**, jamais « ce qui est en mémoire » — la confusion
+était dans la conception, pas dans un chemin particulier.
+
+`EmulationController` publie donc un **`programGeneration()`** — compteur monotone,
+même forme que le `rewindGeneration_` voisin — incrémenté par les quatre opérations
+qui font qu'un octet à une adresse donnée appartient à un autre programme :
+`loadBinary`, `loadBinaryToRam`, `hardReset`, restauration de snapshot. La session
+n'active le suivi du PC qu'après un `markProgramLoaded(stamp)` (posé par les
+chemins Run, jamais par Verify) et se tait dès que le compteur diffère. Le point
+d'arrêt, lui, reste armable après un Verify — armer puis lancer est le geste
+naturel. Les nouveaux scénarios de `bench_debug_session_smoke` épinglent les trois
+états : table sans chargement (muet), chargée (suit), compteur changé (muet).
+
 ### Fixed — chasse n°13 : un point d'arrêt fantôme gelait la machine sans explication
 
 Le pire symptôme de la série, trouvé en confrontant les commentaires de cycle de vie
