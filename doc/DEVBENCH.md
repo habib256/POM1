@@ -73,6 +73,12 @@ Editing the buffer invalidates the last build's line numbers, so the marker and
 the PC-follow disappear until the next Verify/Run refreshes the mapping. C
 targets and the in-browser (WASM) cc65 don't emit the line table yet.
 
+If the breakpoint button does **not** appear after an asm build, the console
+says why — `[warn] source-level debugging unavailable: …` names the cause (no
+debug file, an empty one, or line records with no addresses, which is what a
+build without `ca65 -g` produces). A breakpoint you had armed survives a build
+that fails to compile: fix the error, build again, and it is re-armed.
+
 ---
 
 ## Target Matrix

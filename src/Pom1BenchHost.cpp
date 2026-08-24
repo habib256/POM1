@@ -1602,22 +1602,41 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     // shared temp dir, so a second POM1 instance building at the same moment
     // could have replaced or swept it underneath us.
     std::string dbgFileText;
+    // Set by the asm branch once it has actually asked ld65 for a --dbgfile.
+    // Without this, a stray /tmp/pom1_bench.dbg — another POM1 instance's, or
+    // one an interrupted build left behind — would be adopted by a target that
+    // never requested debug info (the C paths share the run code below and call
+    // adoptDbgInfo too), decorating a C program with an asm program's lines.
+    bool dbgFileExpected = false;
+    // Why the table could not be adopted, in the user's words. parseDbgFile
+    // writes real diagnostics ("was the source assembled with ca65 -g?") and
+    // they used to be dropped on the floor by three silent `return`s: when
+    // source-level debugging failed, the breakpoint button simply never
+    // appeared and nothing anywhere said why.
+    std::string dbgUnavailable;
     auto adoptDbgInfo = [&]() {
-        if (dbg_.hasLineInfo())
+        if (dbg_.hasLineInfo() || !dbgFileExpected)
             return;
         if (dbgFileText.empty()) {
             std::ifstream df(dbgFileP);
-            if (!df)
+            if (!df) {
+                dbgUnavailable = "ld65 wrote no debug file";
                 return;
+            }
             std::stringstream dss;
             dss << df.rdbuf();
             dbgFileText = dss.str();
         }
-        if (dbgFileText.empty())
+        if (dbgFileText.empty()) {
+            dbgUnavailable = "the debug file is empty";
             return;
+        }
         pom1::DbgLineInfo parsed = pom1::parseDbgFile(dbgFileText, dbgSrcS.string());
-        if (!parsed.ok)
+        if (!parsed.ok) {
+            dbgUnavailable = parsed.error;
             return;
+        }
+        dbgUnavailable.clear();
         r.console += "[ok] debug info: "
             + std::to_string(parsed.lineToAddr.size())
             + " source lines mapped\n";
@@ -1627,6 +1646,18 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 mw_->memoryViewer->addSymbol(l.first, l.second);
         }
         dbg_.adopt(std::move(parsed));
+    };
+    // Say WHY source-level debugging is unavailable, once, right after the
+    // link that was supposed to produce it. Silence here reads as "this build
+    // has no debugger" with no way to tell a toolchain problem from a missing
+    // feature. Only reached on the asm path, which is the one that asks for a
+    // --dbgfile at all.
+    auto reportDbgUnavailable = [&](bench::BuildResult& res) {
+        if (dbg_.hasLineInfo() || dbgUnavailable.empty())
+            return;
+        res.console += "[warn] source-level debugging unavailable: "
+                     + dbgUnavailable + "\n";
+        dbgUnavailable.clear();      // reported once per build
     };
     const std::string cfgTag = t.cfg ? t.cfg : "";
     const bool cmode  = (t.mode == 3);
@@ -1752,6 +1783,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         // before ld65 runs, and a later adoptDbgInfo() call (run-path re-parse)
         // must never adopt the previous program's table.
         fs::remove(dbgP, ec);
+        dbgFileExpected = true;   // this build asks ld65 for one (see the lambda)
         std::ofstream(srcS, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
         // If the editor's file is a real sketch or multi-file project source (sidecar
         // .sketch.json or sibling Makefile), build it in context: its own cfg,
@@ -1895,6 +1927,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             if (rc != 0) { r.console += humanizeCc65(out); r.status = "ld65 failed (see Build output)"; return r; }
             r.console += "[ok] assembled + linked (dual-bank)\n";
             adoptDbgInfo();
+            reportDbgUnavailable(r);
             // Verify touches no machine state — re-arm right away.
             if (!run) { rearmDbgBreakpoint(r); r.status = "Verify OK"; r.ok = true; return r; }
             if (t.preset >= 0) onTargetSelected(target);
@@ -1938,6 +1971,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         if (rc != 0) { r.console += humanizeCc65(out); r.status = "ld65 failed (see Build output)"; return r; }
         r.console += "[ok] assembled + linked\n";
         adoptDbgInfo();
+        reportDbgUnavailable(r);
         entry = parseCfgLoadAddr(cfgPath);
         if (entry == 0) { try { entry = static_cast<uint16_t>(std::stoul(addrHex, nullptr, 16)); } catch (...) { entry = 0x0300; } }
     }

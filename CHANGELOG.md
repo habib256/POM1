@@ -10,6 +10,28 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — chasse n°10 : le débogage échouait en silence, et pouvait adopter la table d'un autre build
+
+Passe consacrée aux **chemins d'erreur**, là où la n°9 avait trouvé son bug.
+**(1) Trois `return` muets.** Quand la table ne pouvait pas être adoptée — pas de
+fichier de débogage, fichier vide, ou analyse en échec — le bouton point d'arrêt
+n'apparaissait tout simplement pas, et **rien nulle part ne disait pourquoi**. Le
+plus embarrassant est que le diagnostic existait déjà : `parseDbgFile` rédige des
+messages destinés à l'utilisateur (« *was the source assembled with ca65 -g?* »)
+et les trois `return` les jetaient. Le cas est concret — sans `-g`, ld65 écrit
+quand même un fichier d'apparence plausible dont les records `line` n'ont pas de
+`span=` (vérifié sur le vrai outil) — et rendait un problème de chaîne de
+compilation indiscernable d'une fonctionnalité absente. La console du build affiche
+désormais `[warn] source-level debugging unavailable: <cause>`, une fois, juste
+après l'édition de liens censée la produire. **(2) Adoption d'un fichier étranger.**
+`adoptDbgInfo` adoptait n'importe quel `/tmp/pom1_bench.dbg` trouvé, or les cibles C
+partagent le chemin d'exécution et l'appellent **sans jamais avoir demandé de
+`--dbgfile`** : un fichier résiduel (autre instance de POM1, build interrompu)
+aurait décoré un programme C avec les lignes d'un programme asm. L'adoption est
+maintenant conditionnée à un drapeau que seule la branche asm lève, après avoir
+réellement demandé le fichier. `bench_cc65_smoke` épingle le cas « sans `-g` »
+contre le vrai outil : l'analyse doit échouer **et** nommer la cause.
+
 ### Fixed — chasse n°9 : une compilation ratée perdait le point d'arrêt pour de bon
 
 Premier bug trouvé **grâce** à l'extraction de la passe précédente : en auditant le

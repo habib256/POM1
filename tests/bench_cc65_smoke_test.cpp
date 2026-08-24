@@ -177,6 +177,28 @@ static int partB()
     assert(hasLabel(d, 0x0309, "loop"));
     assert(hasLabel(d, 0x030C, "echo"));
 
+    // ── The failure the user is most likely to meet: no -g ───────────────
+    // ld65 still writes a debug file, and it still looks plausible — but its
+    // `line` records carry no span=, so nothing maps. The parser must say so
+    // in words the Bench can put in the build console (it does: the host
+    // prints "source-level debugging unavailable: <this>"). Silence here is
+    // what made a broken toolchain indistinguishable from a missing feature.
+    const std::string objNoG = dir + "/nog.o", dbgNoG = dir + "/nog.dbg";
+    const std::string binNoG = dir + "/nog.bin";
+    if (std::system(("ca65 -o " + objNoG + " " + srcS).c_str()) != 0 ||
+        std::system(("ld65 -C " + cfg + " --dbgfile " + dbgNoG + " -o " + binNoG +
+                     " " + objNoG).c_str()) != 0) {
+        std::fprintf(stderr, "FAIL: building the no--g fixture\n");
+        return 1;
+    }
+    std::ifstream inNoG(dbgNoG);
+    std::stringstream ssNoG;
+    ssNoG << inNoG.rdbuf();
+    const pom1::DbgLineInfo noG = pom1::parseDbgFile(ssNoG.str(), srcS);
+    assert(!noG.ok);
+    assert(!noG.error.empty());
+    assert(noG.error.find("-g") != std::string::npos);   // names the cause
+
     std::printf("bench_cc65_smoke: part B (real ca65 -g / ld65 --dbgfile) OK\n");
     return 0;
 }
