@@ -260,6 +260,23 @@ int main()
         assert(s.markerLine(armedAt(0x0310)) == -1);
     }
 
+    // ── 7d. Ownership must be asked BEFORE invalidate(), never after ─────
+    // The host clears the real CPU breakpoint when it drops the session (not
+    // every reprogramming path resets the CPU — a warm BASIC start keeps it
+    // running), and the only way to know the breakpoint is ours is to ask
+    // while the table is still live. Once invalidated the session can no
+    // longer tell, so an implementation that invalidated first would leak an
+    // armed breakpoint into whatever runs next. This pins the ordering.
+    {
+        BenchDebugSession s;
+        s.adopt(tableA());
+        assert(s.toggle(3, kNoBp).kind == Toggle::Armed);
+        const MBp live = armedAt(0x0300);
+        assert(s.markerLine(live) == 3);   // ask first: yes, it is ours
+        s.invalidate();
+        assert(s.markerLine(live) == -1);  // too late — the answer is gone
+    }
+
     // ── 8. invalidate() forgets the armed line, so a later re-adopt cannot
     //      resurrect a marker the user never re-armed ─────────────────────
     {

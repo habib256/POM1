@@ -10,6 +10,31 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — chasse n°13 : un point d'arrêt fantôme gelait la machine sans explication
+
+Le pire symptôme de la série, trouvé en confrontant les commentaires de cycle de vie
+de `Pom1BenchHost` au code qu'ils décrivent. Abandonner la session de débogage
+(changement de profil, injection d'un interpréteur) effaçait notre **comptabilité**
+mais pas le **point d'arrêt réel** posé dans le CPU. La plupart de ces chemins
+réinitialisent la machine — et `M6502::reset()` désarme le point d'arrêt, ce qui
+masquait le trou — mais **pas tous** : le démarrage à chaud de `injectBasic` saute
+délibérément l'ensemble reset+rechargement pour préserver un programme tapé au
+REPL (son propre commentaire le dit). Conséquence : un point d'arrêt laissé à une
+adresse de l'ancien programme asm restait armé **sous l'interpréteur**, et dès que
+le PC passait dessus — plausible, un Applesoft résident balaie largement la zone
+`$0300+` où vivent les programmes du Bench — la machine se garait toute seule. Aucun
+marqueur, aucune bannière, rien dans le Bench pour l'expliquer, puisque la session
+avait justement tout oublié : côté utilisateur, « BASIC se fige au hasard ».
+
+Plutôt que de rustiner ce seul chemin, la règle devient uniforme : `dropDebugSession()`
+demande d'abord à la session si le point d'arrêt de la machine est **le nôtre**, le
+retire dans ce cas, puis invalide — et les trois sites de reprogrammation passent par
+là (un point d'arrêt appartenant à la fenêtre Debug est toujours laissé strictement
+intact). L'**ordre est contraignant** et c'est ce que le nouveau scénario de
+`bench_debug_session_smoke` épingle : une fois la session invalidée, elle ne peut
+plus dire à qui appartient le point d'arrêt, donc une implémentation qui
+invaliderait d'abord le laisserait fuir dans le programme suivant.
+
 ### Fixed — chasse n°12 : « les spans de données portent toujours `type=` » était faux
 
 Passe consacrée à la leçon de la n°11 — **une limite affirmée n'est pas une limite
