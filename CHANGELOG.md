@@ -10,6 +10,25 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — chasse n°5 sur le débogage source : deux régressions composées par les correctifs précédents
+
+Cette passe ne visait plus la fonctionnalité mais **l'interaction entre les
+correctifs des passes 1 à 4** — ce qui reste quand les défauts simples sont morts.
+**(1) ▶ de nouveau mort, dans un cas plus étroit** : le correctif n°1 conditionnait
+son « step-then-run » à `isCpuBreakpointTripped()`, or le ré-armement de la passe
+n°3 appelle `setCpuBreakpoint`, **qui remet le latch `breakpointTripped` à zéro**
+(`M6502::setBreakpoint`). Reconstruire pendant que le CPU est garé sur le
+breakpoint effaçait donc la preuve dont dépendait le contournement, et ▶ se
+re-piégeait instantanément. La condition devient factuelle et non historique :
+« CPU arrêté ET PC == adresse armée » — le latch ne dit pas ce que fera la
+prochaine reprise. **(2) Revendication d'onglet trop large** : `dbgDocUid_` était
+posé dans `applyResult`, qui traite aussi des résultats **qui ne sont pas des
+builds** — `prepareTargetWithStarter` y passe le retour de `selectTargetExplicit`.
+Avec une table encore vivante d'un build antérieur, cet appel offrait les
+décorations à l'onglet actif quel qu'il soit. La revendication sort dans
+`claimDbgDoc()`, appelée par les seuls sites de build (Verify, Run, et la fin de
+build asynchrone WASM) — les seuls dont la table décrive vraiment l'onglet courant.
+
 ### Fixed — chasse n°4 sur le débogage source : la table survivait aux changements de machine
 
 La table de lignes (`dbgInfo_`) n'était invalidée que par `build()` — or la machine

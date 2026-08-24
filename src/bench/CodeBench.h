@@ -63,6 +63,9 @@ private:
     Doc&  newDoc(const std::string& path, const std::string& text, int targetIndex);
     void  applyDocSyntax(Doc& d);
     void  applyResult(const BuildResult& r);
+    void  claimDbgDoc();   // record that the host's debug line table now
+                           // describes the ACTIVE tab — build sites only,
+                           // never non-build results (see applyResult)
     void  closeDoc(int uid);
     void  closeOtherDocs(int keepUid);   // close every tab except `keepUid`
     void  closeAllDocs();                // close every tab → New chooser (see renderNewPhase)
