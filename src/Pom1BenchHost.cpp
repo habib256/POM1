@@ -1328,18 +1328,51 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     // source line mapped to are about to move. Drop it AND the line breakpoint
     // armed through it (only ours: the Debug window's own breakpoint, armed at
     // a different address, is left alone — breakpointLine() already reports
-    // none when the CPU breakpoint isn't the one we set).
+    // none when the CPU breakpoint isn't the one we set). The armed LINE is
+    // remembered so a successful build can re-arm it against the fresh table:
+    // without that, the natural debug loop — Verify, arm a breakpoint, Run —
+    // silently disarmed the breakpoint during Run's rebuild and the program
+    // sailed past it (and even a plain re-Verify lost it).
+    [[maybe_unused]] int dbgRearmLine = -1;   // maybe_unused: the re-arm call
+                                              // sites live in the desktop-only
+                                              // branch of this function
     if (dbgBreakpointLine_ >= 0 && dbgInfo_.ok) {
         uint16_t bpAddr = 0;
         int snapped = -1;
         auto* emuBp = mw_->emulation.get();
         if (emuBp && emuBp->hasCpuBreakpoint() &&
             dbgInfo_.addrForLine(dbgBreakpointLine_, bpAddr, snapped) &&
-            emuBp->getCpuBreakpoint() == bpAddr)
+            emuBp->getCpuBreakpoint() == bpAddr) {
             emuBp->clearCpuBreakpoint();
+            dbgRearmLine = dbgBreakpointLine_;   // ours — eligible for re-arm
+        }
     }
     dbgInfo_ = {};
     dbgBreakpointLine_ = -1;
+    // Re-arm the remembered line against the FRESH table. Must run after the
+    // LAST machine reset of its path: loadBinary() and hardReset() both reach
+    // M6502::reset(), which clears the CPU breakpoint — re-arming at parse
+    // time would be undone by the load. Verify touches no machine state, so
+    // its call site re-arms immediately after the parse. If the line no
+    // longer resolves (code deleted), the breakpoint stays cleared — visibly,
+    // since the gutter marker follows breakpointLine().
+    [[maybe_unused]] auto rearmDbgBreakpoint = [&](bench::BuildResult& res) {
+        if (dbgRearmLine < 0 || !dbgInfo_.ok)
+            return;
+        auto* emuRe = mw_->emulation.get();
+        if (!emuRe)
+            return;
+        uint16_t addr = 0;
+        int snapped = -1;
+        if (!dbgInfo_.addrForLine(dbgRearmLine, addr, snapped))
+            return;
+        emuRe->setCpuBreakpoint(addr);
+        dbgBreakpointLine_ = snapped;
+        char note[96];
+        std::snprintf(note, sizeof(note),
+                      "[ok] breakpoint re-armed at line %d ($%04X)\n", snapped, addr);
+        res.console += note;
+    };
 
     // Any non-LOGO build reprograms/hard-resets the machine → a resident LOGO REPL
     // is gone. (LOGO's own mode 6 manages the flag inside injectLogo.)
@@ -1838,7 +1871,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             if (rc != 0) { r.console += humanizeCc65(out); r.status = "ld65 failed (see Build output)"; return r; }
             r.console += "[ok] assembled + linked (dual-bank)\n";
             adoptDbgInfo();
-            if (!run) { r.status = "Verify OK"; r.ok = true; return r; }
+            // Verify touches no machine state — re-arm right away.
+            if (!run) { rearmDbgBreakpoint(r); r.status = "Verify OK"; r.ok = true; return r; }
             if (t.preset >= 0) onTargetSelected(target);
             mw_->finalizePendingCardPlugs();
             auto* emu = mw_->emulation.get();
@@ -1856,6 +1890,11 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             const uint16_t runAddr = runHigh ? proj.hiAddr : proj.loAddr;
             if (!emu->loadBinaryToRam(stagePath, stageAddr, error)) { r.status = "dual-bank stage load failed: " + error; r.ok = false; return r; }
             if (emu->loadBinary(runPath, runAddr, error, &loaded)) {
+                // After loadBinary — its reset cleared any earlier breakpoint.
+                // (The CPU is already running: a breakpoint within the very
+                // first instructions can miss its first pass; loops catch it
+                // on the next one.)
+                rearmDbgBreakpoint(r);
                 emu->copySnapshot(mw_->uiSnapshot);
                 if (t.preset == md::kPresetGen2Bench) mw_->showGraphicsCard = true;
                 char msg[176]; std::snprintf(msg, sizeof(msg), "Built dual-bank ($%04X+$%04X) run @ $%04X",
@@ -1877,7 +1916,9 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         if (entry == 0) { try { entry = static_cast<uint16_t>(std::stoul(addrHex, nullptr, 16)); } catch (...) { entry = 0x0300; } }
     }
 
-    if (!run) { r.status = "Verify OK"; r.ok = true; return r; }
+    // Verify touches no machine state — re-arm the line breakpoint right away
+    // (no-op for the modes without a line table).
+    if (!run) { rearmDbgBreakpoint(r); r.status = "Verify OK"; r.ok = true; return r; }
 
     // Keep the live machine aligned with the DevBench target (GEN2 + ACI for
     // CrazyCycle). A Presets-menu switch after picking a target leaves the
@@ -1931,6 +1972,10 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         if (!mw_->tms9918Enabled) { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
         if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCodeTankEnabled(true); }
         emu->hardReset(/*animateBoot=*/false); // DevBench: no ~3 s power-on scenario
+        // After the reset (which cleared any CPU breakpoint) and BEFORE the
+        // deferred 4000R types — the ideal re-arm window: the program has not
+        // started, so even a first-instruction breakpoint trips.
+        rearmDbgBreakpoint(r);
         mw_->codeTankPendingWozRunAt = ImGui::GetTime() + 1.0;
         emu->copySnapshot(mw_->uiSnapshot);
         r.console += std::string("[ok] flashed CODETANKDEV.rom (")
@@ -1959,6 +2004,10 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         }
     }
     if (emu->loadBinary(binB.string(), entry, error, &bytesLoaded)) {
+        // After loadBinary — its reset cleared any earlier breakpoint. (The
+        // CPU is already running: a breakpoint within the very first
+        // instructions can miss its first pass; loops catch the next one.)
+        rearmDbgBreakpoint(r);
         emu->copySnapshot(mw_->uiSnapshot);
         if (t.preset == md::kPresetGen2Bench) mw_->showGraphicsCard = true;
         char msg[160]; std::snprintf(msg, sizeof(msg), "Built %d B run @ $%04X", bytesLoaded, entry);
