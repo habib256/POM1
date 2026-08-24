@@ -336,9 +336,16 @@ jobs:
           # halt_on_error=1: a sanitizer finding is a failure, not a log line.
           # print_stacktrace makes the UBSan half actionable rather than a
           # one-line "runtime error" with no location.
+          # The suppression files cover VENDORED code only (libresidfp): a
+          # data race in its filter-table builders and a negative left shift
+          # in its external filter. Both are upstream, both are reached by
+          # nearly every test (anything that constructs a Memory builds a
+          # SID), so without them these two jobs abort on third-party noise
+          # and report nothing about POM1 — which is how they came to be
+          # permanently red and therefore unread. See tests/*.supp.
           ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
-          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-          TSAN_OPTIONS: halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:suppressions=${{ github.workspace }}/tests/ubsan.supp
+          TSAN_OPTIONS: halt_on_error=1:suppressions=${{ github.workspace }}/tests/tsan.supp
           # tools/test_lib_micro.py runs the instrumented POM1 once per micro-
           # test; its own per-command budget needs the same headroom the ctest
           # TIMEOUTs get (scaled x5 in tests/CMakeLists.txt under POM1_SANITIZE).

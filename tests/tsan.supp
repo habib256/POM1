@@ -1,0 +1,24 @@
+# ThreadSanitizer suppressions — VENDORED code only.
+#
+# libresidfp builds its filter lookup tables on worker threads at first SID
+# instantiation (see the note in CLAUDE.md about the WASM path building them
+# sequentially instead). TSan flags a race inside those builders. It is
+# upstream, third-party, and reached by every test that constructs a Memory —
+# so without this file the thread sanitizer aborts on essentially the whole
+# suite and reports nothing about POM1's own code.
+#
+# That is the real cost: a job that is red for a reason nobody can act on is a
+# job nobody reads, and the races it exists to catch (emulation thread × render
+# thread × audio callback) never get looked at. Suppress the vendored noise so
+# the signal is POM1's.
+#
+# Keep this list minimal and third-party ONLY. Never add a POM1 symbol here —
+# a race in our code is a bug to fix, not to silence.
+race:reSIDfp::FilterModelConfig
+race:reSIDfp::FilterModelConfig8580
+race:reSIDfp::FilterModelConfig6581
+
+# Belt and braces: match anything coming out of the vendored tree, whatever
+# the symbol is called. TSan matches this pattern against the function, file
+# and library name of the frame.
+race:third_party/libresidfp

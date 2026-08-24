@@ -1,0 +1,15 @@
+# UndefinedBehaviorSanitizer suppressions — VENDORED code only.
+#
+# libresidfp shifts negative values in its external-filter maths
+# (src/third_party/libresidfp/src/ExternalFilter.h:134, "left shift of
+# negative value"). Formally UB, entirely upstream, and reached by every test
+# that instantiates a SID — which is most of the suite.
+#
+# Same reasoning as tests/tsan.supp: a nightly job that is red for a
+# third-party reason is a job nobody reads, so the memory bugs it exists to
+# catch in POM1's own code never surface. Suppress the vendored noise, keep
+# the signal ours.
+#
+# Never add a POM1 file here. Undefined behaviour in our code is a bug to fix.
+shift-base:third_party/libresidfp
+shift-base:ExternalFilter.h
