@@ -24,6 +24,8 @@ using pom1::parseDbgFile;
 //   line 7: loop:   jmp loop     ; $0305..0307  (span 2)
 //   line 9: echo:   sta $D012    ; $0308..030A  (span 3)
 //   line 10:        rts          ; $030B        (span 4)
+//   line 12: tbl:   .byte ...    ; $030C..030F  (span 6, type=0 → DATA, excluded)
+//   line 13: (synthetic)         ; span 7, size=0 → excluded from lineToAddr
 static const char kDbg[] =
     "version\tmajor=2,minor=0\n"
     "info\tcsym=0,file=2,lib=0,line=7,mod=1,scope=1,seg=1,span=6,sym=3\n"
@@ -36,6 +38,8 @@ static const char kDbg[] =
     "span\tid=3,seg=0,start=8,size=3\n"
     "span\tid=4,seg=0,start=11,size=1\n"
     "span\tid=5,seg=0,start=8,size=4\n"
+    "span\tid=6,seg=0,start=12,size=4,type=0\n"    // DATA span (.byte table)
+    "span\tid=7,seg=0,start=16,size=0\n"           // zero-size span
     "line\tid=0,file=0,line=3,span=0\n"
     "line\tid=1,file=0,line=5,span=1\n"
     "line\tid=2,file=0,line=7,span=2\n"
@@ -43,6 +47,8 @@ static const char kDbg[] =
     "line\tid=4,file=0,line=10,span=4\n"
     "line\tid=5,file=0,line=2\n"                    // no span= -> ignored
     "line\tid=6,file=1,line=1,span=5\n"             // other file -> ignored
+    "line\tid=7,file=0,line=12,span=6\n"            // data line -> excluded
+    "line\tid=8,file=0,line=13,span=7\n"            // zero-size -> excluded
     "sym\tid=0,name=\"start\",addrsize=absolute,scope=0,def=1,val=0x300,seg=0,type=lab\n"
     "sym\tid=1,name=\"echo\",addrsize=absolute,scope=0,def=2,val=0x308,seg=0,type=lab\n"
     "sym\tid=2,name=\"WIDTH\",addrsize=zeropage,scope=0,def=3,val=0x28,type=equ\n";
@@ -79,8 +85,19 @@ int main()
         assert(d.addrForLine(4, addr, snapped) && addr == 0x0302 && snapped == 5);
         // Line 6 (blank) snaps to 7.
         assert(d.addrForLine(6, addr, snapped) && addr == 0x0305 && snapped == 7);
-        // Past the last code line: nothing to arm.
+        // Past the last code line: nothing to arm — the data line (12) and
+        // the zero-size line (13) must NOT count as breakpoint targets, and
+        // snapping from a comment must never land on them.
         assert(!d.addrForLine(11, addr, snapped));
+        assert(!d.addrForLine(12, addr, snapped));
+        assert(!d.addrForLine(13, addr, snapped));
+    }
+
+    // ── 3b. Data spans (type=) are code-invisible ────────────────────────
+    {
+        const DbgLineInfo d = parseDbgFile(kDbg, "prog.s");
+        assert(d.lineForAddr(0x030C) == -1);   // .byte table byte, not code
+        assert(d.lineForAddr(0x030F) == -1);
     }
 
     // ── 4. Labels: type=lab only, equates excluded ───────────────────────

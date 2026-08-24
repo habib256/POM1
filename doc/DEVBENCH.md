@@ -47,9 +47,14 @@ successful Verify or Run:
 
 - **Breakpoint** (red ● toolbar button) — toggles a breakpoint at the editor's
   cursor line; a click on a comment/blank line arms the next line that
-  generated code. One breakpoint at a time (it is the machine's single CPU
-  breakpoint — the same one as CPU → Debug). The CPU halts when it reaches
-  that line's address; the armed line shows as a marker in the gutter.
+  generated code. **Data lines** (`.byte`, `.asciiz`, …) are skipped the same
+  way — a breakpoint on a data byte would never trip (`.res` reservations are
+  the one blind spot: their debug records are indistinguishable from code).
+  One breakpoint at a time (it is the machine's single CPU breakpoint — the
+  same one as CPU → Debug). The CPU halts when it reaches that line's
+  address; the armed line shows as a marker in the gutter. After a hit, **▶
+  resumes past the breakpoint** (step-then-run, the breakpoint stays armed
+  for the next pass).
 - **Step** (⏭) now reports the **source line** it landed on, and the editor
   cursor follows the PC while the CPU is halted — step through your own
   listing instead of a hex disassembly.

@@ -144,6 +144,15 @@ DbgLineInfo parseDbgFile(const std::string& text, const std::string& primarySour
             if (id && start && parseNum(*id, v) && parseNum(*start, s))
                 segStart[v] = s;
         } else if (keyword == "span") {
+            // A span carrying `type=` covers DATA (.byte/.asciiz/... — the
+            // attribute indexes the file's type records, which only data
+            // has; instruction spans never carry it — verified against real
+            // ld65 output). Skip them entirely: a breakpoint armed on a data
+            // byte would never trip, and the PC never sits there either. The
+            // one blind spot is `.res`, whose span has no type attribute and
+            // stays indistinguishable from code.
+            if (a.get("type"))
+                continue;
             const std::string *id = a.get("id"), *seg = a.get("seg");
             const std::string *start = a.get("start"), *size = a.get("size");
             SpanRec r;
@@ -224,7 +233,10 @@ DbgLineInfo parseDbgFile(const std::string& text, const std::string& primarySour
                             info.addrToLine.emplace(static_cast<uint16_t>(addr),
                                                     lineNo);
                         }
-                        if (base <= 0xFFFF) {
+                        // Zero-size spans carry no code (never seen from real
+                        // ld65 — bare-label lines simply have no span — but a
+                        // breakpoint-able line must cover at least one byte).
+                        if (base <= 0xFFFF && sp->second.size > 0) {
                             const auto cur = info.lineToAddr.find(lineNo);
                             const uint16_t a16 = static_cast<uint16_t>(base);
                             if (cur == info.lineToAddr.end() || a16 < cur->second)
