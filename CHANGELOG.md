@@ -10,6 +10,31 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — les deux jobs sanitizer étaient rouges pour du code qui n'est pas le nôtre
+
+Déclenchés à la main pour vérifier le travail du jour sur la concurrence (atomiques
+dans `CassetteDevice`, ordre de destruction), les deux jobs nocturnes sont tombés —
+et le run nocturne du **commit précédant cette session** montre qu'ils tombaient
+**déjà**. Ce ne sont pas des régressions : les deux échouent exclusivement dans
+`src/third_party/libresidfp`. TSan signale une course dans
+`FilterModelConfig::Randomnoise::getNoise()` (les tables de filtre sont construites
+sur des threads de travail), UBSan un décalage de valeur négative dans
+`ExternalFilter.h:134`. Les deux sont en amont, et atteints par presque toute la
+suite puisque tout test qui construit un `Memory` construit un SID.
+
+Conséquence : deux jobs en échec permanent pour une raison sur laquelle personne ne
+peut agir — donc deux jobs que personne ne lit, et les courses qu'ils existent pour
+attraper (thread d'émulation × thread de rendu × callback audio) ne remontaient
+jamais. `tests/tsan.supp` et `tests/ubsan.supp` taisent ce bruit **tiers
+uniquement**, avec la règle écrite en tête de chaque fichier : jamais un symbole
+POM1 — une course chez nous est un bug à corriger, pas à masquer. Vérifié en local :
+avec la suppression TSan, les tests qui abandonnaient passent.
+
+*Note pour l'avenir :* lancer la suite instrumentée fait apparaître des dialogues
+macOS « POM1 a quitté de manière imprévue ». C'est attendu — `halt_on_error=1` fait
+abandonner le processus dès le premier rapport, et le rapport de crash porte la
+signature `__tsan`. Ce n'est pas l'application qui plante.
+
 ### Fixed — le paquet Windows échouait en construisant des binaires de test
 
 Premier essai à blanc du packaging depuis le 9 août (déclenché à la main, exactement
