@@ -10,6 +10,18 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — le build Windows était cassé sur `main` (C3493, capture implicite)
+
+Trouvé en regardant enfin la CI : le job `windows` échouait **avant** le travail
+d'aujourd'hui (déjà rouge au 23 août et sur le run nocturne), sur une divergence de
+compilateurs. `evictMemoryMapRegionsForJukeBox` déclare deux `constexpr` locaux et
+les lit depuis une lambda **sans capture** ; GCC et AppleClang l'acceptent, MSVC
+refuse — `C3493: cannot be implicitly captured because no default capture mode has
+been specified`, suivi de deux `C2064` en cascade. Les deux constantes deviennent
+`static constexpr` : le stockage statique supprime toute question de capture et la
+lambda reste sans capture. C'est exactement la classe de panne que le job Windows
+par-push a été ajouté pour attraper — encore fallait-il lire son verdict.
+
 ### Fixed — le chemin audio ne fait plus attendre le thread d'émulation
 
 Les deux défauts que l'audit général avait relevés dans `CassetteDevice` sont

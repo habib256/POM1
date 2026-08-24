@@ -57,8 +57,14 @@ MainWindow_ImGui::MainWindow_ImGui()
 
 void MainWindow_ImGui::evictMemoryMapRegionsForJukeBox()
 {
-    constexpr uint16_t kWinLo = 0x4000;
-    constexpr uint16_t kWinHi = 0xBFFF;
+    // STATIC constexpr, not plain constexpr: a captureless lambda may only use
+    // an enclosing local if it does not have to capture it, and MSVC does not
+    // grant that for a function-scope constexpr here — it fails with C3493
+    // ("cannot be implicitly captured because no default capture mode has been
+    // specified") while GCC and Clang accept the same code. Static storage
+    // removes the question entirely and keeps the lambda captureless.
+    static constexpr uint16_t kWinLo = 0x4000;
+    static constexpr uint16_t kWinHi = 0xBFFF;
     auto overlaps = [](uint16_t s, uint16_t e) {
         return s <= kWinHi && e >= kWinLo;
     };
