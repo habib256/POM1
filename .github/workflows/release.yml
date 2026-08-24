@@ -18,6 +18,16 @@
 # the `v`-prefixed form (v1.8.6) AND the bare numeric form (1.9.2, 1.9.0) — the
 # two most recent releases were tagged WITHOUT the `v`, so a `v*`-only filter
 # would have skipped them.
+#
+# The weekly `schedule:` is a DRY RUN, same as workflow_dispatch: the four
+# packages build, verify and smoke-launch, and the `publish` job is skipped
+# (gated on ref_type == tag; the version falls back to the VERSION file). It
+# exists because a tag-only packaging pipeline discovers its breakage DURING a
+# release — that is exactly how the Homebrew dylib with a baked absolute path
+# shipped inside the macOS .dmg. A weekly build nobody waits on converts that
+# risk into free information: when a runner image update, a vcpkg baseline, a
+# winget hiccup or our own code breaks a packager, the red arrives on a Monday
+# morning instead of on release day.
 name: Release packages
 
 on:
@@ -26,6 +36,10 @@ on:
       - 'v[0-9]*'        # v1.9.2
       - '[0-9]*'         # 1.9.2  (bare numeric tag — current convention)
   workflow_dispatch:
+  schedule:
+    # Weekly dry run, Monday 04:43 UTC — off-peak, prime-ish minute to stay off
+    # the top-of-hour surge on shared runners (same convention as ci.yml).
+    - cron: "43 4 * * 1"
 
 permissions:
   contents: write          # publish job attaches packages to the Release
