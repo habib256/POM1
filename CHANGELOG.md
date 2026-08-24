@@ -10,6 +10,32 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — chasse n°12 : « les spans de données portent toujours `type=` » était faux
+
+Passe consacrée à la leçon de la n°11 — **une limite affirmée n'est pas une limite
+mesurée** — appliquée aux deux autres affirmations non chiffrées de ce code. L'une
+d'elles était fausse. Le commentaire du parseur soutenait que l'attribut `type=`
+marque les données et que « les spans d'instructions n'en portent jamais » ;
+mesuré sur le vrai ld65, `type=` **référence un descripteur de type optionnel**
+(les records `type id=N,val="…"` du fichier), pas un drapeau données/code — et il
+n'est pas émis pour `.asciiz` ni `.dword`, qui se mappaient donc comme du code.
+Cliquer sur une ligne de message armait un point d'arrêt mort. La moitié « aucune
+instruction n'en porte » est en revanche confirmée.
+
+Comptage sur le corpus 6502 du dépôt plutôt que sur une intuition : les deux
+filtres (descripteur `type=` + segments sans `oname`, ce dernier livré en n°11)
+couvrent **14 282 des 14 296** directives de données — `.byte` 12 439 (couvert sous
+**toutes** ses formes : valeur seule, liste, `"chaîne"`, `"chaîne",0`), `.res`
+1 761, `.word` 82, `.addr` 0 — et laissent **14 `.asciiz`** et 0 `.dword`. Le trou
+est donc réel mais minuscule, et surtout **connu au chiffre près** au lieu d'être
+décrit par un adjectif. Code, en-tête et `DEVBENCH.md` disent maintenant cela.
+
+`bench_cc65_smoke` épingle la couverture contre le vrai outil : les quatre formes
+de `.byte` et `.word` doivent s'accrocher au-delà de la ligne de données, le code
+qui les entoure doit rester atteignable — et une assertion documente
+délibérément la limite `.asciiz`, de sorte qu'un changement de cc65 se manifeste
+par un test rouge plutôt que par un point d'arrêt qui ne déclenche pas.
+
 ### Fixed — chasse n°11 : cliquer sur une déclaration de variable armait un point d'arrêt mort
 
 Le « point aveugle `.res` » que la chasse n°1 avait **documenté sans le mesurer**

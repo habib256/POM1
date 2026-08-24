@@ -157,16 +157,20 @@ DbgLineInfo parseDbgFile(const std::string& text, const std::string& primarySour
             if (id && start && parseNum(*id, v) && parseNum(*start, s))
                 segStart[v] = s;
         } else if (keyword == "span") {
-            // A span carrying `type=` covers DATA (.byte/.asciiz/... — the
-            // attribute indexes the file's type records, which only data
-            // has; instruction spans never carry it — verified against real
-            // ld65 output). Skip them entirely: a breakpoint armed on a data
-            // byte would never trip, and the PC never sits there either.
-            // `.res` carries no type attribute, so this filter cannot see it;
-            // the `oname` rule above catches the usual case (a variable in
-            // BSS/ZEROPAGE). What remains indistinguishable from code is a
-            // `.res` inside a LOADED segment — an inline scratch buffer among
-            // instructions — which is rare and stays the known blind spot.
+            // `type=` indexes one of the file's `type` records — a DATA
+            // descriptor. It is emitted for `.byte` (every form: single,
+            // list, "string", "string",0), `.word` and `.addr`, and never for
+            // an instruction; skipping those spans keeps a breakpoint off
+            // bytes the PC never reaches.
+            //
+            // It is NOT a reliable "this is data" flag, and saying so here
+            // used to be wrong: the descriptor is OPTIONAL, and `.asciiz` and
+            // `.dword` get none — they still map like code. Measured against
+            // this repo's 6502 corpus, the two filters (this one plus the
+            // `oname` rule above) cover 14 282 of 14 296 data directives:
+            // .byte 12 439, .res 1 761, .word 82, .addr 0 — leaving 14
+            // `.asciiz` and 0 `.dword` as the residue. A breakpoint clicked
+            // on one of those 14 lines arms an address the PC never reaches.
             if (a.get("type"))
                 continue;
             const std::string *id = a.get("id"), *seg = a.get("seg");
