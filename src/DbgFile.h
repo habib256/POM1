@@ -40,6 +40,12 @@ struct DbgLineInfo {
     // addrToLine maps every byte covered by a line's spans; lineToAddr keeps
     // the LOWEST address of each line, ordered so callers can snap a click on
     // a blank/comment line to the next line that generated code.
+    //
+    // CODE ONLY: spans carrying a `type=` attribute cover data (.byte /
+    // .asciiz / ...) and are excluded from both maps — a breakpoint armed on
+    // a data byte would never trip, and the PC never sits there. Snapping
+    // therefore skips data lines too. Known blind spot: `.res` reservations
+    // emit a span WITHOUT the type attribute and still map like code.
     std::unordered_map<uint16_t, int> addrToLine;
     std::map<int, uint16_t> lineToAddr;
 

@@ -2195,6 +2195,15 @@ std::string Pom1BenchHost::cpuStep()
 
 void Pom1BenchHost::cpuRun()
 {
+    // Resuming while parked ON the armed breakpoint would re-trip before a
+    // single instruction executes (M6502::run checks the breakpoint at the
+    // TOP of its loop), so the Bench's ▶ looked dead after a hit. Same recipe
+    // as the Debug window's Continue: step past the address, then free-run —
+    // the breakpoint stays armed for the next pass.
+    auto* emu = mw_->emulation.get();
+    if (emu && emu->isCpuBreakpointTripped() && emu->hasCpuBreakpoint() &&
+        mw_->uiSnapshot.programCounter == emu->getCpuBreakpoint())
+        mw_->stepCpu();
     mw_->startCpu();  // resume free-running (same as the CPU menu's Run)
 }
 

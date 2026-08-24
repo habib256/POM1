@@ -10,6 +10,29 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — chasse aux bugs sur le débogage source du DevBench
+
+Deux vrais bugs trouvés par relecture adversariale + expérimentation sur la vraie
+sortie ld65, le jour même de la livraison. **(1) ▶ mort après un breakpoint** :
+`M6502::run` teste le breakpoint en TÊTE de boucle, donc reprendre avec PC garé
+sur l'adresse armée re-déclenchait avant d'exécuter une seule instruction — la
+fenêtre Debug le savait (son Continue fait `stepCpu(); startCpu();`), le ▶ du
+Bench non. `Pom1BenchHost::cpuRun` applique désormais la même recette quand le
+trip est latché et PC == breakpoint. **(2) breakpoint sur une ligne de données** :
+mesuré sur ld65 réel, les lignes `.byte`/`.asciiz` émettent bien des line records
+(spans porteurs d'un attribut `type=` — les spans d'instructions n'en ont jamais),
+donc un clic dessus armait une adresse jamais exécutée : un breakpoint qui ne
+déclenche **jamais**, silencieusement. Le parseur exclut les spans typés des deux
+tables — l'accrochage saute les lignes de données comme les commentaires. Angle
+mort assumé et documenté : `.res` émet un span **sans** `type=`, indiscernable du
+code. Plus une garde (span de taille 0 jamais breakpoint-able — jamais observé de
+ld65, les lignes à étiquette seule n'émettent pas de span du tout). Vérifiés sains
+au passage : indexation 1-based de `TextEditor::mBreakpoints`, resynchronisation
+par frame du miroir `cpuRunning` quand le CPU se gare seul, fraîcheur du PC après
+Step (`stepCpu` recopie le snapshot avant de retourner), gardes `#if` WASM autour
+des éditions de `build()`. `dbgfile_smoke` (miniature) et `bench_cc65_smoke`
+(fixture réel avec table `.byte`) épinglent les deux corrections.
+
 ### Added — débogage au niveau source dans le DevBench (asm, desktop)
 
 L'écart le plus net entre ce que POM1 avait et ce qu'il pouvait être : le Bench
