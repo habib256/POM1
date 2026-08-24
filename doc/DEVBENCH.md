@@ -48,8 +48,11 @@ successful Verify or Run:
 - **Breakpoint** (red ● toolbar button) — toggles a breakpoint at the editor's
   cursor line; a click on a comment/blank line arms the next line that
   generated code. **Data lines** (`.byte`, `.asciiz`, …) are skipped the same
-  way — a breakpoint on a data byte would never trip (`.res` reservations are
-  the one blind spot: their debug records are indistinguishable from code).
+  way — a breakpoint on a data byte would never trip — and so are variable
+  declarations (`.res` in BSS/ZEROPAGE, or any segment the linker writes to no
+  output file). The one blind spot left is a `.res` *inside* a loaded segment,
+  an inline scratch buffer among instructions, which the debug records cannot
+  tell from code.
   Macro expansions belong to their **invocation line** — clicking inside a
   `.macro` body arms nothing, and the PC-follow lands on the call site.
   One breakpoint at a time (it is the machine's single CPU breakpoint — the

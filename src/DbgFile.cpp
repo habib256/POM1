@@ -139,6 +139,19 @@ DbgLineInfo parseDbgFile(const std::string& text, const std::string& primarySour
             if (id && name && parseNum(*id, v))
                 files[v] = *name;
         } else if (keyword == "seg") {
+            // `oname` names the output file the segment is written to. A
+            // segment that has none contributes no bytes to the binary — BSS,
+            // ZEROPAGE, any unloaded segment — so it holds no executable code
+            // and a breakpoint there could never trip. Skipping those is what
+            // keeps a click on the `.res` lines that declare variables (the
+            // standard idiom: ~1700 of them across this repo's 6502 sources)
+            // from silently arming an address the PC never reaches.
+            //
+            // Note ld65 reports even a `type = bss` segment as `type=rw`
+            // here, so the cfg's own type is NOT usable — the presence of
+            // oname is (verified against real ld65 output).
+            if (!a.get("oname"))
+                continue;
             const std::string *id = a.get("id"), *start = a.get("start");
             unsigned long s = 0;
             if (id && start && parseNum(*id, v) && parseNum(*start, s))
@@ -148,9 +161,12 @@ DbgLineInfo parseDbgFile(const std::string& text, const std::string& primarySour
             // attribute indexes the file's type records, which only data
             // has; instruction spans never carry it — verified against real
             // ld65 output). Skip them entirely: a breakpoint armed on a data
-            // byte would never trip, and the PC never sits there either. The
-            // one blind spot is `.res`, whose span has no type attribute and
-            // stays indistinguishable from code.
+            // byte would never trip, and the PC never sits there either.
+            // `.res` carries no type attribute, so this filter cannot see it;
+            // the `oname` rule above catches the usual case (a variable in
+            // BSS/ZEROPAGE). What remains indistinguishable from code is a
+            // `.res` inside a LOADED segment — an inline scratch buffer among
+            // instructions — which is rare and stays the known blind spot.
             if (a.get("type"))
                 continue;
             const std::string *id = a.get("id"), *seg = a.get("seg");
@@ -271,8 +287,13 @@ DbgLineInfo parseDbgFile(const std::string& text, const std::string& primarySour
     }
 
     if (info.lineToAddr.empty()) {
-        info.error = "no line records for " + primarySource +
-                     " (was the source assembled with ca65 -g?)";
+        // Both causes look identical in the file — line records with no spans
+        // — so name both rather than accusing the toolchain. A source that is
+        // only equates and comments (ld65 happily links it to a 0-byte
+        // binary) would otherwise send the user hunting for a missing -g.
+        info.error = "no addresses mapped for " + primarySource +
+                     " — the source generated no code, or was assembled "
+                     "without ca65 -g";
         return info;
     }
     info.ok = true;

@@ -102,6 +102,36 @@ int main()
         assert(!d.addrForLine(16, addr, snapped));
     }
 
+    // ── 3a-bis. Segments with no `oname` hold no code ────────────────────
+    // BSS / ZEROPAGE / any unloaded segment contributes no bytes to the
+    // binary, so a breakpoint there could never trip — which is what a click
+    // on a `.res` variable declaration would otherwise arm. ld65 reports even
+    // a `type = bss` segment as type=rw, so the discriminant is the ABSENCE
+    // of oname, not the type.
+    {
+        const std::string bss =
+            "version\tmajor=2,minor=0\n"
+            "file\tid=0,name=\"prog.s\",size=1,mtime=0x0,mod=0\n"
+            "seg\tid=0,name=\"CODE\",start=0x000400,size=0x0002,addrsize=absolute,"
+            "type=rw,oname=\"p.bin\",ooffs=0\n"
+            // Same type=rw, but never written to a file -> no code.
+            "seg\tid=1,name=\"BSS\",start=0x002000,size=0x0004,addrsize=absolute,type=rw\n"
+            "span\tid=0,seg=0,start=0,size=2\n"
+            "span\tid=1,seg=1,start=0,size=4\n"
+            "line\tid=0,file=0,line=3,span=0\n"
+            "line\tid=1,file=0,line=9,span=1\n";   // `.res 4` in BSS
+        const DbgLineInfo d = parseDbgFile(bss, "prog.s");
+        assert(d.ok);
+        assert(d.lineForAddr(0x0400) == 3);
+        assert(d.lineForAddr(0x2000) == -1);   // BSS byte: not code
+        uint16_t addr = 0;
+        int snapped = 0;
+        // Line 9 (the .res) must not be a breakpoint target, and nothing
+        // follows it, so there is nothing to snap to.
+        assert(!d.addrForLine(9, addr, snapped));
+        assert(d.addrForLine(3, addr, snapped) && addr == 0x0400);
+    }
+
     // ── 3b. Data spans (type=) are code-invisible ────────────────────────
     {
         const DbgLineInfo d = parseDbgFile(kDbg, "prog.s");

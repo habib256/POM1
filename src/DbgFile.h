@@ -41,11 +41,15 @@ struct DbgLineInfo {
     // the LOWEST address of each line, ordered so callers can snap a click on
     // a blank/comment line to the next line that generated code.
     //
-    // CODE ONLY: spans carrying a `type=` attribute cover data (.byte /
-    // .asciiz / ...) and are excluded from both maps — a breakpoint armed on
-    // a data byte would never trip, and the PC never sits there. Snapping
-    // therefore skips data lines too. Known blind spot: `.res` reservations
-    // emit a span WITHOUT the type attribute and still map like code.
+    // CODE ONLY, by two independent rules — a breakpoint must only ever land
+    // where the PC can actually go, and snapping skips everything else:
+    //   * spans carrying a `type=` attribute cover data (.byte / .asciiz …);
+    //   * segments with no `oname` are written to no output file, so they
+    //     hold no code — BSS, ZEROPAGE, anything unloaded. This is what makes
+    //     a click on a `.res` variable declaration a no-op rather than a
+    //     breakpoint that never fires.
+    // Known blind spot: a `.res` inside a LOADED segment (an inline scratch
+    // buffer among instructions) is indistinguishable from code in the file.
     std::unordered_map<uint16_t, int> addrToLine;
     std::map<int, uint16_t> lineToAddr;
 
