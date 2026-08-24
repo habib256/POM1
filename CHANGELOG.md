@@ -10,6 +10,30 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — chasse n°7 : le protocole de débogage épinglé sur le VRAI 6502 (`bench_debug_protocol_smoke`)
+
+Septième passe, **méthode changée plutôt que lecture répétée** : les six
+précédentes étaient statiques, et leurs deux trouvailles les plus fines — le ▶ mort
+après un arrêt, et le fait que le ré-armement efface le latch dont ce correctif
+dépendait — ne reposaient que sur mon raisonnement, parce que `Pom1BenchHost` exige
+un MainWindow vivant et qu'aucun ctest ne peut l'atteindre. Ce qui **est**
+atteignable, c'est le protocole en dessous : ligne → adresse → armement →
+exécution → arrêt → reprise. Le nouveau test bâtit un vrai programme
+(`ca65 -g` + `ld65 --dbgfile`), le charge dans une vraie `Memory`, et rejoue
+exactement la séquence de l'hôte contre un `M6502` réel. Il épingle : qu'une
+adresse tirée d'une **ligne source** est bien une adresse par où le PC passe
+réellement (l'assertion qu'aucune lecture statique ne peut faire — un parseur peut
+être parfaitement cohérent et livrer une adresse jamais exécutée, ce que faisait
+exactement le défaut des lignes de données) ; que l'arrêt précède le premier octet
+de la ligne et retombe sur cette même ligne ; **que la reprise naïve re-piège sans
+avancer** (le défaut « ▶ mort », maintenant démontré, plus supposé) ; que le
+step-then-run avance et se ré-arme au tour de boucle suivant ; **que
+`setBreakpoint()` efface le latch `tripped`** — la raison pour laquelle la
+condition du ▶ ne peut pas s'écrire en termes de `isBreakpointTripped()` ; et qu'une
+ligne de données n'a pas d'adresse à armer. Vérifié par mutation (retirer le filtre
+des spans typés fait tomber le test). Aucun nouveau défaut trouvé : les six passes
+précédentes tiennent à l'exécution.
+
 ### Fixed — chasse n°6 sur le débogage source : deux fragilités, aucun bug visible
 
 Passe à **rendement décroissant, et c'est l'information utile** : aucun défaut
