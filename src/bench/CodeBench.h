@@ -95,8 +95,11 @@ private:
     bool buildPolling_ = false;      // an async (web/WASM) build is in flight
     int  dbgLastPcLine_ = -1;        // last PC line the editor cursor followed
                                      // (source-level debugging; -1 = none)
-    int  dbgDocUid_     = -1;        // uid of the tab the host's line table
-                                     // describes (the last built one; -1 none)
+    int  dbgDocUid_     = -1;        // uid of the tab whose CURRENT text the
+                                     // host's line table describes — set on a
+                                     // debug-info build, cleared on ANY text
+                                     // change of that tab (edit, undo, SetText;
+                                     // the saved-file dirty flag is unrelated)
     std::string status_;
     std::string lastForwardedStatus_;  // last status pushed to host_->onStatus (dedup)
     char fallbackAddr_[8] = "0300";

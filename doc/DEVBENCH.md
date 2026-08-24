@@ -50,6 +50,8 @@ successful Verify or Run:
   generated code. **Data lines** (`.byte`, `.asciiz`, …) are skipped the same
   way — a breakpoint on a data byte would never trip (`.res` reservations are
   the one blind spot: their debug records are indistinguishable from code).
+  Macro expansions belong to their **invocation line** — clicking inside a
+  `.macro` body arms nothing, and the PC-follow lands on the call site.
   One breakpoint at a time (it is the machine's single CPU breakpoint — the
   same one as CPU → Debug). The CPU halts when it reaches that line's
   address; the armed line shows as a marker in the gutter. After a hit, **▶

@@ -147,6 +147,10 @@ bool CodeBench::loadStarterForTargetIfClean(int targetIndex)
     d->editor->SetErrorMarkers({}); d->errorLines.clear();
     d->path.clear();
     d->lastSavedText = d->editor->GetText(); d->dirty = false;
+    // The tab's text just changed under the debug line table — and this
+    // SetText runs OUTSIDE TextEditor::Render, whose entry clears the
+    // IsTextChanged flag before the invalidation hook can see it.
+    if (d->uid == dbgDocUid_) dbgDocUid_ = -1;
     status_ = "Starter loaded for new preset"; statusOk_ = true;
     return true;
 }
@@ -687,17 +691,19 @@ void CodeBench::render(const char* title, bool* open)
         ImGui::SameLine(0, 6);
         if (circleBtn(ICON_FA_FORWARD_STEP, "##benchstep", "Step (single 6502 instruction)")) {
             std::string s = host_->cpuStep();
-            // With a line table from the last build, say WHERE in the source
-            // the step landed — the whole point of source-level stepping.
-            const int pcLine = host_->sourceLineForPc();
-            if (pcLine > 0) s += " (line " + std::to_string(pcLine) + ")";
+            // With a line table matching THIS tab's text, say WHERE in the
+            // source the step landed — a stale table would name a wrong line.
+            if (doc.uid == dbgDocUid_) {
+                const int pcLine = host_->sourceLineForPc();
+                if (pcLine > 0) s += " (line " + std::to_string(pcLine) + ")";
+            }
             status_ = s.empty() ? "Stepped" : s; statusOk_ = true;
         }
         // Source breakpoint — only when the last build produced a line table
         // (host builds with debug info) for the CURRENT buffer contents.
         if (host_->debugLineInfo()) {
             ImGui::SameLine(0, 6);
-            const bool clean = !doc.dirty && doc.uid == dbgDocUid_;
+            const bool clean = doc.uid == dbgDocUid_;
             if (circleBtn(ICON_FA_CIRCLE, "##benchbp",
                           clean ? "Toggle breakpoint at the cursor line — the CPU halts when it\n"
                                   "reaches that line's address (one breakpoint, from the last build).\n"
@@ -758,6 +764,11 @@ void CodeBench::render(const char* title, bool* open)
                     doc.editor->SetErrorMarkers({}); doc.errorLines.clear();
                     doc.path.clear();
                     doc.lastSavedText = doc.editor->GetText(); doc.dirty = false;
+                    // In-place SetText outside TextEditor::Render — the
+                    // IsTextChanged invalidation hook can't see it (Render
+                    // clears the flag at entry), so drop the debug line
+                    // table's claim on this tab explicitly.
+                    if (doc.uid == dbgDocUid_) dbgDocUid_ = -1;
                     if (el.targetIndex >= 0) { doc.targetIndex = el.targetIndex; applyDocSyntax(doc); }
                     doc.title = "untitled-" + std::to_string(++untitledSeq_);
                 }
@@ -1037,11 +1048,13 @@ void CodeBench::render(const char* title, bool* open)
         }
     } else {
         // ---- Source-level debugging decorations (host line table) ----------
-        // A dirty buffer invalidates the last build's line numbers, so the
-        // breakpoint marker and the PC-follow both vanish until the next
-        // Verify/Run refreshes the mapping.
-        const bool dbgLive = host_->debugLineInfo() && !act.dirty
-                             && act.uid == dbgDocUid_;
+        // dbgDocUid_ names the tab whose text the last build mapped; it is
+        // cleared the moment that text changes (the IsTextChanged hook below,
+        // plus every programmatic SetText site — TextEditor::Render clears
+        // the flag at entry, so out-of-render SetText is invisible to the
+        // hook). The saved-file dirty flag plays no part: a build from an
+        // unsaved buffer is perfectly mapped.
+        const bool dbgLive = host_->debugLineInfo() && act.uid == dbgDocUid_;
         {
             TextEditor::Breakpoints bps;
             if (dbgLive) {
@@ -1082,7 +1095,16 @@ void CodeBench::render(const char* title, bool* open)
             ImGui::EndPopup();
         }
 
-        if (act.editor->IsTextChanged()) act.dirty = (act.editor->GetText() != act.lastSavedText);
+        if (act.editor->IsTextChanged()) {
+            act.dirty = (act.editor->GetText() != act.lastSavedText);
+            // Any edit shifts the line numbers the host's debug table was
+            // built from — invalidate, whatever the dirty flag says (dirty
+            // tracks saved-vs-buffer, NOT built-vs-buffer: a build from an
+            // unsaved buffer is perfectly mapped, and Ctrl+Z back to the
+            // saved text is not necessarily the built text).
+            if (act.uid == dbgDocUid_)
+                dbgDocUid_ = -1;
+        }
 
         // Mirror error lines onto the editor's scrollbar lane (overview ruler).
         if (!act.errorLines.empty()) {
