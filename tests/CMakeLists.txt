@@ -807,6 +807,32 @@ target_include_directories(test_bench_cc65 PRIVATE
 add_test(NAME bench_cc65_smoke COMMAND test_bench_cc65)
 set_tests_properties(bench_cc65_smoke PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
 
+# -- DevBench debugging protocol, on the real 6502 (cc65-gated) ---------------
+# The one part of source-level debugging a test CAN reach: everything under
+# Pom1BenchHost (which needs a live MainWindow, so ctest cannot touch it).
+# Builds a real program with ca65 -g / ld65 --dbgfile, then performs the exact
+# sequence the host performs — line -> address -> arm -> run -> halt -> resume
+# — against M6502 + Memory. Pins that an address taken from a source line is
+# one the PC genuinely reaches, that a naive resume re-trips without advancing
+# (the "▶ looked dead" defect), that step-then-run fixes it, and that
+# setBreakpoint() clears the trip latch (why the ▶ condition cannot be written
+# in terms of isBreakpointTripped()). Separate target from bench_cc65_smoke on
+# purpose: that one must stay UI-free AND core-free to keep proving it links
+# without them.
+add_executable(test_bench_debug_protocol
+    bench_debug_protocol_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/DbgFile.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_bench_debug_protocol PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_bench_debug_protocol PRIVATE libresidfp_static)
+
+add_test(NAME bench_debug_protocol_smoke COMMAND test_bench_debug_protocol)
+set_tests_properties(bench_debug_protocol_smoke PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
+
 # -- Native BASIC compiler: end-to-end run + speedup (cc65-gated) -------------
 # Builds the standalone native binary (ca65/ld65 against dev/lib/basicrt) and the
 # interpreter path, runs both, asserts identical output and that native is faster.
