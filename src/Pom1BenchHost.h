@@ -6,7 +6,7 @@
 #define POM1_BENCH_HOST_H
 
 #include "IBenchHost.h"
-#include "DbgFile.h"     // pom1::DbgLineInfo (source-level debugging line table)
+#include "BenchDebugSession.h"   // source-level debugging state machine (pure)
 #include "POM1Build.h"   // POM1_IS_WASM (native-compile path is desktop-only)
 
 #include <cstdint>
@@ -84,6 +84,11 @@ public:
     int  sourceLineForPc() const override;
     int  toggleLineBreakpoint(int line) override;
     int  breakpointLine() const override;
+
+private:
+    using MachineBpOf = pom1::BenchDebugSession::MachineBp;
+    MachineBpOf machineBp() const;   // the live CPU breakpoint, for the session
+public:
     std::string browseDir() const override;
     bool pickFilePath(bool forSave, const std::string& title,
                       const std::string& filterDesc, const std::string& extCsv,
@@ -185,13 +190,14 @@ private:
     // Bench's interactive REPL input (replActive/replSend).
     bool logoReplActive_ = false;
 
-    // Source-level debugging: line table of the LAST successful asm build
-    // (ca65 -g + ld65 --dbgfile, parsed by pom1::parseDbgFile). Reset at the
-    // start of every build so a failed or injection build never leaves a
-    // stale mapping; the armed line breakpoint is dropped with it (the
-    // rebuilt program's addresses moved under it).
-    pom1::DbgLineInfo dbgInfo_;
-    int dbgBreakpointLine_ = -1;   // 1-based armed line, -1 = none
+    // Source-level debugging: the line table of the LAST successful asm build
+    // (ca65 -g + ld65 --dbgfile) plus the line we armed through it. The
+    // DECISIONS (toggle, ownership, marker, rebuild carry-over) live in the
+    // pure pom1::BenchDebugSession — this class only carries them out against
+    // the emulator. Invalidated at the start of every build and at every
+    // machine reprogramming, so a failed build or a preset switch never
+    // leaves a mapping that describes a program the machine no longer runs.
+    pom1::BenchDebugSession dbg_;
 
     // Cold/warm BASIC start toggle (CodeBench "Warm" checkbox; default cold). When
     // set, injectBasic re-enters the resident interpreter via its WARM entry

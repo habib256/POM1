@@ -10,6 +10,38 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — chasse n°8 : la machine à états du débogage sort de l'UI et devient testable (`BenchDebugSession`)
+
+Huitième passe, et la dernière zone aveugle refermée. Le constat des sept
+précédentes était toujours le même : les décisions du débogage source (basculer un
+point d'arrêt, savoir si le point d'arrêt de la machine est encore le nôtre,
+reporter la ligne armée à travers une reconstruction) vivaient dans
+`Pom1BenchHost`, qui exige un MainWindow — donc **aucun test ne pouvait les
+atteindre**, et c'est précisément là que la majorité des dix défauts se cachaient,
+chacun vérifié à la lecture seule. `src/BenchDebugSession.{h,cpp}` les extrait en un
+module **pur** — exactement la couture que `CLAUDE.md` prescrit déjà pour MainWindow
+(*« anything that is a decision rather than a draw call belongs on this side »*).
+Le point d'arrêt de la machine n'y est pas possédé : chaque question reçoit l'état
+courant `(armé, adresse)` en argument et chaque réponse est une **intention** que
+l'appelant exécute — c'est ce qui rend « ce point d'arrêt est-il encore le nôtre ? »
+répondable sans émulateur. `Pom1BenchHost` n'est plus qu'un exécutant. Déplacement à
+comportement identique (101 tests verts), avec un gain de conception au passage :
+les trois issues d'un basculement (`Armed` / `Cleared` / `NoCode`) sont désormais
+**distinctes**, là où l'hôte renvoyait `-1` pour deux d'entre elles et laissait
+l'appelant redevenir devin par comparaison avant/après.
+
+`bench_debug_session_smoke` exécute enfin les scénarios qui n'étaient que raisonnés :
+la boucle Verify → armer → Run avec ré-armement à l'adresse **déplacée**, la fenêtre
+Debug qui efface ou déplace le point d'arrêt partagé sous nos pieds (jamais
+revendiqué, jamais effacé, jamais ressuscité), le basculement depuis une ligne
+différente qui *s'accroche* sur la ligne armée, et une reconstruction où la ligne
+armée ne produit plus de code. **Vérifié par mutation** (ignorer la vérification de
+propriété fait tomber le test). Ce dernier scénario a révélé un **écart
+documentation/code** : `DEVBENCH.md` affirmait qu'un point d'arrêt dont la ligne perd
+son code « retombe », alors que l'accrochage le fait **glisser** vers la ligne de
+code suivante — la doc dit maintenant ce que le code fait, et où le lire (la trace
+console et le marqueur nomment tous deux la ligne réellement atteinte).
+
 ### Added — chasse n°7 : le protocole de débogage épinglé sur le VRAI 6502 (`bench_debug_protocol_smoke`)
 
 Septième passe, **méthode changée plutôt que lecture répétée** : les six

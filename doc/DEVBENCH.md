@@ -57,9 +57,12 @@ successful Verify or Run:
   address; the armed line shows as a marker in the gutter. After a hit, **▶
   resumes past the breakpoint** (step-then-run, the breakpoint stays armed
   for the next pass). The breakpoint **survives rebuilds**: Verify or Run
-  re-arm it against the fresh line table (at its possibly-moved address; the
-  console notes the re-arm) — if the line no longer produces code, it is
-  dropped and the gutter marker disappears with it.
+  re-arm it against the fresh line table, at whatever address that line now
+  has. If your edit removed the code on that line, the breakpoint **snaps
+  forward to the next line that has some** — the same rule as clicking a
+  comment — so watch the console line (`breakpoint re-armed at line N`) and
+  the gutter marker, which both name where it actually landed. It is dropped
+  only when no code follows it at all.
 - **Step** (⏭) now reports the **source line** it landed on, and the editor
   cursor follows the PC while the CPU is halted — step through your own
   listing instead of a hex disassembly.

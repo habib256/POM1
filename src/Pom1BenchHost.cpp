@@ -958,8 +958,7 @@ void Pom1BenchHost::applyTargetPreset(int target, bool force)
     // opening a file that auto-targets a different machine; a Run rebuild
     // whose own onTargetSelected lands here re-adopts the fresh table right
     // after (build()'s run paths parse AFTER machine prep for this reason).
-    dbgInfo_ = {};
-    dbgBreakpointLine_ = -1;
+    dbg_.invalidate();
 
     // The bench is driving the preset change here — the user already picked a
     // target (which sets the bench's own sketch). Do not let the DevBench preset
@@ -1344,22 +1343,12 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     // without that, the natural debug loop — Verify, arm a breakpoint, Run —
     // silently disarmed the breakpoint during Run's rebuild and the program
     // sailed past it (and even a plain re-Verify lost it).
-    [[maybe_unused]] int dbgRearmLine = -1;   // maybe_unused: the re-arm call
-                                              // sites live in the desktop-only
-                                              // branch of this function
-    if (dbgBreakpointLine_ >= 0 && dbgInfo_.ok) {
-        uint16_t bpAddr = 0;
-        int snapped = -1;
-        auto* emuBp = mw_->emulation.get();
-        if (emuBp && emuBp->hasCpuBreakpoint() &&
-            dbgInfo_.addrForLine(dbgBreakpointLine_, bpAddr, snapped) &&
-            emuBp->getCpuBreakpoint() == bpAddr) {
-            emuBp->clearCpuBreakpoint();
-            dbgRearmLine = dbgBreakpointLine_;   // ours — eligible for re-arm
-        }
+    [[maybe_unused]] const int dbgRearmLine = dbg_.beginRebuild(machineBp());
+    if (dbgRearmLine >= 0) {
+        if (auto* emuBp = mw_->emulation.get())
+            emuBp->clearCpuBreakpoint();     // ours, and its address is moving
     }
-    dbgInfo_ = {};
-    dbgBreakpointLine_ = -1;
+    dbg_.invalidate();
     // Re-arm the remembered line against the FRESH table. Must run after the
     // LAST machine reset of its path: loadBinary() and hardReset() both reach
     // M6502::reset(), which clears the CPU breakpoint — re-arming at parse
@@ -1368,20 +1357,17 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     // longer resolves (code deleted), the breakpoint stays cleared — visibly,
     // since the gutter marker follows breakpointLine().
     [[maybe_unused]] auto rearmDbgBreakpoint = [&](bench::BuildResult& res) {
-        if (dbgRearmLine < 0 || !dbgInfo_.ok)
-            return;
         auto* emuRe = mw_->emulation.get();
         if (!emuRe)
             return;
-        uint16_t addr = 0;
-        int snapped = -1;
-        if (!dbgInfo_.addrForLine(dbgRearmLine, addr, snapped))
+        const auto re = dbg_.rearm(dbgRearmLine);
+        if (!re.ok)
             return;
-        emuRe->setCpuBreakpoint(addr);
-        dbgBreakpointLine_ = snapped;
+        emuRe->setCpuBreakpoint(re.address);
         char note[96];
         std::snprintf(note, sizeof(note),
-                      "[ok] breakpoint re-armed at line %d ($%04X)\n", snapped, addr);
+                      "[ok] breakpoint re-armed at line %d ($%04X)\n",
+                      re.line, re.address);
         res.console += note;
     };
 
@@ -1602,7 +1588,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     // Debug-info staging paths + parser, at FUNCTION scope on purpose: the run
     // paths may re-parse AFTER their machine prep — onTargetSelected can apply
     // a preset (applyMachineConfig → hardReset), which rightly invalidates
-    // dbgInfo_ (the mapping described a program the reset just destroyed), so
+    // the line table (which described a program the reset just destroyed), so
     // the freshly linked table must be re-adopted afterwards. Idempotent: a
     // second call with the table already adopted is a no-op, and a missing
     // .dbg (non-asm modes) is silently skipped.
@@ -1616,7 +1602,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     // could have replaced or swept it underneath us.
     std::string dbgFileText;
     auto adoptDbgInfo = [&]() {
-        if (dbgInfo_.ok)
+        if (dbg_.hasLineInfo())
             return;
         if (dbgFileText.empty()) {
             std::ifstream df(dbgFileP);
@@ -1628,17 +1614,18 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         }
         if (dbgFileText.empty())
             return;
-        dbgInfo_ = pom1::parseDbgFile(dbgFileText, dbgSrcS.string());
-        if (!dbgInfo_.ok)
+        pom1::DbgLineInfo parsed = pom1::parseDbgFile(dbgFileText, dbgSrcS.string());
+        if (!parsed.ok)
             return;
         r.console += "[ok] debug info: "
-            + std::to_string(dbgInfo_.lineToAddr.size())
+            + std::to_string(parsed.lineToAddr.size())
             + " source lines mapped\n";
         if (mw_->memoryViewer) {
             mw_->memoryViewer->resetSymbolsToDefaults();
-            for (const auto& l : dbgInfo_.labels)
+            for (const auto& l : parsed.labels)
                 mw_->memoryViewer->addSymbol(l.first, l.second);
         }
+        dbg_.adopt(std::move(parsed));
     };
     const std::string cfgTag = t.cfg ? t.cfg : "";
     const bool cmode  = (t.mode == 3);
@@ -1928,7 +1915,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             if (emu->loadBinary(runPath, runAddr, error, &loaded)) {
                 // After loadBinary — its reset cleared any earlier breakpoint,
                 // and onTargetSelected above may have applied a preset, which
-                // wipes dbgInfo_: re-adopt the fresh table first. (The CPU is
+                // wipes the line table: re-adopt the fresh table first. (The CPU is
                 // already running: a breakpoint within the very first
                 // instructions can miss its first pass; loops catch the next.)
                 adoptDbgInfo();
@@ -2013,7 +2000,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         // After the reset (which cleared any CPU breakpoint) and BEFORE the
         // deferred 4000R types — the ideal re-arm window: the program has not
         // started, so even a first-instruction breakpoint trips. Re-adopt
-        // first: the preset apply above may have wiped dbgInfo_.
+        // first: the preset apply above may have wiped the line table.
         adoptDbgInfo();
         rearmDbgBreakpoint(r);
         mw_->codeTankPendingWozRunAt = ImGui::GetTime() + 1.0;
@@ -2312,54 +2299,58 @@ bool Pom1BenchHost::cpuIsRunning() const
 
 // ── Source-level debugging (asm builds: ca65 -g + ld65 --dbgfile) ───────────
 
+// Snapshot the machine's single CPU breakpoint for the pure session. Null
+// emulator reads as "not armed", which makes every session answer degrade to
+// "nothing of ours is live" instead of needing its own null checks.
+Pom1BenchHost::MachineBpOf Pom1BenchHost::machineBp() const
+{
+    pom1::BenchDebugSession::MachineBp m;
+    if (auto* emu = mw_->emulation.get(); emu && emu->hasCpuBreakpoint()) {
+        m.armed = true;
+        m.address = emu->getCpuBreakpoint();
+    }
+    return m;
+}
+
 bool Pom1BenchHost::debugLineInfo() const
 {
-    return dbgInfo_.ok;
+    return dbg_.hasLineInfo();
 }
 
 int Pom1BenchHost::sourceLineForPc() const
 {
-    if (!dbgInfo_.ok || mw_->cpuRunning)
+    if (mw_->cpuRunning)
         return -1;
     // uiSnapshot is refreshed every frame by MainWindow::render(), including
     // while the CPU is parked on a breakpoint/step — no extra lock needed.
-    return dbgInfo_.lineForAddr(mw_->uiSnapshot.programCounter);
+    return dbg_.lineForPc(mw_->uiSnapshot.programCounter);
 }
 
 int Pom1BenchHost::toggleLineBreakpoint(int line)
 {
     auto* emu = mw_->emulation.get();
-    if (!dbgInfo_.ok || !emu)
+    if (!emu)
         return -1;
-    uint16_t addr = 0;
-    int snapped = -1;
-    if (!dbgInfo_.addrForLine(line, addr, snapped))
-        return -1;                       // past the last code line: nothing to arm
-    if (dbgBreakpointLine_ == snapped && emu->hasCpuBreakpoint() &&
-        emu->getCpuBreakpoint() == addr) {
-        emu->clearCpuBreakpoint();       // second toggle on the same line clears
-        dbgBreakpointLine_ = -1;
+    const auto res = dbg_.toggle(line, machineBp());
+    switch (res.kind) {
+    case pom1::BenchDebugSession::Toggle::Armed:
+        emu->setCpuBreakpoint(res.address);   // the machine's single breakpoint
+        return res.line;
+    case pom1::BenchDebugSession::Toggle::Cleared:
+        emu->clearCpuBreakpoint();
         return -1;
+    case pom1::BenchDebugSession::Toggle::NoCode:
+        break;
     }
-    emu->setCpuBreakpoint(addr);         // the machine's single CPU breakpoint
-    dbgBreakpointLine_ = snapped;
-    return snapped;
+    return -1;
 }
 
 int Pom1BenchHost::breakpointLine() const
 {
-    // POM1 has ONE CPU breakpoint. If the Debug window re-armed it at some
-    // other address since our toggle, the line marker no longer describes the
-    // machine — report none rather than a lie.
-    auto* emu = mw_->emulation.get();
-    if (dbgBreakpointLine_ < 0 || !dbgInfo_.ok || !emu || !emu->hasCpuBreakpoint())
-        return -1;
-    uint16_t addr = 0;
-    int snapped = -1;
-    if (!dbgInfo_.addrForLine(dbgBreakpointLine_, addr, snapped) ||
-        emu->getCpuBreakpoint() != addr)
-        return -1;
-    return dbgBreakpointLine_;
+    // POM1 has ONE CPU breakpoint. If the Debug window cleared or re-armed it
+    // since our toggle, the session answers -1 rather than showing a marker
+    // that no longer describes the machine.
+    return dbg_.markerLine(machineBp());
 }
 
 std::string Pom1BenchHost::browseDir() const
