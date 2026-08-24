@@ -77,18 +77,23 @@ static void partA()
 }
 
 // The fixture: line numbers are load-bearing — part B asserts against them.
-// Line 5 is a DATA line: real ld65 emits its span with a `type=` attribute,
-// which the parser must exclude (a breakpoint there would never trip).
+// Line 8 is a DATA line (span carries type= — excluded); line 9 invokes a
+// macro (the BODY line 3 emits type=2 records — excluded; the invocation
+// line is what maps).
 static const char kProgS[] =
     "        .setcpu \"6502\"\n"     // line 1 (no code)
-    "; boot: print an A\n"           // line 2 (comment)
-    "start:  lda #$41\n"             // line 3 -> $0300..0301
-    "        jsr echo\n"             // line 4 -> $0302..0304
-    "table:  .byte $01, $02, $03\n"  // line 5 -> $0305..0307 (DATA — excluded)
-    "loop:   jmp loop\n"             // line 6 -> $0308..030A
-    "; helper\n"                     // line 7 (comment)
-    "echo:   sta $D012\n"            // line 8 -> $030B..030D
-    "        rts\n";                 // line 9 -> $030E
+    ".macro  PAD\n"                  // line 2 (no code)
+    "        nop\n"                  // line 3 (macro BODY — excluded)
+    ".endmacro\n"                    // line 4 (no code)
+    "; boot: print an A\n"           // line 5 (comment)
+    "start:  lda #$41\n"             // line 6 -> $0300..0301
+    "        jsr echo\n"             // line 7 -> $0302..0304
+    "table:  .byte $01, $02, $03\n"  // line 8 -> $0305..0307 (DATA — excluded)
+    "        PAD\n"                  // line 9 -> $0308 (the invocation maps)
+    "loop:   jmp loop\n"             // line 10 -> $0309..030B
+    "; helper\n"                     // line 11 (comment)
+    "echo:   sta $D012\n"            // line 12 -> $030C..030E
+    "        rts\n";                 // line 13 -> $030F
 
 static const char kCfg[] =
     "MEMORY { MAIN: start=$0300, size=$1000, file=%O; }\n"
@@ -142,30 +147,35 @@ static int partB()
     }
 
     // Address -> line, every instruction; the .byte table is code-invisible
-    assert(d.lineForAddr(0x0300) == 3);
-    assert(d.lineForAddr(0x0302) == 4);
-    assert(d.lineForAddr(0x0304) == 4);   // middle byte of the jsr operand
+    // and the macro expansion byte belongs to the INVOCATION line, never the
+    // .macro body.
+    assert(d.lineForAddr(0x0300) == 6);
+    assert(d.lineForAddr(0x0302) == 7);
+    assert(d.lineForAddr(0x0304) == 7);   // middle byte of the jsr operand
     assert(d.lineForAddr(0x0305) == -1);  // DATA (typed span) — excluded
     assert(d.lineForAddr(0x0307) == -1);
-    assert(d.lineForAddr(0x0308) == 6);
-    assert(d.lineForAddr(0x030B) == 8);
-    assert(d.lineForAddr(0x030E) == 9);
+    assert(d.lineForAddr(0x0308) == 9);   // PAD invocation, NOT body line 3
+    assert(d.lineForAddr(0x0309) == 10);
+    assert(d.lineForAddr(0x030C) == 12);
+    assert(d.lineForAddr(0x030F) == 13);
 
-    // Line -> address, snapping forward over comments AND over the data line
+    // Line -> address, snapping forward over comments, the data line and the
+    // macro definition alike
     uint16_t addr = 0;
     int snapped = 0;
-    assert(d.addrForLine(3, addr, snapped) && addr == 0x0300 && snapped == 3);
-    assert(d.addrForLine(2, addr, snapped) && addr == 0x0300 && snapped == 3);
-    assert(d.addrForLine(5, addr, snapped) && addr == 0x0308 && snapped == 6);
-    assert(d.addrForLine(7, addr, snapped) && addr == 0x030B && snapped == 8);
-    assert(!d.addrForLine(10, addr, snapped));
+    assert(d.addrForLine(6, addr, snapped) && addr == 0x0300 && snapped == 6);
+    assert(d.addrForLine(2, addr, snapped) && addr == 0x0300 && snapped == 6);
+    assert(d.addrForLine(3, addr, snapped) && addr == 0x0300 && snapped == 6);
+    assert(d.addrForLine(8, addr, snapped) && addr == 0x0308 && snapped == 9);
+    assert(d.addrForLine(11, addr, snapped) && addr == 0x030C && snapped == 12);
+    assert(!d.addrForLine(14, addr, snapped));
 
     // Labels harvested from the real sym records (data labels included —
     // the disassembler wants `table` named even though it is not code)
     assert(hasLabel(d, 0x0300, "start"));
     assert(hasLabel(d, 0x0305, "table"));
-    assert(hasLabel(d, 0x0308, "loop"));
-    assert(hasLabel(d, 0x030B, "echo"));
+    assert(hasLabel(d, 0x0309, "loop"));
+    assert(hasLabel(d, 0x030C, "echo"));
 
     std::printf("bench_cc65_smoke: part B (real ca65 -g / ld65 --dbgfile) OK\n");
     return 0;

@@ -10,6 +10,34 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — chasse n°2 sur le débogage source : l'invariant « dirty » était le mauvais, et les macros
+
+Trois défauts de plus, dont deux sur le même invariant. **(1) Faux négatif** : les
+décorations exigeaient un buffer non-dirty, or `dirty` compare le buffer au fichier
+SAUVÉ — un Verify sur un buffer édité-mais-non-sauvé produit une table de lignes
+parfaitement valide pour ce texte exact, et le bouton breakpoint restait pourtant
+gris. **(2) Faux positif, l'inverse** : `loadExample` et le chargement d'un starter
+remplacent le texte EN PLACE en remettant `dirty=false` — les décorations du build
+précédent auraient décoré le nouveau texte. Et le crochet `IsTextChanged()` ne
+pouvait pas les voir : `TextEditor::Render` efface le flag EN ENTRÉE, donc un
+`SetText` hors rendu est invisible au contrôle post-rendu. L'invariant devient
+« le texte de CET onglet n'a pas changé depuis le build » : `dbgDocUid_` est posé au
+retour du build et retiré sur toute édition (crochet) comme sur tout `SetText`
+programmatique (explicitement, aux deux sites) ; le flag `dirty` ne joue plus aucun
+rôle, et le suffixe « (line N) » du Step est gaté pareil. **(3) Macros** : mesuré
+sur ld65 réel, chaque expansion émet des line records `type=2` pour les lignes du
+CORPS de la `.macro`, spans sur les octets de l'expansion — selon l'ordre des
+records le PC-follow pouvait sauter dans la définition, et un clic dans le corps
+armait une expansion arbitraire. Le parseur ignore les records `type=2` : les
+octets d'une expansion appartiennent à la ligne d'INVOCATION (le `type=1` — source
+C — est conservé pour la phase C à venir). Vérifiés sains au passage :
+`setCpuBreakpoint` prend bien `stateMutex` (pas de course UI/thread émulation),
+`newDoc`/Save/Open ne peuvent pas produire de table périmée (uid neuf ou texte
+inchangé), et un Ctrl+Z revenant au texte bâti reste invalidé — conservateur mais
+jamais menteur. Miniature et fixture réel (macro `PAD` + table `.byte`) étendus
+dans `dbgfile_smoke` / `bench_cc65_smoke`, le record `type=2` placé AVANT
+l'invocation pour prouver que l'exclusion ne doit rien à l'ordre.
+
 ### Fixed — chasse aux bugs sur le débogage source du DevBench
 
 Deux vrais bugs trouvés par relecture adversariale + expérimentation sur la vraie

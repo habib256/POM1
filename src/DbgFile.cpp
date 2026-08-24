@@ -163,6 +163,17 @@ DbgLineInfo parseDbgFile(const std::string& text, const std::string& primarySour
         } else if (keyword == "line") {
             // Only lines that generated code carry span=; the rest (macro
             // definitions, .include bookkeeping) have no address to map.
+            //
+            // type=2 marks a MACRO-BODY line: each expansion emits one, whose
+            // span covers that expansion's bytes. Mapping them would make the
+            // PC-follow jump into the .macro definition (record order decides
+            // who wins a byte) and a click inside the definition would arm
+            // one arbitrary expansion — the INVOCATION line (untyped record,
+            // same bytes) is the one a debugger should speak in. type=1 (C
+            // source) is kept: the future C phase will want those records.
+            const std::string* type = a.get("type");
+            if (type && *type == "2")
+                continue;
             const std::string *file = a.get("file"), *line = a.get("line");
             const std::string* span = a.get("span");
             LineRec r;

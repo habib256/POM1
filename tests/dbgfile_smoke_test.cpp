@@ -26,6 +26,10 @@ using pom1::parseDbgFile;
 //   line 10:        rts          ; $030B        (span 4)
 //   line 12: tbl:   .byte ...    ; $030C..030F  (span 6, type=0 → DATA, excluded)
 //   line 13: (synthetic)         ; span 7, size=0 → excluded from lineToAddr
+//   line 15:        PAD          ; $0311        (span 8 — the invocation line)
+//   line 20:        nop          ; same span 8, line record type=2 (macro body)
+//                                  — placed BEFORE the invocation record to
+//                                  prove the exclusion, not record-order luck
 static const char kDbg[] =
     "version\tmajor=2,minor=0\n"
     "info\tcsym=0,file=2,lib=0,line=7,mod=1,scope=1,seg=1,span=6,sym=3\n"
@@ -40,6 +44,8 @@ static const char kDbg[] =
     "span\tid=5,seg=0,start=8,size=4\n"
     "span\tid=6,seg=0,start=12,size=4,type=0\n"    // DATA span (.byte table)
     "span\tid=7,seg=0,start=16,size=0\n"           // zero-size span
+    "span\tid=8,seg=0,start=17,size=1\n"           // macro expansion byte
+    "line\tid=9,file=0,line=20,type=2,count=1,span=8\n"  // macro BODY -> excluded
     "line\tid=0,file=0,line=3,span=0\n"
     "line\tid=1,file=0,line=5,span=1\n"
     "line\tid=2,file=0,line=7,span=2\n"
@@ -49,6 +55,7 @@ static const char kDbg[] =
     "line\tid=6,file=1,line=1,span=5\n"             // other file -> ignored
     "line\tid=7,file=0,line=12,span=6\n"            // data line -> excluded
     "line\tid=8,file=0,line=13,span=7\n"            // zero-size -> excluded
+    "line\tid=10,file=0,line=15,span=8\n"           // macro INVOCATION -> wins
     "sym\tid=0,name=\"start\",addrsize=absolute,scope=0,def=1,val=0x300,seg=0,type=lab\n"
     "sym\tid=1,name=\"echo\",addrsize=absolute,scope=0,def=2,val=0x308,seg=0,type=lab\n"
     "sym\tid=2,name=\"WIDTH\",addrsize=zeropage,scope=0,def=3,val=0x28,type=equ\n";
@@ -85,12 +92,14 @@ int main()
         assert(d.addrForLine(4, addr, snapped) && addr == 0x0302 && snapped == 5);
         // Line 6 (blank) snaps to 7.
         assert(d.addrForLine(6, addr, snapped) && addr == 0x0305 && snapped == 7);
-        // Past the last code line: nothing to arm — the data line (12) and
-        // the zero-size line (13) must NOT count as breakpoint targets, and
-        // snapping from a comment must never land on them.
-        assert(!d.addrForLine(11, addr, snapped));
-        assert(!d.addrForLine(12, addr, snapped));
-        assert(!d.addrForLine(13, addr, snapped));
+        // The data line (12) and the zero-size line (13) are never targets
+        // themselves — a click there snaps THROUGH to the next code line,
+        // the macro invocation at 15.
+        assert(d.addrForLine(11, addr, snapped) && snapped == 15);
+        assert(d.addrForLine(12, addr, snapped) && snapped == 15);
+        assert(d.addrForLine(13, addr, snapped) && addr == 0x0311 && snapped == 15);
+        // Past the last code line: nothing to arm.
+        assert(!d.addrForLine(16, addr, snapped));
     }
 
     // ── 3b. Data spans (type=) are code-invisible ────────────────────────
@@ -98,6 +107,19 @@ int main()
         const DbgLineInfo d = parseDbgFile(kDbg, "prog.s");
         assert(d.lineForAddr(0x030C) == -1);   // .byte table byte, not code
         assert(d.lineForAddr(0x030F) == -1);
+    }
+
+    // ── 3c. Macro-body line records (type=2) lose to the invocation line ─
+    {
+        const DbgLineInfo d = parseDbgFile(kDbg, "prog.s");
+        uint16_t addr = 0;
+        int snapped = 0;
+        // $0311 belongs to line 15 (the PAD invocation), never line 20 (the
+        // .macro body) — even though the type=2 record comes FIRST in kDbg.
+        assert(d.lineForAddr(0x0311) == 15);
+        assert(d.addrForLine(14, addr, snapped) && addr == 0x0311 && snapped == 15);
+        // The macro-body line itself is not a breakpoint target.
+        assert(!d.addrForLine(16, addr, snapped));
     }
 
     // ── 4. Labels: type=lab only, equates excluded ───────────────────────
