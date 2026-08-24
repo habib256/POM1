@@ -958,7 +958,7 @@ void Pom1BenchHost::applyTargetPreset(int target, bool force)
     // opening a file that auto-targets a different machine; a Run rebuild
     // whose own onTargetSelected lands here re-adopts the fresh table right
     // after (build()'s run paths parse AFTER machine prep for this reason).
-    dbg_.invalidate();
+    dropDebugSession();
 
     // The bench is driving the preset change here — the user already picked a
     // target (which sets the bench's own sketch). Do not let the DevBench preset
@@ -2345,6 +2345,26 @@ Pom1BenchHost::MachineBpOf Pom1BenchHost::machineBp() const
         m.address = emu->getCpuBreakpoint();
     }
     return m;
+}
+
+void Pom1BenchHost::dropDebugSession()
+{
+    // The machine is being reprogrammed, so the line table is void — but the
+    // CPU breakpoint we armed through it is REAL and outlives the table. Most
+    // paths here also hard-reset (which disarms it in M6502::reset), yet not
+    // all: injectBasic's WARM start deliberately skips the whole reset+reload
+    // so a program typed at the REPL survives. Without this clear, a
+    // breakpoint left at some address of the previous asm program stays armed
+    // under the interpreter; the moment the PC wanders onto it the machine
+    // parks itself, and nothing in the Bench explains why — the session has
+    // forgotten it, so no marker and no banner mention it. Clear it here,
+    // once, for every reprogramming path; a breakpoint the Debug window owns
+    // is left strictly alone (markerLine answers -1 for it).
+    if (dbg_.markerLine(machineBp()) >= 0) {
+        if (auto* emu = mw_->emulation.get())
+            emu->clearCpuBreakpoint();
+    }
+    dbg_.invalidate();
 }
 
 bool Pom1BenchHost::debugLineInfo() const

@@ -88,6 +88,10 @@ public:
 private:
     using MachineBpOf = pom1::BenchDebugSession::MachineBp;
     MachineBpOf machineBp() const;   // the live CPU breakpoint, for the session
+    // Void the line table because the MACHINE is being reprogrammed, clearing
+    // the CPU breakpoint we armed through it (not every such path resets the
+    // CPU — see the definition). Use this, never dbg_.invalidate() alone.
+    void dropDebugSession();
 public:
     std::string browseDir() const override;
     bool pickFilePath(bool forSave, const std::string& title,
