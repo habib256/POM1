@@ -1343,12 +1343,13 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     // without that, the natural debug loop — Verify, arm a breakpoint, Run —
     // silently disarmed the breakpoint during Run's rebuild and the program
     // sailed past it (and even a plain re-Verify lost it).
-    [[maybe_unused]] const int dbgRearmLine = dbg_.beginRebuild(machineBp());
-    if (dbgRearmLine >= 0) {
+    // beginRebuild drops the table AND remembers the armed line inside the
+    // session, so the intent survives the dozen ways this build can fail
+    // before it links; only a machine change (invalidate) drops it.
+    if (dbg_.beginRebuild(machineBp()) >= 0) {
         if (auto* emuBp = mw_->emulation.get())
             emuBp->clearCpuBreakpoint();     // ours, and its address is moving
     }
-    dbg_.invalidate();
     // Re-arm the remembered line against the FRESH table. Must run after the
     // LAST machine reset of its path: loadBinary() and hardReset() both reach
     // M6502::reset(), which clears the CPU breakpoint — re-arming at parse
@@ -1360,7 +1361,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         auto* emuRe = mw_->emulation.get();
         if (!emuRe)
             return;
-        const auto re = dbg_.rearm(dbgRearmLine);
+        const auto re = dbg_.rearm();
         if (!re.ok)
             return;
         emuRe->setCpuBreakpoint(re.address);

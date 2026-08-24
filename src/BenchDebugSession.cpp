@@ -56,20 +56,29 @@ int BenchDebugSession::markerLine(MachineBp machine) const
     return bpIsOurs(info_, armedLine_, machine) ? armedLine_ : -1;
 }
 
-int BenchDebugSession::beginRebuild(MachineBp machine) const
+int BenchDebugSession::beginRebuild(MachineBp machine)
 {
-    return bpIsOurs(info_, armedLine_, machine) ? armedLine_ : -1;
+    const int carry = bpIsOurs(info_, armedLine_, machine) ? armedLine_ : -1;
+    if (carry >= 0)
+        pendingRearm_ = carry;   // survives a build that fails before linking
+    // The table is dropped here, not by the caller: its addresses are about
+    // to move. pendingRearm_ deliberately stays.
+    info_ = {};
+    armedLine_ = -1;
+    return carry;
 }
 
-BenchDebugSession::RearmResult BenchDebugSession::rearm(int rememberedLine)
+BenchDebugSession::RearmResult BenchDebugSession::rearm()
 {
     RearmResult res;
-    if (rememberedLine < 0 || !info_.ok)
+    const int wanted = pendingRearm_;
+    pendingRearm_ = -1;                   // a fresh table settles the question
+    if (wanted < 0 || !info_.ok)
         return res;
     uint16_t addr = 0;
     int snapped = -1;
-    if (!info_.addrForLine(rememberedLine, addr, snapped))
-        return res;                       // the line stopped producing code
+    if (!info_.addrForLine(wanted, addr, snapped))
+        return res;                       // no code at or after it any more
     armedLine_ = snapped;
     res.ok = true;
     res.address = addr;
