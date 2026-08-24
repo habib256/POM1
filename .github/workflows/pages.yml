@@ -63,6 +63,8 @@ on:
       - "sketchs/**"
       - "dev/**"
       - ".github/workflows/pages.yml"
+      - "tools/assemble_wasm_site.sh"
+      - "tools/wasm_smoke.mjs"
   workflow_dispatch:
 
 permissions:
@@ -104,24 +106,30 @@ jobs:
           cmake --build build-wasm-ci -j"$(nproc)"
 
       - name: Assemble the site
-        # The published path must stay build-wasm/POM1.html — that is the URL in
-        # the README badge and in every link anyone has already shared.
+        # Shared with ci.yml's wasm job so the smoke below loads the exact
+        # assembly the deploy ships. Published path stays build-wasm/POM1.html.
+        run: tools/assemble_wasm_site.sh build-wasm-ci site
+
+      - name: Install Playwright Chromium
         run: |
-          set -euo pipefail
-          mkdir -p site/build-wasm
-          for f in POM1.html POM1.js POM1.wasm POM1.data; do
-            cp "build-wasm-ci/$f" "site/build-wasm/$f"
-          done
-          # Runtime siblings the page fetches directly rather than through MEMFS.
-          cp -r build-wasm/cc65 site/build-wasm/cc65
-          cp build-wasm/cc65_bench.js build-wasm/cc65_wasm.js site/build-wasm/
-          mkdir -p site/build-wasm/pic && cp build-wasm/pic/icon.png site/build-wasm/pic/
-          # Bare habib256.github.io/pom1/ should land on the emulator, not a 404.
-          printf '<!doctype html><meta charset="utf-8">' > site/index.html
-          printf '<meta http-equiv="refresh" content="0; url=build-wasm/POM1.html">' >> site/index.html
-          printf '<title>POM1</title><a href="build-wasm/POM1.html">POM1</a>' >> site/index.html
-          du -sh site
-          ls -la site/build-wasm
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+
+      - name: Browser smoke on the assembled site
+        # The gate between "the build passes" and "the site works": load the
+        # page headless, wait for pom1FirstFrameReady (the C++ side's
+        # first-real-frame callback, observed as #bootSplash.hidden), assert no
+        # uncaught exception / console error / failed request, and a non-black
+        # canvas. A red here blocks the deploy job — that is the point.
+        run: node tools/wasm_smoke.mjs site
+
+      - name: Upload smoke screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-smoke-screenshot
+          path: wasm-smoke.png
+          if-no-files-found: ignore
 
       - uses: actions/upload-pages-artifact@v3
         with:

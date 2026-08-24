@@ -246,6 +246,41 @@ jobs:
           ls -la build-wasm-ci/POM1.html build-wasm-ci/POM1.js \
                  build-wasm-ci/POM1.wasm build-wasm-ci/POM1.data
 
+      # ── Browser smoke ──────────────────────────────────────────────────────
+      # "The four outputs exist" still deploys a page that dies at load: a JS
+      # exception, a WebGL2 init failure or a truncated POM1.data all look the
+      # same to `test -s`. Load the page the way a visitor does — headless
+      # Chromium on the exact site assembly pages.yml deploys — and require the
+      # C++ first-frame callback (pom1FirstFrameReady → #bootSplash.hidden),
+      # zero uncaught exceptions / console errors / failed requests, and a
+      # non-black canvas. pages.yml runs the same check as a deploy gate; this
+      # copy runs it per push, BEFORE the merge.
+      - name: Assemble the site (same layout the deploy ships)
+        run: tools/assemble_wasm_site.sh build-wasm-ci site
+
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+
+      - name: Self-test the smoke checker
+        # Proves the checker can FAIL (black canvas, JS throw, abort overlay),
+        # not just pass — a checker that never fires reads as coverage while
+        # providing none. Also proves the runner still has WebGL2 at all,
+        # separating "the runner lost WebGL" from "POM1 broke".
+        run: node tools/wasm_smoke.mjs --self-test
+
+      - name: Browser smoke on the assembled site
+        run: node tools/wasm_smoke.mjs site
+
+      - name: Upload smoke screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-smoke-screenshot-ci
+          path: wasm-smoke.png
+          if-no-files-found: ignore
+
   # ── Sanitizers (nightly + manual) ──────────────────────────────────────────
   # The one class of defect POM1's 90 functional tests cannot see. Nightly
   # rather than per-push because the instrumented suite is several times slower

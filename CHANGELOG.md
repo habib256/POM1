@@ -10,7 +10,25 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
-### Changed — la capture du rewind n'encode plus sous `stateMutex`
+### Added — smoke navigateur sur la page publiée
+
+`Deploy Pages` téléversait sans jamais charger la page : une erreur JS, un échec
+d'init WebGL2 ou un `POM1.data` tronqué se déployaient au vert — entre « le build
+passe » et « le site marche », il n'y avait rien. `tools/wasm_smoke.mjs` (Playwright,
+Chromium headless + SwiftShader) sert l'assemblage du site en HTTP local, charge
+`POM1.html` et assère trois choses : le boot va au bout (`pom1FirstFrameReady`, le
+rappel C++ posé après le premier `glfwSwapBuffers` — plus fort que
+`onRuntimeInitialized`, l'écran Apple-1 est réellement peint, observé via
+`#bootSplash.hidden`) ; rien n'a cassé en chemin (zéro exception non rattrapée, zéro
+erreur console, zéro requête échouée, overlay `#err` resté caché) ; et le canvas
+n'est pas noir (capture compositeur relue en 2D — le contexte WebGL sans
+`preserveDrawingBuffer` relit noir entre deux frames). Un mode `--self-test` prouve
+que le vérificateur sait ÉCHOUER (canvas noir, throw, overlay d'abort) et que le
+runner a encore WebGL2 — même philosophie que `lock_order_smoke` : un contrôle qui
+ne tire jamais se lit comme de la couverture sans en fournir. L'assemblage du site
+sort de `pages.yml` vers `tools/assemble_wasm_site.sh`, partagé avec le job `wasm`
+de `ci.yml` : le smoke tourne **à chaque push, avant le merge**, et une seconde fois
+dans `pages.yml` en **porte du déploiement** — sur exactement les fichiers servis.
 
 `runEmulationSlice` sérialisait **et** encodait en delta ~80 Ko quatre fois par
 seconde en tenant `stateMutex` — un pic de latence périodique sur tout appel UI qui

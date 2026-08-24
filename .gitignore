@@ -176,3 +176,7 @@ vcpkg_installed/
 # Session logs written by FileLogger (logs/pom1.log + one rotation). Support
 # artefacts, never sources.
 logs/
+
+# Node deps pulled by the WASM browser smoke (tools/wasm_smoke.mjs):
+# npm install --no-save playwright. Never sources.
+node_modules/
