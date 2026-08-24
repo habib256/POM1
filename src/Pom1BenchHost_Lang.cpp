@@ -50,6 +50,15 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
     auto* emu = mw_ ? mw_->emulation.get() : nullptr;
     if (!emu) { r.status = "no emulator"; r.ok = false; return r; }
 
+    // The machine is being reprogrammed (ROM load + hard reset): the debug
+    // line table described a program that is about to disappear, and its line
+    // breakpoint dies with the reset. Wiped HERE and not only in build(),
+    // because selectTargetExplicit's interpreter prep calls this directly —
+    // possibly on the SAME preset (the Applesoft-GEN2 target shares the GEN2
+    // bench's), so neither build()'s wipe nor applyTargetPreset's fires.
+    dbgInfo_ = {};
+    dbgBreakpointLine_ = -1;
+
     // BASIC variant by target index (set in kP1Targets):
     //   7 Integer  8 Applesoft+microSD  9 Applesoft GEN2  10 Applesoft (Apple-1/CFFA1)
     //   11 Applesoft TMS9918.  The cold-start command is t.cfg (E000R/6000R/4000R).
@@ -420,6 +429,12 @@ bench::BuildResult Pom1BenchHost::injectLogo(int target, const std::string& src,
     bench::BuildResult r; r.showConsole = true;
     auto* emu = mw_ ? mw_->emulation.get() : nullptr;
     if (!emu) { r.status = "no emulator"; r.ok = false; return r; }
+
+    // Same wipe as injectBasic, same reason: the interpreter injection
+    // reprograms the machine, and selectTargetExplicit reaches here directly
+    // (no build(), possibly no preset change).
+    dbgInfo_ = {};
+    dbgBreakpointLine_ = -1;
 
     const int idx = p1(target);
     const bool tms = (idx == 14);   // 14 = LOGO TMS9918 (CodeTank), 15 = LOGO GEN2 HGR

@@ -950,6 +950,17 @@ void Pom1BenchHost::applyTargetPreset(int target, bool force)
         if (haveCard) return;
     }
 
+    // The machine is about to be reprogrammed (cards swapped, hard reset): the
+    // debug line table describes a program that will no longer be there, and
+    // the line breakpoint armed through it dies with the reset — arming a new
+    // one from the stale table would poke a breakpoint into whatever the new
+    // machine runs. Drop both. Reached from the Mode selector AND from
+    // opening a file that auto-targets a different machine; a Run rebuild
+    // whose own onTargetSelected lands here re-adopts the fresh table right
+    // after (build()'s run paths parse AFTER machine prep for this reason).
+    dbgInfo_ = {};
+    dbgBreakpointLine_ = -1;
+
     // The bench is driving the preset change here — the user already picked a
     // target (which sets the bench's own sketch). Do not let the DevBench preset
     // auto-load overwrite that with the asm starter.
@@ -1588,6 +1599,35 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     TempFileSweeper sweep;
     const fs::path binB = dir / "pom1_bench.bin";
     sweep.add(binB);
+    // Debug-info staging paths + parser, at FUNCTION scope on purpose: the run
+    // paths may re-parse AFTER their machine prep — onTargetSelected can apply
+    // a preset (applyMachineConfig → hardReset), which rightly invalidates
+    // dbgInfo_ (the mapping described a program the reset just destroyed), so
+    // the freshly linked table must be re-adopted afterwards. Idempotent: a
+    // second call with the table already adopted is a no-op, and a missing
+    // .dbg (non-asm modes) is silently skipped.
+    const fs::path dbgSrcS = dir / "pom1_bench.s";
+    const fs::path dbgFileP = dir / "pom1_bench.dbg";
+    auto adoptDbgInfo = [&]() {
+        if (dbgInfo_.ok)
+            return;
+        std::ifstream df(dbgFileP);
+        if (!df)
+            return;
+        std::stringstream dss;
+        dss << df.rdbuf();
+        dbgInfo_ = pom1::parseDbgFile(dss.str(), dbgSrcS.string());
+        if (!dbgInfo_.ok)
+            return;
+        r.console += "[ok] debug info: "
+            + std::to_string(dbgInfo_.lineToAddr.size())
+            + " source lines mapped\n";
+        if (mw_->memoryViewer) {
+            mw_->memoryViewer->resetSymbolsToDefaults();
+            for (const auto& l : dbgInfo_.labels)
+                mw_->memoryViewer->addSymbol(l.first, l.second);
+        }
+    };
     const std::string cfgTag = t.cfg ? t.cfg : "";
     const bool cmode  = (t.mode == 3);
     const bool gen2c  = cmode && cfgTag == "C-gen2";    // GEN2 HGR (loadBinary @ $6000)
@@ -1704,30 +1744,14 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         if (entry == 0) entry = plainc ? 0x0300 : 0x6000;
     } else {
         if (!toolchainOk_) { r.console = std::string("cc65 (ca65/ld65) not found.\n") + kCc65InstallHint; r.status = "cc65 missing"; return r; }
-        const fs::path srcS = dir / "pom1_bench.s";
+        const fs::path& srcS = dbgSrcS;               // staged editor buffer
         const fs::path objO = dir / "pom1_bench.o";
-        const fs::path dbgP = dir / "pom1_bench.dbg";
+        const fs::path& dbgP = dbgFileP;              // ld65 --dbgfile output
         sweep.add(srcS); sweep.add(objO); sweep.add(dbgP);
-        // Parse ld65's --dbgfile once a link succeeds: the line table behind
-        // the Bench's source-level debugging (breakpoint at the cursor line,
-        // PC → editor line while stepping) plus the program's labels for the
-        // disassembler — the same effect as hand-loading a .lbl sibling.
-        auto adoptDbgInfo = [&]() {
-            std::ifstream df(dbgP);
-            if (!df) return;
-            std::stringstream dss;
-            dss << df.rdbuf();
-            dbgInfo_ = pom1::parseDbgFile(dss.str(), srcS.string());
-            if (!dbgInfo_.ok) return;
-            r.console += "[ok] debug info: "
-                + std::to_string(dbgInfo_.lineToAddr.size())
-                + " source lines mapped\n";
-            if (mw_->memoryViewer) {
-                mw_->memoryViewer->resetSymbolsToDefaults();
-                for (const auto& l : dbgInfo_.labels)
-                    mw_->memoryViewer->addSymbol(l.first, l.second);
-            }
-        };
+        // Drop a stale .dbg from a previous build NOW: this build could fail
+        // before ld65 runs, and a later adoptDbgInfo() call (run-path re-parse)
+        // must never adopt the previous program's table.
+        fs::remove(dbgP, ec);
         std::ofstream(srcS, std::ios::binary).write(src.data(), static_cast<std::streamsize>(src.size()));
         // If the editor's file is a real sketch or multi-file project source (sidecar
         // .sketch.json or sibling Makefile), build it in context: its own cfg,
@@ -1890,10 +1914,12 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             const uint16_t runAddr = runHigh ? proj.hiAddr : proj.loAddr;
             if (!emu->loadBinaryToRam(stagePath, stageAddr, error)) { r.status = "dual-bank stage load failed: " + error; r.ok = false; return r; }
             if (emu->loadBinary(runPath, runAddr, error, &loaded)) {
-                // After loadBinary — its reset cleared any earlier breakpoint.
-                // (The CPU is already running: a breakpoint within the very
-                // first instructions can miss its first pass; loops catch it
-                // on the next one.)
+                // After loadBinary — its reset cleared any earlier breakpoint,
+                // and onTargetSelected above may have applied a preset, which
+                // wipes dbgInfo_: re-adopt the fresh table first. (The CPU is
+                // already running: a breakpoint within the very first
+                // instructions can miss its first pass; loops catch the next.)
+                adoptDbgInfo();
                 rearmDbgBreakpoint(r);
                 emu->copySnapshot(mw_->uiSnapshot);
                 if (t.preset == md::kPresetGen2Bench) mw_->showGraphicsCard = true;
@@ -1974,7 +2000,9 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         emu->hardReset(/*animateBoot=*/false); // DevBench: no ~3 s power-on scenario
         // After the reset (which cleared any CPU breakpoint) and BEFORE the
         // deferred 4000R types — the ideal re-arm window: the program has not
-        // started, so even a first-instruction breakpoint trips.
+        // started, so even a first-instruction breakpoint trips. Re-adopt
+        // first: the preset apply above may have wiped dbgInfo_.
+        adoptDbgInfo();
         rearmDbgBreakpoint(r);
         mw_->codeTankPendingWozRunAt = ImGui::GetTime() + 1.0;
         emu->copySnapshot(mw_->uiSnapshot);
@@ -2004,9 +2032,12 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         }
     }
     if (emu->loadBinary(binB.string(), entry, error, &bytesLoaded)) {
-        // After loadBinary — its reset cleared any earlier breakpoint. (The
-        // CPU is already running: a breakpoint within the very first
-        // instructions can miss its first pass; loops catch the next one.)
+        // After loadBinary — its reset cleared any earlier breakpoint, and
+        // onTargetSelected above may have applied a preset, which wipes
+        // dbgInfo_: re-adopt the fresh table first. (The CPU is already
+        // running: a breakpoint within the very first instructions can miss
+        // its first pass; loops catch the next one.)
+        adoptDbgInfo();
         rearmDbgBreakpoint(r);
         emu->copySnapshot(mw_->uiSnapshot);
         if (t.preset == md::kPresetGen2Bench) mw_->showGraphicsCard = true;

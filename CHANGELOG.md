@@ -10,6 +10,28 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — chasse n°4 sur le débogage source : la table survivait aux changements de machine
+
+La table de lignes (`dbgInfo_`) n'était invalidée que par `build()` — or la machine
+peut être reprogrammée **sans build** : le sélecteur Mode prépare un interpréteur
+BASIC/LOGO en appelant `injectBasic`/`injectLogo` **directement** (ROM + hard
+reset), et ce **parfois sur le même preset** — la cible Applesoft-GEN2 partage
+celui du bench GEN2 asm, donc ni le wipe de `build()` ni un changement de preset ne
+s'interposaient. Les décorations restaient vivantes sur un texte inchangé pendant
+que la machine faisait tourner tout autre chose : armer un breakpoint piquait une
+adresse dans l'interpréteur. Corrigé par des invalidations **aux points de
+reprogrammation eux-mêmes** : `applyTargetPreset` quand il applique réellement
+(`applyMachineConfig` — les Runs répétés sur le même preset gardent la table, et
+l'ouverture d'un sketch *neutre* qui ne change pas la machine aussi), et en tête
+des deux injecteurs. Effet de bord traité : le chemin Run de `build()` appelle
+`onTargetSelected` APRÈS le link — le wipe aurait tué la table fraîchement parsée.
+`adoptDbgInfo` est donc hissé à portée fonction et rendu **idempotent** (no-op si
+la table est déjà adoptée, re-parse après un wipe), et les trois chemins Run
+ré-adoptent après leur préparation machine, avant le ré-armement ; un `.dbg`
+résiduel d'un build précédent est supprimé en début de branche asm par précaution.
+La limite déjà documentée demeure : un File → Load hors Bench reprogramme la
+machine sans que le Bench le sache — la table décrit « le dernier build ».
+
 ### Fixed — chasse n°3 sur le débogage source : le breakpoint ne survivait à aucun rebuild
 
 Le plus grave des trois passes, trouvé en suivant le cycle de vie du breakpoint à
