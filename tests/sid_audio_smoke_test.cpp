@@ -25,6 +25,22 @@
 #include <cstdio>
 #include <vector>
 
+// Detect an instrumented build: Clang exposes __has_feature, GCC defines
+// __SANITIZE_*. See the assertion below for why the threshold moves.
+#if defined(__has_feature)
+#  if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
+#    define POM1_TEST_INSTRUMENTED 1
+#  endif
+#endif
+#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
+#  define POM1_TEST_INSTRUMENTED 1
+#endif
+#ifdef POM1_TEST_INSTRUMENTED
+static constexpr int kNonZeroFloor = 20;
+#else
+static constexpr int kNonZeroFloor = 100;
+#endif
+
 namespace {
 
 struct VoiceProbe {
@@ -73,7 +89,7 @@ int main()
         sid.fillAudioBuffer(buf.data(), static_cast<int>(buf.size()));
         VoiceProbe p = probe(buf);
         std::printf("[direct] non-zero=%d/%zu peak=%.4f\n", p.nonZero, buf.size(), p.peak);
-        assert(p.nonZero > 100 && "direct SID produced no audio samples");
+        assert(p.nonZero > kNonZeroFloor && "direct SID produced no audio samples");
         assert(p.peak > 0.01f    && "direct SID samples near zero");
     }
 
@@ -97,7 +113,16 @@ int main()
         mem.getSID().fillAudioBuffer(buf.data(), static_cast<int>(buf.size()));
         VoiceProbe p = probe(buf);
         std::printf("[bus]    non-zero=%d/%zu peak=%.4f\n", p.nonZero, buf.size(), p.peak);
-        assert(p.nonZero > 100 && "SID via bus produced no audio samples "
+        // The floor is lower under a sanitizer, and that is not slack: a real
+        // audio device is running, and its callback DRAINS the SID's ring
+        // while this loop fills it, so what is left to read back depends on
+        // wall-clock timing. Instrumented, emulation runs ~20x slower while
+        // the callback keeps its real-time pace, so the drain wins and fewer
+        // samples remain. The property under test is "writes reach the chip
+        // through the bus", which 20 non-zero samples with a real peak
+        // establishes just as well as 100 — same reasoning as the x5 TIMEOUT
+        // scaling in tests/CMakeLists.txt.
+        assert(p.nonZero > kNonZeroFloor && "SID via bus produced no audio samples "
                                   "— PeripheralBus dispatch broken?");
         assert(p.peak > 0.01f    && "SID via bus samples near zero "
                                     "— writes not reaching the chip?");
@@ -133,7 +158,7 @@ int main()
         };
 
         VoiceProbe before = playAndProbe("pre");
-        assert(before.nonZero > 100 && "SID silent before reset");
+        assert(before.nonZero > kNonZeroFloor && "SID silent before reset");
         assert(before.peak > 0.01f);
 
         // Simulate EmulationController::hardReset()'s SID fence:
@@ -144,7 +169,7 @@ int main()
         assert(mem.isSIDEnabled());
 
         VoiceProbe after = playAndProbe("post");
-        assert(after.nonZero > 100 && "SID silent after hardReset — bus or "
+        assert(after.nonZero > kNonZeroFloor && "SID silent after hardReset — bus or "
                                        "audio-source reattachment broken");
         assert(after.peak > 0.01f   && "SID samples near zero after hardReset");
     }
