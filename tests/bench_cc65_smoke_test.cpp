@@ -170,6 +170,14 @@ static int partB()
     assert(d.addrForLine(11, addr, snapped) && addr == 0x030C && snapped == 12);
     assert(!d.addrForLine(14, addr, snapped));
 
+    // A `.res` variable in an unloaded segment is not a breakpoint target:
+    // its span carries no type= (so the data filter cannot see it), but its
+    // segment has no oname, so it contributes no bytes to the binary and the
+    // PC can never reach it. This is the standard way to declare variables —
+    // ~1700 `.res` lines across this repo's 6502 sources.
+    assert(!d.addrForLine(15, addr, snapped));
+    assert(d.lineForAddr(0x2000) == -1);
+
     // Labels harvested from the real sym records (data labels included —
     // the disassembler wants `table` named even though it is not code)
     assert(hasLabel(d, 0x0300, "start"));

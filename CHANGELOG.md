@@ -10,6 +10,31 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — chasse n°11 : cliquer sur une déclaration de variable armait un point d'arrêt mort
+
+Le « point aveugle `.res` » que la chasse n°1 avait **documenté sans le mesurer**
+s'est révélé être l'idiome le plus courant du corpus : **1761 lignes `.res`** dans
+les sources 6502 du dépôt, puisque c'est ainsi qu'on déclare une variable. Vérifié
+sur le vrai ld65 : leur span ne porte **pas** d'attribut `type=`, donc le filtre des
+données de la chasse n°1 ne les voyait pas — cliquer sur une déclaration armait un
+point d'arrêt à une adresse que le PC n'atteint jamais, **silencieusement**, très
+exactement le défaut corrigé en n°1 mais pour un cas bien plus fréquent que les
+tables `.byte`. Le discriminant existe et il est structurel : ld65 rapporte même un
+segment `type = bss` comme `type=rw` (le type du cfg est donc inutilisable), mais un
+segment écrit dans aucun fichier de sortie **n'a pas d'attribut `oname`** — il ne
+contribue aucun octet au binaire, donc ne peut contenir aucun code. Ces segments
+sont désormais exclus du mappage, ce qui couvre BSS, ZEROPAGE et tout segment non
+chargé. Le point aveugle résiduel se réduit à un `.res` **à l'intérieur d'un segment
+chargé** (un tampon inline entre deux instructions), réellement indiscernable dans
+le fichier — et documenté comme tel, cette fois après mesure. Épinglé des deux côtés
+(miniature + fixture réel avec segment BSS) et **vérifié par mutation**.
+
+Corrigé au passage, sur la même piste : le message d'échec accusait `ca65 -g` alors
+qu'un source ne produisant **aucun code** (que des équates et des commentaires — ld65
+le lie sans broncher en un binaire de 0 octet) donne un fichier identique. Le message
+nomme désormais les deux causes possibles au lieu d'envoyer chercher un `-g`
+manquant qui ne manque pas.
+
 ### Fixed — chasse n°10 : le débogage échouait en silence, et pouvait adopter la table d'un autre build
 
 Passe consacrée aux **chemins d'erreur**, là où la n°9 avait trouvé son bug.
