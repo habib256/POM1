@@ -10,6 +10,18 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — essai à blanc hebdomadaire du packaging
+
+`release.yml` ne tournait que sur tag (ou dispatch manuel), donc une casse de
+packaging se découvrait **pendant** la publication — la cicatrice du dylib Homebrew
+à chemin absolu embarqué dans le `.dmg`, mort au dyld sur toute machine Apple
+Silicon. Un déclencheur `schedule:` (lundi 04:43 UTC) bâtit désormais les quatre
+paquets chaque semaine sans rien publier : le pipeline était déjà structuré pour —
+le job `publish` est gardé par `ref_type == 'tag'` et la version retombe sur le
+fichier `VERSION` — il ne manquait que le déclencheur. Une image de runner mise à
+jour, une baseline vcpkg, un hoquet winget ou une casse de notre code arrivent en
+rouge un lundi matin au lieu du jour de la release.
+
 ### Added — smoke navigateur sur la page publiée
 
 `Deploy Pages` téléversait sans jamais charger la page : une erreur JS, un échec
