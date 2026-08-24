@@ -1608,15 +1608,27 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     // .dbg (non-asm modes) is silently skipped.
     const fs::path dbgSrcS = dir / "pom1_bench.s";
     const fs::path dbgFileP = dir / "pom1_bench.dbg";
+    // The .dbg TEXT is read once (right after the link, when the file is
+    // freshly written) and kept: the late re-parse must not depend on the
+    // file still being on disk and unchanged. That window is long — a preset
+    // apply, card plugs, a ROM flash — and the path is a FIXED name in the
+    // shared temp dir, so a second POM1 instance building at the same moment
+    // could have replaced or swept it underneath us.
+    std::string dbgFileText;
     auto adoptDbgInfo = [&]() {
         if (dbgInfo_.ok)
             return;
-        std::ifstream df(dbgFileP);
-        if (!df)
+        if (dbgFileText.empty()) {
+            std::ifstream df(dbgFileP);
+            if (!df)
+                return;
+            std::stringstream dss;
+            dss << df.rdbuf();
+            dbgFileText = dss.str();
+        }
+        if (dbgFileText.empty())
             return;
-        std::stringstream dss;
-        dss << df.rdbuf();
-        dbgInfo_ = pom1::parseDbgFile(dss.str(), dbgSrcS.string());
+        dbgInfo_ = pom1::parseDbgFile(dbgFileText, dbgSrcS.string());
         if (!dbgInfo_.ok)
             return;
         r.console += "[ok] debug info: "

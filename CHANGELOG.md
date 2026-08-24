@@ -10,6 +10,28 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — chasse n°6 sur le débogage source : deux fragilités, aucun bug visible
+
+Passe à **rendement décroissant, et c'est l'information utile** : aucun défaut
+observable par l'utilisateur n'a été trouvé cette fois — seulement deux fragilités
+introduites par les passes précédentes. **(1) Dépendance temporelle au fichier
+`.dbg`** : le re-parse tardif de la passe n°4 relisait `/tmp/pom1_bench.dbg`
+**depuis le disque** longtemps après le link (le temps d'un changement de preset,
+de branchements de cartes, d'un flash de ROM), sur un chemin à **nom fixe** dans le
+répertoire temporaire partagé — une seconde instance de POM1 compilant au même
+moment pouvait l'avoir remplacé ou balayé entre-temps. Le texte est désormais lu
+**une fois**, juste après le link quand le fichier vient d'être écrit, et conservé :
+les re-parse ultérieurs n'ont plus de fichier à trouver. **(2) Non-déterminisme du
+choix de fichier** : `parseDbgFile` prenait le premier enregistrement satisfaisant,
+or `files` est une `unordered_map` — avec deux enregistrements partageant un
+basename et aucune correspondance exacte (possible dès qu'un projet tire des
+`EXTRA_ASM` de plusieurs répertoires), la table de lignes retenue pouvait différer
+d'une exécution à l'autre sur la même machine. Deux passes explicites désormais :
+correspondance exacte d'abord, basename ensuite, **id le plus petit** dans chaque
+cas. Épinglé par `dbgfile_smoke` (ids listés à l'envers, plus une correspondance
+exacte ajoutée après les basenames) et **vérifié par mutation** — inverser le
+départage fait bien tomber le test.
+
 ### Fixed — chasse n°5 sur le débogage source : deux régressions composées par les correctifs précédents
 
 Cette passe ne visait plus la fonctionnalité mais **l'interaction entre les

@@ -198,21 +198,31 @@ DbgLineInfo parseDbgFile(const std::string& text, const std::string& primarySour
 
     // Which file id is the editor's source? Exact match first, then basename —
     // ca65 records the path exactly as passed, which the Bench passes absolute.
-    unsigned long primaryId = 0;
-    bool primaryFound = false;
+    //
+    // Both passes pick the LOWEST matching id rather than the first one the
+    // container hands over: `files` is an unordered_map, so iteration order is
+    // a hash detail. With two records sharing a basename and no exact match
+    // (possible once a project pulls EXTRA_ASM siblings from several
+    // directories), "whichever comes first" means the line table could differ
+    // between two runs of the same build, on the same machine.
     const std::string primaryBase = baseName(primarySource);
-    for (const auto& f : files) {
-        if (f.second == primarySource) {
-            primaryId = f.first;
-            primaryFound = true;
-            break;
+    // Lowest id whose name satisfies `match`; `found` stays false if none.
+    auto lowestIdWhere = [&](bool wantExact, bool& found) -> unsigned long {
+        unsigned long best = 0;
+        found = false;
+        for (const auto& f : files) {
+            const bool hit = wantExact ? (f.second == primarySource)
+                                       : (baseName(f.second) == primaryBase);
+            if (!hit) continue;
+            if (!found || f.first < best) { best = f.first; found = true; }
         }
-        if (!primaryFound && baseName(f.second) == primaryBase) {
-            primaryId = f.first;
-            primaryFound = true;                 // keep scanning for an exact hit
-        }
-    }
-    if (!primaryFound) {
+        return best;
+    };
+    bool found = false;
+    unsigned long primaryId = lowestIdWhere(/*wantExact=*/true, found);
+    if (!found)
+        primaryId = lowestIdWhere(/*wantExact=*/false, found);
+    if (!found) {
         info.error = "source file not in debug info: " + primarySource;
         return info;
     }
