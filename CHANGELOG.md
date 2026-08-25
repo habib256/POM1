@@ -10,6 +10,26 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — `--run … --step N` n'exécutait pas N instructions (déterminisme du headless)
+
+Vrai défaut, trouvé en poursuivant les trois micro-tests TMS9918 qui échouaient sous
+TSan : ce n'était **pas** une course, mais une non-reproductibilité du harnais
+headless. `--run` passe par `jumpTo()`, qui **démarre le thread d'émulation**
+(`runRequested.store(true)` + `notify_all`), et c'est le premier `stepCpu()` qui
+finit par l'arrêter. Entre les deux s'écoule du **temps réel** — pendant lequel le
+programme 6502 avance librement. Sur un poste au repos l'intervalle vaut quelques
+microsecondes et rien ne se voit ; sous un sanitizer ou sur une machine chargée il
+vaut des millisecondes, soit des milliers d'instructions, et
+`--run X --step N` cesse de signifier « exécute exactement N instructions depuis X ».
+
+D'où une boîte aux lettres RAM différente à chaque exécution, et trois micro-tests
+qui échouaient de façon **intermittente** — confirmé en local : le même binaire
+échoue sous charge et passe à vide. `runDeferredActions` détecte maintenant qu'un
+`--step` figure au plan et gèle la machine immédiatement après le `--run` ; un
+`--run` seul garde évidemment son comportement (le programme tourne). Vérifié sous
+TSan **avec six processus de charge** : 9/9 micro-tests, contre trois échecs avant.
+Build normal : 102/102 et 15/15.
+
 ### Fixed — `sid_audio_smoke` : un seuil chronodépendant, infranchissable sous instrumentation
 
 Dernier obstacle après les suppressions ci-dessous : ce test exige plus de 100
