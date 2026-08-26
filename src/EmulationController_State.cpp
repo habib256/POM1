@@ -64,7 +64,8 @@ bool EmulationController::loadInterpreterRom(const std::string& path, uint16_t a
 
 bool EmulationController::loadHexDump(const std::string& path, uint16_t& startAddress, std::string& error,
                                       int* bytesLoaded,
-                                      std::vector<std::pair<uint16_t,uint16_t>>* zones)
+                                      std::vector<std::pair<uint16_t,uint16_t>>* zones,
+                                      bool startCpu)
 {
     stopCpu();
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -87,15 +88,22 @@ bool EmulationController::loadHexDump(const std::string& path, uint16_t& startAd
     memory->setWriteInRom(prevWriteInRom);
     preferredSoftResetVector = addr;
     cpu->hardReset();
-    cpu->start();
-    runRequested.store(true);
+    if (startCpu) {
+        cpu->start();
+        runRequested.store(true);
+    } else {
+        cpu->stop();
+        runRequested.store(false);
+    }
     startAddress = addr;
     publisher.publish(*memory, *cpu, runRequested.load());
-    wakeCv.notify_all();
+    if (startCpu) wakeCv.notify_all();
     return true;
 }
 
-bool EmulationController::loadBinary(const std::string& path, uint16_t startAddress, std::string& error, int* bytesLoaded)
+bool EmulationController::loadBinary(const std::string& path, uint16_t startAddress,
+                                     std::string& error, int* bytesLoaded,
+                                     bool startCpu)
 {
     stopCpu();
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -119,10 +127,15 @@ bool EmulationController::loadBinary(const std::string& path, uint16_t startAddr
     // A different program now occupies these addresses (see programGeneration).
     programGeneration_.fetch_add(1, std::memory_order_relaxed);
     cpu->hardReset();
-    cpu->start();
-    runRequested.store(true);
+    if (startCpu) {
+        cpu->start();
+        runRequested.store(true);
+    } else {
+        cpu->stop();
+        runRequested.store(false);
+    }
     publisher.publish(*memory, *cpu, runRequested.load());
-    wakeCv.notify_all();
+    if (startCpu) wakeCv.notify_all();
     return true;
 }
 
