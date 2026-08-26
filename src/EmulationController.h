@@ -572,11 +572,15 @@ public:
     void setRtcOverrideTime(std::time_t target);
 
     // Jump the CPU to an arbitrary address (stop, rewrite reset vector,
-    // hardReset, start). Used by `--run addr` when no binary was loaded at
-    // that address — for a `--load addr:path --run addr` pair the
-    // loadBinary path already handles reset, so `--run` is only required in
-    // the naked form.
+    // hardReset, start). Used by an interactive `--run addr` with no following
+    // `--step`.
     void jumpTo(uint16_t address);
+
+    // Same reset-vector + hardReset transition, but never starts the async CPU
+    // thread. This is the deterministic entry point for `--run addr --step N`:
+    // starting and then stopping would leave a scheduler-dependent window in
+    // which an unbounded number of instructions could execute before step 1.
+    void jumpToPaused(uint16_t address);
 
     /// Web (Emscripten) : pas de std::thread — avancer l’émulation depuis la boucle principale.
     void pumpEmulationMainThread(double deltaSeconds);
@@ -585,6 +589,7 @@ private:
     static constexpr uint16_t kDefaultResetVector = 0xFF00;
 
 private:
+    void resetToAddress(uint16_t address, bool startRunning);
     void emulationLoop();
     void runEmulationSlice(double elapsedSeconds);
     // Restore frame `pos` into Memory+CPU and republish. REQUIRES stateMutex held.

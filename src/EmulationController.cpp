@@ -567,18 +567,38 @@ void EmulationController::readTms9918Framebuffer(uint32_t* out)
 
 void EmulationController::jumpTo(uint16_t address)
 {
+    resetToAddress(address, true);
+}
+
+void EmulationController::jumpToPaused(uint16_t address)
+{
+    resetToAddress(address, false);
+}
+
+void EmulationController::resetToAddress(uint16_t address, bool startRunning)
+{
     stopCpu();
-    std::lock_guard<PriorityMutex> lock(stateMutex);
-    bool prevWriteInRom = memory->getWriteInRom();
-    memory->setWriteInRom(true);
-    memory->configureResetVectors(address);
-    memory->setWriteInRom(prevWriteInRom);
-    preferredSoftResetVector = address;
-    cpu->hardReset();
-    cpu->start();
-    runRequested.store(true);
-    publisher.publish(*memory, *cpu, runRequested.load());
-    wakeCv.notify_all();
+    {
+        std::lock_guard<PriorityMutex> lock(stateMutex);
+        bool prevWriteInRom = memory->getWriteInRom();
+        memory->setWriteInRom(true);
+        memory->configureResetVectors(address);
+        memory->setWriteInRom(prevWriteInRom);
+        preferredSoftResetVector = address;
+        cpu->hardReset();
+        if (startRunning) {
+            cpu->start();
+            runRequested.store(true);
+        } else {
+            // stopCpu() already established this state before the reset. Keep
+            // it explicit here: hardReset must never turn this API into a
+            // start-then-stop sequence and reintroduce the scheduler race.
+            cpu->stop();
+            runRequested.store(false);
+        }
+        publisher.publish(*memory, *cpu, runRequested.load());
+    }
+    if (startRunning) wakeCv.notify_all();
 }
 
 void EmulationController::runEmulationSlice(double elapsedSeconds)

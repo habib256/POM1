@@ -916,10 +916,9 @@ int queueKeystrokes(EmulationController& emu, std::string_view text, int maxChar
 void runDeferredActions(const std::vector<CliAction>& actions,
                         EmulationController&          emu)
 {
-    // Does this plan single-step? Then --run must NOT leave the machine
-    // free-running: jumpTo() starts the emulation thread, and the WALL-CLOCK
-    // gap between that verb and the first stepCpu() (which is what finally
-    // stops it) lets the program execute an unbounded number of instructions.
+    // Does this plan single-step? Then --run must NEVER start the machine:
+    // the WALL-CLOCK gap between jumpTo() and a later stopCpu()/stepCpu()
+    // lets the program execute an unbounded number of instructions.
     // On an idle desktop the gap is microseconds and nothing shows; under a
     // sanitizer or a loaded machine it is milliseconds, i.e. thousands of
     // instructions, and "--run X --step N" stops meaning "execute exactly N
@@ -934,10 +933,10 @@ void runDeferredActions(const std::vector<CliAction>& actions,
     for (const auto& a : actions) {
         switch (a.kind) {
             case CliAction::Kind::Load:      runLoad(a, emu);    break;
-            case CliAction::Kind::Run:       emu.jumpTo(static_cast<uint16_t>(a.addressI));
-                                             // Freeze immediately so the step
-                                             // count below is the whole story.
-                                             if (planSteps) emu.stopCpu();
+            case CliAction::Kind::Run:       if (planSteps)
+                                                 emu.jumpToPaused(static_cast<uint16_t>(a.addressI));
+                                             else
+                                                 emu.jumpTo(static_cast<uint16_t>(a.addressI));
                                              pom1::log().info("CLI",
                                                  "--run $" + std::to_string(a.addressI));
                                              break;
