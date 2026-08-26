@@ -1,249 +1,181 @@
 # TODO
 
-Open work on the **emulator** only. Shipped work → `[CHANGELOG.md](CHANGELOG.md)` / `git log` · user tour → `[README.md](README.md)` · 6502 software → `[dev/TODO6502.md](dev/TODO6502.md)`.
+Travaux **ouverts** sur l'émulateur uniquement. Livré → `[CHANGELOG.md](CHANGELOG.md)` / `git log` · visite guidée → `[README.md](README.md)` · logiciel 6502 → `[dev/TODO6502.md](dev/TODO6502.md)`.
 
 ## Conventions
 
-- **One item = one checkbox** — `- [ ] **Title** [effort · impact] — detail`.
-- **Tags** `[effort · impact]` — effort: **S** (<1 d) · **M** (1–5 d) · **L** (>5 d / architectural). Impact: **nice** · **solid** · **critical**.
-- `> blockquote` at the head of a (sub)section = context / what already shipped.
-- Grouped by subsystem; **deferred / externally-blocked last**. Only open items live here — shipped work is lifted to `[CHANGELOG.md](CHANGELOG.md)`.
-- 🚫 prefix = blocked on an external resource.
+- **Un item = une case** — `- [ ] **Titre** [effort · impact] — détail`.
+- **Étiquettes** `[effort · impact]` — effort : **S** (<1 j) · **M** (1–5 j) · **L** (>5 j / architectural). Impact : **nice** · **solid** · **critical**.
+- `> citation` = périmètre, diagnostic ou **porte de sortie** de la (sous-)section qui suit.
+- **Un chantier n'apparaît qu'à un seul endroit.** La feuille de route de consolidation est la colonne vertébrale : tout item d'infrastructure vit dans la phase qui le réclame, pas dans une section d'audit parallèle.
+- Seuls les items ouverts vivent ici — le livré est levé vers `[CHANGELOG.md](CHANGELOG.md)`.
+- 🚫 en préfixe = bloqué sur une ressource externe.
 
+## Sommaire
 
-
-## Contents
-
-- [🎨 Graphics](#-graphics) — GEN2 beam engine · TMS9918 beam/CPU sync
-- [🛠️ Dev tooling](#-dev-tooling) — POM1 Bench · BASIC · LOGO · DevBench editor
-- [🔌 Peripherals & loaders](#-peripherals--loaders) — serial loaders · optional cards
-- [🖼️ Visuals & UX](#-visuals--ux) — CRT fidelity
-- [🔧 Infra & technical debt](#-infra--technical-debt) — feuille de route architecturale · packaging / distribution / démarrage · snapshot / scripting · state rewind
-- [⏸️ Deferred · 🚫 Blocked](#-deferred--blocked)
-
----
-
-
-
-## 🎨 Graphics
-
-
-
-### GEN2 beam engine — Phase 4: composite OpenEmulator (rendu optionnel, non bloquant)
-
-> Phases 0-3 + 5 + **chemin composite CPU (**`RenderMode::CompositeOECpu`**) livrés** → `[CHANGELOG.md](CHANGELOG.md)`. **Le composite OpenEmulator est désormais le rendu par défaut de l'app** (`gen2RenderMode=1`) ; le LUT MAME reste dispo via le menu GEN2 (et reste le défaut de la `GraphicsCard` standalone, pour la golden image). Reste seulement le chemin GPU-shader, optionnel :
-
-- [ ] **Chemin GPU shader (desktop)** `[L · nice]` — optionnel : porter `NtscPostProcessor` POM2 (même noyaux FIR + matrice que le chemin CPU déjà livré) si le *Shared video texture layer* (livré) est exploité ; le CPU couvre déjà WASM + desktop, donc **reportable** tant qu'aucun besoin de perf n'apparaît.
-  - **Conclusion : défer jusqu'à un besoin perf concret — zéro gain visuel, purement « où tournent les calculs ».** Le décodage NTSC (`GraphicsCard.cpp` : FIR 17 taps luma+chroma + démod sin/cos + matrice YUV→RGB) tourne sur CPU dans un buffer 280×192 minuscule (~3-4 M MAC/frame) → invisible dans un profil desktop. Le porter déplace **les mêmes maths** vers un fragment shader : même image byte-identique (épinglée `hgr_convert_smoke`), donc **aucune capacité visuelle ajoutée**. Ne le faire QUE si (1) on ajoute du post-traitement lourd plein écran (courbure CRT, bloom, scanlines shader, phosphore par pixel, NTSC à résolution interne >280) qui rend le CPU goulot, OU (2) un profil montre la démod comme coût réel (GPU/CPU faible, très haut refresh). Coût du porting : 2 chemins à garder byte-identiques + shader à décliner GLSL/MSL/WebGL (dont le patch sampler Metal délicat). Prérequis unique déjà livré (*shared video texture layer*), donc reportable **sans dette** — le jour venu, le port est direct.
-
-
-
-### TMS9918 — synchro beam/CPU sub-scanline (mid-line splits + statut au tick)
-
-> **Étapes 0-2 + socle** `BeamClock` **+ corrections silicium (fidélité init, pacing pad18, statut F+C, plancher 9c) livrés** → `[CHANGELOG.md](CHANGELOG.md)`. L'axe entrée CPU→VRAM est tick-accurate ; l'axe sortie a été rapproché. Reste ouvert :
-
-- [ ] **Fetch sprite SAT « une ligne en avance » sous-ligne** `[M · solid]` — line n doit afficher les sprites fetchés pendant n-1 (le latch seamless mode/blank est livré ; reste la latence de fetch SAT exacte). Effet visible seulement sur écritures SAT mid-active (rares) → à valider sur silicium (Parmigiani) avant de modéliser la latence.
-- [ ] **Journal VideoEvents + renderer par rejeu, adoption GEN2** `[L · solid]` — remplacer le rattrapage *eager* (Étapes 0-2) par un journal `(cycle,kind,value)` per-cycle (h,v) composé par **rejeu** entre sync points (découplage total + rewind-friendly). GEN2 a déjà ce journal (`gen2RecordingEvents`, `Memory.cpp`). **Livré (juillet 2026) : le journal GEN2 entre désormais dans le snapshot / rewind** (section `GEN2VID` v5 sérialise le journal publié + son frame-start ; `snapshot_smoke`) → `[CHANGELOG.md](CHANGELOG.md)`. Reste ouvert : (a) **généraliser** le journal en facilité partagée (hors `Memory`) + faire adopter `BeamGeometry`/`beamPosAt` (`src/BeamClock.h`) par le rejeu GEN2 (aujourd'hui géométrie GEN2-privée dans `GraphicsCard::frameCycleToPos`) ; (b) **faire adopter le journal+rejeu par le TMS9918** (remplacer `renderBeamCatchUp`/`syncSpriteScanToBeam` eager + sérialiser son journal comme GEN2). Objectif cycle-granularity commun POM1/POM2.
+- [🔧 Consolidation architecturale](#-consolidation-architecturale) — **la colonne vertébrale**, phases 0 → 6
+- [📦 Packaging, distribution & démarrage](#-packaging-distribution--démarrage)
+- [💾 Snapshot, scripting & presets](#-snapshot-scripting--presets)
+- [⏪ State rewind — raffinements](#-state-rewind--raffinements)
+- [🎨 Graphismes](#-graphismes) — moteur beam GEN2 · synchro beam/CPU TMS9918
+- [🛠️ Outillage de développement](#-outillage-de-développement) — Bench · BASIC · LOGO
+- [🔌 Périphériques & chargeurs](#-périphériques--chargeurs)
+- [🖼️ Visuel & UX](#-visuel--ux)
+- [⏸️ Différé · 🚫 Bloqué](#-différé--bloqué)
 
 ---
 
+## 🔧 Consolidation architecturale
 
-
-## 🛠️ Dev tooling
-
-
-
-### BASIC dans le Bench
-
-> **Injection (Integer + Applesoft, 4 cibles), coloration, tokeniseurs, compilateur natif → 6502 (**`3DHat.apf`**/**`RodColor.apf` **autonomes sur GEN2 + TMS), sélecteur *Inject | Compile*, Verify-charge-prêt-à-**`LIST` **+ toggle cold/warm livrés** → `[CHANGELOG.md](CHANGELOG.md)`. Reste ouvert :
-
-- [ ] **Variables chaîne (**`A$`**) dans le compilateur natif** `[L · nice]` — aujourd'hui le lexer rejette tout identifiant suivi de `$` (`BasicCompilerApplesoft.cpp`, « string variables need a later phase ») ; seuls les littéraux chaîne de `PRINT` existent. Chantier transverse : descripteurs (ptr+len) comme classe de variable parallèle à `V_`/`_I`, une région heap découpée dans `basicc_native.cfg`, un `basicrt_string.s` (alloc/copie/concat + `LEN`/`MID$`/`CHR$`/`STR$`), et un chemin d'expression *typé chaîne* dans le lexer/`expr` (tout est numérique aujourd'hui). Touche lexer + parser + codegen + runtime + cfg linker.
-- [ ] **Tier float compact (binary16 / virgule fixe) pour coords bornées** `[L · nice]` — la largeur (2 vs 4) est abstraite par `vw()`/`W`, mais ~15 sites d'émission codent le binary32 en dur (`fpLoadConst`, `fpNeg`, `emitIfFalse`, signe FOR, tous les `jsr fp_`*). Demande : une nouvelle valeur `FpMode`/format sur `Codegen`, des helpers d'émission parallèles, un runtime `basicrt_fixed.s` (`fx_add/fx_mul/fx_div/fx_cmp/…`), un jeu de symboles + gating `-D` dédié, un dimensionnement linker, et une 3ᵉ branche dans la sélection de phase (`compile()`). Utile seulement quand la précision binary32 est superflue (jeux/anim à coords bornées).
-
-
-
-### LOGO dans le Bench
-
-> **Interpréteur V2.6 + injection (**`injectLogo` **/** `LogoProgramLoader`**) + 10 sketches** `sketchs/logo/` **+ REPL interactif (send / écho / historique ↑↓ / Break Ctrl-G) livrés** → `[CHANGELOG.md](CHANGELOG.md)`. LOGO est le **4ᵉ langage** du *New*, deux cibles (TMS9918 `4000R`, GEN2 HGR `6000R`), WASM-safe, pin `bench_logo_inject_smoke`. Reste ouvert (nice-to-have) :
-
-- [ ] **Livre d'exemples LOGO dans le popup *Examples*** `[S · solid]` — les 10 `.logo` de `sketchs/logo/` existent (et sont préchargés MEMFS côté web) mais ne sont atteignables que par *File → Load* ; les câbler dans `kP1Examples[]`/`examples_` (groupe « LOGO », ouverture 1-clic) comme les exemples asm/C, pour la découvrabilité.
-
----
-
-
-
-## 🔌 Peripherals & loaders
-
-- [ ] **flowenol apple1-serial bootloader** `[S · solid]` — [https://github.com/flowenol/apple1-serial](https://github.com/flowenol/apple1-serial) — serial-port bootloader / terminal (complements TurboType / 8BitFlux). Pipes through Terminal Card or its own ACIA variant; likely a text-format loader on top of `Memory::loadHexDump` + paste pipeline.
-- [ ] 🚫 **TurboType 57 600-baud loader** `[M · solid]` — **En attente de Bernie (échange courriel 2026-06-24) : spec détaillée + une ROM/binaire du dropper nécessaires avant implémentation.** Uncle Bernie's format, shipped by 8BitFlux *Keyboard Serial Terminal* (ATtiny + 11 MHz xtal + MAX232 + 74LS244). Protocol: Wozmon-speed bootstrap (200 ms/newline, 20 ms/char) installs an in-RAM dropper that **skips** `$D012` **echoes** and streams bytes at 57.6 kbps with running CRC, sentinel + CRC verify, jump to entry. Loads 4 KB in <30 s vs ~2 400 baud Wozmon. POM1 side: parse `.TUR`/`.APL`, switch Terminal Card to raw-8-bit + echo-suppressed inject (`Ctrl-T` already gives 8-bit; no-echo is new), verify CRC, surrender to Wozmon. *Note émulateur :* `loadHexDump` *gère déjà le multi-blocs + les marqueurs* `T`*/*`X`*, et charge instantanément — TurboType n'a de valeur que pour l'authenticité/démo du protocole, pas pour la vitesse de chargement.*
-- [ ] **Briel Multi I/O — SpeakJet** `[M · nice]` — 6522 / 6551 blocks duplicate microSD / MODEM; the unique value is piping the UART byte stream through a TTS bridge (eSpeak, macOS `say`) to give the Apple-1 a voice. Ship as a separate optional peripheral so it coexists with microSD.
-
----
-
-
-
-## 🖼️ Visuals & UX
-
-> POM1 a déjà la meilleure UX du duo POM1/POM2 (126 tooltips, 15 tutoriels, boot scénographié, 0 ROM à fournir). **Native file dialogs, shared video texture layer, backend Metal macOS livrés** → `[CHANGELOG.md](CHANGELOG.md)`. Frictions résiduelles *(audit designer 2026-05-31)* :
-
-- [ ] **1976 CRT fidelity (opt-in, default off)** `[M · nice]` — two sub-effects under the existing CRT toggle:
-  1. **Shift-register streaming** `[S · nice]` (Signetics 2519 timing) — chars land ~60 / s, hardware scroll shifts buffer one line at a time, display freezes during CPU bursts. Pair with the bare-4K preset.
-  2. **Shift-register dot noise** `[S · nice]` (2504 / 2513 clock) — periodic static, **not random** — ~40 × 3 sub-cells per char, 1-px horizontal phase drift row-to-row, last row shorter. New `drawShiftRegisterNoise()` after backdrop pass, deterministic nested loop, `alpha ≈ crtScanlineAlpha * 0.25`, tinted with `phosphorTint`.
-
----
-
-
-
-## 🔧 Infra & technical debt
-
-### Feuille de route de consolidation architecturale — audit du 26 août 2026
-
-> **Diagnostic** : POM1 reste un monolithe modulaire sain, avec un cœur CPU / bus / rendu robuste et très bien testé. La dette critique est désormais concentrée dans le cycle de vie des cartes, les trois sources de vérité de la configuration (`MainWindow_ImGui`, `Memory::setXxxEnabled()`, `MachineConfig`) et les responsabilités système accumulées par `Memory` / `EmulationController`. **Aucune réécriture** : conserver CPU, `PeripheralBus`, renderers, snapshots incrémentaux et tests ; migrer par façades compatibles, une responsabilité à la fois.
+> **Diagnostic (audit du 26 août 2026)** : POM1 reste un monolithe modulaire sain, cœur CPU / bus / rendu robuste et très bien testé. La dette critique est concentrée dans le cycle de vie des cartes, les trois sources de vérité de la configuration (`MainWindow_ImGui`, `Memory::setXxxEnabled()`, `MachineConfig`) et les responsabilités système accumulées par `Memory` / `EmulationController`. **Aucune réécriture** : conserver CPU, `PeripheralBus`, renderers, snapshots incrémentaux et tests ; migrer par façades compatibles, une responsabilité à la fois.
 >
-> **Architecture cible** : panneaux UI → commandes / vues immuables → façade applicative thread-safe → `MachineCoordinator` (`CpuRunner`, `CardTopology`, `StateManager`) → espace d'adressage / `PeripheralBus` / périphériques. Audio, fichiers, réseau et rendu deviennent des services injectés. Ordre recommandé : phases 0 → 1 → 2 sur le chemin critique ; phase 3 dès que la topologie est stable ; phases 4-6 incrémentales. Estimation globale : **10-14 semaines développeur**, point de stabilisation essentiel après **5-7 semaines**.
+> **Architecture cible** : panneaux UI → commandes / vues immuables → façade applicative thread-safe → `MachineCoordinator` (`CpuRunner`, `CardTopology`, `StateManager`) → espace d'adressage / `PeripheralBus` / périphériques. Audio, fichiers, réseau et rendu deviennent des services injectés.
+>
+> **Ordonnancement** : phases 0 → 1 → 2 sur le chemin critique ; phase 3 dès que la topologie est stable ; phases 4-6 incrémentales. Estimation globale **10-14 semaines développeur**, point de stabilisation essentiel après **5-7 semaines**.
+>
+> **Priorité produit** — **P0** : phases 0 à 3. **P1** : phases 4 à 6. **P2 après stabilisation** : nettoyage CMake résiduel et couverture snapshot restante. Les sections hors feuille de route (nouvelles cartes, shader GEN2 GPU, chaînes BASIC, tier binary16, `presets.json` externe) sont **différées jusqu'à la sortie de phase 2** ; seul le câblage des exemples LOGO peut continuer en parallèle, ne touchant pas la topologie.
 
-#### Phase 0 — Socle reproductible et frontières de build (2-4 jours)
+### Phase 0 — Socle reproductible et frontières de build (2-4 jours)
 
 - [ ] **Rendre les dépendances CMake configurables et hors-ligne** `[S · solid]` — ajouter les cache paths `POM1_IMGUI_DIR` et `POM1_KLAUS_BIN` ; pour Klaus, télécharger sans `EXPECTED_HASH`, ne calculer / comparer le SHA-256 qu'après un téléchargement réussi, et désactiver explicitement le test avec un message actionnable si aucun binaire local ou réseau n'est disponible. Le contrôle `imgui_pin_sync` doit fonctionner dans une archive source sans `.git`, ou annoncer proprement qu'il n'est pas applicable.
-- [ ] **Matérialiser les couches dans CMake** `[M · solid]` — faire évoluer la bibliothèque d'objets de tests déjà livrée vers des cibles logiques `pom1_core`, `pom1_devices`, `pom1_app` et `pom1_ui`, sans big-bang ; centraliser le câblage répétitif des smokes dans un helper `pom1_add_smoke_test()` et lier chaque cible au plus petit ensemble de couches nécessaire.
+- [ ] **Matérialiser les couches dans CMake** `[M · solid]` — faire évoluer la bibliothèque d'objets de tests vers des cibles logiques `pom1_core`, `pom1_devices`, `pom1_app` et `pom1_ui`, sans big-bang ; centraliser le câblage répétitif des smokes dans un helper `pom1_add_smoke_test()` et lier chaque cible au plus petit ensemble de couches nécessaire.
 - [ ] **Épingler les dépendances architecturales et leur tendance** `[S · solid]` — ajouter un contrôle de direction des includes / liens et publier une baseline simple (taille de `MainWindow_ImGui`, `Memory`, `EmulationController`, fan-out des en-têtes, nombre de sources hors cible de test). Le garde doit refuser une nouvelle dépendance UI → cœur ou périphérique → UI, sans imposer immédiatement une baisse de tous les compteurs historiques.
 
-> **Porte de sortie phase 0** : un checkout disposant de ses dépendances locales se configure hors-ligne ; build Release natif avec `POM1_WERROR=ON` et inventaire CTest complet verts ; aucun changement de comportement émulateur.
+> **Porte de sortie** : un checkout disposant de ses dépendances locales se configure hors-ligne ; build Release natif avec `POM1_WERROR=ON` et inventaire CTest complet verts ; aucun changement de comportement émulateur.
 
-#### Phase 1 — Une source de vérité pour la topologie des cartes (~2 semaines)
+### Phase 1 — Une source de vérité pour la topologie des cartes (~2 semaines)
 
 - [ ] **Introduire les identités et descripteurs de cartes stables** `[M · critical]` — créer `enum class CardId`, `CardDescriptor` et `CardSet` : identifiant non localisé, libellé UI, plages d'adresses, dépendances, incompatibilités, variante / options, tag de snapshot et capacités. Étendre le registry existant `Memory::cardSlots()` au lieu de créer une table concurrente.
 - [ ] **Extraire toute la politique de conflit dans `CardTopology`** `[M · critical]` — déplacer `ConflictRule`, `wouldCreateConflict`, les comparaisons de chaînes de `MainWindow_SiliconStrict.cpp` et les cascades de `Memory::setXxxEnabled()` vers un module pur. Modéliser explicitement au minimum IEC → microSD, CodeTank → TMS9918, XACI → ACI et les exclusions Silicon Strict / Fantasy. `Memory` ne doit plus décider ce qu'il faut désactiver : il attache ou détache la configuration validée qui lui est demandée.
 - [ ] **Remplacer le `MachineConfig` positionnel par une configuration nommée** `[M · critical]` — conserver les 13 presets et leurs index historiques via une table de compatibilité, mais stocker les cartes dans `CardSet`, leurs options dans des champs nommés et le défaut dans un `PresetId` explicite au lieu de l'invariant « dernier élément ». Ajouter une validation au démarrage / à la compilation des identifiants, dépendances et conflits de chaque preset.
 - [ ] **Produire puis exécuter un `TransitionPlan` déterministe** `[L · critical]` — `MachineCoordinator::planConfiguration()` calcule la fermeture des dépendances, les refus et l'ordre detach / configure / attach ; `applyConfiguration()` exécute ce plan sous le verrou d'état. Garder temporairement les setters publics de `EmulationController` comme wrappers de compatibilité, puis supprimer chaque wrapper dès que ses appelants UI / CLI ont migré.
 - [ ] **Tester exhaustivement la politique de topologie** `[M · critical]` — tests purs de toutes les paires de cartes, dépendances / cascades, modes Strict et Fantasy, idempotence, validation des 13 presets et matrice des 169 transitions preset → preset. Chaque nouvelle carte devra fournir son descripteur et étendre automatiquement la matrice, sans nouvelle liste maintenue à la main.
+- [ ] **Épingler la politique de bus une fois extraite** `[S · solid]` — **42 des 105 `.cpp` de `src/` n'apparaissent dans aucune cible de test** (recompte août 2026), presque tous de l'UI. Le seul candidat hors UI et réellement testable est la table `ConflictRule` de `MainWindow_SiliconStrict.cpp` : c'est de la politique de bus pure, et son test devient trivial dès que la case *Extraire toute la politique de conflit* ci-dessus l'a sortie de l'UI. Les autres candidats plausibles ne le sont pas : `HgrImageDecode.cpp` / `TmsImageDecode.cpp` sont des TU d'implémentation stb_image sans en-tête, `bench/Markdown.cpp` porte 75 appels `ImGui::`, et `bench/BenchLang.h` inclut `TextEditor.h`. Règle : **quand un module est décrit comme pur dans la doc, il devrait avoir un test qui le prouve.**
 
-> **Porte de sortie phase 1** : aucune règle de topologie dans `MainWindow_*`; aucun conflit décidé dans `Memory`; presets, CLI et UI consomment le même `TransitionPlan`; toutes les transitions sont déterministes et testées.
+> **Porte de sortie** : aucune règle de topologie dans `MainWindow_*` ; aucun conflit décidé dans `Memory` ; presets, CLI et UI consomment le même `TransitionPlan` ; toutes les transitions sont déterministes et testées.
 
-#### Phase 2 — Cycle de vie déterministe, indépendant des frames UI (1-2 semaines)
+### Phase 2 — Cycle de vie déterministe, indépendant des frames UI (1-2 semaines)
 
 - [ ] **Définir un cycle de vie explicite des périphériques** `[M · critical]` — remplacer le contrat minimal actuel par les états `constructed → attached → reset → active`, avec opérations idempotentes et ordre documenté. Le raccordement au bus doit être terminé avant le premier cycle CPU ; l'audio et le réseau ne deviennent actifs qu'après le reset et la disponibilité de leur producteur.
 - [ ] **Appliquer un preset comme une transaction machine** `[L · critical]` — pause CPU → detach des ressources sortantes → configuration / chargement ROM / reset → attach au bus → activation audio / réseau → publication d'un snapshot cohérent → reprise CPU. En cas d'échec, retourner une erreur structurée et conserver ou restaurer une configuration valide ; ne jamais exposer un état intermédiaire à l'UI.
 - [ ] **Éliminer le délai magique de 15 frames** `[M · critical]` — identifier avec un test reproductible la cause du SID / cassette silencieux ou cassé lors d'un branchement immédiat, corriger l'ordre d'initialisation ou amorcer explicitement les rings, puis supprimer `kCardEnableDeferFrames`, `pendingCardEnableFrames`, `finalizePendingCardPlugs()` et tous les booléens `pending*` associés. Aucun remplacement par un autre temporisateur mural ou graphique.
 - [ ] **Prouver le démarrage sans rendu préalable** `[M · critical]` — tests « apply preset + load + premier cycle » avec zéro frame UI, changement de preset pendant l'exécution, activation / retrait répétés, sortie SID / cassette non vide, et parité desktop headless / OpenGL / Metal / WASM. Ajouter ces scénarios à la matrice headless existante.
+- [ ] **Étendre la matrice headless aux combinaisons de cartes** `[S · solid]` — `headless_preset_matrix` boote les presets tels que livrés ; les combinaisons que le mode strict *autorise* (`--enable`/`--disable` par-dessus un preset, `wouldCreateConflict` côté UI) et celles qu'il refuse ne sont pas parcourues. Même harnais, un second axe : pour chaque preset, chaque carte absente que `gateStrictPlug` accepterait, boot + Monitor. Et une assertion plus forte que « PC dans le Monitor » là où une ROM de carte a un prompt (SD CARD OS, CFFA1, Krusader) : un `--paste` + capture du flux `$D012` via `--telemetry-log`. **Préalable du harnais de concurrence en phase 3.**
 
-> **Porte de sortie phase 2** : aucun cycle de vie cadencé par ImGui ; aucune fenêtre de course entre CLI / chargement et premier cycle CPU ; même comportement avec ou sans thread de rendu.
+> **Porte de sortie** : aucun cycle de vie cadencé par ImGui ; aucune fenêtre de course entre CLI / chargement et premier cycle CPU ; même comportement avec ou sans thread de rendu.
 
-#### Phase 3 — Audio temps réel et concurrence réellement exercée (1-2 semaines)
+### Phase 3 — Audio temps réel et concurrence réellement exercée (1-2 semaines)
 
 - [ ] **Retirer verrous et allocations du callback audio** `[M · critical]` — remplacer `AudioDevice::sourcesMutex` dans `mixSources()` par un petit tableau fixe ou une liste immuable double-buffer publiée atomiquement. Les producteurs alimentent des rings lock-free ; décodage cassette, ajout / retrait de sources et destruction restent hors callback. Définir et tester la durée de vie garantissant qu'une source retirée n'est libérée qu'après le dernier callback qui peut encore la voir.
+- [ ] **Faire voir le thread de rendu à TSan** `[M · solid]` — angle mort structurel : le job sanitizer nocturne lance `ctest`, or **seuls 7 des 94 fichiers de test instancient `EmulationController`** et aucun ne fait tourner d'UI. La seule paire de threads qui existe chez un utilisateur — *thread de rendu × thread d'émulation* — n'est donc jamais instrumentée. La discipline est pourtant bonne (audit du 23 août 2026 : **0 méthode sur 207 ne touche `memory->`/`cpu->` sans `stateMutex`**), mais c'est une propriété vérifiée à la lecture, pas par une machine. Le harnais doit lancer **simultanément** producteur `EmulationController`, consommateur snapshot / rendu synthétique et callback audio synthétique : smoke court par PR, campagne complète sous TSan nocturne. Préalable : la matrice headless de phase 2.
+- [ ] **Étendre le rang des verrous aux mutex des cartes** `[S · nice]` — `LockOrder.h` couvre les trois verrous du cœur. `SID::chipMutex`, `TerminalCard::cardMutex` / `screenshotResultMutex` et les verrous du modem restent hors table ; leur donner un rang (sous `Snapshot`, ou dans une bande dédiée aux périphériques) étendrait la vérification au seul endroit où il reste des verrous non ordonnés. **Ne couvre pas la classe de défaut corrigée dans `CassetteDevice`** : un rang vérifie l'ORDRE, pas la DURÉE de détention ni une allocation sur le thread temps-réel — ni `LockOrder.h` ni TSan ne voient celle-là, seule une lecture du chemin d'appel la trouve.
 - [ ] **Mesurer les invariants temps réel** `[S · solid]` — instrumentation debug / benchmark du temps maximal de détention de `stateMutex`, du temps du callback, des underruns et des débordements de rings ; seuils prudents dans un stress test, métriques désactivables et sans coût notable en Release.
 
-> **Travaux canoniques déjà ouverts plus bas** : « Étendre le rang des verrous aux mutex des cartes » dans *Solidité*, et « TSan ne voit jamais le thread de rendu » dans *Refactors architecturaux*. Le second doit lancer simultanément producteur `EmulationController`, consommateur snapshot / rendu synthétique et callback audio synthétique, en smoke court par PR et sous TSan nocturne.
->
-> **Porte de sortie phase 3** : zéro `std::mutex` / allocation dans le callback ; le triangle émulation × rendu × audio est réellement exercé sous TSan ; zéro race et zéro underrun dans le scénario de stress de référence.
+> **Porte de sortie** : zéro `std::mutex` / allocation dans le callback ; le triangle émulation × rendu × audio est réellement exercé sous TSan ; zéro race et zéro underrun dans le scénario de stress de référence.
 
-#### Phase 4 — Extraire les responsabilités sans réécriture (2-3 semaines)
+### Phase 4 — Extraire les responsabilités sans réécriture (2-3 semaines)
 
-- [ ] **Extraire des chargeurs de mémoire purs** `[M · solid]` — créer `MemoryImageLoader` et des parseurs par format qui reçoivent des octets et retournent écritures / zones / adresse d'exécution / diagnostics, sans accès à `Memory`, audio, UI ou système de fichiers. `Memory` ne fait qu'appliquer un résultat validé. Cette frontière devient le point d'entrée des fuzzers de la phase 6.
+- [ ] **Extraire des chargeurs de mémoire purs** `[M · solid]` — créer `MemoryImageLoader` et des parseurs par format qui reçoivent des octets et retournent écritures / zones / adresse d'exécution / diagnostics, sans accès à `Memory`, audio, UI ou système de fichiers. `Memory` ne fait qu'appliquer un résultat validé. **Cette frontière devient le point d'entrée des fuzzers de la phase 6.**
 - [ ] **Injecter la découverte des ressources et les services plateforme** `[M · solid]` — déplacer les sondes du cwd, chemins ROM / disques / cartes et création du périphérique audio hors du constructeur de `Memory`, derrière `ResourceLocator` et des interfaces de services fournies par l'application. Les tests construisent le cœur sans matériel audio ni fichiers implicites.
 - [ ] **Créer `PeripheralManager`** `[L · critical]` — lui transférer propriété et cycle de vie des cartes, bindings `PeripheralBus`, endpoints audio / réseau et application du `TransitionPlan`. Réduire progressivement `Memory` à l'espace d'adressage, PIA et MMIO cœur ; préserver `memRead()` / `memWrite()` et `PeripheralBus` comme interfaces stables.
-- [ ] **Définir des DTO de snapshot indépendants des classes de cartes** `[M · solid]` — sortir `CpuView` / `CardView` et snapshots de cartes à portée namespace, avec alias transitoires si nécessaire ; retirer les includes concrets de `EmulationSnapshot.h`, puis mesurer le fan-out. Ne partager de gros buffers immuables qu'après profilage : la priorité est la frontière de type, pas une micro-optimisation de copie.
-- [ ] **Faire de `EmulationController` une façade mince** `[L · critical]` — achever les extractions `CpuRunner` (pacing, run / pause / step) et `StateManager` (snapshot / rewind), conserver la prise de verrou dans une façade applicative thread-safe, puis remplacer les ~110 passthroughs de cartes par commandes data-driven `CardId` / configuration. Migrer par groupes d'appelants et supprimer les wrappers devenus morts à chaque PR.
+- [ ] **Définir des DTO de snapshot indépendants des classes de cartes** `[M · solid]` — sortir `CpuView` / `CardView` et les snapshots de cartes à portée namespace, alias membres conservés pour ne toucher aucun site d'appel, puis retirer les includes concrets de `EmulationSnapshot.h`. **C'est aussi le nœud de fan-out d'en-têtes suivant** : après la libération de `Memory.h`, `JukeBox.h` et `CodeTank.h` ne sont retombés que de 105 à **57 TU** (contre 105 → ~20 pour les sept autres cartes) parce qu'`EmulationSnapshot.h`, très largement inclus, a besoin de `JukeBox::Snapshot` / `CodeTank::Snapshot` — des structs **imbriqués** par valeur, le même blocage que les enums un cran plus haut. Quatre autres en-têtes (`MachinePresets.h`, `CliDispatcher.h`, `MemoryViewer_ImGui.h`, `MainWindow_ImGui.h`) ne se servent que des trois enums et peuvent basculer sur `[src/CardTypes.h](src/CardTypes.h)` seul. Ne partager de gros buffers immuables qu'après profilage : la priorité est la frontière de type, pas une micro-optimisation de copie.
+- [ ] **Faire de `EmulationController` une façade mince** `[L · critical]` — l'axe *fichier* est réglé (4 TU) ; reste l'axe **type** : extraire de vraies classes `CpuRunner` (pacing, run / pause / step / slice) et `StateManager` (snapshot / rewind) au lieu de 207 méthodes sur une seule façade, en conservant la prise de verrou dans une façade applicative thread-safe. Coûteux : **~110 des 207 méthodes sont des passthroughs d'une ligne** vers `memory->setXxxEnabled()`, appelés depuis tout le MainWindow — renommer déplacerait des centaines de sites. Le vrai remède est de les remplacer par des commandes data-driven `CardId` / configuration adossées à `Memory::cardSlots()`. Migrer par groupes d'appelants et supprimer les wrappers devenus morts à chaque PR.
 
-> **Porte de sortie phase 4** : `Memory` ne crée plus d'audio, ne sonde plus le filesystem et ne décide plus des conflits ; `EmulationSnapshot.h` n'inclut plus les cartes concrètes ; CMake interdit les dépendances inverses ; les anciennes API ne subsistent que si un appelant réel les utilise encore.
+> **Porte de sortie** : `Memory` ne crée plus d'audio, ne sonde plus le filesystem et ne décide plus des conflits ; `EmulationSnapshot.h` n'inclut plus les cartes concrètes ; CMake interdit les dépendances inverses ; les anciennes API ne subsistent que si un appelant réel les utilise encore.
 
-#### Phase 5 — Décomposer l'UI par panneaux (3-5 semaines, incrémental)
+### Phase 5 — Décomposer l'UI par panneaux (3-5 semaines, incrémental)
 
-- [ ] **Faire du registre de fenêtres une fabrique / propriétaire d'`IPanel`** `[L · solid]` — chaque panneau possède `visible`, état transitoire, modèle de vue et `render(AppContext&)`; `MainWindow_ImGui` conserve menu, dock, layout et orchestration générale. Exploiter `WindowDescriptor` existant et migrer exactement un panneau par PR.
-- [ ] **Migrer les panneaux dans l'ordre de risque architectural** `[L · solid]` — commencer par Silicon Strict / presets afin de consommer `CardTopology`, poursuivre par les panneaux de cartes, puis debug et dialogues fichier. Les 17 entrées `render == nullptr` dont l'état est déjà regroupé restent de bons quick wins, mais ne doivent pas retarder l'extraction de la politique de configuration.
-- [ ] **Supprimer le miroir matériel autoritaire de l'UI** `[M · critical]` — les booléens « carte active » et variantes viennent exclusivement de la vue publiée / `CardSet`; seuls visibilité, champs en cours d'édition et erreurs de validation restent locaux au panneau. Une commande UI demande une transition et affiche son résultat, sans muter préventivement plusieurs booléens.
-- [ ] **Router fenêtres et raccourcis par identifiant stable** `[M · solid]` — utiliser la clé du registre, jamais le titre traduit ni un pointeur de méthode, pour menus, raccourcis, layout et future palette de commandes. Préserver l'invariant Apple-1 interdisant les accords CTRL+lettre réservés au terminal.
+- [ ] **Faire du registre de fenêtres une fabrique / propriétaire d'`IPanel`** `[L · solid]` — le registre existe (`WindowDescriptor` porte `render` / `gate` / `desktopOnly` / `dock`, liste unique des 68 fenêtres, épinglé par `window_registry_sync`), mais **les 17 135 lignes de la classe ne bougent pas et les 68 flags restent des membres de `MainWindow_ImGui`**. Chaque panneau doit devenir un objet possédant son propre `visible`, son état transitoire, sa géométrie, son modèle de vue et son `render(AppContext&)` ; `MainWindow_ImGui` ne conserve que menu, dock, layout et orchestration. Faisable **une fenêtre par PR** derrière le registre, au lieu d'un big-bang. *(L'angle `std::bitset` proposé en juillet est abandonné : il attaquait 68 octets de mémoire, pas le couplage, pour 691 sites d'accès à réécrire.)*
+- [ ] **Migrer les panneaux dans l'ordre de risque architectural** `[L · solid]` — commencer par Silicon Strict / presets afin de consommer `CardTopology`, poursuivre par les panneaux de cartes, puis debug et dialogues fichier. Les **17 entrées `render == nullptr`** (éditeurs qui auto-branchent leur carte, MemoryViewer, chooser) sont les premières candidates : leur bloc d'état dédié EST déjà ce qu'un objet porterait. Bons quick wins, mais ils ne doivent pas retarder l'extraction de la politique de configuration.
+- [ ] **Supprimer le miroir matériel autoritaire de l'UI** `[M · critical]` — les booléens « carte active » et variantes viennent exclusivement de la vue publiée / `CardSet` ; seuls visibilité, champs en cours d'édition et erreurs de validation restent locaux au panneau. Une commande UI demande une transition et affiche son résultat, sans muter préventivement plusieurs booléens.
+- [ ] **Router fenêtres et raccourcis par identifiant stable, puis ouvrir la palette de commandes** `[M · solid]` — `shortcuts[]` (`MainWindow_Keyboard.cpp`) associe encore une touche à un **pointeur de méthode**, pas à une fenêtre : rien ne relie un raccourci à son entrée de menu. Avec la clé du registre comme identifiant stable — jamais le titre traduit — un raccourci devient `("Bench", Ctrl+B)`, et la palette de commandes (absente de POM1, présente dans POM2) se réduit à un filtre sur `windowRegistry()`. Menus, raccourcis, layout et palette partagent alors la même clé. **Invariant à préserver** : `shortcuts[]` ne doit **jamais** porter un accord CTRL+lettre, qui rendrait le code de contrôle intypable côté Apple-1.
 
-> **Travaux canoniques déjà ouverts plus bas** : « Décomposer les panneaux en objets » et « Palette de commandes et raccourcis par identifiant ».
->
-> **Porte de sortie phase 5** : `MainWindow_ImGui` est une coquille applicative ciblée à moins de 400-500 lignes de déclaration ; aucun booléen UI ne constitue l'état réel d'une carte ; chaque panneau migré est testable indépendamment.
+> **Porte de sortie** : `MainWindow_ImGui` est une coquille applicative ciblée à moins de 400-500 lignes de déclaration ; aucun booléen UI ne constitue l'état réel d'une carte ; chaque panneau migré est testable indépendamment.
 
-#### Phase 6 — Entrées hostiles, support et portabilité (1-2 semaines, parallélisable)
+### Phase 6 — Entrées hostiles, support et portabilité (1-2 semaines, parallélisable)
 
-- [ ] **Transformer les fuzzers de chargeurs en garde continue** `[M · solid]` — pour WOZMON / Intel HEX / TUR / AIFF / D64 / snapshots, imposer tailles maximales, validation des longueurs / CRC et erreurs structurées ; amorcer avec les corpus du dépôt, exécuter un smoke borné par PR et une campagne longue sous ASan la nuit. Chaque crash devient un test de régression minimal.
-- [ ] **Documenter et automatiser la porte de sortie de consolidation** `[S · solid]` — checklist release réunissant build warnings-as-errors sur les trois OS, matrice presets + combinaisons, WASM browser smoke, sanitizers, fuzz smoke et création locale d'un bundle de diagnostic. Ne déclarer la consolidation terminée qu'une fois ces gardes observées vertes sur CI.
+- [ ] **Fuzzer les chargeurs de fichiers, en garde continue** `[M · solid]` — WOZMON hex, Intel HEX, TurboType `.TUR`, l'AIFF écrit à la main, `.d64` et les images de snapshot sont les seules portes d'entrée de données non maîtrisées. Chacun a ses gardes, et **chaque garde a été ajoutée après un bug** — la couverture est empirique, pas systématique. Le cas le plus exposé est l'AIFF (POM1 le lit lui-même, miniaudio n'ayant pas de backend : flottant 80 bits décodé à la main, quatre largeurs PCM). Une cible libFuzzer par parseur, amorcée par le corpus déjà présent dans `software/`, `cassettes/`, `sdcard/` ; imposer tailles maximales, validation des longueurs / CRC et erreurs structurées ; smoke borné par PR, campagne longue sous ASan la nuit. Chaque plantage trouvé devient un cas de test à coût nul. Se branche sur les chargeurs purs de la phase 4.
+- [ ] **Filet de crash + bundle de diagnostic** `[M · solid]` — la moitié journal est en place (`FileLogger` + `logs/pom1.log`), qui était le vrai préalable. Reste le filet : seuls `SIGINT`/`SIGTERM` sont interceptés (pour vider la cassette). Un `SIGSEGV` emporte le journal, la disposition des fenêtres pas encore autosauvegardée et tout le tampon de rewind, et l'utilisateur n'a rien à envoyer. Gestionnaire de dernier recours écrivant trace d'appels + tampon de journal dans `crash/`, plus *Aide → Signaler un problème* qui assemble journal, snapshot, `ini/` et versions dans un zip. **Aucune télémétrie** : le bundle reste strictement local, c'est l'utilisateur qui décide d'envoyer.
+- [ ] **`-Werror` sur Windows** `[S · nice]` — Linux et macOS passent `-DPOM1_WERROR=ON` ; le job `windows` compile en `/W4` sans `/WX`. **Relevé du 22 août 2026** : huit `C4244` (`int` → `float`) sur `src/sidtrack/SidTrackerEditor.cpp:342-343` et un `C4701` dans le `stb_vorbis.c` vendu — une passe de nettoyage précède l'activation, et le vendu devra rester hors du périmètre `/WX` comme il l'est déjà de `/W4`. À mesurer sur une machine Windows, pas à corriger à l'aveugle.
+- [ ] **Documenter et automatiser la porte de sortie de consolidation** `[S · solid]` — checklist release réunissant build warnings-as-errors sur les trois OS, matrice presets + combinaisons (phase 2), WASM browser smoke, sanitizers, fuzz smoke et création locale d'un bundle de diagnostic. Ne déclarer la consolidation terminée qu'une fois ces gardes observées vertes sur CI.
 
-> **Travaux canoniques déjà ouverts plus bas** : « Fuzzer les chargeurs de fichiers », « Filet de crash + bundle de diagnostic », « `-Werror` sur Windows » dans *Solidité*, et « Étendre la matrice aux combinaisons de cartes » dans *Refactors architecturaux*. Le bundle reste strictement local et envoyé uniquement sur décision de l'utilisateur.
->
-> **Porte de sortie phase 6** : les entrées malformées ne crashent ni ne bloquent l'émulateur ; zéro warning traité en erreur sur les plateformes supportées ; un rapport utilisateur contient versions, journal, snapshot et configuration sans télémétrie automatique.
-
-#### Priorité produit pendant la consolidation
-
-> **P0 maintenant** : phase 0, topologie / cycle de vie (phases 1-2), callback audio et harnais de concurrence (phase 3). **P1 ensuite** : frontières `Memory` / `EmulationController`, DTO snapshot, fuzzing et premiers panneaux (phases 4-6). **P2 après stabilisation** : bundle de crash, nettoyage CMake résiduel et couverture snapshot restante. Différer les nouvelles cartes, le shader GEN2 GPU, les chaînes BASIC, le tier binary16 et `presets.json` externe jusqu'à la sortie de phase 2 ; le petit câblage des exemples LOGO peut continuer car il ne touche pas la topologie.
-
-### Packaging, distribution & démarrage
-
-> **Livré** → `[CHANGELOG.md](CHANGELOG.md)` : l'**exe Windows autonome** (CRT + GLFW statiques, zéro DLL, issue #34), le **pin de GLFW via `vcpkg.json`** (`builtin-baseline` vcpkg `2026.06.24` + `overrides` → glfw3 3.4#1 ; les deux sites d'appel passent en mode manifeste, sans argument de paquet), et la **borne Raspberry Pi refaite sur le modèle NeoST** (`packaging/raspberrypi/` : X nu + service systemd + `--fullscreen`, `--audio-latency`, `build_native_pi.sh --pgo`, cascade GLSL 150→140→130 + contexte 3.2→3.0), et la **bascule de GitHub Pages sur le déploiement CI** (22 août 2026 : *Settings → Pages → Source = GitHub Actions*, `pages.yml` bâtit et publie le bundle à la même URL ; `POM1.{data,wasm,js}` ne sont plus versionnés, `.git` retombé de 813 Mo à 252 Mo).
-
-- [ ] **Chargement paresseux des assets WASM — reste `cassettes/`** `[S · nice]` — **la moitié `pic/` est livrée (24 août 2026)** → `[CHANGELOG.md](CHANGELOG.md)` : seuls `icon.png` + le logo du magnéto restent préchargés, le reste arrive en HTTP à l'ouverture de la fenêtre (`ensurePicFetched` dans `src/MainWindow_Dialogs.cpp`, site servi par `tools/assemble_wasm_site.sh`) — le premier pixel passe de 14 à ~7 Mo. Reste `cassettes/` (2,5 Mo sur le fil, dont le `WOZ_talk.mp3` qui ne sert qu'au preset Fantasy) pour descendre vers 5 Mo — plus délicat : `CassetteDevice` charge le fichier au moment de l'application du preset, pas à l'ouverture d'une fenêtre.
-  - **Ne pas faire `cfcard.po`** (correction du 22 août 2026) : fichier **creux** — 33 553 920 octets logiques, 800 Ko réels, 0,3 Mo gzip — le chantier décrit (fetch asynchrone + état « image en cours de chargement », `Memory` ouvrant l'image au démarrage) est délicat pour 2 % du gain.
-- [ ] **Rejouer la borne Pi sur un Pi réel** `[S · solid]` — les scripts `packaging/raspberrypi/` sont portés de NeoST et validés en local (compilation GLES de bout en bout, cascade GLSL forcée sous llvmpipe, helpers `config.txt`/`cmdline.txt` testés en bac à sable), mais **jamais exécutés sur un Pi**. À vérifier sur place : `[CRT] GLSL …` dans `journalctl -u pom1-kiosk@pi`, absence de craquement audio à `POM1_AUDIO_LATENCY=120`, plein écran sans WM, et `--uninstall` qui rend bien `config.txt`/`cmdline.txt`.
-- [ ] **CI borne Pi (artefact `cortex-a72` avec PGO)** `[M · nice]` — NeoST entraîne son PGO sur un runner ARM64 (`pi-borne.yml`) pour éviter ~1 h de compilation sur le Pi ; POM1 n'a que l'AppImage aarch64 générique du job de release.
-
-### Solidité (audit août 2026)
-
-> **Livré** → `[CHANGELOG.md](CHANGELOG.md)` : la bibliothèque d'objets `pom1_core` (1435 → 355 compilations), `-Wall -Wextra` + `-DPOM1_WERROR=ON` en CI, les jobs build-only macOS/Windows, le job sanitizer nocturne (`-DPOM1_SANITIZE=`, timeouts ×5), `src/LockOrder.h` + `lock_order_smoke`, `tools/check_doc_paths.py` + `doc_paths_sync`, le binaire sous test passé à `test_lib_micro.py`, et `pic/` divisé par deux. **22 août 2026** : les trois cassages que cette passe avait elle-même introduits sur les plateformes qu'aucun job par-push ne compile ou n'exécute (WASM `deltaTime`, `RC1106` sur `POM1.rc`, `C2589` MSVC dans `RewindBuffer.cpp`) — d'où les quatre premières cases ci-dessous, qui ferment le quadrant plutôt que les trois bugs.
-
-> **La forme du trou, mesurée ce jour-là** : Linux compilait *et* testait ; macOS et Windows compilaient sans jamais tester ; le WASM n'était bâti que par `Deploy Pages`, donc **après** le merge sur `main` ; les sanitizers sont nocturnes. Les trois cassages ont atterri dans exactement ce quadrant, et il a fallu deux allers-retours de CI pour les voir, faute de pouvoir les reproduire en local.
-
-> **Quadrant refermé (22-23 août 2026)** → `[CHANGELOG.md](CHANGELOG.md)` : le **job `wasm`** compile le bundle à chaque push (`ci.yml`), **`ctest` tourne sur les trois bureaux** (macOS `ci.yml` + Windows `-C Release`), **`--help` existe** avec `cli_flags_sync` pour l'épingler, et les **flags de compilation sont partagés** par une cible `INTERFACE pom1_build_flags` que lient l'app, `pom1_core`, `basicc` et les 50 cibles de test — la même cible porte le `GL_SILENCE_DEPRECATION` d'Apple, qui était recopié 50 fois dans `tests/CMakeLists.txt` (2 182 → 2 046 lignes). **23 août 2026** : `crt_params_sync` (`tools/check_crt_params.py`) épingle enfin la pile CRT — 13 réglages × 3 copies, dans les deux sens, y compris « déclaré mais jamais alimenté », et vérifié par mutation. **24 août 2026** : le **smoke navigateur** ferme le trou entre « le build passe » et « le site marche » — `tools/wasm_smoke.mjs` (Playwright headless, auto-prouvé par `--self-test`) charge l'assemblage exact que `pages.yml` déploie (`tools/assemble_wasm_site.sh`, partagé), à chaque push (`ci.yml` job `wasm`) et en porte du déploiement (`pages.yml`). Restent ci-dessous les items qui n'ont pas encore de garde.
-
-- [ ] **Fuzzer les chargeurs de fichiers** `[M · solid]` — WOZMON hex, Intel HEX, TurboType `.TUR`, l'AIFF écrit à la main, `.d64`, les images de snapshot : les seules portes d'entrée de données non maîtrisées. Chacun a ses gardes, et chaque garde a été ajoutée **après** un bug — la couverture est donc empirique, pas systématique. Le cas le plus exposé est l'AIFF (POM1 le lit lui-même, miniaudio n'ayant pas de backend : flottant 80 bits décodé à la main, quatre largeurs PCM). Une cible libFuzzer par parseur, amorcée par le corpus déjà présent dans `software/`, `cassettes/`, `sdcard/`, sous ASan. Chaque plantage trouvé devient un cas de test à coût nul.
-- [ ] **Filet de crash + bundle de diagnostic** `[M · solid]` — **la moitié journal est livrée** (août 2026 : `FileLogger` + `logs/pom1.log`, troisième enfant du `TeeLogger` — voir `[CHANGELOG.md](CHANGELOG.md)`), ce qui était le vrai préalable : la case supposait un journal à empaqueter et il n'en existait aucun. Reste le filet lui-même. Seuls `SIGINT`/`SIGTERM` sont interceptés (pour vider la cassette). Un `SIGSEGV` emporte le journal, la disposition des fenêtres pas encore autosauvegardée et tout le tampon de rewind, et l'utilisateur n'a rien à envoyer. Pour un logiciel maintenu par une personne et distribué à des amateurs sur quatre plateformes, c'est le maillon manquant du support. Gestionnaire de dernier recours écrivant trace d'appels + tampon de journal dans `crash/`, plus *Aide → Signaler un problème* qui assemble journal, snapshot, `ini/` et versions dans un zip. Aucune télémétrie : c'est l'utilisateur qui décide d'envoyer.
-- [ ] **`-Werror` sur Windows** `[S · nice]` — **macOS livré (23 août 2026)** → `[CHANGELOG.md](CHANGELOG.md)` : l'arbre mesuré sous AppleClang 17 (39 avertissements, 10 sites) a été nettoyé et le job `macos` passe `-DPOM1_WERROR=ON`. Reste MSVC : le job `windows` compile en `/W4` sans `/WX`. **Relevé du 22 août 2026** : huit `C4244` (`int` → `float`) sur `src/sidtrack/SidTrackerEditor.cpp:342-343` et un `C4701` dans le `stb_vorbis.c` vendu — une passe de nettoyage précède l'activation, et le vendu devra rester hors du périmètre `/WX` comme il l'est déjà de `/W4`. À mesurer sur une machine Windows, pas à corriger à l'aveugle.
-- [ ] **Étendre le rang des verrous aux mutex des cartes** `[S · nice]` — `LockOrder.h` couvre les trois verrous du cœur. `SID::chipMutex`, `TerminalCard::cardMutex` / `screenshotResultMutex` et les verrous du modem restent hors table ; leur donner un rang (sous `Snapshot`, ou dans une bande dédiée aux périphériques) étendrait la vérification au seul endroit où il reste des verrous non ordonnés. **Ne couvre pas la classe de défaut corrigée dans `CassetteDevice` en août 2026** : un rang vérifie l'ORDRE, pas la DURÉE de détention ni une allocation sur le thread temps-réel — ni `LockOrder.h` ni TSan ne voient celle-là, seule une lecture du chemin d'appel la trouve.
-
-### Refactors architecturaux (audit juillet 2026)
-
-> Issus d'une revue architecturale transversale. Le cœur (CPU/Memory/bus) est propre ; la dette se concentre dans le fan-out « ajouter une carte » et les god objects UI.
->
-> **Livré (août 2026 — passe « god files »)** → `[CHANGELOG.md](CHANGELOG.md)` : le **découplage `CliDispatcher` → `MainWindow_ImGui`** (table de presets sortie vers `MachinePresets.{h,cpp}`, sans UI ; le 5ᵉ trou de tests de juillet 2026 est comblé — **`cli_dispatcher_smoke`**, dont l'assertion réelle est qu'il *linke*), et **cinq god files découpés en code motion pur** (jeu de méthodes / lignes de code prouvé identique à chaque fois, 90/90 tests verts) : `Pom1BenchHost.cpp` 3957 → 2229 (+`_Lang` 571, `Targets` 456, `Cc65` 789), `MainWindow_Dialogs.cpp` 3559 → 1807 (+`_Settings` 594, `_Tutorials` 1227), `MainWindow_HardwareWindows.cpp` 2530 → 1752 (+`_SiliconStrict` 818), `EmulationController.cpp` 2143 → 867 (+3 TU), `MainWindow_Presets.cpp` 2740 → 2327. Le plus gros fichier propre restant est `Memory.cpp` (2532 l., déjà allégé en juillet) : **plus rien au-dessus de 2 600 lignes, contre quatre fichiers >2 500 et deux >3 500 avant la passe.**
->
-> **Livré (juillet 2026)** → `[CHANGELOG.md](CHANGELOG.md)` : le **registry de cartes unique** (`Memory::cardSlots()` — les 4 listes hand-synced de `Memory.cpp` + la 5ᵉ que portait `snapshot_smoke` effondrées en une table ordonnée ; unicité-8-octets prouvée à la compilation ; ordre des sections épinglé) ; l'**extraction du snapshot I/O** vers `MemorySnapshot.cpp` (`Memory.cpp` : 2569 → 2157 l.) et le `RomLoadPolicy` nommé ; la **fuite d'include** `EmulationController → imgui` ; le **table-driving des fenêtres photo** ; **4 des 5 trous de tests** (Disassembler6502, A1IO_RTC, TerminalCard, WiFiModem — 74 → 78 tests).
-
-- [ ] **Débogage au niveau source — étendre aux cibles C et au WASM** `[M · solid]` — **le MVP asm/desktop est livré (24 août 2026)** → `[CHANGELOG.md](CHANGELOG.md)` : `ca65 -g` + `ld65 --dbgfile`, parseur pur `src/DbgFile.cpp` (`dbgfile_smoke` + `bench_cc65_smoke`, qui épingle enfin `Pom1BenchCc65.cpp`), point d'arrêt source depuis la toolbar du Bench, curseur qui suit le PC au pas-à-pas, étiquettes du programme versées d'office dans le désassembleur. Reste : **les cibles C** (cl65 accepte `-g` mais `--dbgfile` doit traverser `-Wl` dans `benchCSpecLinkCmd`/`benchCSpecCl65Cmd`, et la table de lignes C passe par les `.dbg` du code généré) ; **le WASM** (le cc65-en-navigateur ne passe ni `-g` ni `--dbgfile` — même chantier côté `cc65_bench.js`) ; et des **points d'arrêt multiples** (le MVP s'aligne sur l'unique breakpoint CPU de la machine ; en gérer N demande soit un jeu de breakpoints dans `M6502`, soit un multiplexage réarmé au vol).
-> **Livré (23 août 2026 — fan-out d'en-têtes)** → `[CHANGELOG.md](CHANGELOG.md)` : `Memory.h` ne tire plus les onze en-têtes de cartes qu'il avait accumulés. Aucun n'était structurel — `std::unique_ptr<T>` n'exige `T` complet qu'au destructeur, et `~Memory()` est hors-ligne depuis longtemps ; les getters inline d'une ligne ne l'exigent pas non plus (`TMS9918` le prouvait déjà, forward-déclaré avec ses getters inline). Sept passent en déclaration anticipée ; `JukeBox.h` / `CodeTank.h` restent (types **imbriqués** dans des signatures) et `Gen2VideoScanner.h` aussi (membre par valeur). **Mesuré avant : `touch src/JukeBox.h` recompilait 105 TU, 5 min 21 s de CPU** pour un en-tête que 15 TU nomment — et `D64Image.h`, atteint via `IECCard.h` → `Drive1541.h`, entrait dans ~37 TU pour en servir 3. Rayon d'impact de la bascule : **7 TU** à qui il a fallu nommer l'en-tête qu'ils utilisaient déjà (4 dans `src/`, 3 tests).
-
-- [ ] **Nœud de fan-out suivant : `EmulationSnapshot.h`** `[S · nice]` — la passe du 23 août 2026 a libéré `Memory.h`, mais `JukeBox.h` et `CodeTank.h` ne sont retombés que de 105 à **57 TU** (contre 105 → ~20 pour les sept autres cartes) : ils restent tirés par `EmulationSnapshot.h`, lui-même très largement inclus, qui a besoin de `JukeBox::Snapshot` / `CodeTank::Snapshot` — des structs **imbriqués** par valeur, donc le même blocage que les enums, un cran plus haut. Quatre autres en-têtes (`MachinePresets.h`, `CliDispatcher.h`, `MemoryViewer_ImGui.h`, `MainWindow_ImGui.h`) ne se servent en revanche que des trois enums et peuvent basculer sur `[src/CardTypes.h](src/CardTypes.h)` seul. Même remède qu'au tour précédent : sortir les deux `Snapshot` à portée namespace, alias membres conservés pour ne toucher aucun site d'appel.
-
-> **Matrice headless des 13 presets livrée (23 août 2026)** → `[CHANGELOG.md](CHANGELOG.md)` : `--exit-after-cycles N` + `tools/test_headless_presets.py` (ctest **`headless_preset_matrix`**, 3 s pour les 13). C'était le prérequis des deux cases suivantes.
-
-- [ ] **Étendre la matrice aux combinaisons de cartes** `[S · solid]` — la matrice boote les presets tels que livrés ; les combinaisons que le mode strict *autorise* (`--enable`/`--disable` par-dessus un preset, `wouldCreateConflict` côté UI) et celles qu'il refuse ne sont pas parcourues. Même harnais, un second axe : pour chaque preset, chaque carte absente que `gateStrictPlug` accepterait, boot + Monitor. Et une assertion plus forte que « PC dans le Monitor » là où une ROM de carte a un prompt (SD CARD OS, CFFA1, Krusader) : un `--paste` + capture du flux `$D012` via `--telemetry-log`.
-- [ ] **TSan ne voit jamais le thread de rendu** `[M · solid]` — corollaire du précédent, et angle mort structurel : le job sanitizer nocturne lance `ctest`, or **seuls 7 des 94 fichiers de test instancient `EmulationController`** et aucun ne fait tourner d'UI. La seule paire de threads qui existe chez un utilisateur — *thread de rendu × thread d'émulation* — n'est donc jamais instrumentée. La discipline est pourtant bonne (audit du 23 août 2026 : **0 méthode sur 207 ne touche `memory->`/`cpu->` sans `stateMutex`**), mais c'est une propriété vérifiée à la lecture, pas par une machine. Le harnais headless ci-dessus est le préalable.
-- [ ] **Épingler les modules décrits comme purs** `[S · solid]` — 26 modules de `src/` n'apparaissent dans aucune cible de test, et presque tous sont de l'UI. **Recompté août 2026 : 42 des 105 `.cpp` de `src/` n'apparaissent dans aucune cible de test.** `Pom1BenchCc65.cpp` **est épinglé depuis le 24 août 2026** (`bench_cc65_smoke` — linke sans UI, part A sur les micro-parseurs purs, `Pom1BenchTargets.cpp` linké avec). Restent hors UI et testables : la table `ConflictRule` de `MainWindow_SiliconStrict.cpp`, qui est de la politique de bus pure et demande une extraction préalable. Les autres candidats plausibles ne le sont pas : `HgrImageDecode.cpp` / `TmsImageDecode.cpp` sont des TU d'implémentation stb_image sans en-tête, `bench/Markdown.cpp` porte 75 appels `ImGui::`, et `bench/BenchLang.h` inclut `TextEditor.h`. Règle à retenir de la passe précédente : **quand un module est décrit comme pur dans la doc, il devrait avoir un test qui le prouve.**
-- [ ] **Décomposer les panneaux en objets** `[L · solid]` — **le registre de panneaux est livré (23 août 2026)** → `[CHANGELOG.md](CHANGELOG.md)` : `WindowDescriptor` porte désormais `render` / `gate` / `desktopOnly` / `dock` en plus de la clé, du titre, du flag et de la catégorie, et il est la **liste unique** des 68 fenêtres — les 51 lignes `if (showX) renderX();`, les 26 lignes de `kDockLayout[]` et l'absence de menu Fenêtres ont disparu d'un coup, épinglés par **`window_registry_sync`** (premier contrôle de quelque nature que ce soit à atteindre MainWindow). L'angle `std::bitset` que cette case proposait est abandonné : il attaquait 68 octets de mémoire, pas le couplage, pour 691 sites d'accès à réécrire. **Reste ouvert, et c'est le vrai chantier** : les 17 135 lignes de la classe ne bougent pas et les 68 flags restent des membres de `MainWindow_ImGui`. La décomposition consiste à faire de chaque panneau un objet possédant son propre état (`visible`, géométrie, contexte) au lieu d'un `bool` chez MainWindow — faisable désormais **une fenêtre à la fois** derrière le registre, au lieu d'un big-bang. Les 17 lignes à `render == nullptr` (éditeurs qui auto-branchent leur carte, MemoryViewer, chooser) sont les premières candidates : leur bloc dédié EST déjà l'état qu'un objet porterait.
-- [ ] **Palette de commandes et raccourcis par identifiant** `[M · nice]` — débloqué par le registre : `shortcuts[]` (`MainWindow_Keyboard.cpp`) associe encore une touche à un **pointeur de méthode**, pas à une fenêtre, donc rien ne relie un raccourci à l'entrée de menu correspondante. Avec `key` comme identifiant stable, un raccourci devient `("Bench", Ctrl+B)` et la palette (absente de POM1, présente dans POM2) se réduit à un filtre sur `windowRegistry()`. Attention à l'invariant existant : `shortcuts[]` ne doit **jamais** porter un accord CTRL+lettre, qui rendrait le code de contrôle intypable côté Apple-1.
-- [ ] **Scinder la façade `EmulationController`** `[M · nice]` — la fuite d'include vers ImGui est livrée, et **l'axe taille l'est aussi au niveau des TU** (août 2026 : `EmulationController.cpp` 2143 l. → 4 TU — `.cpp` 867 (thread CPU + run/step + points d'arrêt + boucle de slice), `_State` 381, `_Machine` 332, `_Cards` 652 — code motion pur, jeu de méthodes prouvé identique) → `[CHANGELOG.md](CHANGELOG.md)`. **Reste ouvert** : l'axe *type*, pas fichier — extraire de vraies classes `CpuRunner` (run/step/slice) et `StateManager` (snapshot/rewind) au lieu de 207 méthodes sur une seule façade. Coûteux : ~110 des 207 sont des passthroughs d'une ligne vers `memory->setXxxEnabled()` appelés depuis tout le MainWindow, donc renommer déplace des centaines de sites — le vrai remède est de les data-driver contre `Memory::cardSlots()`, même chantier que l'item fenêtres hardware ci-dessus.
-
-
-
-
-
-### Snapshot, scripting & presets
-
-> **Durcissement désérialisation (audit 2026-05-31) livré** → `[CHANGELOG.md](CHANGELOG.md)`.
-
-- [ ] **Snapshot residual gaps** `[M · nice]` — base format + 12-card per-card payloads + CPU section landed (May 2026). Remaining: cassette mid-stream playback position (re-load tape file by path on snapshot-load + seek to saved `playbackIndex`); WiFiModem / TerminalCard graceful "drop and reconnect" on load (currently kept disconnected); libresidfp internal filter integrators / oscillator phase (engine doesn't expose them — would need an upstream patch); SHA-256 footer (mentioned in `SnapshotIO.h` as v2 sweetener).
-- [ ] **Scriptable runtime IPC** `[M · nice]` — `--cmd-fd <N>` (or Unix socket) reading line-delimited commands while the emulator runs — same verbs as CLI flags, but for stateful sequences. Telnet on `:6502` carries keystrokes + display; this channel carries control without polluting the keyboard stream. Depends on CLI-verb + snapshot work above.
-- [ ] **External** `presets.json` `[S · nice]` — **le prérequis est livré** : `kMachinePresets[]` vit désormais dans `MachinePresets.{h,cpp}`, un TU sans UI (août 2026). Reste à charger la table depuis un JSON sous `doc/` (ou à côté de l'exécutable) pour que l'utilisateur ajoute des presets sans recompiler. Loader dans `MachinePresets.cpp`, table C++ conservée en repli. Attention : `preset_ram_profiles_smoke` **parse le fichier source en texte** — un chargeur JSON devra lui donner une autre prise.
-
-
-
-### State rewind — raffinements (MVP livré)
-
-> **MVP livré** → `[CHANGELOG.md](CHANGELOG.md)` : ring de snapshots delta-encodés, panneau **CPU → State Rewind…** + bande timeline inline, état écran capturé, **desktop-only**. Pinned by `rewind_buffer_smoke`.
-
-- [ ] **VRAM dirty-tracking for finer TMS9918 deltas** `[M · nice]` — the 16 KB VRAM section is chunk-diffed against the previous full blob each capture; a live VRAM dirty bitmap would cut the per-capture diff cost on graphics-heavy frames.
-- [ ] **Seek cost on card-heavy presets** `[S · nice]` — `rewindSeekTo` reuses `loadSnapshotFromBuffer`, whose FLAGS dispatch re-applies card setters (may reload ROMs) every slider tick. Skip re-apply when the flag set is unchanged to keep dragging smooth.
+> **Porte de sortie** : les entrées malformées ne crashent ni ne bloquent l'émulateur ; zéro warning traité en erreur sur les plateformes supportées ; un rapport utilisateur contient versions, journal, snapshot et configuration sans télémétrie automatique.
 
 ---
 
+## 📦 Packaging, distribution & démarrage
 
+- [ ] **Chargement paresseux des assets WASM — reste `cassettes/`** `[S · nice]` — la moitié `pic/` est faite ; reste `cassettes/` (2,5 Mo sur le fil, dont le `WOZ_talk.mp3` qui ne sert qu'au preset Fantasy) pour descendre vers 5 Mo — plus délicat : `CassetteDevice` charge le fichier au moment de l'application du preset, pas à l'ouverture d'une fenêtre.
+  - **Ne pas faire `cfcard.po`** : fichier **creux** — 33 553 920 octets logiques, 800 Ko réels, 0,3 Mo gzip — le chantier (fetch asynchrone + état « image en cours de chargement », `Memory` ouvrant l'image au démarrage) est délicat pour 2 % du gain.
+- [ ] **Rejouer la borne Pi sur un Pi réel** `[S · solid]` — les scripts `packaging/raspberrypi/` sont portés de NeoST et validés en local (compilation GLES de bout en bout, cascade GLSL forcée sous llvmpipe, helpers `config.txt`/`cmdline.txt` testés en bac à sable), mais **jamais exécutés sur un Pi**. À vérifier sur place : `[CRT] GLSL …` dans `journalctl -u pom1-kiosk@pi`, absence de craquement audio à `POM1_AUDIO_LATENCY=120`, plein écran sans WM, et `--uninstall` qui rend bien `config.txt`/`cmdline.txt`.
+- [ ] **CI borne Pi (artefact `cortex-a72` avec PGO)** `[M · nice]` — NeoST entraîne son PGO sur un runner ARM64 (`pi-borne.yml`) pour éviter ~1 h de compilation sur le Pi ; POM1 n'a que l'AppImage aarch64 générique du job de release.
 
-## ⏸️ Deferred · 🚫 Blocked
+## 💾 Snapshot, scripting & presets
 
-> Spec connu, code tractable, mais conditionné à un déclencheur réel (logiciel exerçant la feature, demande utilisateur, hardware disponible). À promouvoir quand le déclencheur apparaît. **🚫 Blocked** = en attente d'une ressource externe hors de notre contrôle.
+- [ ] **Trous résiduels du snapshot** `[M · nice]` — format de base, charges utiles des 12 cartes et section CPU sont en place (mai 2026). Restent : la **position de lecture cassette en cours de flux** (recharger le fichier tape par son chemin à la relecture du snapshot + seek sur le `playbackIndex` sauvegardé) ; `WiFiModem` / `TerminalCard` en « drop and reconnect » propre au chargement (aujourd'hui laissés déconnectés) ; les intégrateurs de filtre / la phase d'oscillateur internes à libresidfp (le moteur ne les expose pas — demanderait un patch amont) ; le pied de page SHA-256 (annoncé dans `SnapshotIO.h` comme douceur v2).
+- [ ] **IPC de scripting à l'exécution** `[M · nice]` — `--cmd-fd <N>` (ou socket Unix) lisant des commandes ligne à ligne pendant que l'émulateur tourne — mêmes verbes que les flags CLI, mais pour des séquences avec état. Le telnet sur `:6502` porte les frappes et l'affichage ; ce canal porte le contrôle sans polluer le flux clavier. Dépend des verbes CLI et du snapshot ci-dessus.
+- [ ] **`presets.json` externe** `[S · nice]` — le prérequis est en place (`kMachinePresets[]` vit dans `MachinePresets.{h,cpp}`, TU sans UI). Reste à charger la table depuis un JSON sous `doc/` (ou à côté de l'exécutable) pour que l'utilisateur ajoute des presets sans recompiler. Loader dans `MachinePresets.cpp`, table C++ conservée en repli. Attention : `preset_ram_profiles_smoke` **parse le fichier source en texte** — un chargeur JSON devra lui donner une autre prise. **Différé jusqu'à la sortie de phase 2** (la configuration nommée de la phase 1 change la forme de la table).
 
-- [ ] **Uncle Bernie's Woz Machine floppy** `[L · nice]` — 5.25" Disk II: Woz state machine (74LS299 + 74LS259), Timing Fix Circuit (GAL16V8) absorbing DRAM-refresh jitter, GCR track/sector emulation, `.dsk` / `.woz` loader, `$C0Ex` soft switches, 74LS123 async drive clock. Worth it only when original Apple-1 disk software surfaces.
-- [ ] **Joystick / paddle analogique (télémétrie)** `[déféré — hardware inexistant]` — **Décision 2026-06-16 : ne PAS implémenter.** Les paddles analogiques (`$C064`/`$C070` + timer 558) sont du hardware **Apple II**, pas Apple-1 — les modéliser émulerait une carte qui n'existe pas (règle « une vraie carte à la fois »). Côté télémétrie le digital est déjà couvert (FIFO `TELE_IN` + injection clavier `$D010`), et aucun logiciel Apple-1 réel n'utilise de paddle. À promouvoir seulement si une carte paddle Apple-1 réelle apparaît.
+## ⏪ State rewind — raffinements
+
+- [ ] **Dirty-tracking VRAM pour des deltas TMS9918 plus fins** `[M · nice]` — la section VRAM de 16 Ko est diffée par blocs contre le blob complet précédent à chaque capture ; une bitmap de pages sales vivante réduirait le coût de diff par capture sur les frames chargées en graphismes.
+- [ ] **Coût du seek sur les presets chargés en cartes** `[S · nice]` — `rewindSeekTo` réutilise `loadSnapshotFromBuffer`, dont le dispatch FLAGS ré-applique les setters de cartes (et peut recharger des ROM) à chaque cran du slider. Sauter la ré-application quand le jeu de flags est inchangé, pour garder le glissement fluide.
+
+---
+
+## 🎨 Graphismes
+
+### Moteur beam GEN2
+
+- [ ] **Chemin GPU shader (desktop)** `[L · nice]` — porter `NtscPostProcessor` POM2 (mêmes noyaux FIR + matrice que le chemin composite CPU) sur le *shared video texture layer*. **Défer jusqu'à un besoin perf concret** : le décodage NTSC tourne sur un buffer 280×192 (~3-4 M MAC/frame), invisible en profil desktop ; le port déplace les **mêmes maths** vers un fragment shader → image byte-identique (épinglée `hgr_convert_smoke`), **zéro capacité visuelle ajoutée**. Ne le faire que si (1) un post-traitement lourd plein écran (courbure, bloom, scanlines shader, phosphore par pixel, NTSC à résolution interne >280) rend le CPU goulot, ou (2) un profil montre la démod comme coût réel. Coût : 2 chemins à garder byte-identiques + shader décliné GLSL/MSL/WebGL (dont le patch sampler Metal). Prérequis déjà livré → reportable **sans dette**.
+
+### TMS9918 — synchro beam/CPU sous-ligne
+
+- [ ] **Fetch sprite SAT « une ligne en avance » sous-ligne** `[M · solid]` — la ligne n doit afficher les sprites fetchés pendant n-1 (le latch seamless mode/blank existe ; reste la latence de fetch SAT exacte). Effet visible seulement sur écritures SAT mid-active (rares) → à valider sur silicium (Parmigiani) avant de modéliser la latence.
+- [ ] **Journal VideoEvents + renderer par rejeu, adoption GEN2** `[L · solid]` — remplacer le rattrapage *eager* par un journal `(cycle,kind,value)` per-cycle (h,v) composé par **rejeu** entre sync points (découplage total + rewind-friendly). GEN2 a déjà ce journal (`gen2RecordingEvents`, `Memory.cpp`), snapshot/rewind inclus. Reste : (a) **généraliser** le journal en facilité partagée (hors `Memory`) + faire adopter `BeamGeometry`/`beamPosAt` (`src/BeamClock.h`) par le rejeu GEN2 (aujourd'hui géométrie GEN2-privée dans `GraphicsCard::frameCycleToPos`) ; (b) **faire adopter le journal+rejeu par le TMS9918** (remplacer `renderBeamCatchUp`/`syncSpriteScanToBeam` eager + sérialiser son journal comme GEN2). Objectif cycle-granularity commun POM1/POM2.
+
+---
+
+## 🛠️ Outillage de développement
+
+### DevBench
+
+- [ ] **Débogage au niveau source — étendre aux cibles C et au WASM** `[M · solid]` — le MVP asm/desktop est en place (`ca65 -g` + `ld65 --dbgfile`, `src/DbgFile.cpp`, point d'arrêt source depuis la toolbar du Bench). Reste : **les cibles C** (cl65 accepte `-g` mais `--dbgfile` doit traverser `-Wl` dans `benchCSpecLinkCmd`/`benchCSpecCl65Cmd`, et la table de lignes C passe par les `.dbg` du code généré) ; **le WASM** (le cc65-en-navigateur ne passe ni `-g` ni `--dbgfile` — même chantier côté `cc65_bench.js`) ; et des **points d'arrêt multiples** (le MVP s'aligne sur l'unique breakpoint CPU de la machine ; en gérer N demande soit un jeu de breakpoints dans `M6502`, soit un multiplexage réarmé au vol).
+
+### BASIC dans le Bench
+
+> Les deux chantiers ci-dessous sont **différés jusqu'à la sortie de phase 2** (priorité produit).
+
+- [ ] **Variables chaîne (`A$`) dans le compilateur natif** `[L · nice]` — aujourd'hui le lexer rejette tout identifiant suivi de `$` (`BasicCompilerApplesoft.cpp`, « string variables need a later phase ») ; seuls les littéraux chaîne de `PRINT` existent. Chantier transverse : descripteurs (ptr+len) comme classe de variable parallèle à `V_`/`_I`, une région heap découpée dans `basicc_native.cfg`, un `basicrt_string.s` (alloc/copie/concat + `LEN`/`MID$`/`CHR$`/`STR$`), et un chemin d'expression *typé chaîne* dans le lexer/`expr` (tout est numérique aujourd'hui). Touche lexer + parser + codegen + runtime + cfg linker.
+- [ ] **Tier float compact (binary16 / virgule fixe) pour coords bornées** `[L · nice]` — la largeur (2 vs 4) est abstraite par `vw()`/`W`, mais ~15 sites d'émission codent le binary32 en dur (`fpLoadConst`, `fpNeg`, `emitIfFalse`, signe FOR, tous les `jsr fp_*`). Demande : une nouvelle valeur `FpMode`/format sur `Codegen`, des helpers d'émission parallèles, un runtime `basicrt_fixed.s` (`fx_add/fx_mul/fx_div/fx_cmp/…`), un jeu de symboles + gating `-D` dédié, un dimensionnement linker, et une 3ᵉ branche dans la sélection de phase (`compile()`). Utile seulement quand la précision binary32 est superflue (jeux/anim à coords bornées).
+
+### LOGO dans le Bench
+
+- [ ] **Livre d'exemples LOGO dans le popup *Examples*** `[S · solid]` — les 10 `.logo` de `sketchs/logo/` existent (et sont préchargés MEMFS côté web) mais ne sont atteignables que par *File → Load* ; les câbler dans `kP1Examples[]`/`examples_` (groupe « LOGO », ouverture 1-clic) comme les exemples asm/C, pour la découvrabilité. **Seul item hors feuille de route qui peut avancer en parallèle** : il ne touche pas la topologie.
+
+---
+
+## 🔌 Périphériques & chargeurs
+
+> Nouvelles cartes **différées jusqu'à la sortie de phase 2** : chacune ajoute une entrée à la topologie que la phase 1 est en train de refondre.
+
+- [ ] **Bootloader série flowenol apple1-serial** `[S · solid]` — [https://github.com/flowenol/apple1-serial](https://github.com/flowenol/apple1-serial) — bootloader / terminal sur port série (complète TurboType / 8BitFlux). Passe par la Terminal Card ou sa propre variante ACIA ; vraisemblablement un chargeur de format texte au-dessus de `Memory::loadHexDump` et du pipeline de collage.
+- [ ] 🚫 **Chargeur TurboType 57 600 bauds** `[M · solid]` — **En attente de Bernie (échange courriel 2026-06-24) : spec détaillée + une ROM/binaire du dropper nécessaires avant implémentation.** Format d'Uncle Bernie, distribué par le *Keyboard Serial Terminal* 8BitFlux (ATtiny + quartz 11 MHz + MAX232 + 74LS244). Protocole : amorçage à vitesse Wozmon (200 ms/newline, 20 ms/car.) installant un dropper en RAM qui **saute les échos `$D012`** et diffuse les octets à 57,6 kbps avec CRC courant, sentinelle + vérification CRC, saut à l'entrée. Charge 4 Ko en <30 s contre ~2 400 bauds sous Wozmon. Côté POM1 : parser `.TUR`/`.APL`, basculer la Terminal Card en 8 bits bruts avec injection sans écho (`Ctrl-T` donne déjà le 8 bits ; le sans-écho est nouveau), vérifier le CRC, rendre la main à Wozmon. *Note émulateur :* `loadHexDump` *gère déjà le multi-blocs et les marqueurs* `T`*/*`X`*, et charge instantanément — TurboType n'a de valeur que pour l'authenticité / la démonstration du protocole, pas pour la vitesse de chargement.*
+- [ ] **Briel Multi I/O — SpeakJet** `[M · nice]` — les blocs 6522 / 6551 doublonnent microSD / MODEM ; la valeur propre est de router le flux d'octets de l'UART vers un pont TTS (eSpeak, `say` sous macOS) pour donner une voix à l'Apple-1. À livrer comme périphérique optionnel séparé, afin qu'il coexiste avec microSD.
+
+---
+
+## 🖼️ Visuel & UX
+
+- [ ] **Fidélité CRT 1976 (opt-in, désactivé par défaut)** `[M · nice]` — deux sous-effets sous le toggle CRT existant :
+  1. **Streaming du registre à décalage** `[S · nice]` (timing Signetics 2519) — les caractères arrivent à ~60/s, le scroll matériel décale le buffer une ligne à la fois, l'affichage gèle pendant les rafales CPU. À associer au preset 4 Ko nu.
+  2. **Bruit de points du registre à décalage** `[S · nice]` (horloge 2504 / 2513) — statique périodique, **non aléatoire** — ~40 × 3 sous-cellules par caractère, dérive de phase horizontale de 1 px d'une ligne à l'autre, dernière rangée plus courte. Nouveau `drawShiftRegisterNoise()` après la passe de fond, double boucle déterministe, `alpha ≈ crtScanlineAlpha * 0.25`, teinté par `phosphorTint`.
+
+---
+
+## ⏸️ Différé · 🚫 Bloqué
+
+> Spec connue, code tractable, mais conditionné à un déclencheur réel (logiciel exerçant la feature, demande utilisateur, matériel disponible). À promouvoir quand le déclencheur apparaît. **🚫 Bloqué** = en attente d'une ressource externe hors de notre contrôle.
+
+- [ ] **Woz Machine floppy d'Uncle Bernie** `[L · nice]` — Disk II 5,25" : machine à états de Woz (74LS299 + 74LS259), Timing Fix Circuit (GAL16V8) absorbant le jitter de rafraîchissement DRAM, émulation GCR piste/secteur, chargeur `.dsk` / `.woz`, soft switches `$C0Ex`, horloge asynchrone de lecteur 74LS123. Ne vaut le coup que si du logiciel disquette Apple-1 d'origine refait surface.
+- [ ] **Joystick / paddle analogique (télémétrie)** `[différé — matériel inexistant]` — **Décision 2026-06-16 : ne PAS implémenter.** Les paddles analogiques (`$C064`/`$C070` + timer 558) sont du matériel **Apple II**, pas Apple-1 — les modéliser émulerait une carte qui n'existe pas (règle « une vraie carte à la fois »). Côté télémétrie le digital est déjà couvert (FIFO `TELE_IN` + injection clavier `$D010`), et aucun logiciel Apple-1 réel n'utilise de paddle. À promouvoir seulement si une carte paddle Apple-1 réelle apparaît.
