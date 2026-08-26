@@ -18,7 +18,7 @@ Open work on the **emulator** only. Shipped work → `[CHANGELOG.md](CHANGELOG.m
 - [🛠️ Dev tooling](#-dev-tooling) — POM1 Bench · BASIC · LOGO · DevBench editor
 - [🔌 Peripherals & loaders](#-peripherals--loaders) — serial loaders · optional cards
 - [🖼️ Visuals & UX](#-visuals--ux) — CRT fidelity
-- [🔧 Infra & technical debt](#-infra--technical-debt) — packaging / distribution / démarrage · architecture refactors · snapshot / scripting · state rewind
+- [🔧 Infra & technical debt](#-infra--technical-debt) — feuille de route architecturale · packaging / distribution / démarrage · snapshot / scripting · state rewind
 - [⏸️ Deferred · 🚫 Blocked](#-deferred--blocked)
 
 ---
@@ -95,6 +95,82 @@ Open work on the **emulator** only. Shipped work → `[CHANGELOG.md](CHANGELOG.m
 
 
 ## 🔧 Infra & technical debt
+
+### Feuille de route de consolidation architecturale — audit du 26 août 2026
+
+> **Diagnostic** : POM1 reste un monolithe modulaire sain, avec un cœur CPU / bus / rendu robuste et très bien testé. La dette critique est désormais concentrée dans le cycle de vie des cartes, les trois sources de vérité de la configuration (`MainWindow_ImGui`, `Memory::setXxxEnabled()`, `MachineConfig`) et les responsabilités système accumulées par `Memory` / `EmulationController`. **Aucune réécriture** : conserver CPU, `PeripheralBus`, renderers, snapshots incrémentaux et tests ; migrer par façades compatibles, une responsabilité à la fois.
+>
+> **Architecture cible** : panneaux UI → commandes / vues immuables → façade applicative thread-safe → `MachineCoordinator` (`CpuRunner`, `CardTopology`, `StateManager`) → espace d'adressage / `PeripheralBus` / périphériques. Audio, fichiers, réseau et rendu deviennent des services injectés. Ordre recommandé : phases 0 → 1 → 2 sur le chemin critique ; phase 3 dès que la topologie est stable ; phases 4-6 incrémentales. Estimation globale : **10-14 semaines développeur**, point de stabilisation essentiel après **5-7 semaines**.
+
+#### Phase 0 — Socle reproductible et frontières de build (2-4 jours)
+
+- [ ] **Rendre les dépendances CMake configurables et hors-ligne** `[S · solid]` — ajouter les cache paths `POM1_IMGUI_DIR` et `POM1_KLAUS_BIN` ; pour Klaus, télécharger sans `EXPECTED_HASH`, ne calculer / comparer le SHA-256 qu'après un téléchargement réussi, et désactiver explicitement le test avec un message actionnable si aucun binaire local ou réseau n'est disponible. Le contrôle `imgui_pin_sync` doit fonctionner dans une archive source sans `.git`, ou annoncer proprement qu'il n'est pas applicable.
+- [ ] **Matérialiser les couches dans CMake** `[M · solid]` — faire évoluer la bibliothèque d'objets de tests déjà livrée vers des cibles logiques `pom1_core`, `pom1_devices`, `pom1_app` et `pom1_ui`, sans big-bang ; centraliser le câblage répétitif des smokes dans un helper `pom1_add_smoke_test()` et lier chaque cible au plus petit ensemble de couches nécessaire.
+- [ ] **Épingler les dépendances architecturales et leur tendance** `[S · solid]` — ajouter un contrôle de direction des includes / liens et publier une baseline simple (taille de `MainWindow_ImGui`, `Memory`, `EmulationController`, fan-out des en-têtes, nombre de sources hors cible de test). Le garde doit refuser une nouvelle dépendance UI → cœur ou périphérique → UI, sans imposer immédiatement une baisse de tous les compteurs historiques.
+
+> **Porte de sortie phase 0** : un checkout disposant de ses dépendances locales se configure hors-ligne ; build Release natif avec `POM1_WERROR=ON` et inventaire CTest complet verts ; aucun changement de comportement émulateur.
+
+#### Phase 1 — Une source de vérité pour la topologie des cartes (~2 semaines)
+
+- [ ] **Introduire les identités et descripteurs de cartes stables** `[M · critical]` — créer `enum class CardId`, `CardDescriptor` et `CardSet` : identifiant non localisé, libellé UI, plages d'adresses, dépendances, incompatibilités, variante / options, tag de snapshot et capacités. Étendre le registry existant `Memory::cardSlots()` au lieu de créer une table concurrente.
+- [ ] **Extraire toute la politique de conflit dans `CardTopology`** `[M · critical]` — déplacer `ConflictRule`, `wouldCreateConflict`, les comparaisons de chaînes de `MainWindow_SiliconStrict.cpp` et les cascades de `Memory::setXxxEnabled()` vers un module pur. Modéliser explicitement au minimum IEC → microSD, CodeTank → TMS9918, XACI → ACI et les exclusions Silicon Strict / Fantasy. `Memory` ne doit plus décider ce qu'il faut désactiver : il attache ou détache la configuration validée qui lui est demandée.
+- [ ] **Remplacer le `MachineConfig` positionnel par une configuration nommée** `[M · critical]` — conserver les 13 presets et leurs index historiques via une table de compatibilité, mais stocker les cartes dans `CardSet`, leurs options dans des champs nommés et le défaut dans un `PresetId` explicite au lieu de l'invariant « dernier élément ». Ajouter une validation au démarrage / à la compilation des identifiants, dépendances et conflits de chaque preset.
+- [ ] **Produire puis exécuter un `TransitionPlan` déterministe** `[L · critical]` — `MachineCoordinator::planConfiguration()` calcule la fermeture des dépendances, les refus et l'ordre detach / configure / attach ; `applyConfiguration()` exécute ce plan sous le verrou d'état. Garder temporairement les setters publics de `EmulationController` comme wrappers de compatibilité, puis supprimer chaque wrapper dès que ses appelants UI / CLI ont migré.
+- [ ] **Tester exhaustivement la politique de topologie** `[M · critical]` — tests purs de toutes les paires de cartes, dépendances / cascades, modes Strict et Fantasy, idempotence, validation des 13 presets et matrice des 169 transitions preset → preset. Chaque nouvelle carte devra fournir son descripteur et étendre automatiquement la matrice, sans nouvelle liste maintenue à la main.
+
+> **Porte de sortie phase 1** : aucune règle de topologie dans `MainWindow_*`; aucun conflit décidé dans `Memory`; presets, CLI et UI consomment le même `TransitionPlan`; toutes les transitions sont déterministes et testées.
+
+#### Phase 2 — Cycle de vie déterministe, indépendant des frames UI (1-2 semaines)
+
+- [ ] **Définir un cycle de vie explicite des périphériques** `[M · critical]` — remplacer le contrat minimal actuel par les états `constructed → attached → reset → active`, avec opérations idempotentes et ordre documenté. Le raccordement au bus doit être terminé avant le premier cycle CPU ; l'audio et le réseau ne deviennent actifs qu'après le reset et la disponibilité de leur producteur.
+- [ ] **Appliquer un preset comme une transaction machine** `[L · critical]` — pause CPU → detach des ressources sortantes → configuration / chargement ROM / reset → attach au bus → activation audio / réseau → publication d'un snapshot cohérent → reprise CPU. En cas d'échec, retourner une erreur structurée et conserver ou restaurer une configuration valide ; ne jamais exposer un état intermédiaire à l'UI.
+- [ ] **Éliminer le délai magique de 15 frames** `[M · critical]` — identifier avec un test reproductible la cause du SID / cassette silencieux ou cassé lors d'un branchement immédiat, corriger l'ordre d'initialisation ou amorcer explicitement les rings, puis supprimer `kCardEnableDeferFrames`, `pendingCardEnableFrames`, `finalizePendingCardPlugs()` et tous les booléens `pending*` associés. Aucun remplacement par un autre temporisateur mural ou graphique.
+- [ ] **Prouver le démarrage sans rendu préalable** `[M · critical]` — tests « apply preset + load + premier cycle » avec zéro frame UI, changement de preset pendant l'exécution, activation / retrait répétés, sortie SID / cassette non vide, et parité desktop headless / OpenGL / Metal / WASM. Ajouter ces scénarios à la matrice headless existante.
+
+> **Porte de sortie phase 2** : aucun cycle de vie cadencé par ImGui ; aucune fenêtre de course entre CLI / chargement et premier cycle CPU ; même comportement avec ou sans thread de rendu.
+
+#### Phase 3 — Audio temps réel et concurrence réellement exercée (1-2 semaines)
+
+- [ ] **Retirer verrous et allocations du callback audio** `[M · critical]` — remplacer `AudioDevice::sourcesMutex` dans `mixSources()` par un petit tableau fixe ou une liste immuable double-buffer publiée atomiquement. Les producteurs alimentent des rings lock-free ; décodage cassette, ajout / retrait de sources et destruction restent hors callback. Définir et tester la durée de vie garantissant qu'une source retirée n'est libérée qu'après le dernier callback qui peut encore la voir.
+- [ ] **Mesurer les invariants temps réel** `[S · solid]` — instrumentation debug / benchmark du temps maximal de détention de `stateMutex`, du temps du callback, des underruns et des débordements de rings ; seuils prudents dans un stress test, métriques désactivables et sans coût notable en Release.
+
+> **Travaux canoniques déjà ouverts plus bas** : « Étendre le rang des verrous aux mutex des cartes » dans *Solidité*, et « TSan ne voit jamais le thread de rendu » dans *Refactors architecturaux*. Le second doit lancer simultanément producteur `EmulationController`, consommateur snapshot / rendu synthétique et callback audio synthétique, en smoke court par PR et sous TSan nocturne.
+>
+> **Porte de sortie phase 3** : zéro `std::mutex` / allocation dans le callback ; le triangle émulation × rendu × audio est réellement exercé sous TSan ; zéro race et zéro underrun dans le scénario de stress de référence.
+
+#### Phase 4 — Extraire les responsabilités sans réécriture (2-3 semaines)
+
+- [ ] **Extraire des chargeurs de mémoire purs** `[M · solid]` — créer `MemoryImageLoader` et des parseurs par format qui reçoivent des octets et retournent écritures / zones / adresse d'exécution / diagnostics, sans accès à `Memory`, audio, UI ou système de fichiers. `Memory` ne fait qu'appliquer un résultat validé. Cette frontière devient le point d'entrée des fuzzers de la phase 6.
+- [ ] **Injecter la découverte des ressources et les services plateforme** `[M · solid]` — déplacer les sondes du cwd, chemins ROM / disques / cartes et création du périphérique audio hors du constructeur de `Memory`, derrière `ResourceLocator` et des interfaces de services fournies par l'application. Les tests construisent le cœur sans matériel audio ni fichiers implicites.
+- [ ] **Créer `PeripheralManager`** `[L · critical]` — lui transférer propriété et cycle de vie des cartes, bindings `PeripheralBus`, endpoints audio / réseau et application du `TransitionPlan`. Réduire progressivement `Memory` à l'espace d'adressage, PIA et MMIO cœur ; préserver `memRead()` / `memWrite()` et `PeripheralBus` comme interfaces stables.
+- [ ] **Définir des DTO de snapshot indépendants des classes de cartes** `[M · solid]` — sortir `CpuView` / `CardView` et snapshots de cartes à portée namespace, avec alias transitoires si nécessaire ; retirer les includes concrets de `EmulationSnapshot.h`, puis mesurer le fan-out. Ne partager de gros buffers immuables qu'après profilage : la priorité est la frontière de type, pas une micro-optimisation de copie.
+- [ ] **Faire de `EmulationController` une façade mince** `[L · critical]` — achever les extractions `CpuRunner` (pacing, run / pause / step) et `StateManager` (snapshot / rewind), conserver la prise de verrou dans une façade applicative thread-safe, puis remplacer les ~110 passthroughs de cartes par commandes data-driven `CardId` / configuration. Migrer par groupes d'appelants et supprimer les wrappers devenus morts à chaque PR.
+
+> **Porte de sortie phase 4** : `Memory` ne crée plus d'audio, ne sonde plus le filesystem et ne décide plus des conflits ; `EmulationSnapshot.h` n'inclut plus les cartes concrètes ; CMake interdit les dépendances inverses ; les anciennes API ne subsistent que si un appelant réel les utilise encore.
+
+#### Phase 5 — Décomposer l'UI par panneaux (3-5 semaines, incrémental)
+
+- [ ] **Faire du registre de fenêtres une fabrique / propriétaire d'`IPanel`** `[L · solid]` — chaque panneau possède `visible`, état transitoire, modèle de vue et `render(AppContext&)`; `MainWindow_ImGui` conserve menu, dock, layout et orchestration générale. Exploiter `WindowDescriptor` existant et migrer exactement un panneau par PR.
+- [ ] **Migrer les panneaux dans l'ordre de risque architectural** `[L · solid]` — commencer par Silicon Strict / presets afin de consommer `CardTopology`, poursuivre par les panneaux de cartes, puis debug et dialogues fichier. Les 17 entrées `render == nullptr` dont l'état est déjà regroupé restent de bons quick wins, mais ne doivent pas retarder l'extraction de la politique de configuration.
+- [ ] **Supprimer le miroir matériel autoritaire de l'UI** `[M · critical]` — les booléens « carte active » et variantes viennent exclusivement de la vue publiée / `CardSet`; seuls visibilité, champs en cours d'édition et erreurs de validation restent locaux au panneau. Une commande UI demande une transition et affiche son résultat, sans muter préventivement plusieurs booléens.
+- [ ] **Router fenêtres et raccourcis par identifiant stable** `[M · solid]` — utiliser la clé du registre, jamais le titre traduit ni un pointeur de méthode, pour menus, raccourcis, layout et future palette de commandes. Préserver l'invariant Apple-1 interdisant les accords CTRL+lettre réservés au terminal.
+
+> **Travaux canoniques déjà ouverts plus bas** : « Décomposer les panneaux en objets » et « Palette de commandes et raccourcis par identifiant ».
+>
+> **Porte de sortie phase 5** : `MainWindow_ImGui` est une coquille applicative ciblée à moins de 400-500 lignes de déclaration ; aucun booléen UI ne constitue l'état réel d'une carte ; chaque panneau migré est testable indépendamment.
+
+#### Phase 6 — Entrées hostiles, support et portabilité (1-2 semaines, parallélisable)
+
+- [ ] **Transformer les fuzzers de chargeurs en garde continue** `[M · solid]` — pour WOZMON / Intel HEX / TUR / AIFF / D64 / snapshots, imposer tailles maximales, validation des longueurs / CRC et erreurs structurées ; amorcer avec les corpus du dépôt, exécuter un smoke borné par PR et une campagne longue sous ASan la nuit. Chaque crash devient un test de régression minimal.
+- [ ] **Documenter et automatiser la porte de sortie de consolidation** `[S · solid]` — checklist release réunissant build warnings-as-errors sur les trois OS, matrice presets + combinaisons, WASM browser smoke, sanitizers, fuzz smoke et création locale d'un bundle de diagnostic. Ne déclarer la consolidation terminée qu'une fois ces gardes observées vertes sur CI.
+
+> **Travaux canoniques déjà ouverts plus bas** : « Fuzzer les chargeurs de fichiers », « Filet de crash + bundle de diagnostic », « `-Werror` sur Windows » dans *Solidité*, et « Étendre la matrice aux combinaisons de cartes » dans *Refactors architecturaux*. Le bundle reste strictement local et envoyé uniquement sur décision de l'utilisateur.
+>
+> **Porte de sortie phase 6** : les entrées malformées ne crashent ni ne bloquent l'émulateur ; zéro warning traité en erreur sur les plateformes supportées ; un rapport utilisateur contient versions, journal, snapshot et configuration sans télémétrie automatique.
+
+#### Priorité produit pendant la consolidation
+
+> **P0 maintenant** : phase 0, topologie / cycle de vie (phases 1-2), callback audio et harnais de concurrence (phase 3). **P1 ensuite** : frontières `Memory` / `EmulationController`, DTO snapshot, fuzzing et premiers panneaux (phases 4-6). **P2 après stabilisation** : bundle de crash, nettoyage CMake résiduel et couverture snapshot restante. Différer les nouvelles cartes, le shader GEN2 GPU, les chaînes BASIC, le tier binary16 et `presets.json` externe jusqu'à la sortie de phase 2 ; le petit câblage des exemples LOGO peut continuer car il ne touche pas la topologie.
 
 ### Packaging, distribution & démarrage
 
