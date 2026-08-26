@@ -60,6 +60,7 @@ build-debug
 build-san
 build-gl
 build-asan
+build-tsan
 build-audit
 # Secondary configure of the GLES 3.0 tier (cmake -DPOM1_GLES=ON), as used by
 # the "Compile the GLES 3.0 tier" CI step and by local Raspberry Pi checks.

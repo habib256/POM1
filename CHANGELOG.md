@@ -29,12 +29,18 @@ figurait au plan, mais appelait encore `jumpTo()` puis `stopCpu()` : il réduisa
 fenêtre sans la fermer. Le nocturne TSan du 26 août l'a reproduite sur
 `t04_lr_fill.s`.
 
-`runDeferredActions` utilise désormais `jumpToPaused()` dans ce cas. Cette opération
-réécrit le vecteur, effectue le hard reset et publie l'état **sans jamais démarrer le
-thread asynchrone** ; les N `stepCpu()` sont donc les seules instructions exécutées.
-Un `--run` sans `--step` conserve son comportement interactif. Un test d'exécution
-épingle PC, RAM et état arrêté après une attente réelle, tandis que
-`lib_micro_tests` conserve les assertions fonctionnelles 6502 / TMS9918 complètes.
+`runDeferredActions` utilise désormais `jumpToPaused()` dans ce cas. Le premier run
+TSan suivant a confirmé que `t04_lr_fill.s` était réparé, mais a révélé la seconde
+moitié du même défaut : le `--load` placé avant `--run` démarrait lui aussi le CPU.
+Le programme pouvait donc avancer entre **Load et Run**, avant même d'atteindre le
+nouveau saut arrêté. Les deux chargeurs CLI reçoivent maintenant l'intention du plan
+et restent arrêtés de bout en bout dès qu'un `--step` est présent ; ni Load ni Run
+n'arme le thread asynchrone avant les N `stepCpu()`.
+
+Un `--load` / `--run` sans `--step` conserve son comportement interactif. Le test
+d'exécution passe désormais par un vrai fichier binaire et épingle PC, RAM et état
+arrêté après une attente réelle, couvrant les deux transitions. `lib_micro_tests`
+conserve les assertions fonctionnelles 6502 / TMS9918 complètes.
 
 ### Fixed — `sid_audio_smoke` : un seuil chronodépendant, infranchissable sous instrumentation
 

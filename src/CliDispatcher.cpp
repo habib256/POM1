@@ -758,7 +758,7 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& cleanExitOut)
 
 namespace {
 
-void runLoad(const CliAction& a, EmulationController& emu)
+void runLoad(const CliAction& a, EmulationController& emu, bool startCpu)
 {
     std::string err;
     int bytes = 0;
@@ -771,7 +771,7 @@ void runLoad(const CliAction& a, EmulationController& emu)
     // text straight into RAM without an error, so keep this list central.
     if (pom1::isHexDumpPath(a.pathS)) {
         uint16_t startAddr = 0;
-        if (!emu.loadHexDump(a.pathS, startAddr, err, &bytes)) {
+        if (!emu.loadHexDump(a.pathS, startAddr, err, &bytes, nullptr, startCpu)) {
             pom1::log().error("CLI", "--load " + a.pathS + ": " + err);
             return;
         }
@@ -782,7 +782,8 @@ void runLoad(const CliAction& a, EmulationController& emu)
         pom1::log().info("CLI", ss.str());
         return;
     }
-    if (!emu.loadBinary(a.pathS, static_cast<uint16_t>(a.addressI), err, &bytes)) {
+    if (!emu.loadBinary(a.pathS, static_cast<uint16_t>(a.addressI), err, &bytes,
+                        startCpu)) {
         pom1::log().error("CLI", "--load " + a.pathS + ": " + err);
         return;
     }
@@ -932,7 +933,7 @@ void runDeferredActions(const std::vector<CliAction>& actions,
 
     for (const auto& a : actions) {
         switch (a.kind) {
-            case CliAction::Kind::Load:      runLoad(a, emu);    break;
+            case CliAction::Kind::Load:      runLoad(a, emu, !planSteps); break;
             case CliAction::Kind::Run:       if (planSteps)
                                                  emu.jumpToPaused(static_cast<uint16_t>(a.addressI));
                                              else

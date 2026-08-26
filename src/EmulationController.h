@@ -242,8 +242,10 @@ public:
 
     bool loadHexDump(const std::string& path, uint16_t& startAddress, std::string& error,
                      int* bytesLoaded = nullptr,
-                     std::vector<std::pair<uint16_t,uint16_t>>* zones = nullptr);
-    bool loadBinary(const std::string& path, uint16_t startAddress, std::string& error, int* bytesLoaded = nullptr);
+                     std::vector<std::pair<uint16_t,uint16_t>>* zones = nullptr,
+                     bool startCpu = true);
+    bool loadBinary(const std::string& path, uint16_t startAddress, std::string& error,
+                    int* bytesLoaded = nullptr, bool startCpu = true);
 
     /// Monotonic stamp of "what program is in memory". Bumped by every
     /// operation that replaces it — a binary load, a hard reset, a snapshot

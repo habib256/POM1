@@ -24,6 +24,8 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <optional>
 #include <string>
 #include <thread>
@@ -223,28 +225,42 @@ void testDeferredActions()
 // D — execution invariant: --run followed by --step is fully synchronous.
 //
 // The first fix called jumpTo() (which starts the worker) and then stopCpu().
-// TSan eventually scheduled the worker inside that tiny interval, proving that
-// "immediate stop" is still a race. This program increments $0000 once; after
-// one requested step it must be parked at $0302 forever, independent of host
-// load or sanitizer scheduling.
+// The second made Run itself paused, but Load still started the worker before
+// Run could stop it. TSan scheduled both intervals in successive CI runs. This
+// program increments $0000 once; after one requested step it must be parked at
+// $0302 forever, independent of host load or sanitizer scheduling.
 // ---------------------------------------------------------------------------
 void testRunThenStepNeverStartsAsyncCpu()
 {
     EmulationController emu(nullptr);
     emu.stopCpu();
-    emu.writeMemoryBatch({
-        {0x0000, 0x00},
-        {0x0300, 0xE6}, {0x0301, 0x00},             // INC $00
-        {0x0302, 0x4C}, {0x0303, 0x00}, {0x0304, 0x03} // JMP $0300
-    });
+    emu.writeMemory(0x0000, 0x00);
 
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const std::filesystem::path binary =
+        std::filesystem::temp_directory_path() /
+        ("pom1_cli_load_run_step_" + std::to_string(nonce) + ".bin");
+    {
+        const unsigned char program[] = {
+            0xE6, 0x00,                         // INC $00
+            0x4C, 0x00, 0x03                    // JMP $0300
+        };
+        std::ofstream out(binary, std::ios::binary);
+        out.write(reinterpret_cast<const char*>(program), sizeof(program));
+        assert(out.good());
+    }
+
+    CliAction load;
+    load.kind = CliAction::Kind::Load;
+    load.addressI = 0x0300;
+    load.pathS = binary.string();
     CliAction run;
     run.kind = CliAction::Kind::Run;
     run.addressI = 0x0300;
     CliAction step;
     step.kind = CliAction::Kind::Step;
     step.countI = 1;
-    pom1::runDeferredActions({run, step}, emu);
+    pom1::runDeferredActions({load, run, step}, emu);
 
     EmulationSnapshot first;
     emu.copySnapshot(first);
@@ -259,6 +275,9 @@ void testRunThenStepNeverStartsAsyncCpu()
     assert(!later.cpuRunning);
     assert(later.programCounter == first.programCounter);
     assert(later.memory[0x0000] == first.memory[0x0000]);
+
+    std::error_code ec;
+    std::filesystem::remove(binary, ec);
 }
 
 // ---------------------------------------------------------------------------
