@@ -11,17 +11,22 @@
 // exactly the alarm we want, and why the assertions below deliberately cover
 // preset lookup (the path that used to reach through MainWindow).
 //
-// Scope: argv → CliPlan decisions only. Phase-C execution (runDeferredActions)
-// needs a live EmulationController and is covered elsewhere.
+// Scope: argv → CliPlan decisions, plus the one Phase-C invariant that cannot
+// be established by parsing alone: `--run X --step N` must never start the
+// asynchronous CPU between the jump and the first synchronous step.
 
 #include "CliDispatcher.h"
+#include "EmulationController.h"
+#include "EmulationSnapshot.h"
 #include "MachinePresets.h"
 
 #include <cassert>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 using pom1::CliAction;
@@ -215,7 +220,49 @@ void testDeferredActions()
 }
 
 // ---------------------------------------------------------------------------
-// D — card overrides and bounded numeric flags.
+// D — execution invariant: --run followed by --step is fully synchronous.
+//
+// The first fix called jumpTo() (which starts the worker) and then stopCpu().
+// TSan eventually scheduled the worker inside that tiny interval, proving that
+// "immediate stop" is still a race. This program increments $0000 once; after
+// one requested step it must be parked at $0302 forever, independent of host
+// load or sanitizer scheduling.
+// ---------------------------------------------------------------------------
+void testRunThenStepNeverStartsAsyncCpu()
+{
+    EmulationController emu(nullptr);
+    emu.stopCpu();
+    emu.writeMemoryBatch({
+        {0x0000, 0x00},
+        {0x0300, 0xE6}, {0x0301, 0x00},             // INC $00
+        {0x0302, 0x4C}, {0x0303, 0x00}, {0x0304, 0x03} // JMP $0300
+    });
+
+    CliAction run;
+    run.kind = CliAction::Kind::Run;
+    run.addressI = 0x0300;
+    CliAction step;
+    step.kind = CliAction::Kind::Step;
+    step.countI = 1;
+    pom1::runDeferredActions({run, step}, emu);
+
+    EmulationSnapshot first;
+    emu.copySnapshot(first);
+    assert(!first.cpuRunning);
+    assert(first.programCounter == 0x0302);
+    assert(first.memory[0x0000] == 0x01);
+
+    // Give a mistakenly-started worker ample opportunity to expose itself.
+    std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    EmulationSnapshot later;
+    emu.copySnapshot(later);
+    assert(!later.cpuRunning);
+    assert(later.programCounter == first.programCounter);
+    assert(later.memory[0x0000] == first.memory[0x0000]);
+}
+
+// ---------------------------------------------------------------------------
+// E — card overrides and bounded numeric flags.
 // ---------------------------------------------------------------------------
 void testOverridesAndBounds()
 {
@@ -269,7 +316,7 @@ void testOverridesAndBounds()
 }
 
 // ---------------------------------------------------------------------------
-// E — save-tape format resolution (pure helper, no emulator needed).
+// F — save-tape format resolution (pure helper, no emulator needed).
 // ---------------------------------------------------------------------------
 void testSaveTapePath()
 {
@@ -289,7 +336,7 @@ void testSaveTapePath()
 }
 
 // ---------------------------------------------------------------------------
-// F — the print-and-exit flags.
+// G — the print-and-exit flags.
 //
 // --help and --list-presets both return nullopt, exactly like a PARSE ERROR
 // does, and only `cleanExitOut` tells main() whether to exit 0 or 1. Getting
@@ -319,6 +366,7 @@ int main()
     testPresetTable();
     testPresetSelection();
     testDeferredActions();
+    testRunThenStepNeverStartsAsyncCpu();
     testOverridesAndBounds();
     testSaveTapePath();
     testPrintAndExitFlags();
