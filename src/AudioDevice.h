@@ -21,9 +21,12 @@
 #include "POM1Build.h"
 
 #include <cstdint>
+#include <array>
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <vector>
+#include "RealtimeDiagnostics.h"
 
 #if !POM1_IS_WASM
 struct ma_device;
@@ -46,7 +49,7 @@ class AudioDevice
 public:
     static constexpr uint32_t kSampleRate = 44100;
 
-    AudioDevice();
+    explicit AudioDevice(bool initializeHardware = true);
     ~AudioDevice();
 
     void addSource(AudioSource* source);
@@ -65,6 +68,7 @@ public:
 
     /// Called from the audio callback — mixes all sources into output.
     void mixSources(float* output, int frameCount);
+    void copyRealtimeDiagnostics(pom1::RealtimeDiagnostics& out) const;
 
     /// Size the output buffer for `ms` milliseconds of cushion instead of the
     /// ~17 ms default (256 frames × 3 periods at 44.1 kHz).
@@ -94,11 +98,25 @@ private:
     /// the buffer, so the callback never allocates whatever the period size is.
     static constexpr int kMixScratchFrames = 8192;
 
-    std::vector<AudioSource*> sources;
-    mutable std::mutex sourcesMutex;
+    static constexpr std::size_t kMaxSources = 8;
+    struct SourceSnapshot {
+        std::array<AudioSource*, kMaxSources> entries{};
+        std::size_t count = 0;
+    };
+
+    /// Producer-side serialization only. The real-time callback never takes
+    /// this mutex: it pins one immutable snapshot with reader counters.
+    mutable std::mutex sourcePublishMutex;
+    std::array<SourceSnapshot, 2> sourceSnapshots{};
+    std::atomic<unsigned> activeSourceSnapshot{0};
+    std::array<std::atomic<unsigned>, 2> sourceReaders{{0, 0}};
     std::vector<float> tmpBuf;
     bool audioAvailable = false;
     uint32_t actualSampleRate = kSampleRate;
+#if POM1_REALTIME_DIAGNOSTICS
+    std::atomic<uint64_t> callbackCount{0};
+    std::atomic<uint64_t> maxCallbackNs{0};
+#endif
 
 #if !POM1_IS_WASM
     struct MaDeviceDeleter { void operator()(ma_device* d) const noexcept; };

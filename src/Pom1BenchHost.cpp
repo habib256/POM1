@@ -161,7 +161,8 @@ static bool presetUsesAciProgramOutput(int presetIndex)
 {
     if (presetIndex < 0 || presetIndex >= md::kMachinePresetCount) return false;
     const md::MachineConfig& cfg = md::kMachinePresets[presetIndex];
-    return cfg.aci && cfg.basicType != md::BasicType::IntegerCassette;
+    return cfg.hasCard(pom1::CardId::Aci) &&
+           cfg.basicType != md::BasicType::IntegerCassette;
 }
 
 static void ejectTapeForAciProgramOutput(EmulationController* emu, bench::BuildResult& r, int preset)
@@ -877,7 +878,7 @@ void Pom1BenchHost::enableSketchSidecarCards(EmulationController* emu)
     if (sourcePathLooksGT6144(activeSourcePath_)) {
         mw_->gt6144Enabled = true;
         mw_->showGT6144 = true;
-        emu->setGT6144Enabled(true);
+        emu->setCardEnabled(pom1::CardId::Gt6144, true);
     }
 }
 
@@ -1041,7 +1042,7 @@ bench::BuildResult Pom1BenchHost::directLoad(int target, const std::string& src,
     // loaded binary. Otherwise a `New` + `directLoad` (Wozmon hex mode)
     // immediately after a preset switch races the card-enable countdown and
     // the first frame of execution writes into RAM instead of the card.
-    mw_->finalizePendingCardPlugs();
+    mw_->applyPendingCardConfiguration();
     std::string error; int bytesLoaded = 0; bool ok = false; uint16_t entry = 0;
     if (kP1Targets[p1(target)].mode == 1) {   // Wozmon hex
         const fs::path tmp = dir / "pom1_bench_sketch.txt";
@@ -1285,7 +1286,7 @@ bench::BuildResult Pom1BenchHost::compileBasicNative(int target, const std::stri
     // the GEN2/TMS card is on the bus before the CPU runs, then loadBinary resets +
     // runs at $0300 (NOT a CodeTank flash — the code runs from $0300 RAM).
     if (t.preset >= 0) onTargetSelected(target);
-    mw_->finalizePendingCardPlugs();
+    mw_->applyPendingCardConfiguration();
     auto* emu = mw_->emulation.get();
     if (!emu) { r.status = "no emulator"; r.ok = false; return r; }
 
@@ -1931,7 +1932,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
             // Verify touches no machine state — re-arm right away.
             if (!run) { rearmDbgBreakpoint(r); r.status = "Verify OK"; r.ok = true; return r; }
             if (t.preset >= 0) onTargetSelected(target);
-            mw_->finalizePendingCardPlugs();
+            mw_->applyPendingCardConfiguration();
             auto* emu = mw_->emulation.get();
             std::error_code ec2;
             if (!fs::exists(loP, ec2) || !fs::exists(hiP, ec2)) {
@@ -1995,7 +1996,7 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
     // (which switches preset) would start the CPU BEFORE the GEN2 / TMS9918
     // card is on the bus — early writes to $2000-$3FFF or $CC00/$CC01 vanish
     // into RAM. File > Load drains the same queue here; we do the same.
-    mw_->finalizePendingCardPlugs();
+    mw_->applyPendingCardConfiguration();
     enableSketchSidecarCards(emu);
     ejectTapeForAciProgramOutput(emu, r, t.preset);
     if (gen2c || plainc) {
@@ -2030,8 +2031,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         mw_->codeTankJumper = upper ? CodeTank::Jumper::Upper16
                                     : CodeTank::Jumper::Lower16;
         emu->setCodeTankJumper(mw_->codeTankJumper);
-        if (!mw_->tms9918Enabled) { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
-        if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCodeTankEnabled(true); }
+        if (!mw_->tms9918Enabled) { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setCardEnabled(pom1::CardId::Tms9918, true); }
+        if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCardEnabled(pom1::CardId::CodeTank, true); }
         emu->hardReset(/*animateBoot=*/false); // DevBench: no ~3 s power-on scenario
         // After the reset (which cleared any CPU breakpoint) and BEFORE the
         // deferred 4000R types — the ideal re-arm window: the program has not
@@ -2140,7 +2141,7 @@ bench::BuildResult Pom1BenchHost::pollBuild()
     // card plugs that applyMachineConfig() queued so the new preset's GEN2 /
     // TMS9918 card is on the bus before the CPU starts the freshly loaded
     // binary. Otherwise the program's early writes can land before the card.
-    mw_->finalizePendingCardPlugs();
+    mw_->applyPendingCardConfiguration();
     enableSketchSidecarCards(emu);
     ejectTapeForAciProgramOutput(emu, r, t.preset);
 
@@ -2163,8 +2164,8 @@ bench::BuildResult Pom1BenchHost::pollBuild()
         mw_->codeTankJumper = upper ? CodeTank::Jumper::Upper16
                                     : CodeTank::Jumper::Lower16;
         emu->setCodeTankJumper(mw_->codeTankJumper);
-        if (!mw_->tms9918Enabled) { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
-        if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCodeTankEnabled(true); }
+        if (!mw_->tms9918Enabled) { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setCardEnabled(pom1::CardId::Tms9918, true); }
+        if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCardEnabled(pom1::CardId::CodeTank, true); }
         emu->hardReset(/*animateBoot=*/false); // DevBench: no ~3 s power-on scenario
         mw_->codeTankPendingWozRunAt = ImGui::GetTime() + 1.0;
         emu->copySnapshot(mw_->uiSnapshot);

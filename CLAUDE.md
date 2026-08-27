@@ -24,11 +24,18 @@ cd build && cmake .. && make
 
 Windows: `setup_pom1.bat` + vcpkg + `cmake --build . --config Release`. `compile_commands.json` symlinked for clangd.
 
+**Hermetic / offline configure:** point CMake at dependencies already present on
+disk with `-DPOM1_IMGUI_DIR=/path/to/imgui` and
+`-DPOM1_KLAUS_BIN=/path/to/6502_functional_test.bin`. The Klaus fixture is
+SHA-256 verified; if neither a valid local file nor the network is available,
+configuration continues and only `klaus_6502_functional` is omitted from the
+CTest inventory. `imgui_pin_sync` also supports source archives without `.git`.
+
 **`imgui/` is NOT vendored** — it is `.gitignore`d, a local checkout each machine clones for itself (pin + the nine places it lives: see the **Docking** bullet below). `tools/ensure_imgui.sh` owns the acquisition logic; `setup_pom1.sh` and `packaging/raspberrypi/install.sh` both call it, `setup_pom1.bat` is its Windows twin, and CMake re-checks at configure time because a hand-made clone bypasses all three. It demands **two** things, and both are scars: the **docking branch**, because testing for the mere *directory* left every pre-docking clone in place until the build died hundreds of lines in on `ImGuiWindowFlags_NoDocking`; and **`IMGUI_VERSION_NUM >= 19290`**, because docking-ness alone lets an old docking tag through — `v1.90.x` has `ImGuiWindowFlags_NoDocking` but not `ImGuiChildFlags_Borders` (renamed upstream in 1.91.1, used by `src/bench/CodeBench.cpp`), and the Metal sampler patch is version-split at 1.92.7/1.92.8. A stale checkout is upgraded in place; a dirty or non-git one is refused untouched (dirtiness is `git diff --quiet HEAD` — `--porcelain` would count a Finder-dropped `.DS_Store` as a local change and dead-end the very repair it exists for).
 
 **Warnings & sanitizers.** POM1's own sources compile with `-Wall -Wextra` (`/W4` on MSVC), applied **per source file** — Dear ImGui and ImGuiColorTextEdit are compiled into the same executable and are not ours to keep clean; `src/third_party/{stb,ImGuiColorTextEdit}` are SYSTEM include dirs, and `stb_image_write.h` additionally needs the local pragma block in `main_imgui.cpp` because it is included by relative path through `POM1_SRC_DIR` (GCC classifies a header by where it *resolved* it, not by name). The tree was brought to **zero warnings** when the flags went in, so `-DPOM1_WERROR=ON` — CI only, never a local default — starts clean; it is set on the Linux job alone, since AppleClang's and MSVC's warning sets have not been measured over this tree yet (they run with warnings visible but non-fatal). `-DPOM1_SANITIZE=address,undefined` (or `=thread`) instruments **every** target including vendored code, forces LTO off, and is what the nightly CI job builds; `tests/CMakeLists.txt` scales every declared `TIMEOUT` ×5 under it, because the two Applesoft tests boot a whole interpreter on the emulated 6502 and blow a 120 s budget under ASan while finding nothing — a false red is worse than no job.
 
-**Graphics backend:** `POM1_RENDERER` cache option picks `opengl` or `metal`. Defaults: **Metal on macOS-non-WASM**, OpenGL everywhere else (Linux, Windows, WASM). Override with `cmake -DPOM1_RENDERER=opengl ..` for the legacy macOS GL path; selecting `metal` outside Apple is a hard configure error. Single seam in `src/PomRenderer.h` (the `pom1::renderer()` singleton fronts both backends — no direct `gl*` calls outside `PomRenderer_GL.cpp` / `PomRenderer_Metal.mm`).
+**Graphics backend:** `POM1_RENDERER` cache option picks `opengl` or `metal`. Defaults: **Metal on macOS-non-WASM**, OpenGL everywhere else (Linux, Windows, WASM). Override with `cmake -DPOM1_RENDERER=opengl ..` for the legacy macOS GL path; selecting `metal` outside Apple is a hard configure error. Single seam in `src/PomRenderer.h` (the `pom1::renderer()` singleton fronts both backends — no direct `gl*` calls outside `PomRenderer_GL.cpp` / `PomRenderer_Metal.mm`). macOS CI builds both configurations and runs the preset-first-cycle, live-topology and non-silent audio gates from each build tree. WASM boots under headless Chromium; `pom1_wasm_machine_probe` + `pom1_wasm_measured_cpu_hz` prove preset/RAM/Monitor/PC/CPU activity before the smoke accepts the non-black WebGL2 frame.
 
 **GL tier — `POM1_GL_ES` (`src/POM1Build.h`):** orthogonal to the backend choice above. It says *"we speak GLES"*, **not** *"we are a browser"* — the distinction the old `__EMSCRIPTEN__` guards conflated. On: always under WASM (WebGL 2.0 **is** GLES 3.0), and natively via `cmake -DPOM1_GLES=ON` (**Raspberry Pi 4/5** — Mesa's V3D caps *desktop* GL at 3.1, so the default GL 3.2 core request fails outright; also most ARM SoCs / old iGPUs). POM1's GL usage (VAO/VBO, shaders, FBO, 2D textures) is the common subset of GL 3.2 core and GLES 3.0, so **one set of sources covers both** — only four things differ, all keyed on `POM1_GL_ES`: the header (`<GLES3/gl3.h>` vs `<GL/gl.h>`+`GLProcs.h`, plus `GLFW_INCLUDE_ES3` in `PomRenderer_GL.cpp`), the `#version 300 es` + precision prologue (`OpenGLShader.cpp`), **direct** entry points instead of the lazy `glfwGetProcAddress` slots (libGLESv2 exports them; same branch as macOS), and the GLFW hints (`GLFW_OPENGL_ES_API` + `GLFW_EGL_CONTEXT_API` — GLX can only hand out a GLES context where `GLX_EXT_create_context_es2_profile` exists, which V3D lacks). Native GLES links `GLESv2`+`EGL` instead of `libGL`; `-DPOM1_GLES=ON` with `POM1_RENDERER=metal` or under Emscripten is a hard configure error. CI compiles the four affected TUs on every push (`ci.yml` → "GLES 3.0 tier"), since the release job that ships it is tag-only. **Two shipped GLES packages, deliberately different**: `release.yml`'s `raspberry` job builds a **generic** aarch64 AppImage (must run Pi 3 → Pi 5), while `pi-borne.yml` (manual dispatch, ported from NeoST) builds for **one core** (`-mcpu=cortex-a72` = Pi 4/400) with two-pass PGO + LTO and emits both an AppImage and a kiosk `tar.gz` — see `packaging/raspberrypi/{build_in_bookworm_pi.sh,README.md}`. Both build inside a `debian:bookworm` container, never on the `ubuntu-24.04-arm` runner: Pi OS *is* bookworm (glibc 2.36) and the runner would stamp `GLIBC_2.39`, which starts on no Pi.
 
@@ -52,9 +59,70 @@ Claudio PARMIGIANI (P-LAB designer): on real hardware exactly ONE P-LAB card is 
 - **CpuClock.h** — `POM1_CPU_CLOCK_HZ = 1 022 727` (14.31818 MHz ÷ 14). Single source of truth.
 - **Memory** — 64 KB. Owns every peripheral (`unique_ptr` + enable flag). MMIO dispatched via **`PeripheralBus`**; `memRead/memWrite` only handle PIA `$D0xx` aliasing, ROM write-protect, OOR strict mode, the cassette write-sniffer, `DisplayDevice::onChar` + TerminalCard hook, then raw `mem[]`. **Redundant-ROM-load guards**: on the microSD Applesoft Lite path, skip the **Woz Monitor** reload when `mem[$FF00..$FF01] == D8 58` (Woz Monitor's `CLD`/`CLI` signature — Applesoft Lite itself at `$6000` always loads); skip SD CARD OS reload when `mem[$8000..$8001] == A9 00`.
 - **PeripheralBus** — central MMIO dispatch. Peripherals register `(name, range, priority, onRead, onWrite)`. O(1) hot path via `pageMask[256]` bitmap. `std::stable_sort` by priority — TMS9918 wins over SID at `$CC00/$CC01` via priority 10. `onWrite = {}` → pass-through to RAM; explicit no-op = block (CFFA1 ROM). **A handler that writes `mem[]` itself must call `Memory::isRomWriteProtected(addr)` first**: `bus.tryWrite` answers at the TOP of `memWrite`, so its own ROM guard never runs. GEN2's soft-switch handler spans `$C200-$C7FF` (scattered mirrors) and falls through to flat RAM for what it doesn't decode — which swallowed the extended ACI PROM at `$C500` (A9 = 0 there, so the decoder is blind to it) and made that page writable the moment the HGR card was plugged. Pinned by `extended_aci_smoke` part A.
+- **Card identity foundation** — `CardTypes.h` owns the stable, append-only
+  `CardId`, allocation-free `CardSet`, and `CardDescriptor`. Descriptors live
+  directly in `Memory::cardSlots()`—the existing load-bearing snapshot
+  registry—so topology work must extend that registry rather than introduce a
+  parallel card table. The two FLAGS-only modes use `CardId::Invalid`; Extended
+  ACI has a descriptor-only row with no flag/section because its legacy state
+  remains in `MEM`. Every real row declares its CPU address ranges,
+  capabilities, dependencies, incompatibilities and optional variant group;
+  `BusConflicts.h` uses `CardId` rather than display-name strings. A
+  daughterboard requirement is deliberately not a conflict, while overlapping
+  cards resolved by bus priority remain coexistence rather than exclusions.
+  `card_registry_smoke` pins complete/unique IDs and keys, snapshot-tag
+  agreement, valid ranges, dependency facts, conflict-table equivalence and
+  symmetry, variant groups and `CardSet` semantics.
+- **Card topology policy** — `CardTopology.{h,cpp}` is allocation-free pure
+  policy over `CardSet`: it reports active conflicts, gates a candidate and
+  deterministically resolves a requested set. `TopologyMode::Fantasy` permits
+  multiplexing; Strict additionally rejects the SID/TMS9918 overlap that the
+  fantasy bus can arbitrate by priority. The Silicon Strict UI consumes this
+  API by `CardId` and contains no card-name comparisons or conflict table.
+  `card_topology_smoke` pins both modes, every declared conflict, survivor
+  priority, dependencies, transitive daughterboard removal and idempotence.
+  Public `Memory::setXxxEnabled()` methods remain compatibility entry points,
+  but obtain attach/detach decisions from `planCardToggle()`; they now own only
+  hardware effects such as bus handles, ROM mirrors, audio sinks and resets.
+- **Named preset configuration** — `PresetId` is stable and index-compatible
+  with all 13 historical layouts; `kDefaultPresetId` names the shipped default
+  explicitly. `MachineConfig` stores cards in one `CardSet`; Juke-Box and
+  CodeTank settings use named option structs, and Krusader remains a separate
+  ROM-payload flag because it is not a card. Consumers use `enabledCards()` /
+  `hasCard()`. `validateMachinePresets()`
+  checks enum/table cardinality, daughterboard closure and Strict conflicts;
+  the CLI smoke test executes it and pins the exact card set for all 13 IDs.
+- **Whole-card transitions** — `CardTopology::planConfiguration()` closes
+  dependencies, rejects the entire Strict request on any resulting conflict,
+  and returns allocation-free deterministic detach/configure/attach arrays.
+  Reverse CardId order detaches daughters before hosts; forward order attaches
+  hosts first. `EmulationController::applyCardConfiguration()` executes the
+  full plan under one `stateMutex` acquisition and publishes once, including
+  option configuration between hardware phases; validation rejection mutates
+  nothing. The headless preset path uses this façade. The delayed GUI plug path
+  and its CLI/Bench overrides remain compatibility consumers of individual
+  GUI deferred card changes now travel as one `CardConfigurationRequest`;
+  `MachineCoordinator` applies its `TransitionPlan`, while
+  `EmulationController` owns the state lock and single snapshot publication.
+  Cassette preload remains on its independent timing rail.
+  This adds one intentional direct `Memory.h` consumer (architecture fan-out
+  baseline 57 → 58) while removing the executor from the controller; do not
+  grow that edge further when adding application commands.
+  Single-card UI/CLI changes use `EmulationController::setCardEnabled(CardId,
+  bool)`; all fifteen per-card `setXxxEnabled()` controller wrappers are gone.
+  `card_registry_smoke` executes the daughterboard cascades and representative
+  SID/Juke-Box exclusions through the real coordinator.
+- **Peripheral lifecycle (phase 2, incremental)** — `Peripheral` tracks
+  `Constructed → Attached → Reset → Active`; transitions are idempotent and
+  skipped phases fail. `MachineCoordinator` owns attach/detach markers and
+  marks `Reset` only after the real peripheral reset passes used by hard reset
+  and clear-memory, then promotes ready devices to `Active`. ACI is special:
+  it stays `Reset` until its independent cassette source is actually registered
+  with the mixer, and returns to `Reset` when that source is removed. Deferred
+  GUI finalization attaches cards before cassette activation/preload.
 - **EmulationController** — façade over CPU + Memory + emulation thread, implemented across **4 TUs** since the août-2026 god-file pass (207 method definitions used to sit in one 2143-line file): `EmulationController.cpp` (CPU thread, run/stop/reset, step + step-over, breakpoints/watchpoints/PC-trace, key injection, memory + peripheral pokes, the slice/pacing loop — the pacing constants stay here because the loop is their only user), `_State.cpp` (memory images, snapshots, rewind, ROM re-loads), `_Machine.cpp` (silicon-fidelity + diagnostic knobs), `_Cards.cpp` (cassette/audio + the per-card passthroughs). The split is **pure code motion** — no signature and no call site changed. **Mutex order applies to every TU**: `stateMutex > rewindMutex > keyboard.keyMutex > publisher.snapshotMutex` (ranks 30/25/20/10 in `LockOrder.h`, pinned by `lock_order_smoke`). **Rewind capture is split across the two outer locks**: the slice copies the state under `stateMutex` (`saveSnapshotToBuffer`), releases it, then delta-encodes under `rewindMutex` alone; a `rewindGeneration_` bump by any timeline edit (enable/clear/resume-here truncation) retires a blob staged before the edit so it is never appended as a stale future frame. `stateMutex` is a `PriorityMutex` (MAX speed yields on `hasWaiters()`). Slice cap: 6000 cycles desktop, 50 000 WASM (single-threaded). Native = dedicated thread; WASM = `pumpEmulationMainThread()`.
 - **SnapshotPublisher** — SPSC slot, page-level dirty copy (1 bit per 256 B page, contiguous runs → single memcpy). Idle Wozmon = zero copy. TMS9918's 16 KB skipped when unplugged.
-- **RewindBuffer** — **recording is OFF by default** (the toolbar band reads `timeline (off)`; CPU → State Rewind enables it — the former one-shot auto-enable in `renderToolbar` was dropped 23 août 2026 because capture serialises ~80 KB 4×/s under `stateMutex`). Budget derived from host RAM by `defaultRewindBudgetBytes()` (~1/16 physical, clamped to [16 MB, 128 MB]; any host ≥ 2 GB lands on the historical 128 MB ceiling, an unreadable probe falls back to it rather than shrinking silently) — the fixed constant predated the Pi kiosk, where it handed an eighth of a 1 GB box to scrub history. microM8-style timeline; operates on snapshot blobs (`Memory::saveSnapshotToBuffer`, same byte layout as the `.snap` file). KEYFRAME + DELTA frames anchored in segments; eviction drops whole leading segments past the budget (128 MB default). Touched only under `rewindMutex` (the UI paths take it inside `stateMutex`). Pinned by `rewind_buffer_smoke`.
+- **RewindBuffer** — **recording is OFF by default**; CPU → State Rewind opens the dedicated control window. The toolbar timeline was removed because capture serialises ~80 KB 4×/s under `stateMutex` and the always-visible control overloaded the main menu. Budget derived from host RAM by `defaultRewindBudgetBytes()` (~1/16 physical, clamped to [16 MB, 128 MB]; any host ≥ 2 GB lands on the historical 128 MB ceiling, an unreadable probe falls back to it rather than shrinking silently). microM8-style timeline; operates on snapshot blobs (`Memory::saveSnapshotToBuffer`, same byte layout as the `.snap` file). KEYFRAME + DELTA frames anchored in segments; eviction drops whole leading segments past the budget (128 MB default). Touched only under `rewindMutex` (the UI paths take it inside `stateMutex`). Pinned by `rewind_buffer_smoke`.
 - **DisplayDevice** — abstract `onChar(char)` sink for `$D012`. Injected via `Memory::setDisplayDevice()` so tests/peripherals can tee.
 
 ### UI (ImGui)
@@ -105,7 +173,7 @@ One `.cpp/.h` pair per card under `src/`. Bus windows + priorities are listed in
 
 ### `applyMachineConfig(int)`
 
-- Unplugs every card, optional `hardReset()` (skipped first invocation), sets UI flags immediately, queues deferred plug via `pendingCardEnableFrames = kCardEnableDeferFrames` (15 frames ≈ 200 ms). Deferring past first CPU cycle fixes silent-card-on-boot.
+- Applies an empty `CardConfigurationRequest`, optional `hardReset()` (skipped first invocation), composes preset and CLI overrides, then commits the target `CardConfigurationRequest` synchronously. Each newly attached peripheral is reset while still off-bus before `Attached → Reset → Active`; both topology transitions use the atomic controller facade.
 - **ROM selection uses preset config, not live flags** — live flags still false at deferred plug time; microSD Applesoft Lite vs CFFA1 flavour picked from `cfg.microSD`/`cfg.cffa1` directly.
 - `applyPendingLayout()` runs before `Begin()` with **`ImGuiCond_FirstUseEver`**. **Widgets must not call `SetNextWindowSize(..., FirstUseEver)`** — overrides preset. `SetNextWindowSizeConstraints` is OK.
 - **Per-preset ini** `ini/imgui_preset_NN.ini` (geometry + `[Docking][Data]` + `[POM1Windows][Open]` presence) + `ini/preset_NN.size` (OS window, `W H [X Y maximized fullscreenMode]` — the W H is always the **windowed** rect; `fullscreenMode` is 0 windowed / 1 POM1's own `glfwSetWindowMonitor` fullscreen / 2 macOS native fullscreen space, mode 2 never being re-entered programmatically; legacy 2-field files still parse; restore clamps to a live monitor work-area). **Fullscreen is a SESSION property, never a per-preset one**: switching profile while fullscreen keeps the fullscreen frame, only adopts the incoming profile's windowed rect for later, and re-expands the Apple 1 Screen window over the display when that profile's layout was authored windowed. **That re-expand waits on `DisplaySize` standing still, never on a fixed frame count** (`armFullscreenScreenExpand` + `kFullscreenResizeSettleFrames`): AppKit sets `NSWindowStyleMaskFullScreen` at the *start* of its ~0.5 s animated transition, so `osWindowIsFullscreen()` flips ~30 frames before the framebuffer reaches its final size and a 2-frame delay would size the screen window to the pre-animation frame and leave it undersized for the whole session. Every entry into a fullscreen layout must arm it — the four sites are the `render()` transition, `applyMachineConfig` (no saved size), `loadPresetLayout` (both the `.size`-present and the `.size`-missing paths) and `resetActivePresetLayout`; the last one must also drop the `Apple 1 Screen` entry from `pendingLayout`, since a reset force-applies with `ImGuiCond_Always` *after* the expand's `SetNextWindowSize` and would stamp the windowed rect back over it. Leaving a native space is equally animated with the mask still set, so the Settings checkbox latches the request (`macNativeExitRequestedAt_`, 2 s timeout) — without it the box re-ticks the next frame and a second click hands AppKit another `toggleFullScreen:`, putting the window right back in. Everything keyed on "does the window fill the screen?" must call `MainWindow_ImGui::osWindowIsFullscreen()` — **not** the `fullscreen` member, which misses macOS' native fullscreen space (GLFW models only its own; the Cocoa seam is `src/MacNativeFullscreen.{h,mm}`, compile-time `false` off macOS). Resizing a window inside an AppKit fullscreen space is silently ignored, so the old code shrank the layout while the frame stayed screen-sized. A CLI `--fullscreen` (kiosk, `cliForcedFullscreen_`) is re-asserted every frame but is **never persisted** into the profile's `.size`. `io.IniFilename = nullptr`; POM1 manages files via `savePresetLayout`/`loadPresetLayout`, plus a **debounced autosave** (`maybeAutosaveLayout`: `io.WantSaveIniSettings` + presence-hash, ~2 s) so crashes/tab-closes lose seconds, not the session. Global (non-preset) UI prefs live in `ini/ui.settings` (theme Dark/Light/High-contrast + HiDPI scale) and `ini/startup` (boot preference — **default with no file boots POM1 Fantasy**, the last preset; `auto=1,preset=N` boots preset N; `chooser=1` shows the profile chooser; CLI `--preset` wins over all). Boot gate in `render()`; `readStartupPreset`/`startupShowsChooser`/`writeStartupPreset`/`writeStartupChooser` in `MainWindow_Presets.cpp`. **WASM: `ini/` is an IDBFS mount** (shell.html `preRun` + `FS.syncfs` after each save + `pagehide` flush via exported `pom1_save_layout_now`) — layouts survive page reloads. F10 toggles ImGui keyboard-nav mode (keys stop reaching the Apple-1; status bar shows `UI NAV`).
@@ -209,7 +277,31 @@ Load-bearing pins worth knowing:
 - **`doc_paths_sync`** — third guard of the `version_sync` / `imgui_pin_sync` family (`tools/check_doc_paths.py`): every source path the markdown cites in backticks must exist. 370 citations checked, resolved against the repo root, the citing document's own directory, `src/`, `dev/` and `dev/lib/` — those last three being the conventions the docs actually use. `CHANGELOG.md` is excluded whole (a changelog naming a file that has since moved is correct history, not drift), as are `EXTERNAL_ROOTS` (POM2, upstream demos, toolkit headers) and filename templates like `imgui_preset_NN.ini`. Replaces a manual pass — the git log already contains one that fixed 20 drifts by hand.
 - **`extended_aci_smoke`** — Uncle Bernie's Extended ACI end to end: pins the `$C500` mapping / write-protect / ACI cascade *both ways*, then plays his own `cassettes/codebrk.aiff` through the real pulse path, types `C500R` + `RX RX`, and asserts Codebreaker autostarts (banner on `$D012`). Also the **only** gate on POM1's hand-rolled AIFF reader.
 
-**Test build model — `pom1_core`.** The 24 sources every test binary needs (`POM1_TEST_CORE_FILES`) are compiled ONCE into an `OBJECT` library declared in `tests/CMakeLists.txt`; `POM1_TEST_CORE_SOURCES` then expands to `$<TARGET_OBJECTS:pom1_core>`, so the 50 `add_executable` calls are untouched. They used to list the sources directly, which meant each target recompiled all 24 at `-O3`: a full build ran **1435** compilations, 1300 of them for tests and 1154 of those redundant (`TMS9918.cpp` compiled 53 times). It is now 355. The library must stay declared in that directory so it inherits the `-UNDEBUG` above — compiling it once with `NDEBUG` live would silently disarm every `assert()` in the emulator core for the whole suite. It cannot be shared with the main POM1 target for the same reason: the app is built *with* `NDEBUG`.
+**CMake layers and test build model.** The dependency direction is materialised
+as INTERFACE targets: `pom1_ui` → `pom1_app` → `pom1_devices` → `pom1_core`.
+They initially carry usage requirements while source ownership migrates out of
+the historical executable; this avoids changing runtime behaviour in a build
+refactor. The 24 device sources every integration test needs
+(`POM1_TEST_CORE_FILES`) are compiled once into the `pom1_test_devices` OBJECT
+library declared in `tests/CMakeLists.txt`; its separate identity is deliberate:
+tests inherit `-UNDEBUG`, while the Release app keeps `NDEBUG`. Sharing those
+objects would silently disarm test assertions or arm them in production. The
+common `pom1_add_smoke_test()` helper is used as test families migrate to the
+smallest logical layer. A configure-time pass binds every executable consuming
+`pom1_test_devices` to `pom1_devices` and aborts if object use and layer
+declaration ever diverge. Before object sharing, a full build ran 1435
+compilations, 1154 of them redundant (`TMS9918.cpp` compiled 53 times); it is
+now about 355.
+
+**Architecture trend guard.** `tools/check_architecture.py` (CTest
+`architecture_check`) rejects any new direct include from the core/device set
+toward ImGui or `MainWindow` and reports ceilings for `Memory`,
+`EmulationController`, the `MainWindow_*` family, selected header fan-out and
+sources outside `pom1_test_devices`. The checked-in
+`tools/architecture_baseline.json` is a ratchet, not a target architecture:
+lower a ceiling when a refactor improves it; never raise one merely to make CI
+green. A deliberate new dependency requires an architectural review and an
+explicit `allowed_reverse_dependencies` entry.
 
 New invariant tests follow `tests/peripheral_bus_smoke_test.cpp` — `<cassert>` + `add_test` suffices; GTest/Catch2 only once multi-threaded tests land.
 

@@ -7,7 +7,7 @@
 // `Deploy Pages` used to upload the site without ever loading it: a JS
 // exception, a WebGL2 init failure or a truncated POM1.data all deployed
 // green. This script serves the assembled site directory over local HTTP,
-// loads the page in headless Chromium (Playwright) and asserts three things:
+// loads the page in headless Chromium (Playwright) and asserts four things:
 //
 //   1. the boot completes — #bootSplash gains .hidden, which only happens when
 //      the C++ side calls pom1FirstFrameReady() after the first real
@@ -18,6 +18,8 @@
 //      unhandledrejection) stayed hidden;
 //   3. the canvas is not black — the composited page is screenshotted and at
 //      least MIN_LIT_FRACTION of the canvas pixels must be lit.
+//   4. the emulator core is live — an exported read-only probe reports a preset,
+//      configured RAM, Woz Monitor, running CPU, non-zero PC and measured Hz.
 //
 // --self-test proves the checker can FAIL, not just pass (a checker that
 // never fires reads as coverage while providing none — same philosophy as
@@ -72,7 +74,7 @@ function serveDir(rootDir) {
 }
 
 // ── the check itself ────────────────────────────────────────────────────────
-async function runCheck(browser, url, { shotPath } = {}) {
+async function runCheck(browser, url, { shotPath, requireMachineProbe = false } = {}) {
   const failures = [];
   const page = await browser.newPage();
   page.on('pageerror', (e) => failures.push(`uncaught page exception: ${e.message}`));
@@ -86,6 +88,7 @@ async function runCheck(browser, url, { shotPath } = {}) {
   });
 
   let stats = null;
+  let machine = null;
   try {
     const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
     if (!resp || !resp.ok())
@@ -112,6 +115,25 @@ async function runCheck(browser, url, { shotPath } = {}) {
     }
 
     if (outcome === 'ready') {
+      if (requireMachineProbe) {
+        try {
+          const h = await page.waitForFunction(() => {
+            if (!window.Module || typeof window.Module.ccall !== 'function') return false;
+            const word = window.Module.ccall(
+              'pom1_wasm_machine_probe', 'number', [], []) >>> 0;
+            const hz = window.Module.ccall(
+              'pom1_wasm_measured_cpu_hz', 'number', [], []);
+            const flags = word & 0xFFFF;
+            const pc = word >>> 16;
+            if ((flags & 0x1F) !== 0x1F || pc === 0 || hz <= 1000) return false;
+            return { flags, pc, hz };
+          }, undefined, { timeout: BOOT_TIMEOUT_MS });
+          machine = await h.jsonValue();
+        } catch {
+          failures.push('emulator core did not report preset + running CPU + RAM + ' +
+                        'Woz Monitor + positive measured clock');
+        }
+      }
       await page.waitForTimeout(500); // let a couple more frames land
       // The canvas is WebGL without preserveDrawingBuffer, so read pixels from
       // a compositor screenshot fed back into a 2D canvas — not from the GL
@@ -147,7 +169,7 @@ async function runCheck(browser, url, { shotPath } = {}) {
   } finally {
     await page.close();
   }
-  return { ok: failures.length === 0, failures, stats };
+  return { ok: failures.length === 0, failures, stats, machine };
 }
 
 // ── self-test fixtures ──────────────────────────────────────────────────────
@@ -230,7 +252,14 @@ try {
     try {
       const url = `${base}/${pagePath}`;
       console.log(`[smoke] loading ${url} (timeout ${BOOT_TIMEOUT_MS} ms)`);
-      const r = await runCheck(browser, url, { shotPath: SHOT_PATH });
+      const r = await runCheck(browser, url, {
+        shotPath: SHOT_PATH,
+        requireMachineProbe: true,
+      });
+      if (r.machine)
+        console.log(`[smoke] machine preset/configured/running, ` +
+                    `PC=$${r.machine.pc.toString(16).padStart(4, '0').toUpperCase()}, ` +
+                    `${Math.round(r.machine.hz)} Hz`);
       if (r.stats)
         console.log(`[smoke] canvas ${r.stats.w}x${r.stats.h}, ` +
                     `${r.stats.lit}/${r.stats.total} lit pixels ` +

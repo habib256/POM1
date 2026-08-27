@@ -38,6 +38,7 @@
 #endif
 
 #include "Peripheral.h"
+#include "LockOrder.h"
 #include <string_view>
 
 /// P-LAB Apple-1 Wi-Fi Modem — 65C51 ACIA + ESP8266 modem emulation.
@@ -55,7 +56,7 @@ public:
     WiFiModem();
     ~WiFiModem();
 
-    void reset();
+    void reset() override;
 
     // ACIA register interface (called from Memory::memRead / memWrite)
     uint8_t readRegister(uint16_t address);
@@ -197,7 +198,7 @@ private:
     bool    lastByteWasCR = false; // CR+LF → CR stripping (Apple 1 uses CR only)
 
     // --- Thread safety ---
-    mutable std::mutex modemMutex;
+    mutable pom1::RankedMutex<pom1::LockRank::Peripheral> modemMutex;
 
     // --- Internal helpers ---
     void enqueueRxByte(uint8_t byte);

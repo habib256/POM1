@@ -91,99 +91,175 @@ constexpr bool namesCollide(const char* a, const char* b)
     return true;                          // first 8 bytes identical
 }
 
+constexpr std::array<pom1::CardAddressRange, 4> cardRanges(
+    pom1::CardAddressRange a = {}, pom1::CardAddressRange b = {},
+    pom1::CardAddressRange c = {}, pom1::CardAddressRange d = {})
+{
+    return {{a, b, c, d}};
+}
+
+constexpr pom1::CardSet cards(pom1::CardId a)
+{
+    return pom1::CardSet{a};
+}
+
+constexpr pom1::CardSet cards(pom1::CardId a, pom1::CardId b)
+{
+    return pom1::CardSet{a} | pom1::CardSet{b};
+}
+
+constexpr pom1::CardSet cards(pom1::CardId a, pom1::CardId b, pom1::CardId c)
+{
+    return cards(a, b) | pom1::CardSet{c};
+}
+
+constexpr pom1::CardSet cards(pom1::CardId a, pom1::CardId b,
+                              pom1::CardId c, pom1::CardId d,
+                              pom1::CardId e)
+{
+    return cards(a, b, c) | pom1::CardSet{d} | pom1::CardSet{e};
+}
+
 } // namespace
 
-const std::array<Memory::CardSlot, 17>& Memory::cardSlots()
+const std::array<Memory::CardSlot, 18>& Memory::cardSlots()
 {
     // Row order is load-bearing — see the CardSlot comment in Memory.h. It
     // reproduces, in one pass, the historical FLAGS pack order, the FLAGS
     // unpack order (IEC must follow microSD, which it cascades onto; GEN2
     // attaches last), the on-disk section order, and the read-dispatch set.
-    static const std::array<CardSlot, 17> kSlots = {{
-        {"ACI",           kFlagACI,
+    static const std::array<CardSlot, 18> kSlots = {{
+        {{pom1::CardId::Aci, "aci", "Apple Cassette Interface", "ACI",
+          cardRanges({0xC000, 0xC0FF}, {0xC100, 0xC1FF}), 2, {}, {},
+          pom1::CardCapability::Snapshot | pom1::CardCapability::Audio}, "ACI", kFlagACI,
          [](const Memory& m) { return m.aciEnabled; },
          [](Memory& m, bool b) { m.setACIEnabled(b); },
          [](const Memory& m) -> pom1::Peripheral* { return m.cassetteDevice.get(); }},
 
-        {"TMS9918",       kFlagTMS9918,
+        // Descriptor-only daughter page. Its enabled state is already stored
+        // in MEM for snapshot compatibility, so this row deliberately owns no
+        // FLAGS bit or section and has no serialization side effect.
+        {{pom1::CardId::ExtendedAci, "extended-aci", "Uncle Bernie's Extended ACI", {},
+          cardRanges({0xC500, 0xC5FF}), 1, cards(pom1::CardId::Aci), {},
+          pom1::CardCapability::Snapshot | pom1::CardCapability::Daughter}, nullptr, 0,
+         [](const Memory& m) { return m.extendedAciEnabled; },
+         [](Memory& m, bool b) { m.setExtendedACIEnabled(b); },
+         nullptr},
+
+        {{pom1::CardId::Tms9918, "tms9918", "P-LAB TMS9918 Graphic Card", "TMS9918",
+          cardRanges({0xCC00, 0xCC01}), 1, {}, cards(pom1::CardId::SidSpecialEdition),
+          pom1::CardCapability::Snapshot | pom1::CardCapability::Video}, "TMS9918", kFlagTMS9918,
          [](const Memory& m) { return m.tms9918Enabled; },
          [](Memory& m, bool b) { m.setTMS9918Enabled(b); },
          [](const Memory& m) -> pom1::Peripheral* { return m.tms9918.get(); }},
 
-        {"A1-SID",        kFlagSID,
+        {{pom1::CardId::Sid, "a1-sid", "P-LAB A1-SID", "A1-SID",
+          cardRanges({0xC800, 0xCFFF}), 1, {},
+          cards(pom1::CardId::SidSpecialEdition, pom1::CardId::JukeBox),
+          pom1::CardCapability::Snapshot | pom1::CardCapability::Audio, "sid"}, "A1-SID", kFlagSID,
          [](const Memory& m) { return m.sidEnabled; },
          [](Memory& m, bool b) { m.setSIDEnabled(b); },
          [](const Memory& m) -> pom1::Peripheral* { return m.sid.get(); }},
 
         // Flag-only: the A1-SID card variant ($C800-$CFFF vs $CC00-$CC1F)
         // shares the one SID instance, so it has no section of its own.
-        {nullptr,         kFlagSIDSpecialEdt,
+        {{pom1::CardId::SidSpecialEdition, "a1-audio-se", "P-LAB A1-AUDIO Special Edition", {},
+          cardRanges({0xCC00, 0xCC1F}), 1, {},
+          cards(pom1::CardId::Sid, pom1::CardId::Tms9918),
+          pom1::CardCapability::Snapshot | pom1::CardCapability::Audio, "sid"}, nullptr, kFlagSIDSpecialEdt,
          [](const Memory& m) { return m.sidSpecialEditionEnabled; },
          [](Memory& m, bool b) { m.setSIDSpecialEditionEnabled(b); },
          nullptr},
 
-        {"microSD",       kFlagMicroSD,
+        {{pom1::CardId::MicroSD, "microsd", "P-LAB microSD Storage Card", "microSD",
+          cardRanges({0x6000, 0x7FFF}, {0x8000, 0x9FFF}, {0xA000, 0xA00F}), 3, {},
+          cards(pom1::CardId::Cffa1, pom1::CardId::JukeBox, pom1::CardId::CodeTank),
+          pom1::CardCapability::Snapshot | pom1::CardCapability::Storage}, "microSD", kFlagMicroSD,
          [](const Memory& m) { return m.microSDEnabled; },
          [](Memory& m, bool b) { m.setMicroSDEnabled(b); },
          [](const Memory& m) -> pom1::Peripheral* { return m.microSD.get(); }},
 
-        {"CFFA1",         kFlagCFFA1,
+        {{pom1::CardId::Cffa1, "cffa1", "CFFA1", "CFFA1",
+          cardRanges({0x9000, 0xAFDF}, {0xAFE0, 0xAFFF}), 2, {},
+          cards(pom1::CardId::MicroSD, pom1::CardId::JukeBox),
+          pom1::CardCapability::Snapshot | pom1::CardCapability::Storage}, "CFFA1", kFlagCFFA1,
          [](const Memory& m) { return m.cffa1Enabled; },
          [](Memory& m, bool b) { m.setCFFA1Enabled(b); },
          [](const Memory& m) -> pom1::Peripheral* { return m.cffa1.get(); }},
 
-        {"Juke-Box",      kFlagJukeBox,
+        {{pom1::CardId::JukeBox, "juke-box", "P-LAB Juke-Box", "Juke-Box",
+          cardRanges({0x4000, 0xBFFF}, {0xCA00, 0xCA00}), 2, {},
+          cards(pom1::CardId::Cffa1, pom1::CardId::MicroSD, pom1::CardId::WifiModem,
+                pom1::CardId::Sid, pom1::CardId::CodeTank),
+          pom1::CardCapability::Snapshot | pom1::CardCapability::Storage}, "Juke-Box", kFlagJukeBox,
          [](const Memory& m) { return m.jukeBoxEnabled; },
          [](Memory& m, bool b) { m.setJukeBoxEnabled(b); },
          [](const Memory& m) -> pom1::Peripheral* { return m.jukeBox.get(); }},
 
-        {"CodeTank",      kFlagCodeTank,
+        {{pom1::CardId::CodeTank, "codetank", "P-LAB CodeTank", "CodeTank",
+          cardRanges({0x4000, 0x7FFF}), 1, cards(pom1::CardId::Tms9918),
+          cards(pom1::CardId::JukeBox, pom1::CardId::MicroSD),
+          pom1::CardCapability::Snapshot | pom1::CardCapability::Storage |
+              pom1::CardCapability::Daughter}, "CodeTank", kFlagCodeTank,
          [](const Memory& m) { return m.codeTankEnabled; },
          [](Memory& m, bool b) { m.setCodeTankEnabled(b); },
          [](const Memory& m) -> pom1::Peripheral* { return m.codeTank.get(); }},
 
-        {"Wi-Fi Modem",   kFlagWiFiModem,
+        {{pom1::CardId::WifiModem, "wifi-modem", "P-LAB Wi-Fi Modem", "Wi-Fi Modem",
+          cardRanges({0xB000, 0xB003}), 1, {}, cards(pom1::CardId::JukeBox),
+          pom1::CardCapability::Snapshot | pom1::CardCapability::Network}, "Wi-Fi Modem", kFlagWiFiModem,
          [](const Memory& m) { return m.wifiModemEnabled; },
          [](Memory& m, bool b) { m.setWiFiModemEnabled(b); },
          [](const Memory& m) -> pom1::Peripheral* { return m.wifiModem.get(); }},
 
         // terminalCardEnabled is a std::atomic<bool> (read off-thread), and the
         // historical unpack assigned it directly rather than through a setter.
-        {"Terminal Card", kFlagTerminalCard,
+        {{pom1::CardId::TerminalCard, "terminal-card", "P-LAB Terminal Card", "Terminal Card",
+          cardRanges({0xD012, 0xD012}), 1, {}, {},
+          pom1::CardCapability::Snapshot | pom1::CardCapability::Network}, "Terminal Card", kFlagTerminalCard,
          [](const Memory& m) { return m.terminalCardEnabled.load(); },
          [](Memory& m, bool b) { m.terminalCardEnabled = b; },
          [](const Memory& m) -> pom1::Peripheral* { return m.terminalCard.get(); }},
 
-        {"A1-IO/RTC",     kFlagA1IO_RTC,
+        {{pom1::CardId::A1IoRtc, "a1-io-rtc", "P-LAB A1-IO & RTC", "A1-IO/RTC",
+          cardRanges({0x2000, 0x200F}), 1, {}, cards(pom1::CardId::Gen2),
+          pom1::CardCapability::Snapshot}, "A1-IO/RTC", kFlagA1IO_RTC,
          [](const Memory& m) { return m.a1ioRtcEnabled; },
          [](Memory& m, bool b) { m.setA1IO_RTCEnabled(b); },
          [](const Memory& m) -> pom1::Peripheral* { return m.a1ioRtc.get(); }},
 
-        {"PR-40",         kFlagPR40,
+        {{pom1::CardId::Pr40, "pr-40", "SWTPC PR-40 Printer", "PR-40",
+          cardRanges({0xD012, 0xD012}), 1, {}, {},
+          pom1::CardCapability::Snapshot | pom1::CardCapability::Printer}, "PR-40", kFlagPR40,
          [](const Memory& m) { return m.pr40Enabled; },
          [](Memory& m, bool b) { m.pr40Enabled = b; },
          [](const Memory& m) -> pom1::Peripheral* { return m.pr40Printer.get(); }},
 
-        {"GT-6144",       kFlagGT6144,
+        {{pom1::CardId::Gt6144, "gt-6144", "SWTPC GT-6144", "GT-6144",
+          cardRanges({0xD00A, 0xD00A}), 1, {}, {},
+          pom1::CardCapability::Snapshot | pom1::CardCapability::Video}, "GT-6144", kFlagGT6144,
          [](const Memory& m) { return m.gt6144Enabled; },
          [](Memory& m, bool b) { m.setGT6144Enabled(b); },
          [](const Memory& m) -> pom1::Peripheral* { return m.gt6144.get(); }},
 
         // Flag-only: cassette audio is a mode of the ACI card above.
-        {nullptr,         kFlagCassetteAudio,
+        {{}, nullptr, kFlagCassetteAudio,
          [](const Memory& m) { return m.cassetteAudioActive; },
          [](Memory& m, bool b) { m.cassetteAudioActive = b; },
          nullptr},
 
         // Flag-only: TMS9918 silicon-strict timing window.
-        {nullptr,         kFlagSiliconStrict,
+        {{}, nullptr, kFlagSiliconStrict,
          [](const Memory& m) { return m.siliconStrictMode; },
          [](Memory& m, bool b) { m.setSiliconStrictMode(b); },
          nullptr},
 
         // Must follow microSD: setIECCardEnabled cascades onto it, so microSD
         // has to have been (re-)enabled by the rows above first.
-        {"IECCard",       kFlagIECCard,
+        {{pom1::CardId::Iec, "iec", "P-LAB IEC Daughterboard", "IECCard",
+          cardRanges({0xA000, 0xA00F}), 1, cards(pom1::CardId::MicroSD), {},
+          pom1::CardCapability::Snapshot | pom1::CardCapability::Storage |
+              pom1::CardCapability::Daughter}, "IECCard", kFlagIECCard,
          [](const Memory& m) { return m.iecCardEnabled; },
          [](Memory& m, bool b) { m.setIECCardEnabled(b); },
          [](const Memory& m) -> pom1::Peripheral* { return m.iecCard.get(); }},
@@ -195,7 +271,9 @@ const std::array<Memory::CardSlot, 17>& Memory::cardSlots()
         // latch/cycle GEN2VID restores below. The MEM section already holds the
         // framebuffer bytes, so all that is needed is the attach state + the
         // soft-switch bus window. Last row so it lands after everything else.
-        {nullptr,         kFlagGEN2HGR,
+        {{pom1::CardId::Gen2, "gen2", "Uncle Bernie's GEN2 HGR", {},
+          cardRanges({0x2000, 0x5FFF}, {0xC200, 0xC7FF}), 2, {}, cards(pom1::CardId::A1IoRtc),
+          pom1::CardCapability::Snapshot | pom1::CardCapability::Video}, nullptr, kFlagGEN2HGR,
          [](const Memory& m) { return m.hgrFramebufferAttached; },
          [](Memory& m, bool b) {
              m.hgrFramebufferAttached = b;

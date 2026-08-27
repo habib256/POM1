@@ -35,7 +35,7 @@ public:
     static constexpr uint16_t kIOBase = 0xAFF0;
 
     CFFA1();
-    void reset();
+    void reset() override;
 
     // Memory interface
     uint8_t readByte(uint16_t address);

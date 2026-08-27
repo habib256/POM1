@@ -15,6 +15,7 @@
 // Mutex order, class-wide: stateMutex > keyboard.keyMutex > publisher.snapshotMutex.
 
 #include "EmulationController.h"
+#include "AudioDevice.h"
 #include "POM1Build.h"
 #include "PR40Printer.h"
 #include "RomLoader.h"
@@ -60,10 +61,11 @@ constexpr double kTelemetryStallTimeoutSec = 5.0;
 
 } // namespace
 
-EmulationController::EmulationController(DisplayDevice* screenWidget)
+EmulationController::EmulationController(DisplayDevice* screenWidget,
+                                         bool initializeAudioHardware)
     : screen(screenWidget)
 {
-    memory = std::make_unique<Memory>();
+    memory = std::make_unique<Memory>(initializeAudioHardware);
     cpu = std::make_unique<M6502>(memory.get());
 
     memory->setDisplayDevice(screen);
@@ -97,6 +99,21 @@ EmulationController::~EmulationController()
 void EmulationController::copySnapshot(EmulationSnapshot& out) const
 {
     publisher.copyTo(out);
+}
+
+void EmulationController::mixAudio(float* output, int frameCount)
+{
+    memory->getAudioDevice().mixSources(output, frameCount);
+}
+
+pom1::RealtimeDiagnostics EmulationController::getRealtimeDiagnostics() const
+{
+    pom1::RealtimeDiagnostics diagnostics;
+    stateMutex.copyRealtimeDiagnostics(diagnostics);
+    memory->getAudioDevice().copyRealtimeDiagnostics(diagnostics);
+    memory->getSID().copyRealtimeDiagnostics(diagnostics);
+    memory->getCassetteDevice().copyRealtimeDiagnostics(diagnostics);
+    return diagnostics;
 }
 
 void EmulationController::setExecutionSpeedCyclesPerFrame(int cyclesPerFrame)
@@ -214,6 +231,8 @@ void EmulationController::hardReset(bool animateBoot)
     runRequested.store(true);
 
     if (sidWasPlugged) memory->setSIDEnabled(true);
+    pom1::MachineCoordinator::markAttachedCardsReset(*memory);
+    pom1::MachineCoordinator::activateResetCards(*memory);
 
     if (screen) {
         if (animateBoot)

@@ -19,7 +19,9 @@
 #include "Logger.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
+#include <thread>
 
 #if POM1_IS_WASM
 #include <emscripten.h>
@@ -97,20 +99,38 @@
 
 void AudioDevice::mixSources(float* output, int frameCount)
 {
+#if POM1_REALTIME_DIAGNOSTICS
+    const auto callbackStart = std::chrono::steady_clock::now();
+    callbackCount.fetch_add(1, std::memory_order_relaxed);
+#endif
     std::memset(output, 0, static_cast<size_t>(frameCount) * sizeof(float));
 
-    std::lock_guard<std::mutex> lock(sourcesMutex);
+    const int chunkMax = static_cast<int>(tmpBuf.size());
+    if (chunkMax <= 0) return;   // constructor always sizes it; defensive only
+
+    // Pin a stable immutable source list without taking a lock. Recheck the
+    // published index after incrementing: if a producer swapped between the
+    // first load and the pin, release and retry so it can safely recycle that
+    // buffer. removeSource() waits for the retired buffer's count to reach zero
+    // before returning, which is the lifetime fence for source destruction.
+    unsigned sourceIndex;
+    for (;;) {
+        sourceIndex = activeSourceSnapshot.load(std::memory_order_acquire);
+        sourceReaders[sourceIndex].fetch_add(1, std::memory_order_acquire);
+        if (activeSourceSnapshot.load(std::memory_order_acquire) == sourceIndex)
+            break;
+        sourceReaders[sourceIndex].fetch_sub(1, std::memory_order_release);
+    }
+    const SourceSnapshot& sources = sourceSnapshots[sourceIndex];
 
     // Walk the request in scratch-sized chunks instead of resizing tmpBuf to
     // fit: this runs on the audio thread and must not allocate. Sources are
     // stateful streams, so asking one for N frames then M more is identical to
     // asking for N+M — chunking is invisible to them.
-    const int chunkMax = static_cast<int>(tmpBuf.size());
-    if (chunkMax <= 0) return;   // device never initialised
-
     for (int offset = 0; offset < frameCount; offset += chunkMax) {
         const int n = std::min(chunkMax, frameCount - offset);
-        for (AudioSource* src : sources) {
+        for (std::size_t source = 0; source < sources.count; ++source) {
+            AudioSource* src = sources.entries[source];
             src->fillAudioBuffer(tmpBuf.data(), n);
             for (int i = 0; i < n; ++i)
                 output[offset + i] += tmpBuf[i];
@@ -119,6 +139,23 @@ void AudioDevice::mixSources(float* output, int frameCount)
 
     for (int i = 0; i < frameCount; ++i)
         output[i] = std::max(-1.0f, std::min(1.0f, output[i]));
+
+    sourceReaders[sourceIndex].fetch_sub(1, std::memory_order_release);
+#if POM1_REALTIME_DIAGNOSTICS
+    pom1::updateAtomicMaximum(maxCallbackNs, static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - callbackStart).count()));
+#endif
+}
+
+void AudioDevice::copyRealtimeDiagnostics(pom1::RealtimeDiagnostics& out) const
+{
+#if POM1_REALTIME_DIAGNOSTICS
+    out.audioCallbacks = callbackCount.load(std::memory_order_relaxed);
+    out.maxAudioCallbackNs = maxCallbackNs.load(std::memory_order_relaxed);
+#else
+    (void)out;
+#endif
 }
 
 // ─── Source management ──────────────────────────────────────────────────────
@@ -126,14 +163,43 @@ void AudioDevice::mixSources(float* output, int frameCount)
 void AudioDevice::addSource(AudioSource* source)
 {
     if (!source) return;
-    std::lock_guard<std::mutex> lock(sourcesMutex);
-    sources.push_back(source);
+    std::lock_guard<std::mutex> lock(sourcePublishMutex);
+    const unsigned oldIndex = activeSourceSnapshot.load(std::memory_order_acquire);
+    const unsigned nextIndex = 1u - oldIndex;
+    while (sourceReaders[nextIndex].load(std::memory_order_acquire) != 0)
+        std::this_thread::yield();
+    sourceSnapshots[nextIndex] = sourceSnapshots[oldIndex];
+    SourceSnapshot& next = sourceSnapshots[nextIndex];
+    if (std::find(next.entries.begin(), next.entries.begin() + next.count, source) !=
+        next.entries.begin() + next.count)
+        return;
+    if (next.count >= kMaxSources) {
+        pom1::log().error("Audio", "source registry capacity exceeded");
+        return;
+    }
+    next.entries[next.count++] = source;
+    activeSourceSnapshot.store(nextIndex, std::memory_order_release);
 }
 
 void AudioDevice::removeSource(AudioSource* source)
 {
-    std::lock_guard<std::mutex> lock(sourcesMutex);
-    sources.erase(std::remove(sources.begin(), sources.end(), source), sources.end());
+    std::lock_guard<std::mutex> lock(sourcePublishMutex);
+    const unsigned oldIndex = activeSourceSnapshot.load(std::memory_order_acquire);
+    const unsigned nextIndex = 1u - oldIndex;
+    while (sourceReaders[nextIndex].load(std::memory_order_acquire) != 0)
+        std::this_thread::yield();
+    sourceSnapshots[nextIndex] = sourceSnapshots[oldIndex];
+    SourceSnapshot& next = sourceSnapshots[nextIndex];
+    const auto end = next.entries.begin() + next.count;
+    const auto found = std::find(next.entries.begin(), end, source);
+    if (found == end) return;
+    std::move(found + 1, end, found);
+    next.entries[--next.count] = nullptr;
+    activeSourceSnapshot.store(nextIndex, std::memory_order_release);
+    // A caller may destroy `source` as soon as removeSource returns. Wait until
+    // every callback pinned to the retired list has stopped dereferencing it.
+    while (sourceReaders[oldIndex].load(std::memory_order_acquire) != 0)
+        std::this_thread::yield();
 }
 
 // ─── Platform callbacks ─────────────────────────────────────────────────────
@@ -183,12 +249,12 @@ void AudioDevice::setPreferredLatencyMs(int ms)
     g_preferredLatencyMs = ms;
 }
 
-AudioDevice::AudioDevice()
+AudioDevice::AudioDevice(bool initializeHardware)
 {
     // Size the mixing scratch before the device exists, so the very first
     // callback finds it ready. See kMixScratchFrames in the header.
     tmpBuf.resize(static_cast<size_t>(kMixScratchFrames));
-    initAudio();
+    if (initializeHardware) initAudio();
 }
 
 AudioDevice::~AudioDevice()
@@ -332,10 +398,10 @@ void AudioDevice::shutdownAudio()
     // initAudio()) is responsible for re-adding them; leaving stale raw
     // pointers here would cause UAF if sources have been destroyed in the
     // meantime and initAudio() is later called again.
-    {
-        std::lock_guard<std::mutex> lock(sourcesMutex);
-        sources.clear();
-    }
+    std::lock_guard<std::mutex> lock(sourcePublishMutex);
+    sourceSnapshots[0] = {};
+    sourceSnapshots[1] = {};
+    activeSourceSnapshot.store(0, std::memory_order_release);
 }
 
 #if !POM1_IS_WASM

@@ -1632,7 +1632,7 @@ void MainWindow_ImGui::renderCodeTankLibraryWindow()
             emulation->setCodeTankJumper(codeTankJumper);
             if (jukeBoxEnabled) {
                 jukeBoxEnabled = false;
-                emulation->setJukeBoxEnabled(false);
+                emulation->setCardEnabled(pom1::CardId::JukeBox, false);
             }
             // Memory's setCodeTankEnabled evicts the microSD ($6000-$7FFF
             // Applesoft Lite overlap) and cascade-drops the IEC add-on —
@@ -1645,12 +1645,12 @@ void MainWindow_ImGui::renderCodeTankLibraryWindow()
             if (!tms9918Enabled) {
                 tms9918Enabled = true;
                 showTMS9918 = true;
-                emulation->setTMS9918Enabled(true);
+                emulation->setCardEnabled(pom1::CardId::Tms9918, true);
                 sidSpecialEditionEnabled = false;
             }
             if (!codeTankEnabled) {
                 codeTankEnabled = true;
-                emulation->setCodeTankEnabled(true);
+                emulation->setCardEnabled(pom1::CardId::CodeTank, true);
             }
             bringTms9918WindowToFront = true;
             ImGui::SetWindowFocus("P-LAB Graphic Card (TMS9918)");
@@ -1693,7 +1693,7 @@ void MainWindow_ImGui::renderCodeTankLibraryWindow()
         if (codeTankEnabled) {
             ImGui::Separator();
             if (ImGui::Button("Unplug CodeTank")) {
-                emulation->setCodeTankEnabled(false);
+                emulation->setCardEnabled(pom1::CardId::CodeTank, false);
                 codeTankEnabled = false;
                 showCodeTankLibrary = false;
                 codeTankPendingWozRunAt = 0.0;

@@ -55,8 +55,8 @@ enum class CliCard : uint8_t {
     ExtendedAci,   // Uncle Bernie's extended ACI PROM page $C500 (cascade-enables ACI)
 };
 
-/// One deferred action consumed by the Phase-C runner after the
-/// pendingCardEnableFrames deferred-plug timer expires. Fields are interpreted
+/// One action consumed by the Phase-C runner after the synchronous preset/card
+/// transaction commits. Fields are interpreted
 /// per-Kind; only the ones listed in the comment are meaningful for a given
 /// Kind, the others stay default-initialised.
 struct CliAction {
@@ -207,9 +207,8 @@ struct CliPlan {
 std::optional<CliPlan> parseCli(int argc, char* argv[], bool& cleanExitOut);
 
 /// Run every phase-C action in `plan.deferredActions`, in order. Safe to call
-/// once the CPU has been running long enough for the deferred card plug to
-/// have fired (MainWindow_ImGui invokes this from render() after
-/// pendingCardEnableFrames reaches zero). Errors are logged; the first fatal
+/// once the synchronous preset/card transaction has committed. Errors are
+/// logged; the first fatal
 /// error short-circuits the rest of the deferred list.
 void runDeferredActions(const std::vector<CliAction>& actions,
                         EmulationController&         emu);

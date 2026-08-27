@@ -84,11 +84,105 @@ int main()
         return 1;
     }
 
+    // ---- Live topology changes: no UI frame and no visible CPU pause --------
+    // Alternate two mutually-exclusive cards while the emulation thread runs
+    // at MAX. The controller quiesces the core inside its critical section,
+    // then restores the prior run state. Each call must publish only the
+    // completed topology: never both cards, never neither, and never a stopped
+    // CPU snapshot.
+    pom1::CardConfigurationRequest sidConfig;
+    sidConfig.cards.add(pom1::CardId::Sid);
+    pom1::CardConfigurationRequest jukeConfig;
+    jukeConfig.cards.add(pom1::CardId::JukeBox);
+    for (int i = 0; i < 32; ++i) {
+        const bool wantSid = (i & 1) == 0;
+        const pom1::CardConfigurationResult result =
+            emu.applyCardConfiguration(wantSid ? sidConfig : jukeConfig);
+        if (!result) {
+            std::fprintf(stderr, "  → live card transaction %d failed: %s\n",
+                         i, result.message.c_str());
+            return 1;
+        }
+        EmulationSnapshot snapshot;
+        emu.copySnapshot(snapshot);
+        if (!snapshot.cpuRunning || snapshot.sidEnabled != wantSid ||
+            snapshot.jukeBoxEnabled == wantSid) {
+            std::fprintf(stderr,
+                         "  → incoherent snapshot after live transaction %d "
+                         "(running=%d sid=%d juke=%d)\n",
+                         i, snapshot.cpuRunning, snapshot.sidEnabled,
+                         snapshot.jukeBoxEnabled);
+            return 1;
+        }
+    }
+    pom1::CardConfigurationRequest noCards;
+    if (!emu.applyCardConfiguration(noCards)) {
+        std::fprintf(stderr, "  → failed to detach live topology after stress\n");
+        return 1;
+    }
+
+    // ---- Cold machine transaction: reset + topology, still one facade call --
+    pom1::CardConfigurationRequest coldSidConfig;
+    coldSidConfig.cards.add(pom1::CardId::Sid);
+    coldSidConfig.coldReset = true;
+    coldSidConfig.animateBoot = false;
+    coldSidConfig.systemRomProfile =
+        pom1::CardConfigurationRequest::SystemRomProfile::MonitorOnly;
+    coldSidConfig.presetRamKB = 8;
+    coldSidConfig.siliconStrict = true;
+    coldSidConfig.outOfRangeStrict = true;
+    coldSidConfig.vramNoiseOnReset = false;
+    coldSidConfig.systemRamNoiseOnReset = false;
+    coldSidConfig.cpuDecimalBugNMOS = true;
+    coldSidConfig.dramRefresh = true;
+    coldSidConfig.gen2RandomPowerOn = false;
+    if (!emu.applyCardConfiguration(coldSidConfig)) {
+        std::fprintf(stderr, "  → cold machine transaction failed\n");
+        return 1;
+    }
+    EmulationSnapshot coldSnapshot;
+    emu.copySnapshot(coldSnapshot);
+    if (!coldSnapshot.cpuRunning || !coldSnapshot.sidEnabled ||
+        coldSnapshot.memory.size() != 65536 || coldSnapshot.memory[0xFF00] == 0) {
+        std::fprintf(stderr,
+                     "  → incoherent cold transaction "
+                     "(running=%d sid=%d memory=%zu monitor=%02X)\n",
+                     coldSnapshot.cpuRunning, coldSnapshot.sidEnabled,
+                     coldSnapshot.memory.size(),
+                     coldSnapshot.memory.size() == 65536
+                         ? coldSnapshot.memory[0xFF00] : 0);
+        return 1;
+    }
+    if (emu.getPresetRamKB() != 8 ||
+        !emu.isSiliconStrictMode() || !emu.isOutOfRangeStrictMode() ||
+        !emu.isCpuDecimalBugNMOS() || !emu.isDramRefreshEnabled() ||
+        emu.isVramNoiseOnReset() || emu.isSystemRamNoiseOnReset() ||
+        emu.isGen2RandomPowerOn()) {
+        std::fprintf(stderr,
+                     "  → cold transaction did not apply its machine settings\n");
+        return 1;
+    }
+
     // ---- Stopped CPU reads as stopped --------------------------------------
     // A stale rate left behind by the last running window would make a paused
     // machine look busy, and the status bar suppresses its "(real ...)" warning
     // on the strength of this being 0.
     emu.stopCpu();
+    pom1::CardConfigurationRequest pausedSidConfig;
+    pausedSidConfig.cards.add(pom1::CardId::Sid);
+    if (!emu.applyCardConfiguration(pausedSidConfig)) {
+        std::fprintf(stderr, "  → card transaction failed while CPU was stopped\n");
+        return 1;
+    }
+    EmulationSnapshot pausedSnapshot;
+    emu.copySnapshot(pausedSnapshot);
+    if (pausedSnapshot.cpuRunning || !pausedSnapshot.sidEnabled) {
+        std::fprintf(stderr,
+                     "  → stopped-state transaction changed run state "
+                     "(running=%d sid=%d)\n",
+                     pausedSnapshot.cpuRunning, pausedSnapshot.sidEnabled);
+        return 1;
+    }
     std::this_thread::sleep_for(std::chrono::milliseconds(1200));
     const double hzStopped = emu.getMeasuredCpuHz();
     std::printf("  Stop: measured %.0f Hz\n", hzStopped);
@@ -99,7 +193,8 @@ int main()
         return 1;
     }
 
-    std::printf("measured_cpu_rate_smoke: OK (x1 %.0f Hz, Max %.2f MHz, stopped 0 Hz)\n",
+    std::printf("measured_cpu_rate_smoke: OK (x1 %.0f Hz, Max %.2f MHz, "
+                "32 live topology swaps, cold reset, paused topology swap, stopped 0 Hz)\n",
                 hz1x, hzMax / 1e6);
     return 0;
 }

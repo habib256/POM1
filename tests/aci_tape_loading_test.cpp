@@ -34,10 +34,12 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <vector>
 
 namespace {
 // Captures everything written to $D012 so we can see the ACI's prompts and
@@ -158,6 +160,39 @@ int main(int argc, char** argv)
             return 1;
         }
         std::printf("B1 OK: loadTape entered audio-stream mode with ACI off\n");
+
+        std::vector<float> pcm(512, 0.0f);
+        // Drain the insertion clunk while stopped so it cannot masquerade as
+        // decoded tape content in the non-silence assertion below.
+        for (int chunk = 0; chunk < 32; ++chunk) {
+            t.fillAudioBuffer(pcm.data(), static_cast<int>(pcm.size()));
+        }
+
+        // No renderer and no AudioDevice callback are involved: advanceCycles
+        // drives the non-realtime decoder producer, then fillAudioBuffer only
+        // consumes its fixed PCM ring. Scan up to ~2.3 s because archival
+        // captures may begin with leader/silence before speech/program audio.
+        t.playTape();
+        float streamPeak = 0.0f;
+        int streamNonZero = 0;
+        for (int chunk = 0; chunk < 200 && streamPeak <= 0.001f; ++chunk) {
+            t.advanceCycles(1000);
+            std::fill(pcm.begin(), pcm.end(), 0.0f);
+            t.fillAudioBuffer(pcm.data(), static_cast<int>(pcm.size()));
+            for (float sample : pcm) {
+                const float magnitude = std::fabs(sample);
+                if (magnitude > 0.00001f) ++streamNonZero;
+                streamPeak = std::max(streamPeak, magnitude);
+            }
+        }
+        if (streamPeak <= 0.001f || streamNonZero == 0) {
+            std::fprintf(stderr,
+                "FAIL: cassette AudioSource produced silence without UI "
+                "(peak=%.6f non-zero=%d)\n", streamPeak, streamNonZero);
+            return 1;
+        }
+        std::printf("B1 OK: headless cassette audio non-zero=%d peak=%.4f\n",
+                    streamNonZero, streamPeak);
 
         // Zombie-state guard: plugging the ACI must evict the stream tape.
         memory.setACIEnabled(true);

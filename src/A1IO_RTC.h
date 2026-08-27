@@ -24,7 +24,7 @@ public:
     static constexpr uint16_t kViaEnd  = 0x200F;
 
     A1IO_RTC();
-    void reset();
+    void reset() override;
 
     // VIA 65C22 register interface (called from Memory::memRead / memWrite)
     uint8_t readRegister(uint16_t address);

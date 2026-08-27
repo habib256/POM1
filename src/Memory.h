@@ -92,7 +92,7 @@ class Memory
 {
 public:
 
-    Memory();
+    explicit Memory(bool initializeAudioHardware = true);
     // Out-of-line (defined in Memory.cpp) so the forward-declared unique_ptr
     // members (TMS9918 / WiFiModem / TerminalCard / TelemetryPort / A1IO_RTC /
     // PR40Printer) only need their full type at the single dtor definition
@@ -639,6 +639,10 @@ public:
     // Central audio device (mixes CassetteDevice + SID)
     AudioDevice& getAudioDevice() { return *audioDevice; }
 
+    /// Snapshot of the currently attached expansion topology. Caller must
+    /// provide external synchronization when Memory is owned by the controller.
+    pom1::CardSet enabledCards() const { return activeCards(); }
+
     // /IRQ aggregator — see Memory::advanceCycles() for the wire-OR logic.
     // EmulationController calls this once at startup so peripherals can
     // pull /IRQ on the 6502 (TMS9918 vblank, 65C22 timers, 65C51 Rx, …).
@@ -648,6 +652,10 @@ public:
     void setCpuForIrq(M6502* c) { cpuForIrq = c; }
 
 private:
+    pom1::CardSet activeCards() const;
+    void applyTopologyRelations(pom1::CardId requested, bool enabled);
+    void setCardEnabledFromTopology(pom1::CardId card, bool enabled);
+
     // Shared snapshot orchestration core — the file and in-memory save/load
     // entry points both funnel through these so the section layout stays in
     // one place.
@@ -822,11 +830,8 @@ private :
     void noteRomFallback(const char* filename);
     std::unique_ptr<CassetteDevice> cassetteDevice;
     // All expansion cards start UNPLUGGED. MainWindow::applyMachineConfig
-    // re-plugs them 15 frames after the CPU has been running — plugging a
-    // card (especially audio-source cards like SID and the cassette deck)
-    // before the CPU has issued any cycle produces silent / broken cards
-    // that only recover when the user toggles them manually. See the
-    // pendingCardEnableFrames rationale in MainWindow_ImGui.h.
+    // re-plugs them through the coordinator's synchronous reset/attach/active
+    // transaction before the CPU can observe the new topology.
     bool aciEnabled = false;
     bool extendedAciEnabled = false;
     bool cassetteAudioActive = false;
@@ -928,6 +933,9 @@ public:
     // must follow it; GEN2 attaches last). Append new cards at the end, and
     // never reorder existing rows without bumping the snapshot version.
     struct CardSlot {
+        // Stable topology identity and metadata. Card modes that occupy a
+        // FLAGS bit but are not hardware use CardId::Invalid.
+        pom1::CardDescriptor descriptor;
         // Section name. Also the uniqueness key — see kCardNamesUnique below.
         // nullptr for a flag-only row (a bit in FLAGS with no card section:
         // the A1-SID Special Edition variant, the cassette-audio and
@@ -946,10 +954,9 @@ public:
         pom1::Peripheral* (*card)(const Memory&);
     };
     // The table. Defined in MemorySnapshot.cpp next to its only users.
-    static const std::array<CardSlot, 17>& cardSlots();
+    static const std::array<CardSlot, 18>& cardSlots();
 
 private:
 };
 
 #endif // MEMORY_H
-

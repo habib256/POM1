@@ -104,7 +104,7 @@ public:
     void setInitialExecutionSpeed(int cyclesPerFrame) { initialExecutionSpeed = cyclesPerFrame; }
     // CLI --enable / --disable — list of (card, enable) pairs applied as
     // preset overrides inside the first-frame block of render(), right after
-    // applyMachineConfig(). The overrides go through the existing pendingXxx
+    // applyMachineConfig(). The overrides amend stagedCardConfiguration
     // deferred-plug rails so the 15-frame delay still applies.
     void setCardOverrides(std::vector<pom1::CliCardOverride> overrides)
     { cardOverrides = std::move(overrides); }
@@ -121,7 +121,7 @@ public:
     // Subsequent preset switches reset to default - this is intentional.
     void setSiliconStrictModeOverride(bool enabled) { siliconStrictModeOverride = enabled; }
     void setDramRefreshOverride(bool enabled) { dramRefreshOverride = enabled; }
-    // CLI phase-C verbs. Applied once, the frame after pendingCardEnableFrames
+    // CLI phase-C verbs. Applied once after the staged card transaction
     // reaches zero (the same frame the deferred plug commits).
     void setDeferredCliActions(std::vector<pom1::CliAction> actions)
     { deferredCliActions = std::move(actions); }
@@ -887,7 +887,7 @@ private:
     // Boot a CodeTank release cartridge from the chooser's Play column: TMS9918
     // preset + picked cart/jumper on the deferred rail + auto-4000R.
     void launchGameFromChooser(int game);
-    void finalizePendingCardPlugs();
+    void applyPendingCardConfiguration();
     void applyPendingLayout(const char* windowName);
     // Restore every window (and the main OS window) to the active preset's
     // factory layout, discarding ini/imgui_preset_NN.ini + .size. Settings menu.
@@ -935,16 +935,16 @@ private:
     // was unplugged so callers can echo it via setStatusMessage. No-op when
     // no conflicts are active.
     std::string resolveParmigianiConflicts();
-    // Returns true when the requested cardName (matches the labels used in
-    // the Hardware menu) would create a new conflict against the currently
+    // Returns true when the requested stable card identity would create a
+    // new conflict against the currently
     // plugged cards. Used to gate MenuItem / toolbar toggles in strict mode.
-    bool wouldCreateConflict(const char* cardName) const;
+    bool wouldCreateConflict(pom1::CardId card) const;
     // Inline gate for MenuItem / toolbar handlers. When the user just flipped
     // `uiFlag` to true but silicon-strict mode forbids the resulting card
     // combo (per wouldCreateConflict), revert the flag and emit a status
     // message. Returns true when the toggle was REFUSED so the caller can
     // skip the emulation->set...Enabled() call and any side effects.
-    bool gateStrictPlug(const char* cardName, bool& uiFlag);
+    bool gateStrictPlug(pom1::CardId card, bool& uiFlag);
 
     void setStatusMessage(const std::string& message, float duration = 3.0f);
     void updateStatus(float deltaTime);
@@ -1040,43 +1040,17 @@ private:
     // layout (if != -1) before swapping in the new one.
     int  activePresetIndex = -1;
 
-    // Deferred expansion-card plug. Every card — audio sources (SID,
-    // cassette deck), memory-mapped peripherals (ACI, microSD, CFFA1,
-    // TMS9918, A1-IO/RTC, Terminal, Wi-Fi) — is unplugged up front when
-    // applyMachineConfig() runs (also on first boot) and re-plugged
-    // N frames later from render(). The problem the defer fixes was
-    // first observed on the SID: a card added to the audio mixer or
-    // peripheral bus before the CPU has run any cycle stays silent /
-    // broken until the user toggles it manually — the CPU hasn't had
-    // time to settle its registers before the card latched onto the
-    // mixer, and the card's state machine misses the first writes.
-    // Waiting ~15 frames (~200 ms at 50 fps) lets the CPU run a few
-    // thousand cycles first and fixes that uniformly for every card.
-    static constexpr int kCardEnableDeferFrames = 15;
-    int  pendingCardEnableFrames = 0;
-    bool pendingSidEnable = false;
-    bool pendingSidSEEnable = false;
-    bool pendingAciEnable = false;
-    bool pendingExtendedAciEnable = false;
-    bool pendingMicroSDEnable = false;
-    bool pendingCffa1Enable = false;
-    bool pendingTms9918Enable = false;
-    bool pendingA1ioRtcEnable = false;
-    bool pendingTerminalCardEnable = false;
-    bool pendingPr40Enable = false;
-    bool pendingGT6144Enable = false;
-    bool pendingIECCardEnable = false;
-    bool pendingWifiModemEnable = false;
-    bool pendingJukeBoxEnable = false;
-    JukeBox::Jumper pendingJukeBoxJumper = JukeBox::Jumper::RAM16_ROM32;
-    JukeBox::ChipMode pendingJukeBoxChipMode = JukeBox::ChipMode::Flash;
-    bool pendingCodeTankEnable = false;
-    CodeTank::Jumper pendingCodeTankJumper = CodeTank::Jumper::Lower16;
-    std::string pendingCodeTankRomPath;
-    bool pendingCassetteAudioActive = false;
-    std::string pendingPresetTapePath;
-    bool pendingPresetTapeForceProgramMode = false;
-    bool pendingPresetTapeAutoPlay = false;
+    // One value object stages hardware intent while preset and CLI overrides
+    // are composed. It is applied synchronously before control returns to the
+    // CPU; no frame or wall-clock timer participates in hardware readiness.
+    // board options together prevents the GUI rail from reconstructing a
+    // second, partly inconsistent topology beside EmulationController.
+    pom1::CardConfigurationRequest stagedCardConfiguration;
+    bool composingBootConfiguration = false;
+    bool stagedCassetteAudioActive = false;
+    std::string stagedPresetTapePath;
+    bool stagedPresetTapeForceProgramMode = false;
+    bool stagedPresetTapeAutoPlay = false;
 
     struct TapeDialogState {
         char filePath[512] = "cassette.aci";
@@ -1109,4 +1083,4 @@ private:
     static const char* shortcutLabel(int key, int mods = 0);
 };
 
-#endif // MAINWINDOW_IMGUI_H 
+#endif // MAINWINDOW_IMGUI_H

@@ -171,6 +171,31 @@ constexpr CardNameEntry kCardNames[] = {
     {"aci2",         CliCard::ExtendedAci},
 };
 
+constexpr std::string_view canonicalCardName(CardId id)
+{
+    switch (id) {
+    case CardId::Aci: return "aci";
+    case CardId::Tms9918: return "tms9918";
+    case CardId::Sid: return "sid";
+    case CardId::SidSpecialEdition: return "sid-se";
+    case CardId::MicroSD: return "microsd";
+    case CardId::Cffa1: return "cffa1";
+    case CardId::JukeBox: return "jukebox";
+    case CardId::CodeTank: return "codetank";
+    case CardId::WifiModem: return "wifi";
+    case CardId::TerminalCard: return "terminal";
+    case CardId::A1IoRtc: return "a1io";
+    case CardId::Pr40: return "pr40";
+    case CardId::Gt6144: return "gt6144";
+    case CardId::Iec: return "iec";
+    case CardId::Gen2: return "hgr";
+    case CardId::ExtendedAci: return "xaci";
+    case CardId::Count:
+    case CardId::Invalid: return {};
+    }
+    return {};
+}
+
 bool parseCard(const std::string& raw, CliCard& out)
 {
     const std::string key = toLower(raw);
@@ -367,7 +392,20 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& cleanExitOut)
             int n = pom1::machinePresetCount();
             std::cout << "Available machine presets:" << std::endl;
             for (int p = 0; p < n; ++p) {
-                std::cout << "  " << p << ": " << pom1::machinePresetName(p) << std::endl;
+                std::cout << "  " << p << ": " << pom1::machinePresetName(p)
+                          << "\t[cards=";
+                const MachineConfig* preset = machinePreset(presetIdFromIndex(p));
+                bool first = true;
+                if (preset) {
+                    for (std::size_t i = 0; i < kCardCount; ++i) {
+                        const CardId id = static_cast<CardId>(i);
+                        if (!preset->cards.contains(id)) continue;
+                        if (!first) std::cout << ',';
+                        std::cout << canonicalCardName(id);
+                        first = false;
+                    }
+                }
+                std::cout << "]" << std::endl;
             }
             return std::nullopt;
         }

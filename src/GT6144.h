@@ -39,6 +39,7 @@
 #define GT6144_H
 
 #include "Peripheral.h"
+#include "LockOrder.h"
 
 #include <array>
 #include <cstdint>
@@ -62,7 +63,7 @@ public:
     // and clear the FSM latches + video-stage flags (inverted/blanked).
     // Also invoked from Memory::setGT6144Enabled(true) so replugging the
     // card produces fresh power-on noise.
-    void reset();
+    void reset() override;
 
     // Write a byte to the I/O port. Dispatches through the 4-phase state
     // machine described at the top of the file.
@@ -92,7 +93,7 @@ public:
     static void renderToBuffer(uint32_t* out, const Snapshot& snap);
 
 private:
-    mutable std::mutex cardMutex;
+    mutable pom1::RankedMutex<pom1::LockRank::Peripheral> cardMutex;
     std::array<uint8_t, kFramebufferBytes> framebuffer{};
     bool inverted = false;
     bool blanked  = false;

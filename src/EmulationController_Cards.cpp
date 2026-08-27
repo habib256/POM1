@@ -138,10 +138,110 @@ void EmulationController::armCassetteRecord()
     publisher.publish(*memory, *cpu, runRequested.load());
 }
 
-void EmulationController::setTMS9918Enabled(bool enabled)
+pom1::CardConfigurationResult EmulationController::applyCardConfiguration(
+    const pom1::CardConfigurationRequest& request)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
-    memory->setTMS9918Enabled(enabled);
+
+    // Reject an invalid target before applying any of the optional machine
+    // settings carried by the same DTO. MachineCoordinator validates again at
+    // execution time, but this facade-level gate preserves the stronger
+    // transaction promise: TopologyRejected performs no mutation at all.
+    const pom1::TransitionPlan validation = pom1::planConfiguration(
+        memory->enabledCards(), request.cards, request.mode);
+    if (!validation.accepted) {
+        pom1::CardConfigurationResult rejected;
+        rejected.code = pom1::CardConfigurationError::TopologyRejected;
+        rejected.message = "card configuration rejected: " +
+            std::to_string(validation.rejectedConflicts.count) +
+            " conflict(s)";
+        return rejected;
+    }
+
+    // stateMutex excludes the emulation thread, but make the CPU state itself
+    // match the transaction as well.  Peripheral detach/configure/attach can
+    // touch bus handlers and audio producers; none of it should happen while
+    // M6502 still advertises a running core.  Keep runRequested unchanged so
+    // no transient stopped state is published and restore the caller's exact
+    // run/pause state before the single final publication.
+    const bool resumeCpu = request.coldReset || runRequested.load();
+    cpu->stop();
+
+    // Preset-wide machine policy must be armed before resetMemory()/initMemory:
+    // RAM/VRAM power-on noise and GEN2 initial state are consumed by reset.
+    if (request.presetRamKB)
+        memory->setPresetRamKB(*request.presetRamKB);
+    if (request.siliconStrict)
+        memory->setSiliconStrictMode(*request.siliconStrict);
+    if (request.outOfRangeStrict)
+        memory->setOutOfRangeStrictMode(*request.outOfRangeStrict);
+    if (request.vramNoiseOnReset)
+        memory->setVramNoiseOnReset(*request.vramNoiseOnReset);
+    if (request.systemRamNoiseOnReset)
+        memory->setSystemRamNoiseOnReset(*request.systemRamNoiseOnReset);
+    if (request.cpuDecimalBugNMOS)
+        cpu->setDecimalBugNMOS(*request.cpuDecimalBugNMOS);
+    if (request.dramRefresh)
+        cpu->setDramRefreshEnabled(*request.dramRefresh);
+    if (request.gen2RandomPowerOn)
+        memory->setGen2RandomPowerOn(*request.gen2RandomPowerOn);
+
+    if (request.coldReset) {
+        // Detach every producer/bus endpoint before resetting RAM and devices.
+        // This intermediate empty topology is never published.
+        memory->deactivateCassetteAudioSource();
+        pom1::CardConfigurationRequest detachAll;
+        const pom1::CardConfigurationResult detached =
+            pom1::MachineCoordinator::applyCardConfiguration(*memory, detachAll);
+        if (!detached) {
+            if (resumeCpu) cpu->start();
+            publisher.publish(*memory, *cpu, runRequested.load());
+            if (resumeCpu) wakeCv.notify_all();
+            return detached; // Empty topology is expected to be infallible.
+        }
+
+        programGeneration_.fetch_add(1, std::memory_order_relaxed);
+        memory->resetMemory();
+        memory->initMemory();
+        keyboard.clear();
+        memory->clearKeyboardInput();
+        preferredSoftResetVector = kDefaultResetVector;
+        memory->configureResetVectors(kDefaultResetVector);
+        cpu->hardReset();
+    }
+    pom1::CardConfigurationResult result =
+        pom1::MachineCoordinator::applyCardConfiguration(*memory, request);
+
+    if (result && request.activateCassetteAudio) {
+        memory->activateCassetteAudioSource();
+        if (request.cards.contains(pom1::CardId::Aci))
+            pom1::MachineCoordinator::markCardActive(*memory, pom1::CardId::Aci);
+        if (request.cards.contains(pom1::CardId::ExtendedAci))
+            pom1::MachineCoordinator::markCardActive(
+                *memory, pom1::CardId::ExtendedAci);
+    }
+    if (resumeCpu) cpu->start();
+    if (request.coldReset && screen) {
+        if (request.animateBoot)
+            screen->resetDisplay();
+        else
+            screen->clear();
+    }
+    publisher.publish(*memory, *cpu, runRequested.load());
+    if (resumeCpu) wakeCv.notify_all();
+    return result;
+}
+
+pom1::CardSet EmulationController::getEnabledCards() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->enabledCards();
+}
+
+void EmulationController::setCardEnabled(pom1::CardId card, bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    pom1::MachineCoordinator::setCardEnabled(*memory, card, enabled);
     publisher.publish(*memory, *cpu, runRequested.load());
 }
 
@@ -177,24 +277,10 @@ bool EmulationController::isGen2FiftyHz() const
     return memory->isGen2FiftyHz();
 }
 
-void EmulationController::setACIEnabled(bool enabled)
-{
-    std::lock_guard<PriorityMutex> lock(stateMutex);
-    memory->setACIEnabled(enabled);
-    publisher.publish(*memory, *cpu, runRequested.load());
-}
-
 bool EmulationController::isACIEnabled() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     return memory->isACIEnabled();
-}
-
-void EmulationController::setExtendedACIEnabled(bool enabled)
-{
-    std::lock_guard<PriorityMutex> lock(stateMutex);
-    memory->setExtendedACIEnabled(enabled);
-    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 bool EmulationController::isExtendedACIEnabled() const
@@ -203,30 +289,18 @@ bool EmulationController::isExtendedACIEnabled() const
     return memory->isExtendedACIEnabled();
 }
 
-void EmulationController::setSIDEnabled(bool enabled)
-{
-    std::lock_guard<PriorityMutex> lock(stateMutex);
-    memory->setSIDEnabled(enabled);
-    publisher.publish(*memory, *cpu, runRequested.load());
-}
-
 void EmulationController::activateCassetteAudioSource()
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     memory->activateCassetteAudioSource();
+    pom1::MachineCoordinator::markCardActive(*memory, pom1::CardId::Aci);
 }
 
 void EmulationController::deactivateCassetteAudioSource()
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     memory->deactivateCassetteAudioSource();
-}
-
-void EmulationController::setSIDSpecialEditionEnabled(bool enabled)
-{
-    std::lock_guard<PriorityMutex> lock(stateMutex);
-    memory->setSIDSpecialEditionEnabled(enabled);
-    publisher.publish(*memory, *cpu, runRequested.load());
+    pom1::MachineCoordinator::markCardInactive(*memory, pom1::CardId::Aci);
 }
 
 bool EmulationController::isSIDSpecialEditionEnabled() const
@@ -246,20 +320,6 @@ bool EmulationController::isSIDEnabled() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     return memory->isSIDEnabled();
-}
-
-void EmulationController::setMicroSDEnabled(bool enabled)
-{
-    std::lock_guard<PriorityMutex> lock(stateMutex);
-    memory->setMicroSDEnabled(enabled);
-    publisher.publish(*memory, *cpu, runRequested.load());
-}
-
-void EmulationController::setIECCardEnabled(bool enabled)
-{
-    std::lock_guard<PriorityMutex> lock(stateMutex);
-    memory->setIECCardEnabled(enabled);
-    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 bool EmulationController::isIECCardEnabled() const
@@ -322,13 +382,6 @@ std::string EmulationController::getMicroSDRootPath() const
     return memory->getMicroSD().getSDCardPath();
 }
 
-void EmulationController::setCFFA1Enabled(bool enabled)
-{
-    std::lock_guard<PriorityMutex> lock(stateMutex);
-    memory->setCFFA1Enabled(enabled);
-    publisher.publish(*memory, *cpu, runRequested.load());
-}
-
 bool EmulationController::isCFFA1Enabled() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -349,13 +402,6 @@ bool EmulationController::reloadSDCardRom(std::string& error)
     bool ok = RomLoader::reloadSDCardRom(*memory, error);
     publisher.publish(*memory, *cpu, runRequested.load());
     return ok;
-}
-
-void EmulationController::setJukeBoxEnabled(bool enabled)
-{
-    std::lock_guard<PriorityMutex> lock(stateMutex);
-    memory->setJukeBoxEnabled(enabled);
-    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 bool EmulationController::isJukeBoxEnabled() const
@@ -432,13 +478,6 @@ bool EmulationController::saveJukeBoxRom(const std::string& path, std::string& e
     return memory->saveJukeBoxRom(path, error);
 }
 
-void EmulationController::setCodeTankEnabled(bool enabled)
-{
-    std::lock_guard<PriorityMutex> lock(stateMutex);
-    memory->setCodeTankEnabled(enabled);
-    publisher.publish(*memory, *cpu, runRequested.load());
-}
-
 bool EmulationController::isCodeTankEnabled() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -483,13 +522,6 @@ bool EmulationController::loadCodeTankRomBuffer(const std::vector<uint8_t>& data
     return true;
 }
 
-void EmulationController::setWiFiModemEnabled(bool enabled)
-{
-    std::lock_guard<PriorityMutex> lock(stateMutex);
-    memory->setWiFiModemEnabled(enabled);
-    publisher.publish(*memory, *cpu, runRequested.load());
-}
-
 bool EmulationController::isWiFiModemEnabled() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -508,13 +540,6 @@ void EmulationController::wifiModemReset()
 {
     // No stateMutex needed: WiFiModem::reset() takes its own modemMutex.
     memory->getWiFiModem().reset();
-}
-
-void EmulationController::setTerminalCardEnabled(bool enabled)
-{
-    std::lock_guard<PriorityMutex> lock(stateMutex);
-    memory->setTerminalCardEnabled(enabled);
-    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 void EmulationController::setTelemetryEnabled(bool enabled)
@@ -576,13 +601,6 @@ TerminalCard* EmulationController::getTerminalCardIfEnabled()
     return &memory->getTerminalCard();
 }
 
-void EmulationController::setPR40Enabled(bool enabled)
-{
-    std::lock_guard<PriorityMutex> lock(stateMutex);
-    memory->setPR40Enabled(enabled);
-    publisher.publish(*memory, *cpu, runRequested.load());
-}
-
 bool EmulationController::isPR40Enabled() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
@@ -622,24 +640,10 @@ void EmulationController::clearPR40Paper()
     publisher.publish(*memory, *cpu, runRequested.load());
 }
 
-void EmulationController::setA1IO_RTCEnabled(bool enabled)
-{
-    std::lock_guard<PriorityMutex> lock(stateMutex);
-    memory->setA1IO_RTCEnabled(enabled);
-    publisher.publish(*memory, *cpu, runRequested.load());
-}
-
 bool EmulationController::isA1IO_RTCEnabled() const
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);
     return memory->isA1IO_RTCEnabled();
-}
-
-void EmulationController::setGT6144Enabled(bool enabled)
-{
-    std::lock_guard<PriorityMutex> lock(stateMutex);
-    memory->setGT6144Enabled(enabled);
-    publisher.publish(*memory, *cpu, runRequested.load());
 }
 
 bool EmulationController::isGT6144Enabled() const

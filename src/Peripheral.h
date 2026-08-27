@@ -40,6 +40,13 @@ namespace pom1 {
 class SnapshotWriter;
 class SnapshotReader;
 
+enum class PeripheralLifecycleState {
+    Constructed,
+    Attached,
+    Reset,
+    Active,
+};
+
 class Peripheral {
 public:
     virtual ~Peripheral() = default;
@@ -49,6 +56,48 @@ public:
     /// by logs / error messages. MUST stay stable across releases — the
     /// snapshot reader looks cards up by this name.
     virtual std::string_view name() const = 0;
+
+    /// Restore the device-local power-on state before the coordinator exposes
+    /// it on the machine bus. Implementations that have no mutable runtime
+    /// state may keep the default no-op.
+    virtual void reset() {}
+
+    PeripheralLifecycleState lifecycleState() const { return lifecycleState_; }
+
+    /// Lifecycle transitions are idempotent and reject skipped phases. A
+    /// detach returns the reusable device object to Constructed; ownership is
+    /// unchanged. These methods track ordering only—the coordinator invokes
+    /// the card-specific bus/reset/activation effects around them.
+    bool markAttached() {
+        if (lifecycleState_ == PeripheralLifecycleState::Constructed) {
+            lifecycleState_ = PeripheralLifecycleState::Attached;
+            return true;
+        }
+        return lifecycleState_ == PeripheralLifecycleState::Attached;
+    }
+    bool markReset() {
+        if (lifecycleState_ == PeripheralLifecycleState::Attached ||
+            lifecycleState_ == PeripheralLifecycleState::Active) {
+            lifecycleState_ = PeripheralLifecycleState::Reset;
+            return true;
+        }
+        return lifecycleState_ == PeripheralLifecycleState::Reset;
+    }
+    bool markActive() {
+        if (lifecycleState_ == PeripheralLifecycleState::Reset) {
+            lifecycleState_ = PeripheralLifecycleState::Active;
+            return true;
+        }
+        return lifecycleState_ == PeripheralLifecycleState::Active;
+    }
+    bool markInactive() {
+        if (lifecycleState_ == PeripheralLifecycleState::Active) {
+            lifecycleState_ = PeripheralLifecycleState::Reset;
+            return true;
+        }
+        return lifecycleState_ == PeripheralLifecycleState::Reset;
+    }
+    void markDetached() { lifecycleState_ = PeripheralLifecycleState::Constructed; }
 
     /// Optional debugging label for the card's internal mutex. The
     /// documented mutex order in CLAUDE.md is
@@ -67,6 +116,9 @@ public:
     /// pre-positioned at the card's payload. Default no-op pairs with
     /// the default serialize.
     virtual void deserialize(SnapshotReader& /*reader*/) {}
+
+private:
+    PeripheralLifecycleState lifecycleState_ = PeripheralLifecycleState::Constructed;
 };
 
 } // namespace pom1

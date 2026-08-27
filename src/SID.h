@@ -19,6 +19,8 @@
 #define SID_H
 
 #include "AudioDevice.h"
+#include "LockOrder.h"
+#include "RealtimeDiagnostics.h"
 #include "CpuClock.h"
 #include "Peripheral.h"
 
@@ -65,7 +67,7 @@ public:
     /// race on `ringTail` with visible audio glitches. For hardReset
     /// paths where the SID stays in `sources`, use `resetChip()` instead
     /// and let the ring drain naturally through the audio callback.
-    void reset();
+    void reset() override;
 
     /// Chip-only reset: `chip->reset()` + clear shadowRegs. Does NOT
     /// touch the sample ring — safe to call while the SID is registered
@@ -91,6 +93,7 @@ public:
     /// samples in [-1, +1] at 44.1 kHz. Drains the ring buffer; outputs
     /// silence on underrun (audio thread faster than emulation).
     void fillAudioBuffer(float* output, int frameCount) override;
+    void copyRealtimeDiagnostics(RealtimeDiagnostics& out) const;
 
     /// Hot-swap chip model. Internally rebuilds libresidfp's filter chain
     /// (the 6581 and 8580 use entirely different filter models).
@@ -167,12 +170,16 @@ private:
     std::array<float, kRingCapacity> ringBuf{};
     std::atomic<size_t> ringHead{0};
     std::atomic<size_t> ringTail{0};
+#if POM1_REALTIME_DIAGNOSTICS
+    std::atomic<uint64_t> ringUnderruns{0};
+    std::atomic<uint64_t> ringOverflows{0};
+#endif
 
     /// Serialises register writes / chip->clock() / setChipModel(). The
     /// audio thread (fillAudioBuffer) does NOT take this mutex — it only
     /// reads from the ring via atomic head/tail, so chip->clock() in
     /// advanceCycles can run unblocked.
-    mutable std::mutex chipMutex;
+    mutable RankedMutex<LockRank::Peripheral> chipMutex;
 
     /// Emulated cycles run but not yet clocked into the chip. Producer-side
     /// only: written by advanceCycles() on the emulation thread and by the

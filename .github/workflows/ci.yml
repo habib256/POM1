@@ -153,8 +153,18 @@ jobs:
         # and it shares no compilation path with Metal — PomRenderer_GL.cpp is
         # not compiled at all in the job above. Untested means broken.
         run: |
-          cmake -S . -B build-gl -DPOM1_RENDERER=opengl -DPOM1_ENABLE_TESTS=OFF
-          cmake --build build-gl -j"$(sysctl -n hw.ncpu)"
+          cmake -S . -B build-gl -DPOM1_RENDERER=opengl -DPOM1_WERROR=ON
+          cmake --build build-gl -j"$(sysctl -n hw.ncpu)" --target \
+            pom1_imgui test_sid_audio test_aci_tape_loading test_measured_cpu_rate
+
+      - name: Run backend-parity tests (OpenGL build)
+        # These are deliberately executed from build-gl, not reused from the
+        # Metal tree above. They prove the fallback binary can apply every
+        # preset before its first cycle, mutate topology under the live CPU,
+        # and produce non-silent SID/cassette audio without a rendered frame.
+        run: |
+          ctest --test-dir build-gl --output-on-failure \
+            -R '^(sid_audio_smoke|aci_tape_loading|measured_cpu_rate_smoke|headless_preset_matrix|architecture_check)$'
 
   windows:
     runs-on: windows-latest
@@ -252,8 +262,9 @@ jobs:
       # same to `test -s`. Load the page the way a visitor does — headless
       # Chromium on the exact site assembly pages.yml deploys — and require the
       # C++ first-frame callback (pom1FirstFrameReady → #bootSplash.hidden),
-      # zero uncaught exceptions / console errors / failed requests, and a
-      # non-black canvas. pages.yml runs the same check as a deploy gate; this
+      # zero uncaught exceptions / console errors / failed requests, a live
+      # configured CPU reported by the WASM probe, and a non-black canvas.
+      # pages.yml runs the same check as a deploy gate; this
       # copy runs it per push, BEFORE the merge.
       - name: Assemble the site (same layout the deploy ships)
         run: tools/assemble_wasm_site.sh build-wasm-ci site
@@ -350,4 +361,7 @@ jobs:
           # test; its own per-command budget needs the same headroom the ctest
           # TIMEOUTs get (scaled x5 in tests/CMakeLists.txt under POM1_SANITIZE).
           POM1_MICRO_RUN_TIMEOUT: "300"
+          # The ordinary PR test lasts 350 ms. TSan gets a sustained campaign
+          # over the same production triangle to increase scheduling diversity.
+          POM1_CONCURRENCY_STRESS_MS: ${{ matrix.sanitize == 'thread' && '5000' || '350' }}
         run: ctest --test-dir build-san --output-on-failure

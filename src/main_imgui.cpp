@@ -5,6 +5,7 @@
 // a transitive include holding for the WASM build too.
 #include <string>
 #include <vector>
+#include <mutex>
 #include <GLFW/glfw3.h>
 #include "POM1Build.h"
 #include "PomVersion.h"   // POM1_VERSION_STRING (generated from VERSION)
@@ -18,6 +19,7 @@
 #include "CliDispatcher.h"
 #include "X11ErrorGuard.h"
 #include "MainWindow_ImGui.h"
+#include "MachinePresets.h"
 #include "IconsFontAwesome6.h"
 #include "Logger.h"
 #include "third_party/stb/stb_image.h"
@@ -74,6 +76,35 @@ EMSCRIPTEN_KEEPALIVE
 void pom1_save_layout_now()
 {
     if (g_wasmPasteTarget) g_wasmPasteTarget->saveActivePresetLayoutNow();
+}
+
+// Read-only browser-smoke contract. Low bits describe independently useful
+// machine invariants; the current PC occupies the high 16 bits. This proves
+// that Chromium reached a configured, running emulator core rather than only
+// a healthy WebGL/ImGui shell.
+EMSCRIPTEN_KEEPALIVE
+uint32_t pom1_wasm_machine_probe()
+{
+    if (!g_wasmPasteTarget) return 0;
+    uint32_t flags = 0x01u; // MainWindow exists
+    if (g_wasmPasteTarget->getActivePresetIndex() >= 0) flags |= 0x02u;
+    EmulationController* emu = g_wasmPasteTarget->getEmulationController();
+    if (!emu) return flags;
+    EmulationSnapshot snapshot;
+    emu->copySnapshot(snapshot);
+    if (snapshot.cpuRunning) flags |= 0x04u;
+    if (snapshot.ramSizeKB > 0) flags |= 0x08u;
+    if (snapshot.memory.size() == 0x10000 && snapshot.memory[0xFF00] != 0)
+        flags |= 0x10u;
+    return (static_cast<uint32_t>(snapshot.programCounter) << 16) | flags;
+}
+
+EMSCRIPTEN_KEEPALIVE
+double pom1_wasm_measured_cpu_hz()
+{
+    if (!g_wasmPasteTarget) return 0.0;
+    EmulationController* emu = g_wasmPasteTarget->getEmulationController();
+    return emu ? emu->getMeasuredCpuHz() : 0.0;
 }
 }
 #else
@@ -579,30 +610,65 @@ static void pom1_macos_provision_user_data_dir()
 static std::atomic<bool> g_headlessStop{false};
 static void pom1_headless_signal_handler(int) { g_headlessStop.store(true); }
 
+class HeadlessDisplayCapture final : public DisplayDevice {
+public:
+    void onChar(char c) override
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (text_.size() < 65536) text_.push_back(c);
+    }
+
+    std::string escapedText() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::string out;
+        out.reserve(text_.size());
+        for (unsigned char c : text_) {
+            if (c == '\r') out += "\\r";
+            else if (c == '\n') out += "\\n";
+            else if (c >= 0x20 && c < 0x7f) out.push_back(static_cast<char>(c));
+        }
+        return out;
+    }
+
+private:
+    mutable std::mutex mutex_;
+    std::string text_;
+};
+
 // Map a --enable/--disable card to its EmulationController facade (immediate,
 // no GUI deferred plug). Cascades + mutex evictions live inside the setters.
-static void applyHeadlessCardOverride(EmulationController& emu, pom1::CliCard card, bool on)
+static bool applyHeadlessCardOverride(EmulationController& emu, pom1::CliCard card,
+                                      bool on, pom1::TopologyMode mode)
 {
     using CC = pom1::CliCard;
+    pom1::CardId id = pom1::CardId::Invalid;
     switch (card) {
-        case CC::Aci:          emu.setACIEnabled(on); break;
-        case CC::Sid:          emu.setSIDEnabled(on); break;
-        case CC::SidSE:        emu.setSIDSpecialEditionEnabled(on); break;
-        case CC::MicroSD:      emu.setMicroSDEnabled(on); break;
-        case CC::Tms9918:      emu.setTMS9918Enabled(on); break;
-        case CC::A1IoRtc:      emu.setA1IO_RTCEnabled(on); break;
-        case CC::Hgr:          emu.setHgrFramebufferAttached(on); break;
-        case CC::Cffa1:        emu.setCFFA1Enabled(on); break;
-        case CC::WifiModem:    emu.setWiFiModemEnabled(on); break;
-        case CC::TerminalCard: emu.setTerminalCardEnabled(on); break;
-        case CC::JukeBox:      emu.setJukeBoxEnabled(on); break;
-        case CC::CodeTank:     emu.setCodeTankEnabled(on); break;
-        case CC::Pr40:         emu.setPR40Enabled(on); break;
-        case CC::GT6144:       emu.setGT6144Enabled(on); break;
-        case CC::ExtendedAci:  emu.setExtendedACIEnabled(on); break;
-        case CC::IEC:          emu.setIECCardEnabled(on); break;
-        case CC::Krusader:     { std::string e; if (on) emu.reloadKrusader(e); } break;
+        case CC::Aci:          id = pom1::CardId::Aci; break;
+        case CC::Sid:          id = pom1::CardId::Sid; break;
+        case CC::SidSE:        id = pom1::CardId::SidSpecialEdition; break;
+        case CC::MicroSD:      id = pom1::CardId::MicroSD; break;
+        case CC::Tms9918:      id = pom1::CardId::Tms9918; break;
+        case CC::A1IoRtc:      id = pom1::CardId::A1IoRtc; break;
+        case CC::Hgr:          id = pom1::CardId::Gen2; break;
+        case CC::Cffa1:        id = pom1::CardId::Cffa1; break;
+        case CC::WifiModem:    id = pom1::CardId::WifiModem; break;
+        case CC::TerminalCard: id = pom1::CardId::TerminalCard; break;
+        case CC::JukeBox:      id = pom1::CardId::JukeBox; break;
+        case CC::CodeTank:     id = pom1::CardId::CodeTank; break;
+        case CC::Pr40:         id = pom1::CardId::Pr40; break;
+        case CC::GT6144:       id = pom1::CardId::Gt6144; break;
+        case CC::ExtendedAci:  id = pom1::CardId::ExtendedAci; break;
+        case CC::IEC:          id = pom1::CardId::Iec; break;
+        case CC::Krusader: {
+            std::string error;
+            return !on || emu.reloadKrusader(error);
+        }
     }
+    const pom1::CardSet current = emu.getEnabledCards();
+    if (on && pom1::wouldCreateConflict(current, id, mode)) return false;
+    emu.setCardEnabled(id, on);
+    return true;
 }
 
 // ── Headless graphics-regression capture (--dump-gen2-frame / --dump-tms-frame) ──
@@ -686,7 +752,8 @@ static int runHeadless(pom1::CliPlan& plan)
 {
     pom1::log().info("POM1", "headless mode — no window (Ctrl-C / SIGTERM to exit)");
 
-    EmulationController emu(nullptr);   // null screen: the $D012 display sink is a no-op
+    HeadlessDisplayCapture display;
+    EmulationController emu(&display);
 
     // Machine config: apply the preset (RAM + cards + BASIC ROM) immediately —
     // no GUI deferred plug — then explicit --enable/--disable overrides, then
@@ -694,10 +761,18 @@ static int runHeadless(pom1::CliPlan& plan)
     // an HGR game test, with no display.
     if (plan.presetIndex >= 0)
         MainWindow_ImGui::applyHeadlessConfig(emu, plan.presetIndex);
-    for (const auto& o : plan.cardOverrides)
-        applyHeadlessCardOverride(emu, o.card, o.enable);
+    const pom1::TopologyMode overrideMode =
+        plan.presetIndex >= 0 &&
+        pom1::isFantasyPreset(pom1::presetIdFromIndex(plan.presetIndex))
+            ? pom1::TopologyMode::Fantasy : pom1::TopologyMode::Strict;
+    for (const auto& o : plan.cardOverrides) {
+        if (!applyHeadlessCardOverride(emu, o.card, o.enable, overrideMode)) {
+            pom1::log().error("CLI", "card override rejected by topology policy");
+            return 2;
+        }
+    }
     if (plan.terminalOverride)
-        emu.setTerminalCardEnabled(true);
+        emu.setCardEnabled(pom1::CardId::TerminalCard, true);
     // DRAM refresh stall override (the preset path leaves it off so 1:1-timed
     // demos stay exact). --dram-refresh arms the 4/65 CPU steal — the beam keeps
     // running, so beam-race code drifts as on real DRAM silicon.
@@ -852,6 +927,8 @@ static int runHeadless(pom1::CliPlan& plan)
         std::snprintf(msg, sizeof(msg), "headless run complete — %d cycles, PC=$%04X",
                       plan.exitAfterCycles, (unsigned)snap.programCounter);
         pom1::log().info("POM1", msg);
+        pom1::log().info("POM1", "headless display capture: " +
+                                 display.escapedText());
         return 0;
     }
 
@@ -1526,4 +1603,4 @@ int main(int argc, char* argv[])
 #endif
 
     return 0;
-} 
+}

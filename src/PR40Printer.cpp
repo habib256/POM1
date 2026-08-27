@@ -17,7 +17,7 @@ PR40Printer::PR40Printer()
 
 void PR40Printer::reset()
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     for (auto& c : fifo) c = 0;
     fifoLevel = 0;
     mechCyclesRemaining = 0;
@@ -32,7 +32,7 @@ void PR40Printer::reset()
 
 void PR40Printer::onDisplayWrite(uint8_t rawValue)
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     if (mode == SwitchMode::Off) return;
 
     const uint8_t c = rawValue & 0x7F;
@@ -73,7 +73,7 @@ void PR40Printer::onDisplayWrite(uint8_t rawValue)
 void PR40Printer::advanceCycles(int cycles)
 {
     if (cycles <= 0) return;
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     if (mechCyclesRemaining > 0) {
         mechCyclesRemaining = std::max(0, mechCyclesRemaining - cycles);
     }
@@ -81,19 +81,19 @@ void PR40Printer::advanceCycles(int cycles)
 
 bool PR40Printer::isMechBusy() const
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     return mechCyclesRemaining > 0;
 }
 
 PR40Printer::SwitchMode PR40Printer::getMode() const
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     return mode;
 }
 
 void PR40Printer::copySnapshot(Snapshot& out) const
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     out.mode = mode;
     out.fifoLevel = fifoLevel;
     out.busy = (mechCyclesRemaining > 0);
@@ -110,13 +110,13 @@ void PR40Printer::copySnapshot(Snapshot& out) const
 
 void PR40Printer::setMode(SwitchMode m)
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     mode = m;
 }
 
 void PR40Printer::serialize(pom1::SnapshotWriter& w) const
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     w.writeU8 (static_cast<uint8_t>(mode));
     w.writeU8 (static_cast<uint8_t>(fifoLevel));
     w.writeBytes(fifo, kFifoCapacity);
@@ -131,7 +131,7 @@ void PR40Printer::serialize(pom1::SnapshotWriter& w) const
 
 void PR40Printer::deserialize(pom1::SnapshotReader& r)
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     // Same clamp-the-untrusted-enum form the other cards use (MicroSD's
     // mcuPhase / nextPhaseAfterResponse, IECCard's rxPhase_ / txPhase_,
     // JukeBox's chipMode): a scoped enum whose enumerators span 0..2 has no
@@ -165,7 +165,7 @@ void PR40Printer::deserialize(pom1::SnapshotReader& r)
 
 bool PR40Printer::savePaperRoll(const std::string& path, std::string& error) const
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     std::ofstream f(path, std::ios::binary | std::ios::trunc);
     if (!f) { error = "cannot open '" + path + "' for writing"; return false; }
     for (const auto& line : paperLines) {
@@ -180,7 +180,7 @@ bool PR40Printer::savePaperRoll(const std::string& path, std::string& error) con
 
 void PR40Printer::tearOffPage(std::string* dumpedContents)
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     if (dumpedContents) {
         dumpedContents->clear();
         for (const auto& line : paperLines) { *dumpedContents += line; *dumpedContents += '\n'; }

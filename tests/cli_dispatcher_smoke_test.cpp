@@ -20,6 +20,7 @@
 #include "EmulationSnapshot.h"
 #include "MachinePresets.h"
 
+#include <array>
 #include <cassert>
 #include <chrono>
 #include <cstdio>
@@ -93,6 +94,41 @@ void testPresetTable()
     assert(pom1::machinePresetName(-1) == nullptr);
     assert(pom1::machinePresetName(n) == nullptr);
     assert(pom1::machinePresetName(n + 100) == nullptr);
+    assert(n == pom1::presetIndex(pom1::PresetId::Count));
+    assert(pom1::presetIdFromIndex(-1) == pom1::PresetId::Invalid);
+    assert(pom1::presetIdFromIndex(n) == pom1::PresetId::Invalid);
+    assert(pom1::machinePreset(pom1::kDefaultPresetId) ==
+           &pom1::kMachinePresets[pom1::presetIndex(pom1::kDefaultPresetId)]);
+    assert(pom1::isFantasyPreset(pom1::PresetId::PLabFantasy));
+    assert(!pom1::isFantasyPreset(pom1::PresetId::Gen2Color));
+    std::string presetError;
+    assert(pom1::validateMachinePresets(presetError));
+    assert(presetError.empty());
+
+    const std::array<pom1::CardSet, 13> expectedCards{{
+        pom1::CardSet{pom1::CardId::Aci},
+        pom1::CardSet{pom1::CardId::Tms9918} | pom1::CardSet{pom1::CardId::CodeTank},
+        pom1::CardSet{pom1::CardId::Gen2} | pom1::CardSet{pom1::CardId::Aci} |
+            pom1::CardSet{pom1::CardId::ExtendedAci},
+        {},
+        pom1::CardSet{pom1::CardId::Aci},
+        pom1::CardSet{pom1::CardId::Pr40} | pom1::CardSet{pom1::CardId::Aci} |
+            pom1::CardSet{pom1::CardId::Gt6144},
+        pom1::CardSet{pom1::CardId::Aci} | pom1::CardSet{pom1::CardId::ExtendedAci},
+        pom1::CardSet{pom1::CardId::Cffa1},
+        pom1::CardSet{pom1::CardId::MicroSD},
+        pom1::CardSet{pom1::CardId::Tms9918} | pom1::CardSet{pom1::CardId::CodeTank},
+        pom1::CardSet{pom1::CardId::Sid} | pom1::CardSet{pom1::CardId::Tms9918} |
+            pom1::CardSet{pom1::CardId::A1IoRtc} | pom1::CardSet{pom1::CardId::WifiModem} |
+            pom1::CardSet{pom1::CardId::TerminalCard} | pom1::CardSet{pom1::CardId::CodeTank},
+        pom1::CardSet{pom1::CardId::Gen2} | pom1::CardSet{pom1::CardId::Aci} |
+            pom1::CardSet{pom1::CardId::ExtendedAci},
+        pom1::CardSet{pom1::CardId::MicroSD} | pom1::CardSet{pom1::CardId::Sid} |
+            pom1::CardSet{pom1::CardId::WifiModem} | pom1::CardSet{pom1::CardId::TerminalCard} |
+            pom1::CardSet{pom1::CardId::Aci} | pom1::CardSet{pom1::CardId::ExtendedAci},
+    }};
+    for (int i = 0; i < n; ++i)
+        assert(pom1::kMachinePresets[i].enabledCards() == expectedCards[static_cast<std::size_t>(i)]);
 
     // The named indices other subsystems depend on by position (DevBench
     // targets in kP1Targets[]) must stay inside the table.
@@ -110,9 +146,13 @@ void testPresetTable()
     // daughterboard, which rides microSD's spare VIA pins.
     for (int i = 0; i < n; ++i) {
         const auto& c = pom1::kMachinePresets[i];
-        assert(!c.codeTank    || c.tms9918);
-        assert(!c.extendedAci || c.aci);
-        assert(!c.iecCard     || c.microSD);
+        const auto cards = c.enabledCards();
+        if (cards.contains(pom1::CardId::CodeTank))
+            assert(cards.contains(pom1::CardId::Tms9918));
+        if (cards.contains(pom1::CardId::ExtendedAci))
+            assert(cards.contains(pom1::CardId::Aci));
+        if (cards.contains(pom1::CardId::Iec))
+            assert(cards.contains(pom1::CardId::MicroSD));
     }
 }
 

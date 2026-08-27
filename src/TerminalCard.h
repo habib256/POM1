@@ -34,6 +34,7 @@
 #endif
 
 #include "Peripheral.h"
+#include "LockOrder.h"
 #include <string_view>
 
 /// P-LAB Apple-1 Terminal Card — bidirectional serial bridge.
@@ -54,7 +55,7 @@ public:
     TerminalCard();
     ~TerminalCard();
 
-    void reset();
+    void reset() override;
 
     // Called from Memory::memWrite when address == 0xD012
     // Receives the RAW value (before & 0x7F) so 8-bit mode works
@@ -144,12 +145,12 @@ private:
     bool escapePending = false;
 
     // Thread safety
-    mutable std::mutex cardMutex;
+    mutable pom1::RankedMutex<pom1::LockRank::Peripheral> cardMutex;
 
     // Screenshot result queue (filled by main render thread, drained by
     // advanceCycles). Separate mutex so the main thread never blocks on the
     // long-held cardMutex during socket I/O.
-    std::mutex screenshotResultMutex;
+    pom1::RankedMutex<pom1::LockRank::PeripheralInner> screenshotResultMutex;
     std::string screenshotResultPending;
 
     // Callback

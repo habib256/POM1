@@ -216,7 +216,7 @@ public:
     // looks for the STA at PC-3 in the disassembly.
     void setLastAccessPc(uint16_t pc) { lastAccessPc = pc; }
 
-    void reset();
+    void reset() override;
 
     // ── Editor seam (TMS9918 Paint) ──────────────────────────────────────────
     // Direct VRAM / register writes from the host-side paint editor. Unlike a

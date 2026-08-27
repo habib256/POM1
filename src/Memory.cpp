@@ -27,6 +27,7 @@
 #include <cmath>
 
 #include "Memory.h"
+#include "CardTopology.h"
 #include "HexDumpFile.h"
 #include "IntelHexFile.h"
 #include "Logger.h"
@@ -165,9 +166,9 @@ constexpr uint8_t kExtendedAciRom[0x100] = {
 
 } // namespace
 
-Memory::Memory()
+Memory::Memory(bool initializeAudioHardware)
 {
-    audioDevice = std::make_unique<AudioDevice>();
+    audioDevice = std::make_unique<AudioDevice>(initializeAudioHardware);
     // Pass the audio device's actual sample rate (44.1 kHz requested but
     // miniaudio may negotiate 48 kHz on Apple Silicon, and the browser
     // AudioContext may also force a different rate on WASM) so both
@@ -179,11 +180,8 @@ Memory::Memory()
     cassetteDevice->setAudioOutputSampleRate(actualRate);
     cassetteDevice->setAciActive(aciEnabled);
     // NOTE: no addSource here. The cassette is registered on the mixer
-    // via activateCassetteAudioSource() which MainWindow calls 15 frames
-    // after the CPU starts, matching the SID deferred-plug rule. Adding
-    // the source here (before the CPU has run) was producing silent
-    // first-tape playback — same symptom as the early SID boot-silence.
-    // See pendingCardEnableFrames in MainWindow_ImGui.h.
+    // via activateCassetteAudioSource() after the synchronous card
+    // transaction. Adding the source here would expose a half-configured deck.
     tms9918 = std::make_unique<TMS9918>();
     sid = std::make_unique<pom1::SID>(static_cast<int>(actualRate));
     microSD = std::make_unique<MicroSD>();
@@ -539,16 +537,77 @@ void Memory::resetGen2VideoEventJournal()
     gen2PublishedFrameStart = gen2RecordingFrameStart;
 }
 
+pom1::CardSet Memory::activeCards() const
+{
+    pom1::CardSet cards;
+    if (aciEnabled) cards.add(pom1::CardId::Aci);
+    if (tms9918Enabled) cards.add(pom1::CardId::Tms9918);
+    if (sidEnabled) cards.add(pom1::CardId::Sid);
+    if (sidSpecialEditionEnabled) cards.add(pom1::CardId::SidSpecialEdition);
+    if (microSDEnabled) cards.add(pom1::CardId::MicroSD);
+    if (cffa1Enabled) cards.add(pom1::CardId::Cffa1);
+    if (jukeBoxEnabled) cards.add(pom1::CardId::JukeBox);
+    if (codeTankEnabled) cards.add(pom1::CardId::CodeTank);
+    if (wifiModemEnabled) cards.add(pom1::CardId::WifiModem);
+    if (terminalCardEnabled.load()) cards.add(pom1::CardId::TerminalCard);
+    if (a1ioRtcEnabled) cards.add(pom1::CardId::A1IoRtc);
+    if (pr40Enabled) cards.add(pom1::CardId::Pr40);
+    if (gt6144Enabled) cards.add(pom1::CardId::Gt6144);
+    if (iecCardEnabled) cards.add(pom1::CardId::Iec);
+    if (hgrFramebufferAttached) cards.add(pom1::CardId::Gen2);
+    if (extendedAciEnabled) cards.add(pom1::CardId::ExtendedAci);
+    return cards;
+}
+
+void Memory::setCardEnabledFromTopology(pom1::CardId card, bool enabled)
+{
+    switch (card) {
+    case pom1::CardId::Aci: setACIEnabled(enabled); break;
+    case pom1::CardId::Tms9918: setTMS9918Enabled(enabled); break;
+    case pom1::CardId::Sid: setSIDEnabled(enabled); break;
+    case pom1::CardId::SidSpecialEdition: setSIDSpecialEditionEnabled(enabled); break;
+    case pom1::CardId::MicroSD: setMicroSDEnabled(enabled); break;
+    case pom1::CardId::Cffa1: setCFFA1Enabled(enabled); break;
+    case pom1::CardId::JukeBox: setJukeBoxEnabled(enabled); break;
+    case pom1::CardId::CodeTank: setCodeTankEnabled(enabled); break;
+    case pom1::CardId::WifiModem: setWiFiModemEnabled(enabled); break;
+    case pom1::CardId::TerminalCard: setTerminalCardEnabled(enabled); break;
+    case pom1::CardId::A1IoRtc: setA1IO_RTCEnabled(enabled); break;
+    case pom1::CardId::Pr40: setPR40Enabled(enabled); break;
+    case pom1::CardId::Gt6144: setGT6144Enabled(enabled); break;
+    case pom1::CardId::Iec: setIECCardEnabled(enabled); break;
+    case pom1::CardId::Gen2: setHgrFramebufferAttached(enabled); break;
+    case pom1::CardId::ExtendedAci: setExtendedACIEnabled(enabled); break;
+    case pom1::CardId::Count:
+    case pom1::CardId::Invalid:
+        break;
+    }
+}
+
+void Memory::applyTopologyRelations(pom1::CardId requested, bool enabled)
+{
+    const pom1::CardTransitionPlan plan =
+        pom1::planCardToggle(activeCards(), requested, enabled);
+
+    // Reverse CardId order removes daughterboards before their hosts; forward
+    // order attaches hosts before daughterboards. CardId's append-only order
+    // deliberately preserves those three dependency pairs.
+    for (std::size_t i = pom1::kCardCount; i-- > 0;) {
+        const auto card = static_cast<pom1::CardId>(i);
+        if (card != requested && plan.detach.contains(card))
+            setCardEnabledFromTopology(card, false);
+    }
+    for (std::size_t i = 0; i < pom1::kCardCount; ++i) {
+        const auto card = static_cast<pom1::CardId>(i);
+        if (card != requested && plan.attach.contains(card))
+            setCardEnabledFromTopology(card, true);
+    }
+}
+
 void Memory::setTMS9918Enabled(bool b)
 {
-    // TMS9918 and A1-AUDIO Special Edition both live at $CC00/$CC01 — plugging
-    // the VDP evicts the SE card so the bus dispatch stays unambiguous.
-    if (b && sidSpecialEditionEnabled) setSIDSpecialEditionEnabled(false);
-    // CodeTank is a daughterboard that physically piggybacks the TMS9918
-    // Graphic Card on real P-LAB hardware — yanking the host pulls the
-    // daughterboard off with it. Cascade-disable BEFORE flipping the flag
-    // so setCodeTankEnabled(false) sees a coherent state.
-    if (!b && codeTankEnabled) setCodeTankEnabled(false);
+    if (tms9918Enabled == b) return;
+    applyTopologyRelations(pom1::CardId::Tms9918, b);
     tms9918Enabled = b;
     bus.setEnabled(tms9918BusHandle, b);
 }
@@ -583,6 +642,7 @@ bool Memory::isTmsFrameFlagHostile() const
 void Memory::setACIEnabled(bool b)
 {
     if (aciEnabled == b) return;
+    applyTopologyRelations(pom1::CardId::Aci, b);
     aciEnabled = b;
     bus.setEnabled(cassetteToggleBusHandle, b);
     bus.setEnabled(cassetteInputBusHandle, b);
@@ -595,23 +655,15 @@ void Memory::setACIEnabled(bool b)
     } else {
         std::fill_n(mem.begin() + 0xC100, 0x100, static_cast<uint8_t>(0));
         markPagesDirty(0xC100, 0x100);
-        // The extended page is the OTHER half of the same PROM pair — pulling
-        // the cassette card takes it with it (mirror of setCodeTankEnabled's
-        // TMS9918 daughterboard rule).
-        setExtendedACIEnabled(false);
     }
 }
 
 void Memory::setExtendedACIEnabled(bool b)
 {
     if (extendedAciEnabled == b) return;
+    applyTopologyRelations(pom1::CardId::ExtendedAci, b);
     extendedAciEnabled = b;
     if (b) {
-        // Not a card of its own: Uncle Bernie's extended page is the second
-        // half of the 512x4 PROM pair sitting on the cassette interface, so
-        // it cannot exist without the ACI underneath it. Cascade-plug rather
-        // than silently mapping a page whose code JSRs into $C100.
-        setACIEnabled(true);
         loadExtendedAciRom();
     } else {
         std::fill_n(mem.begin() + 0xC500, 0x100, static_cast<uint8_t>(0));
@@ -1215,7 +1267,10 @@ bool Memory::romSignaturePresent(uint16_t addr, uint8_t op0, uint8_t op1) const
 
 int Memory::loadKrusader(void)
 {
-    return loadROM("krusader-1.3.rom", 0xA000, 0x2000, "Krusader");
+    // The image is linked at $E000 (its first opcode is JMP $E2B0) and its
+    // documented cold entry is $F000. Loading it at $A000 relocates neither
+    // absolute jump and immediately escapes into unrelated RAM.
+    return loadROM("krusader-1.3.rom", 0xE000, 0x2000, "Krusader");
 }
 
 void Memory::noteRomFallback(const char* filename)
@@ -2009,13 +2064,8 @@ int Memory::getTerminalSpeed() const
 void Memory::setSIDEnabled(bool b)
 {
     if (b == sidEnabled) return;
+    applyTopologyRelations(pom1::CardId::Sid, b);
     if (b) {
-        // Prototype and Special Edition share the same `sid` instance —
-        // only one can be plugged at a time.
-        if (sidSpecialEditionEnabled) setSIDSpecialEditionEnabled(false);
-        // Juke-Box bank-select latch lives at $CA00, inside the SID window
-        // $C800-$CFFF — the two cards cannot coexist.
-        if (jukeBoxEnabled) setJukeBoxEnabled(false);
         // Attach the audio sink BEFORE the emulation starts producing samples
         // (sidEnabled gates advanceCycles). Otherwise the first slice pushes
         // into an undrained ring and the audio callback plays catch-up.
@@ -2037,14 +2087,8 @@ void Memory::setSIDEnabled(bool b)
 void Memory::setSIDSpecialEditionEnabled(bool b)
 {
     if (b == sidSpecialEditionEnabled) return;
+    applyTopologyRelations(pom1::CardId::SidSpecialEdition, b);
     if (b) {
-        // Special Edition at $CC00-$CC1F collides with TMS9918's $CC00/$CC01
-        // window — unplug the VDP first to keep the bus dispatch unambiguous.
-        if (tms9918Enabled) setTMS9918Enabled(false);
-        // Shares the single `sid` instance with the prototype. If the
-        // prototype variant was plugged, unplug it first — real hardware
-        // can only have one A1-SID card at a time (same socket, same chip).
-        if (sidEnabled) setSIDEnabled(false);
         // SE at $CC00-$CC1F is disjoint from the Juke-Box bank latch
         // ($CA00) so the two can coexist — no eviction needed.
         audioDevice->addSource(sid.get());
@@ -2061,17 +2105,10 @@ void Memory::setSIDSpecialEditionEnabled(bool b)
 void Memory::setMicroSDEnabled(bool b)
 {
     if (b == microSDEnabled) return;
+    applyTopologyRelations(pom1::CardId::MicroSD, b);
     microSDEnabled = b;
     bus.setEnabled(microSDBusHandle, b);
     if (b) {
-        // Mutually exclusive with CFFA1 and Juke-Box (shared $8000-$9FFF window)
-        if (cffa1Enabled) setCFFA1Enabled(false);
-        if (jukeBoxEnabled) setJukeBoxEnabled(false);
-        // Mutually exclusive with CodeTank: the microSD EEPROM decodes
-        // Applesoft Lite at $6000-$7FFF, inside CodeTank's $4000-$7FFF
-        // ROM window. Unplugs only the daughterboard — its TMS9918 host
-        // stays on the bus.
-        if (codeTankEnabled) setCodeTankEnabled(false);
         // Reload only when the ROM window is empty (first plug after it was
         // cleared by a previous disable, or after CFFA1 / Juke-Box overwrote
         // $8000). initMemory() pre-loads the SD CARD OS for the default
@@ -2080,8 +2117,6 @@ void Memory::setMicroSDEnabled(bool b)
             loadSDCardRom();
         }
     } else {
-        // IEC daughterboard rides on microSD's VIA — drop it first.
-        if (iecCardEnabled) setIECCardEnabled(false);
         // Clear the ROM region (restore to RAM). Skip during snapshot
         // restore: the MEM section already holds the correct bytes and
         // FLAGS runs after MEM — zeroing here would wipe just-restored RAM
@@ -2096,11 +2131,9 @@ void Memory::setMicroSDEnabled(bool b)
 void Memory::setIECCardEnabled(bool b)
 {
     if (b == iecCardEnabled) return;
+    applyTopologyRelations(pom1::CardId::Iec, b);
     iecCardEnabled = b;
     if (b) {
-        // The IEC card is a daughterboard that plugs into the microSD card's
-        // J1 connector. It physically requires microSD; auto-enable.
-        if (!microSDEnabled) setMicroSDEnabled(true);
         microSD->attachIECCard(iecCard.get());
         iecCard->busReset();
     } else {
@@ -2112,10 +2145,9 @@ void Memory::setIECCardEnabled(bool b)
 void Memory::setWiFiModemEnabled(bool b)
 {
     if (b == wifiModemEnabled) return;
+    applyTopologyRelations(pom1::CardId::WifiModem, b);
     wifiModemEnabled = b;
     bus.setEnabled(wifiModemBusHandle, b);
-    // Juke-Box covers $B000-$B003 when plugged — evict on plug-in.
-    if (b && jukeBoxEnabled) setJukeBoxEnabled(false);
 }
 
 int Memory::loadSDCardRom()
@@ -2133,13 +2165,11 @@ int Memory::loadSDCardRom()
 void Memory::setCFFA1Enabled(bool b)
 {
     if (b == cffa1Enabled) return;
+    applyTopologyRelations(pom1::CardId::Cffa1, b);
     cffa1Enabled = b;
     bus.setEnabled(cffa1RomBusHandle, b);
     bus.setEnabled(cffa1RegBusHandle, b);
     if (b) {
-        // Mutually exclusive with microSD and Juke-Box (shared $9000-$AFDF window)
-        if (microSDEnabled) setMicroSDEnabled(false);
-        if (jukeBoxEnabled) setJukeBoxEnabled(false);
         loadCFFA1Rom();
     } else {
         // Clear the CFFA1 ROM region. Skip during snapshot restore — same
@@ -2213,19 +2243,9 @@ void Memory::applyJukeBoxFlatMemoryMirror()
 void Memory::setJukeBoxEnabled(bool b)
 {
     if (b == jukeBoxEnabled) return;
+    applyTopologyRelations(pom1::CardId::JukeBox, b);
     jukeBoxEnabled = b;
     if (b) {
-        // Juke-Box monopolises $4000-$BFFF (ROM window) and $CA00 (bank
-        // latch). Evict every other card that sits inside $4000-$CFFF so
-        // bus dispatch stays unambiguous and the user can't get confused
-        // by stale state from a previous preset. A1-SID and A1-AUDIO SE
-        // are on the eviction list — they share $CA00 with the Px/Sx
-        // bank register. CodeTank's $4000-$7FFF window also collides.
-        if (codeTankEnabled) setCodeTankEnabled(false);
-        if (cffa1Enabled) setCFFA1Enabled(false);
-        if (microSDEnabled) setMicroSDEnabled(false);
-        if (wifiModemEnabled) setWiFiModemEnabled(false);
-        if (sidEnabled) setSIDEnabled(false);
         // A1-AUDIO SE at $CC00-$CC1F is disjoint from the Juke-Box bank
         // latch ($CA00) — do NOT evict; the two can coexist.
         loadJukeBoxRom();
@@ -2351,22 +2371,9 @@ void Memory::applyCodeTankFlatMemoryMirror()
 void Memory::setCodeTankEnabled(bool b)
 {
     if (b == codeTankEnabled) return;
+    applyTopologyRelations(pom1::CardId::CodeTank, b);
     codeTankEnabled = b;
     if (b) {
-        // CodeTank is a daughterboard of the TMS9918 Graphic Card — it has
-        // no edge connector and no on-board address decoder, so it cannot
-        // exist standalone on the Apple-1 bus. Auto-plug the host first so
-        // the daughterboard always rides on real silicon.
-        if (!tms9918Enabled) setTMS9918Enabled(true);
-        // CodeTank's $4000-$7FFF window collides with the Juke-Box's
-        // $4000-$BFFF / $4000-$7FFF half. Keep one ROM card plugged at a
-        // time — matches Parmigiani's "one board" rule.
-        if (jukeBoxEnabled) setJukeBoxEnabled(false);
-        // The microSD card's EEPROM also decodes Applesoft Lite at
-        // $6000-$7FFF (memory map: "Applesoft Lite SD ROM"), inside the
-        // CodeTank window — evict it too. Cascade-drops the IEC add-on
-        // (setMicroSDEnabled(false) → setIECCardEnabled(false)).
-        if (microSDEnabled) setMicroSDEnabled(false);
         // Probe for a default ROM image when the user hasn't loaded one
         // explicitly through the CodeTank Library. The same probe paths
         // the previous Juke-Box CodeTank chip mode used.
@@ -2614,4 +2621,3 @@ void Memory::advanceCycles(int cycles)
 // The serialization concern (save/load/rewind sections + the card registry
 // that drives them) lives in its own translation unit. They are still Memory
 // member functions — this is a file split, not an API change.
-

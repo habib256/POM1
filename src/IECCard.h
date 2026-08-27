@@ -52,6 +52,7 @@ public:
     void advanceCycles(int cpuCycles);
 
     void busReset();
+    void reset() override { busReset(); }
     void unmount();
     bool mountDisk(const std::string& d64Path);
     bool hasDisk() const { return drive_.hasDisk(); }

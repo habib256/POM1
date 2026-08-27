@@ -128,11 +128,11 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
         // When the switch to preset 1 was applied fresh (e.g. the Mode selector, or a
         // Run from another preset), applyMachineConfig queued the preset's DEFAULT
         // CodeTank ROM (Codetank_ARCADE.rom) for the still-pending plug. Clear that
-        // path now so finalizePendingCardPlugs() does NOT reload ARCADE over the
+        // path now so applyPendingCardConfiguration() does NOT reload ARCADE over the
         // Applesoft cartridge we just inserted.
-        mw_->pendingCodeTankRomPath.clear();
+        mw_->stagedCardConfiguration.codeTankRomPath.clear();
     }
-    mw_->finalizePendingCardPlugs();
+    mw_->applyPendingCardConfiguration();
 
     // Warm vs cold, decided now that the preset is settled: honour the toggle only
     // when this interpreter is still resident (onTargetSelected clears the residency
@@ -187,8 +187,8 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
         if (tms) {
             mw_->codeTankJumper = CodeTank::Jumper::Upper16;   // Applesoft lives in the upper bank
             emu->setCodeTankJumper(mw_->codeTankJumper);
-            if (!mw_->tms9918Enabled)  { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
-            if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCodeTankEnabled(true); }
+            if (!mw_->tms9918Enabled)  { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setCardEnabled(pom1::CardId::Tms9918, true); }
+            if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCardEnabled(pom1::CardId::CodeTank, true); }
             emu->hardReset(/*animateBoot=*/false);
         } else {
             emu->hardReset(/*animateBoot=*/false);
@@ -510,16 +510,16 @@ bench::BuildResult Pom1BenchHost::injectLogo(int target, const std::string& src,
             r.console = "[bench] " + interp + ": Codetank_BASIC_LOGO.rom load FAILED — " + err + "\n";
             r.status = interp + ": ROM load failed"; r.ok = false; return r;
         }
-        mw_->pendingCodeTankRomPath.clear();
+        mw_->stagedCardConfiguration.codeTankRomPath.clear();
     }
-    mw_->finalizePendingCardPlugs();
+    mw_->applyPendingCardConfiguration();
 
     std::string romErr; bool romOk = true;
     if (tms) {
         mw_->codeTankJumper = CodeTank::Jumper::Lower16;   // LOGO lives in the LOWER bank
         emu->setCodeTankJumper(mw_->codeTankJumper);
-        if (!mw_->tms9918Enabled)  { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setTMS9918Enabled(true); }
-        if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCodeTankEnabled(true); }
+        if (!mw_->tms9918Enabled)  { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setCardEnabled(pom1::CardId::Tms9918, true); }
+        if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCardEnabled(pom1::CardId::CodeTank, true); }
         emu->hardReset(/*animateBoot=*/false);
     } else {
         mw_->showGraphicsCard = true;

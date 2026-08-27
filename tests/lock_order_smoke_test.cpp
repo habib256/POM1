@@ -33,6 +33,8 @@ RankedMutex<LockRank::State>    stateM;
 RankedMutex<LockRank::Keyboard> keyM;
 RankedMutex<LockRank::Snapshot> snapM;
 RankedMutex<LockRank::Rewind>   rewM;
+RankedMutex<LockRank::Peripheral> peripheralM;
+RankedMutex<LockRank::PeripheralInner> peripheralInnerM;
 
 #if POM1_HAVE_FORK && POM1_LOCK_ORDER_CHECKS
 // Runs `fn` in a child process; returns true iff the child died on SIGABRT
@@ -106,6 +108,19 @@ int main()
         std::lock_guard<decltype(snapM)>  c(snapM);
     }
 
+    // Peripheral locks are below the core locks. Most calls are state > card;
+    // snapshot > card is also legal if a future publisher holds its slot while
+    // copying a device. Terminal's screenshot queue is the sole inner lock.
+    {
+        std::lock_guard<decltype(stateM)> a(stateM);
+        std::lock_guard<decltype(peripheralM)> p(peripheralM);
+        std::lock_guard<decltype(peripheralInnerM)> i(peripheralInnerM);
+    }
+    {
+        std::lock_guard<decltype(snapM)> c(snapM);
+        std::lock_guard<decltype(peripheralM)> p(peripheralM);
+    }
+
     // Releasing must have unwound the thread's stack completely; if it did not,
     // the very next legal acquisition below would trip.
     { std::lock_guard<decltype(stateM)> a(stateM); }
@@ -128,7 +143,7 @@ int main()
         std::lock_guard<decltype(stateM)> a(stateM);
     }) && "keyboard-then-state inversion was NOT caught");
 
-    // snapshotMutex is innermost: nothing may be taken while it is held.
+    // A core lock may never be acquired from peripheral code.
     assert(abortsInChild([] {
         std::lock_guard<decltype(snapM)>  c(snapM);
         std::lock_guard<decltype(stateM)> a(stateM);
@@ -138,6 +153,16 @@ int main()
         std::lock_guard<decltype(snapM)> c(snapM);
         std::lock_guard<decltype(keyM)>  b(keyM);
     }) && "snapshot-then-keyboard inversion was NOT caught");
+
+    assert(abortsInChild([] {
+        std::lock_guard<decltype(peripheralM)> p(peripheralM);
+        std::lock_guard<decltype(snapM)> c(snapM);
+    }) && "peripheral-then-snapshot inversion was NOT caught");
+
+    assert(abortsInChild([] {
+        std::lock_guard<decltype(peripheralInnerM)> i(peripheralInnerM);
+        std::lock_guard<decltype(peripheralM)> p(peripheralM);
+    }) && "peripheral-inner inversion was NOT caught");
 
     // rewindMutex then stateMutex: the slice must never re-enter the state
     // lock while encoding — that is the whole point of moving capture out.
@@ -154,6 +179,12 @@ int main()
         std::lock_guard<decltype(keyM2)> b2(keyM2);
     }) && "same-rank nesting was NOT caught");
 
+    static RankedMutex<LockRank::Peripheral> peripheralM2;
+    assert(abortsInChild([] {
+        std::lock_guard<decltype(peripheralM)> p(peripheralM);
+        std::lock_guard<decltype(peripheralM2)> p2(peripheralM2);
+    }) && "same-rank card nesting was NOT caught");
+
     // Control: the legal order must NOT abort. Without this, a checker that
     // aborted on everything would pass all four assertions above.
     assert(!abortsInChild([] {
@@ -162,7 +193,7 @@ int main()
         std::lock_guard<decltype(snapM)>  c(snapM);
     }) && "the DOCUMENTED order aborted — the checker is inverted");
 
-    printf("lock_order_smoke: OK (5 inversions caught, legal order accepted)\n");
+    printf("lock_order_smoke: OK (8 inversions caught, legal order accepted)\n");
     return 0;
 #endif
 }

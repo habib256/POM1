@@ -17,6 +17,7 @@
 #include "Pom1BenchHost.h" // benchHost_->targetFor / selectTargetExplicit for the chooser's language launch
 #include "ProcessUtil.h" // bench::executableDir() for exe-relative ini_defaults/
 #include "NativeFileDialog.h" // `native_dialogs` preference lives in ini/ui.settings
+#include "CardTopology.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -144,7 +145,7 @@ void MainWindow_ImGui::defaultOsWindowSize(int presetIndex, int& outW, int& outH
     }
     // Floor at the last preset (POM1 Fantasy) extent — the canonical frame.
     const ImVec2 fantasyExtent = computePresetLayoutExtent(
-        kMachinePresets[kMachinePresetCount - 1], ImVec2(sw, sh));
+        kMachinePresets[pom1::presetIndex(kDefaultPresetId)], ImVec2(sw, sh));
     if (fantasyExtent.x > 0.0f && fantasyExtent.y > 0.0f) {
         glfwW = std::max(glfwW, static_cast<int>(std::ceil(fantasyExtent.x + rightPad)));
         glfwH = std::max(glfwH, static_cast<int>(std::ceil(fantasyExtent.y + bottomPad)));
@@ -159,9 +160,8 @@ void MainWindow_ImGui::defaultOsWindowSize(int presetIndex, int& outW, int& outH
 // the whole app surface, so a bare Apple-1 profile should give a small canvas
 // and a fully-loaded profile a large one (that is what "adapt to each profile"
 // means here). Uses the preset's *declared* layout table so the size is right
-// the instant the profile changes, even though the card windows only plug in
-// ~15 frames later (pendingCardEnableFrames) — waiting on the live ImGui
-// bounding box would lag the switch.
+// the instant the profile changes rather than waiting on the live ImGui
+// bounding box.
 void MainWindow_ImGui::computeWasmCanvasSize(int presetIndex, int& outW, int& outH) const
 {
     outW = wasmCanvasPixelW;
@@ -196,6 +196,8 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
 {
     if (presetIndex < 0 || presetIndex >= kMachinePresetCount) return;
     const MachineConfig& cfg = kMachinePresets[presetIndex];
+    const PresetId presetId = presetIdFromIndex(presetIndex);
+    const CardSet presetCards = cfg.enabledCards();
 
     // Save the OUTGOING preset's layout (ImGui window positions + GLFW
     // window size) before we swap anything. Skipped on boot (activePreset
@@ -274,36 +276,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     ImGui::ClearIniSettings();
 
     // Show POM1 banner only for the last preset (POM1 Fantasy)
-    screen->setShowBanner(presetIndex == kMachinePresetCount - 1);
-
-    // Unplug EVERY expansion card up front — cleans any lingering state
-    // from the previous preset (sources off the mixer, chips + rings
-    // fully reset, TCP listeners closed, bus handles disabled). The
-    // actual re-plug is deferred below via pendingCardEnableFrames so
-    // each card starts ~15 frames after the CPU has been running: when
-    // cards are re-plugged in the same frame as applyMachineConfig, the
-    // peripherals latch onto the mixer / bus before the CPU has issued
-    // any cycle and can miss their first register writes (silent SID,
-    // silent cassette playback, dead WiFi modem etc.) until a manual
-    // toggle. Deferring past a few thousand CPU cycles fixes that
-    // uniformly for every card.
-    emulation->setSIDEnabled(false);
-    emulation->setSIDSpecialEditionEnabled(false);
-    emulation->setACIEnabled(false);
-    emulation->deactivateCassetteAudioSource();
-    emulation->setIECCardEnabled(false);
-    emulation->setMicroSDEnabled(false);
-    emulation->setCFFA1Enabled(false);
-    emulation->setTMS9918Enabled(false);
-    emulation->setA1IO_RTCEnabled(false);
-    emulation->setWiFiModemEnabled(false);
-    emulation->setJukeBoxEnabled(false);
-    emulation->setCodeTankEnabled(false);
-    emulation->setPR40Enabled(false);
-    emulation->setGT6144Enabled(false);
-#if !POM1_IS_WASM
-    emulation->setTerminalCardEnabled(false);
-#endif
+    screen->setShowBanner(presetId == kDefaultPresetId);
 
     // Silicon-fidelity power-on state (RAM size + VRAM/RAM cold-boot noise) is
     // consumed by the hardReset() below — resetMemory() seeds main RAM and
@@ -311,12 +284,8 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // shows the lenient bistable VRAM and the silicon-faithful noise only lands
     // on a later manual reset (user-visible bug: TMS sprites that depend on the
     // uninitialised-SAT noise rendered too cleanly on silicon presets at boot).
-    const bool fantasyPreset =
-        std::string_view(cfg.name).find("Fantasy") != std::string_view::npos;
+    const bool fantasyPreset = isFantasyPreset(presetId);
     presetRamKB = cfg.ramKB;
-    emulation->setPresetRamKB(cfg.ramKB);
-    emulation->setVramNoiseOnReset(!fantasyPreset);
-    emulation->setSystemRamNoiseOnReset(!fantasyPreset);
 
     // Skip the full hard reset on the very first invocation — at that
     // point Memory::Memory() has just run initMemory() (default ROMs +
@@ -331,23 +300,18 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // DevBench profiles (indices 0-2) are a compile-and-run workflow, not a
     // cold-boot demo: skip the ~3 s power-on scenarization so the reset lands on
     // a cleared screen immediately.
-    const bool isDevBench = (presetIndex >= 0 && presetIndex <= 2);
-    if (presetAppliedOnce) {
-        emulation->hardReset(/*animateBoot=*/!isDevBench);
-    } else {
-        if (!fantasyPreset)
-            emulation->hardReset(/*animateBoot=*/!isDevBench);
-        presetAppliedOnce = true;
-    }
+    const bool isDevBench = presetId == PresetId::CC65Bench ||
+                            presetId == PresetId::TMS9918Bench ||
+                            presetId == PresetId::Gen2Bench;
+    const bool coldResetPreset = presetAppliedOnce || !fantasyPreset;
+    presetAppliedOnce = true;
     loadedPrograms.clear();
     loadedRoms.clear();
 
     // RAM size for this preset + fantasyPreset were applied above (before the
     // boot reset, so the power-on noise lands on the first frame). Continue
     // arming the rest of the silicon-fidelity bundle.
-    emulation->setSiliconStrictMode(!fantasyPreset);
     siliconStrictModeEnabled = !fantasyPreset;
-    emulation->setOutOfRangeStrictMode(!fantasyPreset);
     oorStrictModeEnabled = !fantasyPreset;
     // Silicon Strict is an all-or-nothing master switch: a non-Fantasy preset
     // ARMS every silicon-fidelity knob at once, Fantasy (the default, last
@@ -358,17 +322,14 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // sync. DRAM refresh (4/65 CPU steal) is part of the bundle, so a Silicon
     // preset reproduces the real-DRAM beam-race drift out of the box.
     dramRefreshEnabled = !fantasyPreset;
-    emulation->setDramRefreshEnabled(!fantasyPreset);
     vramNoiseOnResetEnabled = !fantasyPreset;        // armed before the boot reset above
     systemRamNoiseOnResetEnabled = !fantasyPreset;   // armed before the boot reset above
     // NMOS decimal ADC/SBC flag bug: original-chip behaviour on strict presets,
     // 65C02-corrected on the (fantasy) Multiplexing presets.
-    emulation->setCpuDecimalBugNMOS(!fantasyPreset);
     cpuDecimalBugEnabled = !fantasyPreset;
     // GEN2 HGR random power-on state. Same Fantasy-OFF rule as siliconStrictMode;
-    // when the card plugs (deferred 15 frames below), Memory consults this flag
+    // when the card plugs below, Memory consults this flag
     // to decide between random / documented latch + DRAM + scanner phase.
-    emulation->setGen2RandomPowerOn(!fantasyPreset);
     gen2RandomPowerOnEnabled = !fantasyPreset;
     // Keep the four individual Silicon Strict Inspector checkboxes in sync with
     // the master power-on flag (setGen2RandomPowerOn flips all four together).
@@ -379,39 +340,37 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
 
     // UI flags reflect the preset's target state immediately (the menu
     // checkmarks and toolbar chips are driven by these). The actual
-    // peripheral plug is queued below via pendingXxxEnable and fires
-    // kCardEnableDeferFrames frames later from render() once the CPU
-    // has been executing for ~200 ms.
-    aciEnabled               = cfg.aci;
-    extendedAciEnabled       = cfg.extendedAci;
-    graphicsCardEnabled      = cfg.graphicsCard;
-    emulation->setHgrFramebufferAttached(graphicsCardEnabled);
+    // peripheral transaction is composed below and committed before this
+    // method returns.
+    aciEnabled               = presetCards.contains(CardId::Aci);
+    extendedAciEnabled       = presetCards.contains(CardId::ExtendedAci);
+    graphicsCardEnabled      = presetCards.contains(CardId::Gen2);
     showGraphicsCard         = false;
-    microSDEnabled           = cfg.microSD;
-    cffa1Enabled             = cfg.cffa1;
-    sidEnabled               = cfg.sid;
-    sidSpecialEditionEnabled = cfg.sidSpecialEdition;
-    tms9918Enabled           = cfg.tms9918;
+    microSDEnabled           = presetCards.contains(CardId::MicroSD);
+    cffa1Enabled             = presetCards.contains(CardId::Cffa1);
+    sidEnabled               = presetCards.contains(CardId::Sid);
+    sidSpecialEditionEnabled = presetCards.contains(CardId::SidSpecialEdition);
+    tms9918Enabled           = presetCards.contains(CardId::Tms9918);
     showTMS9918              = false;
-    a1ioRtcEnabled           = cfg.a1ioRtc;
+    a1ioRtcEnabled           = presetCards.contains(CardId::A1IoRtc);
     showA1IO_RTC             = false;
-    wifiModemEnabled         = cfg.wifiModem;
+    wifiModemEnabled         = presetCards.contains(CardId::WifiModem);
     showWiFiModem            = false;
-    jukeBoxEnabled           = cfg.jukeBox;
-    jukeBoxJumper            = cfg.jukeBoxJumper;
-    jukeBoxChipMode          = cfg.jukeBoxChipMode;
+    jukeBoxEnabled           = presetCards.contains(CardId::JukeBox);
+    jukeBoxJumper            = cfg.jukeBox.jumper;
+    jukeBoxChipMode          = cfg.jukeBox.chipMode;
     showJukeBox              = false;
-    codeTankEnabled          = cfg.codeTank;
-    codeTankJumper           = cfg.codeTankJumper;
+    codeTankEnabled          = presetCards.contains(CardId::CodeTank);
+    codeTankJumper           = cfg.codeTank.jumper;
 #if !POM1_IS_WASM
-    terminalCardEnabled      = cfg.terminalCard;
+    terminalCardEnabled      = presetCards.contains(CardId::TerminalCard);
     showTerminalCard         = false;
 #endif
-    pr40Enabled              = cfg.pr40Printer;
+    pr40Enabled              = presetCards.contains(CardId::Pr40);
     showPR40                 = false;
-    gt6144Enabled            = cfg.gt6144;
+    gt6144Enabled            = presetCards.contains(CardId::Gt6144);
     showGT6144               = false;
-    iecCardEnabled           = cfg.iecCard;
+    iecCardEnabled           = presetCards.contains(CardId::Iec);
     showIECCard              = false;
     showCassetteDeck         = false;
     showWelcome              = false;
@@ -419,7 +378,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // Layout-driven auto-show: every panel named in the preset's layout
     // table opens on load. This replaces the old per-flag "show on preset
     // apply" rules (hardcoded showCassetteDeck / showWelcome for the
-    // default POM1 preset, and the cfg.pr40Printer / cfg.gt6144 shortcuts
+    // default POM1 preset, and the former PR-40 / GT-6144 shortcuts
     // used previously). Keeping the decision in the layout table means
     // every preset can independently declare which panels to open, and
     // POM1 Fantasy — whose layout lists "Apple 1 Screen" + "Welcome" +
@@ -471,130 +430,93 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
         // "Apple 1 Screen" is always visible and has no show flag.
     }
 
-    // Stash deferred plug intents. Every card that needs to be on for
-    // this preset is queued here; the single pendingCardEnableFrames
-    // counter below drives them all. Cassette audio source is always
+    // Compose plug intents. Cassette audio source is always
     // re-plugged — CassetteDevice exists independently of the ACI and
     // produces the audible tape output through the mixer.
-    pendingAciEnable            = cfg.aci;
-    pendingExtendedAciEnable    = cfg.extendedAci;
-    pendingMicroSDEnable        = cfg.microSD;
-    pendingCffa1Enable          = cfg.cffa1;
-    pendingSidEnable            = cfg.sid;
-    pendingSidSEEnable          = cfg.sidSpecialEdition;
-    pendingTms9918Enable        = cfg.tms9918;
-    pendingA1ioRtcEnable        = cfg.a1ioRtc;
-    pendingWifiModemEnable      = cfg.wifiModem;
-    pendingJukeBoxEnable        = cfg.jukeBox;
-    pendingJukeBoxJumper        = cfg.jukeBoxJumper;
-    pendingJukeBoxChipMode      = cfg.jukeBoxChipMode;
-    pendingCodeTankEnable       = cfg.codeTank;
-    pendingCodeTankJumper       = cfg.codeTankJumper;
-    pendingCodeTankRomPath      = (cfg.codeTankRomPath ? cfg.codeTankRomPath : std::string());
+    stagedCardConfiguration.cards = presetCards;
+    stagedCardConfiguration.mode = fantasyPreset
+        ? pom1::TopologyMode::Fantasy : pom1::TopologyMode::Strict;
+    stagedCardConfiguration.jukeBoxJumper = cfg.jukeBox.jumper;
+    stagedCardConfiguration.jukeBoxChipMode = cfg.jukeBox.chipMode;
+    stagedCardConfiguration.codeTankJumper = cfg.codeTank.jumper;
+    stagedCardConfiguration.codeTankRomPath =
+        (cfg.codeTank.romPath ? cfg.codeTank.romPath : std::string());
+    using SystemRomProfile = pom1::CardConfigurationRequest::SystemRomProfile;
+    if (cfg.basicType == BasicType::ApplesoftLite) {
+        stagedCardConfiguration.systemRomProfile =
+            cfg.hasCard(CardId::MicroSD) && !cfg.hasCard(CardId::Cffa1)
+                ? (fantasyPreset ? SystemRomProfile::ApplesoftSdFantasy
+                                 : SystemRomProfile::ApplesoftSd)
+                : SystemRomProfile::ApplesoftCffa1;
+    } else if (cfg.basicType == BasicType::Integer) {
+        stagedCardConfiguration.systemRomProfile = SystemRomProfile::IntegerBasic;
+    } else {
+        stagedCardConfiguration.systemRomProfile = SystemRomProfile::MonitorOnly;
+    }
+    stagedCardConfiguration.loadKrusader = cfg.krusader;
+    stagedCardConfiguration.loadCffa1Firmware = cfg.hasCard(CardId::Cffa1);
+    stagedCardConfiguration.coldReset = coldResetPreset;
+    stagedCardConfiguration.animateBoot = !isDevBench;
+    stagedCardConfiguration.activateCassetteAudio = true;
+    stagedCardConfiguration.presetRamKB = cfg.ramKB;
+    stagedCardConfiguration.siliconStrict = !fantasyPreset;
+    stagedCardConfiguration.outOfRangeStrict = !fantasyPreset;
+    stagedCardConfiguration.vramNoiseOnReset = !fantasyPreset;
+    stagedCardConfiguration.systemRamNoiseOnReset = !fantasyPreset;
+    stagedCardConfiguration.cpuDecimalBugNMOS = !fantasyPreset;
+    stagedCardConfiguration.dramRefresh = !fantasyPreset;
+    stagedCardConfiguration.gen2RandomPowerOn = !fantasyPreset;
 #if !POM1_IS_WASM
-    pendingTerminalCardEnable   = cfg.terminalCard;
+    // Native builds retain the preset's Terminal Card intent.
 #else
-    pendingTerminalCardEnable   = false;
+    stagedCardConfiguration.cards.remove(CardId::TerminalCard);
 #endif
-    pendingPr40Enable           = cfg.pr40Printer;
-    pendingGT6144Enable         = cfg.gt6144;
-    pendingIECCardEnable        = cfg.iecCard;
-    pendingCassetteAudioActive  = true;
-    pendingPresetTapePath.clear();
-    pendingPresetTapeForceProgramMode = false;
-    pendingPresetTapeAutoPlay = false;
+    stagedCassetteAudioActive  = true;
+    stagedPresetTapePath.clear();
+    stagedPresetTapeForceProgramMode = false;
+    stagedPresetTapeAutoPlay = false;
     if (cfg.basicType == BasicType::IntegerCassette) {
-        pendingPresetTapePath = findFirstExistingPath({
+        stagedPresetTapePath = findFirstExistingPath({
             "cassettes/BASIC.aci", "../cassettes/BASIC.aci", "../../cassettes/BASIC.aci",
             "cassettes/BASIC.ogg", "../cassettes/BASIC.ogg", "../../cassettes/BASIC.ogg",
         });
-        pendingPresetTapeForceProgramMode = true;
-        if (pendingPresetTapePath.empty()) {
+        stagedPresetTapeForceProgramMode = true;
+        if (stagedPresetTapePath.empty()) {
             pom1::log().warn("POM1",
                 "Integer BASIC cassette asset not found (expected cassettes/BASIC.aci or BASIC.ogg)");
         }
-    } else if (presetIndex == kMachinePresetCount - 1) {
+    } else if (presetId == kDefaultPresetId) {
         // POM1 Multiplexing Fantasy (2026) — shipped default; deck opens with
         // Woz's talk inserted (Play is user-driven). No other preset preloads it.
-        pendingPresetTapePath = findFirstExistingPath({
+        stagedPresetTapePath = findFirstExistingPath({
             "cassettes/WOZ_talk.mp3", "../cassettes/WOZ_talk.mp3",
             "../../cassettes/WOZ_talk.mp3",
         });
-        if (pendingPresetTapePath.empty()) {
+        if (stagedPresetTapePath.empty()) {
             pom1::log().warn("POM1",
                 "WOZ_talk.mp3 not found (expected cassettes/WOZ_talk.mp3)");
         }
     }
-    pendingCardEnableFrames     = kCardEnableDeferFrames;
-
-    // Load the appropriate BASIC ROM for this preset and track in loadedRoms
-    {
-        std::string error;
-        bool ok = false;
-        if (cfg.basicType == BasicType::ApplesoftLite) {
-            // Pick the variant from the preset config, not from Memory's
-            // current peripheral state. Card plugs are deferred by
-            // kCardEnableDeferFrames, so at this point microSDEnabled /
-            // cffa1Enabled are still false — calling the generic
-            // reloadApplesoftLite() would dispatch to the CFFA1 variant
-            // ($E000-$FFFF) and clobber the high RAM bank + Woz Monitor
-            // when the preset wanted the microSD variant at $6000.
-            if (cfg.microSD && !cfg.cffa1) {
-                ok = emulation->reloadApplesoftLiteSDCard(error);
-                if (ok) {
-                    if (fantasyPreset) {
-                        ok = emulation->reloadBasic(error);
-                        if (ok) loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
-                    } else {
-                        emulation->unloadBasic();
-                    }
-                    loadedRoms.push_back({"Applesoft Lite (loaded in card RAM)", 0x6000, 0x7FFF});
-                    if (ok && emulation->reloadWozMonitor(error))
-                        loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
-                }
-            } else {
-                ok = emulation->reloadApplesoftLiteCFFA1(error);
-                if (ok) {
-                    loadedRoms.push_back({"Applesoft Lite (CFFA1)", 0xE000, 0xFFFF});
-                }
-            }
-        } else if (cfg.basicType == BasicType::Integer) {
-            ok = emulation->reloadBasic(error);
-            if (ok) loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
-            if (emulation->reloadWozMonitor(error))
-                loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
-        } else if (cfg.basicType == BasicType::IntegerCassette) {
-            // October 1976 hardware shipped BASIC on cassette, not preloaded
-            // in RAM. Leave $E000-$EFFF as high-bank RAM; the preset inserts
-            // the BASIC tape in the deck and the user loads it through ACI.
-            emulation->unloadBasic();
-            ok = emulation->reloadWozMonitor(error);
-            if (ok)
-                loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
+    // The controller loads these ROMs inside the topology transaction below;
+    // this list is presentation metadata only.
+    if (cfg.basicType == BasicType::ApplesoftLite) {
+        if (cfg.hasCard(CardId::MicroSD) && !cfg.hasCard(CardId::Cffa1)) {
+            loadedRoms.push_back({"Applesoft Lite (loaded in card RAM)", 0x6000, 0x7FFF});
+            if (fantasyPreset)
+                loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
+            loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
         } else {
-            // BasicType::None — realistic presets leave $E000-$EFFF as RAM.
-            emulation->unloadBasic();
-            ok = emulation->reloadWozMonitor(error);
-            if (ok) loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
+            loadedRoms.push_back({"Applesoft Lite (CFFA1)", 0xE000, 0xFFFF});
         }
-        if (!ok) {
-            setStatusMessage(error, 5.0f);
-        }
+    } else {
+        if (cfg.basicType == BasicType::Integer)
+            loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
+        loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
     }
-
-    // Krusader assembler at $A000-$BFFF (mutually exclusive with microSD/CFFA1)
-    if (cfg.krusader) {
-        std::string error;
-        if (emulation->reloadKrusader(error) == true)
-            loadedRoms.push_back({"Krusader", 0xA000, 0xBFFF});
-    }
-
-    // CFFA1 CompactFlash firmware at $9000-$AFFF
-    if (cfg.cffa1) {
-        std::string error;
-        if (emulation->reloadCFFA1Rom(error))
-            loadedRoms.push_back({"CFFA1 Firmware", 0x9000, 0xAFDF});
-    }
+    if (cfg.krusader)
+        loadedRoms.push_back({"Krusader", 0xE000, 0xFFFF});
+    if (cfg.hasCard(CardId::Cffa1))
+        loadedRoms.push_back({"CFFA1 Firmware", 0x9000, 0xAFDF});
 
     // Populate pending layout positions. These are `FirstUseEver` hints
     // applied in applyPendingLayout(); they only take effect for windows
@@ -605,7 +527,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
         pendingLayout.push_back({p.name, toImVec2(p.pos), toImVec2(p.size)});
     }
 
-    if (cfg.jukeBox)
+    if (cfg.hasCard(CardId::JukeBox))
         evictMemoryMapRegionsForJukeBox();
 
     // Try loading the INCOMING preset's saved layout. When found, ImGui
@@ -664,14 +586,16 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
         }
     }
 
+    if (!composingBootConfiguration)
+        applyPendingCardConfiguration();
     setStatusMessage(std::string("Preset: ") + cfg.name, 3.0f);
 }
 
 // Boot profile chooser — a full-viewport preset selector shown before any other
 // UI at startup (see the boot gate in render()). Picking a profile applies it
 // via applyBootConfig() and dismisses the chooser. Preset indices come from the
-// named kPreset* constants (MainWindow_Internal.h); POM1 Fantasy is always the
-// last preset (kMachinePresetCount - 1).
+// named PresetId values; the default is explicit rather than inferred from
+// table position.
 void MainWindow_ImGui::renderProfileChooser()
 {
     const ImGuiViewport* vp = ImGui::GetMainViewport();
@@ -775,8 +699,8 @@ void MainWindow_ImGui::renderProfileChooser()
     centeredScaledText("Choose an Apple-1 profile", 1.0f, IM_COL32(150, 158, 172, 255));
     ImGui::Dummy(ImVec2(0.0f, 10.0f));
 
-    // Top: the flagship "everything plugged" fantasy machine (always last
-    // preset) — amber accent, flanked by the POM1 app icon on each side. The
+    // Top: the flagship "everything plugged" fantasy machine — amber accent,
+    // flanked by the POM1 app icon on each side. The
     // row (icon · button · icon) spans colW; the button shrinks to leave room
     // for the icons so the whole thing stays centred. Its caption is drawn
     // centred BELOW the button so it reads as a headline for the selector.
@@ -796,7 +720,7 @@ void MainWindow_ImGui::renderProfileChooser()
     ImGui::SetCursorPos(ImVec2(fRowX + (haveIcon ? fIcon + fGap : 0.0f), fRowY));
     presetButton(ICON_FA_STAR "  POM1 FANTASY Apple-1  " ICON_FA_STAR,
                  /*desc*/ nullptr,
-                 kMachinePresetCount - 1,
+                 pom1::presetIndex(kDefaultPresetId),
                  IM_COL32(150, 108, 30, 255), IM_COL32(190, 142, 46, 255),
                  IM_COL32(120, 86, 22, 255), fBtnW, fBtnH);
     if (haveIcon) drawFantasyIcon(fRowX + fIcon + fGap + fBtnW + fGap);
@@ -975,7 +899,7 @@ void MainWindow_ImGui::renderProfileChooser()
     if (chosenPreset < 0 && chosenLang < 0 && chosenPaint < 0 && chosenAudio < 0 &&
         chosenGame < 0 &&
         (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)))
-        chosenPreset = kMachinePresetCount - 1;
+        chosenPreset = pom1::presetIndex(kDefaultPresetId);
 
     // Run the picked action after ImGui::End() (every path dismisses the chooser).
     if (chosenPreset >= 0) {
@@ -1015,8 +939,8 @@ void MainWindow_ImGui::launchGameFromChooser(int game)
     if (game < 0 || game >= kChooserGameCount) return;
 
     applyBootConfig(kPresetTMS9918Card);
-    pendingCodeTankRomPath = kChooserGames[game].rom;
-    pendingCodeTankJumper  = kChooserGames[game].jumper;
+    stagedCardConfiguration.codeTankRomPath = kChooserGames[game].rom;
+    stagedCardConfiguration.codeTankJumper  = kChooserGames[game].jumper;
     codeTankJumper         = kChooserGames[game].jumper;
     // ~3 s: covers the deferred card plug (~0.2 s) + the power-on scenario,
     // mirroring the CodeTank Library's kCodeTankColdBootSeconds.
@@ -1031,7 +955,7 @@ void MainWindow_ImGui::launchPaintEditorFromChooser(bool tms)
     if (tms) {
         applyBootConfig(kPresetTMS9918Card);
         tms9918Enabled = true;
-        pendingTms9918Enable = true;
+        stagedCardConfiguration.cards.add(CardId::Tms9918);
         showTMS9918 = true;
         showTMSPaintEditor = true;
     } else {
@@ -1045,8 +969,8 @@ void MainWindow_ImGui::launchPaintEditorFromChooser(bool tms)
 
 // Open an audio editor straight from the chooser. Boot a plain Apple-1 with the
 // ACI (kPresetIntegerCassette) as the base machine, then raise the editor
-// window. Card plugs ride the deferred rail (pending* flags, plugged by
-// finalizePendingCardPlugs ~15 frames after the reset) like
+// window. Card plugs ride the deferred configuration rail (plugged by
+// the synchronous card transaction after the reset) like
 // launchPaintEditorFromChooser — a same-frame plug is the documented
 // silent-card-on-boot condition, and the deferred finalize would otherwise
 // honour a CLI --enable sid-se/jukebox override queued by applyBootConfig and
@@ -1056,23 +980,23 @@ void MainWindow_ImGui::launchAudioEditorFromChooser(bool sid)
     applyBootConfig(kPresetIntegerCassette);
     if (sid) {
         sidEnabled = true;
-        pendingSidEnable = true;
+        stagedCardConfiguration.cards.add(CardId::Sid);
         // A1-SID evicts its bus rivals (A1-AUDIO SE shares $C800-$CFFF, the
         // Juke-Box latch sits at $CA00) — clear their pendings too so the
         // finalize pass can't plug one and evict the SID right back.
         sidSpecialEditionEnabled = false;
-        pendingSidSEEnable = false;
+        stagedCardConfiguration.cards.remove(CardId::SidSpecialEdition);
         jukeBoxEnabled = false;
-        pendingJukeBoxEnable = false;
+        stagedCardConfiguration.cards.remove(CardId::JukeBox);
         showSidTracker = true;
     } else {
-        // kPresetIntegerCassette carries the ACI (cfg.aci queues the deferred
+        // kPresetIntegerCassette carries the ACI (cfg.cards queues the deferred
         // plug), but a persistent CLI `--disable aci` override is re-applied
         // inside every applyBootConfig — re-assert the pendings after the call
         // (like the SID branch above) so the editor never falls back on its
         // render guard's same-frame emergency plug (silent-card-on-boot).
         aciEnabled = true;
-        pendingAciEnable = true;
+        stagedCardConfiguration.cards.add(CardId::Aci);
         showSfxEditor = true;
     }
 }
@@ -1112,63 +1036,48 @@ void MainWindow_ImGui::applyHeadlessConfig(EmulationController& emu, int presetI
     pom1::log().info("POM1", std::string("headless preset: ") + cfg.name +
                      " (" + std::to_string(cfg.ramKB) + "K)");
 
-    emu.setPresetRamKB(cfg.ramKB);
-    const bool fantasy = std::string_view(cfg.name).find("Fantasy") != std::string_view::npos;
-    emu.setSiliconStrictMode(!fantasy);
-    emu.setOutOfRangeStrictMode(!fantasy);
+    const bool fantasy = isFantasyPreset(presetIdFromIndex(presetIndex));
     // Headless = tests / golden-image regression / CI: force the deterministic
     // GEN2 cold state (documented latch + zeroed DRAM + cycleCounter=0 + fixed
     // xorshift seed) regardless of the preset's Fantasy bit. The GUI path
     // mirrors !fantasyPreset because users want hardware fidelity there;
     // headless callers want reproducibility (--dump-gen2-frame /
     // gfx_regress_gen2_testcard depend on it).
-    emu.setGen2RandomPowerOn(false);
-
-    // Jumpers before the cards that read them.
-    emu.setJukeBoxJumper(cfg.jukeBoxJumper);
-    emu.setJukeBoxChipMode(cfg.jukeBoxChipMode);
-    emu.setCodeTankJumper(cfg.codeTankJumper);
-
-    // Plug cards (base cards before daughterboards).
-    emu.setHgrFramebufferAttached(cfg.graphicsCard);
-    emu.setTMS9918Enabled(cfg.tms9918);
-    emu.setCodeTankEnabled(cfg.codeTank);
-    emu.setSIDEnabled(cfg.sid);
-    emu.setSIDSpecialEditionEnabled(cfg.sidSpecialEdition);
-    emu.setMicroSDEnabled(cfg.microSD);
-    emu.setIECCardEnabled(cfg.iecCard);
-    emu.setCFFA1Enabled(cfg.cffa1);
-    emu.setJukeBoxEnabled(cfg.jukeBox);
-    emu.setWiFiModemEnabled(cfg.wifiModem);
-    emu.setA1IO_RTCEnabled(cfg.a1ioRtc);
-    emu.setPR40Enabled(cfg.pr40Printer);
-    emu.setGT6144Enabled(cfg.gt6144);
-    emu.setACIEnabled(cfg.aci);
-    emu.setExtendedACIEnabled(cfg.extendedAci);
-#if !POM1_IS_WASM
-    emu.setTerminalCardEnabled(cfg.terminalCard);
-#endif
-
-    // BASIC ROM — variant picked from cfg (not live flags), mirroring
-    // applyMachineConfig. Errors are logged by the reload* facades.
-    std::string err;
+    pom1::CardConfigurationRequest request;
+    request.cards = cfg.enabledCards();
+    request.mode = fantasy ? pom1::TopologyMode::Fantasy : pom1::TopologyMode::Strict;
+    request.jukeBoxJumper = cfg.jukeBox.jumper;
+    request.jukeBoxChipMode = cfg.jukeBox.chipMode;
+    request.codeTankJumper = cfg.codeTank.jumper;
+    if (cfg.codeTank.romPath) request.codeTankRomPath = cfg.codeTank.romPath;
+    using SystemRomProfile = pom1::CardConfigurationRequest::SystemRomProfile;
     if (cfg.basicType == BasicType::ApplesoftLite) {
-        if (cfg.microSD && !cfg.cffa1) {
-            emu.reloadApplesoftLiteSDCard(err);
-            if (fantasy) emu.reloadBasic(err); else emu.unloadBasic();
-            emu.reloadWozMonitor(err);
-        } else {
-            emu.reloadApplesoftLiteCFFA1(err);
-        }
+        request.systemRomProfile =
+            cfg.hasCard(CardId::MicroSD) && !cfg.hasCard(CardId::Cffa1)
+                ? (fantasy ? SystemRomProfile::ApplesoftSdFantasy
+                           : SystemRomProfile::ApplesoftSd)
+                : SystemRomProfile::ApplesoftCffa1;
     } else if (cfg.basicType == BasicType::Integer) {
-        emu.reloadBasic(err);
-        emu.reloadWozMonitor(err);
+        request.systemRomProfile = SystemRomProfile::IntegerBasic;
     } else {
-        // None / IntegerCassette: $E000-$EFFF stays RAM (cassette BASIC loads later).
-        emu.unloadBasic();
-        emu.reloadWozMonitor(err);
+        request.systemRomProfile = SystemRomProfile::MonitorOnly;
     }
-    if (cfg.krusader) emu.reloadKrusader(err);
+    request.loadKrusader = cfg.krusader;
+    request.loadCffa1Firmware = cfg.hasCard(CardId::Cffa1);
+    request.presetRamKB = cfg.ramKB;
+    request.siliconStrict = !fantasy;
+    request.outOfRangeStrict = !fantasy;
+    request.gen2RandomPowerOn = false;
+    const pom1::CardConfigurationResult topologyResult =
+        emu.applyCardConfiguration(request);
+    if (!topologyResult) {
+        pom1::log().error("POM1", std::string("rejected preset topology: ") +
+                         cfg.name + " (" + topologyResult.message + ")");
+        return;
+    }
+
+    // System BASIC/Monitor, optional Krusader and CFFA1 firmware were loaded
+    // inside applyCardConfiguration(), before the target cards became visible.
 }
 
 // Forwarders onto the UI-free accessors in MachinePresets.cpp. Kept as static
@@ -1898,8 +1807,9 @@ void MainWindow_ImGui::pregenerateMissingPresetLayouts()
                 ImVec2 extent = pom1::mainwindow::detail::computePresetLayoutExtent(cfg, fallback);
                 int w = static_cast<int>(std::ceil(extent.x + 10.0f));
                 int h = static_cast<int>(std::ceil(extent.y + 60.0f));
-                // Floor at Fantasy preset extent (last entry — reference frame)
-                const MachineConfig& fantasy = kMachinePresets[kMachinePresetCount - 1];
+                // Floor at the explicit default Fantasy preset's reference frame.
+                const MachineConfig& fantasy =
+                    kMachinePresets[pom1::presetIndex(kDefaultPresetId)];
                 ImVec2 fext = pom1::mainwindow::detail::computePresetLayoutExtent(fantasy, fallback);
                 if (fext.x > 0.0f) w = std::max(w, static_cast<int>(std::ceil(fext.x + 10.0f)));
                 if (fext.y > 0.0f) h = std::max(h, static_cast<int>(std::ceil(fext.y + 60.0f)));
@@ -1930,14 +1840,6 @@ void MainWindow_ImGui::pregenerateMissingPresetLayouts()
 void MainWindow_ImGui::maybeAutosaveLayout(float deltaTime)
 {
     if (activePresetIndex < 0 || showProfileChooser) return;
-    // Don't autosave while the deferred card plug (preset switch) is still in
-    // flight — the incoming preset's windows are still being raised.
-    if (pendingCardEnableFrames > 0) {
-        presenceHashValid_ = false;
-        layoutDirtyForSeconds_ = -1.0f;
-        return;
-    }
-
     ImGuiIO& io = ImGui::GetIO();
     bool dirty = false;
     if (io.WantSaveIniSettings) {

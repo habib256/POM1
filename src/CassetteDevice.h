@@ -4,13 +4,15 @@
 #include "CpuClock.h"
 #include "POM1Build.h"
 #include "AudioDevice.h"
+#include "LockOrder.h"
+#include "RealtimeDiagnostics.h"
 #include "Peripheral.h"
 #include "third_party/miniaudio.h"
 
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
-#include <deque>
+#include <array>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -44,7 +46,7 @@ public:
     /// only — the Apple 1 hard-reset path uses `resetApple1Side()` so
     /// the tape doesn't rewind itself when the user resets the computer
     /// (a real deck keeps playing regardless of the host's power state).
-    void reset();
+    void reset() override;
     /// Reset only the bits of the ACI that are actually wired to the
     /// Apple 1's hardware reset line: the `$C000` output flip-flop and
     /// the CPU-cycle timebase. Loaded tape, playback position, recording
@@ -72,8 +74,8 @@ public:
     /// each segment is queued at the same timebase toggleOutput() uses, so the
     /// preview pitch matches the real beeper. Non-blocking: the audio callback
     /// plays it out. No-op without an audio device or while an audio-stream tape
-    /// is loaded (same silence rule as the real beeper). Thread-safe (audioMutex
-    /// via queueAudioSegment); call under EmulationController's stateMutex.
+    /// is loaded. Published through the pulse SPSC ring; call under the
+    /// EmulationController state lock so there remains exactly one producer.
     void previewBeep(const std::vector<std::pair<uint32_t, bool>>& pulses);
 
     /// Beeper preview "stop": drop any queued preview pulses so the speaker goes
@@ -136,6 +138,7 @@ public:
 
     /// AudioSource interface — generates cassette audio samples.
     void fillAudioBuffer(float* output, int frameCount) override;
+    void copyRealtimeDiagnostics(pom1::RealtimeDiagnostics& out) const;
 
     /// Called by AudioDevice after init to signal audio is available.
     void setAudioAvailable(bool available) { audioAvailable = available; }
@@ -239,8 +242,8 @@ private:
     static constexpr uint32_t kWavFileSampleRate = 44100;
 
     void queueAudioSegment(uint32_t cycles, bool level);
-    // Stop pulse-mode audio: clears the audioQueue so the audio callback
-    // goes silent. Called from stop/eject/rewind/load paths that need to
+    // Stop pulse-mode audio: publishes a ring clear boundary so the audio
+    // callback goes silent. Called from stop/eject/rewind/load paths that need to
     // halt audible output before mutating playback state.
     void stopPulseAudio();
     void advancePlayback(uint32_t cycles);
@@ -276,6 +279,8 @@ private:
     // at the device's output sample rate (miniaudio resamples internally).
     bool loadAudioStream(const std::string& path);
     void closeAudioStream();
+    void refillAudioStreamRing();
+    void clearAudioStreamRing();
 
     // Shared PCM → transition durations core (zero-crossing with
     // hysteresis + 900 kHz tape-file timebase). Extracted from
@@ -307,22 +312,28 @@ private:
     /// Defaults to kWavFileSampleRate so existing callers still work before
     /// the real rate is known.
     uint32_t audioOutputSampleRate = kWavFileSampleRate;
-    // Mechanical-click waveform, synthesised once per sample rate OUTSIDE
-    // audioMutex (see playMechanicalClick). Touched only by the UI/CPU-side
-    // callers, never by the audio thread — which reads clickBuffer instead.
+    // Mechanical-click waveform, synthesised once per sample rate outside the
+    // realtime path (see playMechanicalClick), then copied into the click ring.
     std::vector<float> clickCache_;
     uint32_t clickCacheRate_ = 0;
 
-    struct AudioSegment {
-        uint32_t remainingSamples;
-        float sampleValue;
-    };
-
-    mutable std::mutex audioMutex;
-    std::deque<AudioSegment> audioQueue;
+    static constexpr size_t kPulseRingCapacity = 262144;
+    static constexpr size_t kClickRingCapacity = 8192;
+    std::array<float, kPulseRingCapacity> pulseRing{};
+    std::atomic<size_t> pulseHead{0};
+    std::atomic<size_t> pulseTail{0};
+    std::atomic<size_t> pulseClearHead{0};
+    std::atomic<uint64_t> pulseClearGeneration{0};
+    uint64_t pulseConsumerGeneration = 0; // audio callback only
+    std::array<float, kClickRingCapacity> clickRing{};
+    std::atomic<size_t> clickHead{0};
+    std::atomic<size_t> clickTail{0};
+#if POM1_REALTIME_DIAGNOSTICS
+    std::atomic<uint64_t> ringUnderruns{0};
+    std::atomic<uint64_t> ringOverflows{0};
+#endif
     float audioPlaybackSample = 0.0f;
-    // Touched by the realtime audio-callback thread (decrement, under
-    // audioStreamMutex/audioMutex depending on mode) and by main-thread resets
+    // Touched by the realtime audio-callback thread (decrement) and by main-thread resets
     // through several paths guarded by different mutexes — atomic so those can
     // never race regardless of which lock the caller holds. Only the audio
     // thread decrements; main thread only stores kAudioRampInSamples.
@@ -330,11 +341,9 @@ private:
 
     // Mechanical "clunk" that fires when the deck mode transitions
     // (NoTape ↔ ProgramTape ↔ AudioStream). Pre-synthesised into
-    // clickBuffer once per event, then mixed on top of whatever the
-    // speaker/queue paths are producing so it's audible even with no
-    // tape loaded. audioMutex-protected.
-    std::vector<float> clickBuffer;
-    size_t clickCursor = 0;
+    // click ring once per event, then mixed on top of whatever the
+    // speaker/queue paths are producing. Single producer (controller thread),
+    // single consumer (audio callback), no lock or allocation in the callback.
     DeckMode lastDeckMode = DeckMode::NoTape;
 
     void playMechanicalClick();
@@ -383,7 +392,7 @@ private:
     // Both sides run under EmulationController::stateMutex, so the
     // std::move assignment and the indexed read cannot overlap. The AUDIO
     // thread's fillAudioBuffer() must NOT touch this vector — it only
-    // consumes the audioQueue under audioMutex.
+    // consumes the fixed pulse ring.
     std::vector<uint32_t> loadedDurations;
     std::string loadedTapePath;
     // Load info read from tapeinfo.txt next to the tape file. Shown on
@@ -407,15 +416,12 @@ private:
     // it too, so pause truly freezes both modes.
     std::atomic<bool> playbackPaused{false};
 
-    // Direct audio streaming state. When audioStreamMode is true, playback
-    // reads PCM frames from audioDecoder in fillAudioBuffer instead of
-    // synthesising square waves from loadedDurations. Protected by
-    // audioStreamMutex because the audio callback competes with UI-thread
-    // load/eject/seek calls.
-    mutable std::mutex audioStreamMutex;
-    // Read on the realtime audio thread before taking audioStreamMutex (and in
-    // const getMode()/isAudioStreamMode() queries) while the CPU/UI thread
-    // flips it on load/eject — atomic to make that mode probe race-free.
+    // Direct audio streaming state. The emulation thread decodes into a fixed
+    // SPSC ring; the realtime callback only consumes already-decoded PCM.
+    // The mutex serialises decoder refill with UI-thread load/eject/seek.
+    mutable pom1::RankedMutex<pom1::LockRank::Peripheral> audioStreamMutex;
+    // Read on the realtime audio thread and in const mode queries while the
+    // CPU/UI thread flips it on load/eject.
     std::atomic<bool> audioStreamMode{false};
     bool audioStreamDecoderOpen = false;
     /// Heap-owned so a fresh decoder can be built OUTSIDE audioStreamMutex and
@@ -424,14 +430,15 @@ private:
     /// base holds pointers into the object itself, so its address must not
     /// change once ma_decoder_init_file has run.
     std::unique_ptr<ma_decoder> audioStreamDecoder;
-    // ATOMIC on purpose, and the getters below read them WITHOUT taking
-    // audioStreamMutex. SnapshotPublisher::publish reads the playback
-    // position on every frame while holding stateMutex, and the audio
-    // thread holds audioStreamMutex across ma_decoder_read_pcm_frames —
-    // whose refills fread from disk. Taking the lock to read a counter
-    // therefore parked the emulation thread (and every UI call queued
-    // behind stateMutex) on a disk read. A torn read is impossible and a
-    // one-frame-stale position is invisible in a progress readout.
+    static constexpr size_t kStreamRingCapacity = 262144;
+    std::array<float, kStreamRingCapacity> streamRing{};
+    std::atomic<size_t> streamHead{0};
+    std::atomic<size_t> streamTail{0};
+    std::atomic<size_t> streamClearHead{0};
+    std::atomic<uint64_t> streamClearGeneration{0};
+    uint64_t streamConsumerGeneration = 0; // audio callback only
+    std::atomic<bool> audioStreamEof{false};
+    // SnapshotPublisher reads these counters without the decoder mutex.
     std::atomic<uint64_t> audioStreamCursor{ 0 };      // frames consumed so far
     std::atomic<uint64_t> audioStreamTotalFrames{ 0 }; // decoder-reported; 0 if unknown
 

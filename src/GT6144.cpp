@@ -15,7 +15,7 @@ GT6144::GT6144()
 
 void GT6144::reset()
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<int> dist(0, 255);
@@ -29,7 +29,7 @@ void GT6144::reset()
 
 void GT6144::writeCommand(uint8_t byte)
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
 
     if (byte >= 224) {
         // Control opcode. Bits 5-7 mark "command"; bits 3-4 are don't-cares
@@ -75,7 +75,7 @@ void GT6144::writeCommand(uint8_t byte)
 
 void GT6144::copySnapshot(Snapshot& out) const
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     out.framebuffer = framebuffer;
     out.inverted    = inverted;
     out.blanked     = blanked;
@@ -86,7 +86,7 @@ void GT6144::copySnapshot(Snapshot& out) const
 
 void GT6144::serialize(pom1::SnapshotWriter& w) const
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     w.writeBytes(framebuffer.data(), framebuffer.size());
     w.writeU8(inverted ? 1 : 0);
     w.writeU8(blanked  ? 1 : 0);
@@ -97,7 +97,7 @@ void GT6144::serialize(pom1::SnapshotWriter& w) const
 
 void GT6144::deserialize(pom1::SnapshotReader& r)
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     r.readBytes(framebuffer.data(), framebuffer.size());
     inverted    = r.readU8() != 0;
     blanked     = r.readU8() != 0;

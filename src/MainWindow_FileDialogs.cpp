@@ -246,7 +246,7 @@ void MainWindow_ImGui::processDroppedFiles()
         // unplugged card and a later toggle mis-cascades.
         if (!iecCardEnabled) {
             iecCardEnabled = true;
-            emulation->setIECCardEnabled(true);
+            emulation->setCardEnabled(pom1::CardId::Iec, true);
             microSDEnabled = true;
             cffa1Enabled = false;
             jukeBoxEnabled = false;
@@ -297,7 +297,7 @@ std::vector<std::string> MainWindow_ImGui::evictStorageCards()
     // (Buzzard Bait copies its engine to $8000 and installs a $9900 shim).
     if (microSDEnabled) {
         microSDEnabled = false;
-        emulation->setMicroSDEnabled(false);
+        emulation->setCardEnabled(pom1::CardId::MicroSD, false);
         // Memory::setMicroSDEnabled(false) cascade-drops the IEC daughterboard
         // (it rides on microSD's VIA). Mirror that on the UI side or the IEC
         // Disk window keeps rendering a phantom drive and a later microSD
@@ -308,7 +308,7 @@ std::vector<std::string> MainWindow_ImGui::evictStorageCards()
     }
     if (cffa1Enabled) {
         cffa1Enabled = false;
-        emulation->setCFFA1Enabled(false);
+        emulation->setCardEnabled(pom1::CardId::Cffa1, false);
         evicted.push_back("CFFA1");
     }
     if (codeTankEnabled) {
@@ -318,19 +318,19 @@ std::vector<std::string> MainWindow_ImGui::evictStorageCards()
         // against a bus where CodeTank ROM is no longer mapped, disturbing the
         // just-loaded program. Every other CodeTank-disable site clears this.
         codeTankPendingWozRunAt = 0.0;
-        emulation->setCodeTankEnabled(false);
+        emulation->setCardEnabled(pom1::CardId::CodeTank, false);
         evicted.push_back("CodeTank");
     }
     if (jukeBoxEnabled) {
         jukeBoxEnabled = false;
         showJukeBox = false;
-        emulation->setJukeBoxEnabled(false);
+        emulation->setCardEnabled(pom1::CardId::JukeBox, false);
         evicted.push_back("Juke-Box");
     }
     if (a1ioRtcEnabled) {
         a1ioRtcEnabled = false;
         showA1IO_RTC = false;
-        emulation->setA1IO_RTCEnabled(false);
+        emulation->setCardEnabled(pom1::CardId::A1IoRtc, false);
         evicted.push_back("A1-IO/RTC");
     }
     return evicted;
@@ -346,7 +346,7 @@ bool MainWindow_ImGui::performMemoryLoad(const std::string& path,
     // the Memory bus, and early writes to e.g. $CC00/$CC01 vanish into RAM.
     // Draining pending plugs here closes the race without changing the
     // boot-time behaviour.
-    finalizePendingCardPlugs();
+    applyPendingCardConfiguration();
 
     // Auto-enable hardware cards based on source directory.
     // Folder layout under software/: "Graphic HGR", "Graphic TMS9918",
@@ -378,7 +378,7 @@ bool MainWindow_ImGui::performMemoryLoad(const std::string& path,
     } else if (pathHas("/SOUND SID/", "\\SOUND SID\\")) {
         if (!sidEnabled) {
             sidEnabled = true;
-            emulation->setSIDEnabled(true);
+            emulation->setCardEnabled(pom1::CardId::Sid, true);
             // Mirror the menu mutex: plugging A1-SID evicts A1-AUDIO SE
             // (same MOS chip) and Juke-Box ($CA00 latch sits inside the
             // SID window). See MainWindow_Menu.cpp:326.
@@ -390,14 +390,14 @@ bool MainWindow_ImGui::performMemoryLoad(const std::string& path,
                pathHas("/Apple-1_TMS_CC65/", "\\Apple-1_TMS_CC65\\")) {
         if (!tms9918Enabled) {
             tms9918Enabled = true;
-            emulation->setTMS9918Enabled(true);
+            emulation->setCardEnabled(pom1::CardId::Tms9918, true);
             setStatusMessage("P-LAB TMS9918 plugged", 2.0f);
         }
         showTMS9918 = true;
     } else if (pathHas("/sdcard/", "\\sdcard\\")) {
         if (!microSDEnabled) {
             microSDEnabled = true;
-            emulation->setMicroSDEnabled(true);
+            emulation->setCardEnabled(pom1::CardId::MicroSD, true);
             if (codeTankEnabled) {
                 // Memory evicts CodeTank ($6000-$7FFF Applesoft Lite
                 // overlap); mirror UI. The TMS9918 host stays plugged.
@@ -410,7 +410,7 @@ bool MainWindow_ImGui::performMemoryLoad(const std::string& path,
     } else if (pathHas("/NET/", "\\NET\\")) {
         if (!wifiModemEnabled) {
             wifiModemEnabled = true;
-            emulation->setWiFiModemEnabled(true);
+            emulation->setCardEnabled(pom1::CardId::WifiModem, true);
             setStatusMessage("P-LAB Wi-Fi Modem plugged", 2.0f);
         } else {
             // Reload from software/NET/: drop any live BBS connection and
@@ -422,14 +422,14 @@ bool MainWindow_ImGui::performMemoryLoad(const std::string& path,
     } else if (pathHas("/a1io_rtc/", "\\a1io_rtc\\")) {
         if (!a1ioRtcEnabled) {
             a1ioRtcEnabled = true;
-            emulation->setA1IO_RTCEnabled(true);
+            emulation->setCardEnabled(pom1::CardId::A1IoRtc, true);
             setStatusMessage("P-LAB I/O Board & RTC plugged", 2.0f);
         }
         showA1IO_RTC = true;
     } else if (pathHas("/Graphic gt-6144/", "\\Graphic gt-6144\\")) {
         if (!gt6144Enabled) {
             gt6144Enabled = true;
-            emulation->setGT6144Enabled(true);
+            emulation->setCardEnabled(pom1::CardId::Gt6144, true);
             setStatusMessage("SWTPC GT-6144 plugged (64x96 framebuffer at $D00A)", 3.0f);
         }
         showGT6144 = true;

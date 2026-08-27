@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "CpuClock.h"
+#include "MachineCoordinator.h"
 #include "Gen2VideoScanner.h"
 #include "LockOrder.h"
 #include "POM1Build.h"
@@ -33,6 +34,10 @@
 // POD instead of the whole TMS9918 chip model.
 #include "DisplayDevice.h"
 #include "Tms9918Diagnostics.h"
+#include "RealtimeDiagnostics.h"
+#if POM1_REALTIME_DIAGNOSTICS
+#include <chrono>
+#endif
 
 // Mutex ordering: stateMutex > keyboard's internal keyMutex > publisher's
 // internal snapshotMutex. publisher.publish() is invoked while holding
@@ -53,6 +58,9 @@
 class PriorityMutex {
 public:
     void lock() {
+#if POM1_REALTIME_DIAGNOSTICS
+        const auto waitStart = std::chrono::steady_clock::now();
+#endif
 #if POM1_LOCK_ORDER_CHECKS
         // stateMutex is the OUTERMOST lock — see LockOrder.h. Reaching for it
         // while already holding keyMutex or snapshotMutex is precisely the
@@ -62,12 +70,24 @@ public:
 #endif
         waiters_.fetch_add(1, std::memory_order_relaxed);
         mtx_.lock();
+#if POM1_REALTIME_DIAGNOSTICS
+        const auto acquired = std::chrono::steady_clock::now();
+        pom1::updateAtomicMaximum(maxWaitNs_, static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(acquired - waitStart).count()));
+        acquisitions_.fetch_add(1, std::memory_order_relaxed);
+        acquiredAt_ = acquired;
+#endif
         waiters_.fetch_sub(1, std::memory_order_relaxed);
 #if POM1_LOCK_ORDER_CHECKS
         pom1::lockorder::didAcquire(pom1::LockRank::State);
 #endif
     }
     void unlock() {
+#if POM1_REALTIME_DIAGNOSTICS
+        pom1::updateAtomicMaximum(maxHoldNs_, static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - acquiredAt_).count()));
+#endif
 #if POM1_LOCK_ORDER_CHECKS
         pom1::lockorder::willRelease(pom1::LockRank::State);
 #endif
@@ -76,18 +96,39 @@ public:
     bool hasWaiters() const {
         return waiters_.load(std::memory_order_relaxed) > 0;
     }
+    void copyRealtimeDiagnostics(pom1::RealtimeDiagnostics& out) const {
+#if POM1_REALTIME_DIAGNOSTICS
+        out.stateLockAcquisitions = acquisitions_.load(std::memory_order_relaxed);
+        out.maxStateWaitNs = maxWaitNs_.load(std::memory_order_relaxed);
+        out.maxStateHoldNs = maxHoldNs_.load(std::memory_order_relaxed);
+#else
+        (void)out;
+#endif
+    }
 private:
     std::mutex mtx_;
     std::atomic<int> waiters_{0};
+#if POM1_REALTIME_DIAGNOSTICS
+    std::atomic<uint64_t> acquisitions_{0};
+    std::atomic<uint64_t> maxWaitNs_{0};
+    std::atomic<uint64_t> maxHoldNs_{0};
+    std::chrono::steady_clock::time_point acquiredAt_{};
+#endif
 };
 
 class EmulationController
 {
 public:
-    explicit EmulationController(DisplayDevice* screen);
+    explicit EmulationController(DisplayDevice* screen,
+                                 bool initializeAudioHardware = true);
     ~EmulationController();
 
     void copySnapshot(EmulationSnapshot& out) const;
+    /// Host audio endpoint. It deliberately bypasses stateMutex: registered
+    /// sources publish through lock-free rings and AudioDevice owns their
+    /// lifetime fence. Tests disable hardware and drive this synthetically.
+    void mixAudio(float* output, int frameCount);
+    pom1::RealtimeDiagnostics getRealtimeDiagnostics() const;
 
     void setExecutionSpeedCyclesPerFrame(int cyclesPerFrame);
     int getExecutionSpeedCyclesPerFrame() const;
@@ -311,6 +352,7 @@ public:
     bool getWriteInRom() const;
     void setTerminalSpeed(int charsPerSecond);
     void setPresetRamKB(int kb);
+    int getPresetRamKB() const;
     void setSiliconStrictMode(bool enabled);
     bool isSiliconStrictMode() const;
     // NMOS decimal-mode ADC/SBC flag bug (original Apple-1 6502) vs the 65C02
@@ -416,25 +458,29 @@ public:
     // `--rec` verb.
     void armCassetteRecord();
 
+    /// Atomically apply a complete card topology under one state lock. The CPU
+    /// is quiesced for detach/configure/attach, its prior run state is restored,
+    /// and only the completed topology (or completed rollback) is published.
+    pom1::CardConfigurationResult applyCardConfiguration(
+        const pom1::CardConfigurationRequest& request);
+    pom1::CardSet getEnabledCards() const;
+    void setCardEnabled(pom1::CardId card, bool enabled);
+
     // Apple Cassette Interface — unplug for the bare-4K preset.
-    void setACIEnabled(bool enabled);
     bool isACIEnabled() const;
     // Uncle Bernie's extended $C500 PROM page. Cascade-plugs the ACI (it is
     // physically the other half of the ACI's PROM pair) — see
     // Memory::setExtendedACIEnabled.
-    void setExtendedACIEnabled(bool enabled);
     bool isExtendedACIEnabled() const;
 
     // CassetteDevice audio source registration on the mixer. Separate
     // from the ACI plug because the audible playback belongs to the tape
-    // deck, not the $C000/$C081 hooks. Deferred by MainWindow 15 frames
-    // after CPU startup — adding the source before the CPU has run
-    // reproduces the SID boot-silence bug on tapes.
+    // deck, not the $C000/$C081 hooks. Registered after the synchronous card
+    // transaction so the mixer never sees a half-configured deck.
     void activateCassetteAudioSource();
     void deactivateCassetteAudioSource();
 
     // P-LAB TMS9918 Graphic Card
-    void setTMS9918Enabled(bool enabled);
     bool isTMS9918Enabled() const;
 
     // Uncle Bernie's GEN2 HGR Graphic Card. The rasteriser is owned by the
@@ -449,17 +495,13 @@ public:
     bool isGen2FiftyHz() const;
 
     // P-LAB A1-SID Sound Card
-    void setSIDEnabled(bool enabled);
     bool isSIDEnabled() const;
-    void setSIDSpecialEditionEnabled(bool enabled);
     bool isSIDSpecialEditionEnabled() const;
     void setSIDChipModel(pom1::SID::ChipModel m);
 
     // P-LAB microSD Storage Card
-    void setMicroSDEnabled(bool enabled);
     bool isMicroSDEnabled() const;
     // P-LAB IEC daughterboard (microSD daughterboard)
-    void setIECCardEnabled(bool enabled);
     bool isIECCardEnabled() const;
     // UI thread-safe snapshot of IEC card state for the IEC Disk window.
     struct IECCardUIState {
@@ -491,12 +533,10 @@ public:
     std::string getMicroSDRootPath() const;
 
     // CFFA1 CompactFlash Interface
-    void setCFFA1Enabled(bool enabled);
     bool isCFFA1Enabled() const;
     bool reloadCFFA1Rom(std::string& error);
 
     // P-LAB Apple-1 Juke-Box
-    void setJukeBoxEnabled(bool enabled);
     bool isJukeBoxEnabled() const;
     void setJukeBoxJumper(JukeBox::Jumper jumper);
     JukeBox::Jumper getJukeBoxJumper() const;
@@ -511,7 +551,6 @@ public:
 
     // P-LAB CodeTank — fixed 16 kB ROM window at $4000-$7FFF, jumper picks
     // which 16 kB half of the 28c256 is wired in.
-    void setCodeTankEnabled(bool enabled);
     bool isCodeTankEnabled() const;
     void setCodeTankJumper(CodeTank::Jumper jumper);
     CodeTank::Jumper getCodeTankJumper() const;
@@ -521,13 +560,11 @@ public:
     bool loadCodeTankRomBuffer(const std::vector<uint8_t>& data, const std::string& label, std::string& error);
 
     // P-LAB Apple-1 Wi-Fi Modem
-    void setWiFiModemEnabled(bool enabled);
     bool isWiFiModemEnabled() const;
     void wifiModemDisconnect();
     void wifiModemReset();
 
     // P-LAB Apple-1 Terminal Card
-    void setTerminalCardEnabled(bool enabled);
     bool isTerminalCardEnabled() const;
 
     // Dev telemetry side channel ($C440-$C443). setTelemetryListenPort() must
@@ -553,11 +590,9 @@ public:
     class TerminalCard* getTerminalCardIfEnabled();
 
     // P-LAB Apple-1 I/O Board & RTC
-    void setA1IO_RTCEnabled(bool enabled);
     bool isA1IO_RTCEnabled() const;
 
     // SWTPC PR-40 printer (Steve Jobs' Oct. 1976 Interface Age hack)
-    void setPR40Enabled(bool enabled);
     bool isPR40Enabled() const;
     void setPR40SwitchMode(int mode);      // 0=Off 1=Mixed 2=PrintOnly
     int  getPR40SwitchMode() const;
@@ -565,7 +600,6 @@ public:
     void clearPR40Paper();
 
     // SWTPC GT-6144 Graphic Terminal (1976) — write-only 64x96 framebuffer at $D00A.
-    void setGT6144Enabled(bool enabled);
     bool isGT6144Enabled() const;
     // Freeze the A1-IO RTC to a wall-clock instant (seconds since epoch).
     // Used by `--rtc-freeze` for deterministic scripted runs. No-op when the

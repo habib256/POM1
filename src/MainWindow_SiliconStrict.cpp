@@ -1,21 +1,10 @@
 // Pom1 Apple 1 Emulator
 // Copyright (C) 2000-2026 Verhille Arnaud
 //
-// MainWindow_SiliconStrict.cpp — silicon-fidelity POLICY and its inspector,
-// split out of MainWindow_HardwareWindows.cpp (2530 lines). Two things live
-// here, and they belong together:
-//
-//   1. Parmigiani's "one board at a time" rule as CODE — the ConflictRule
-//      table plus gateStrictPlug() / wouldCreateConflict(). This is policy,
-//      not presentation: it decides which card gets auto-unplugged when two
-//      of them decode the same window, mirroring a real bus that has no
-//      arbitration. Keeping it next to the 52 per-card ImGui::Begin blocks
-//      made it look like a rendering detail; it is not, and the open TODO to
-//      data-drive those blocks against Memory::cardSlots() starts by having
-//      this policy somewhere of its own.
-//
-//   2. The Silicon Strict Inspector window, which is that policy's UI plus
-//      the cold-boot noise toggles and the live drop diagnostics.
+// MainWindow_SiliconStrict.cpp — silicon-fidelity inspector and presentation.
+// Parmigiani's topology policy lives in pure CardTopology; this file only
+// projects UI flags into CardSet, presents diagnostics and applies the typed
+// resolution returned by that module.
 //
 // Pure code motion out of MainWindow_HardwareWindows.cpp — no behaviour
 // changed. Cold-boot toggles still apply on the NEXT hardReset / resetMemory,
@@ -24,6 +13,7 @@
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
 #include "POM1Build.h"
+#include "CardTopology.h"
 
 #include "imgui.h"
 #include "IconsFontAwesome6.h"
@@ -31,7 +21,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
 #include <string>
 #include <vector>
 
@@ -63,131 +52,119 @@ using namespace pom1::mainwindow::detail;
 // strict mode must enforce it. The conflict table mirrors the real cards
 // documented in CLAUDE.md "Parmigiani's golden rule" section.
 //
-// Auto-unplug priority: the secondary card in each pair gets unplugged so
-// the user keeps the more "anchoring" card (TMS9918 wins over SID at $CC00,
-// GEN2 keeps its 8 KB footprint over A1-IO RTC's 16 bytes, JukeBox loses to
-// CodeTank/CFFA1/microSD which are more commonly the focus of a session).
 namespace {
-struct ConflictRule {
-    const char* primary;     // kept plugged
-    bool* primaryFlag;       // pointer member-of MainWindow_ImGui — set by caller
-    const char* secondary;   // unplugged when both are on
-    bool* secondaryFlag;
-    const char* reason;      // overlap range / electrical clash
-};
+std::string_view cardLabel(pom1::CardId id)
+{
+    for (const Memory::CardSlot& slot : Memory::cardSlots()) {
+        if (slot.descriptor.id == id) return slot.descriptor.uiLabel;
+    }
+    return "Unknown card";
+}
 } // namespace
 
 std::vector<std::string> MainWindow_ImGui::listParmigianiConflicts() const
 {
+    pom1::CardSet active;
+    if (graphicsCardEnabled) active.add(pom1::CardId::Gen2);
+    if (a1ioRtcEnabled) active.add(pom1::CardId::A1IoRtc);
+    if (sidEnabled) active.add(pom1::CardId::Sid);
+    if (sidSpecialEditionEnabled) active.add(pom1::CardId::SidSpecialEdition);
+    if (tms9918Enabled) active.add(pom1::CardId::Tms9918);
+    if (jukeBoxEnabled) active.add(pom1::CardId::JukeBox);
+    if (cffa1Enabled) active.add(pom1::CardId::Cffa1);
+    if (microSDEnabled) active.add(pom1::CardId::MicroSD);
+    if (wifiModemEnabled) active.add(pom1::CardId::WifiModem);
+    if (codeTankEnabled) active.add(pom1::CardId::CodeTank);
+
     std::vector<std::string> out;
-    // Pair: (active condition, description).
-    struct C { bool both; const char* desc; };
-    const C table[] = {
-        { graphicsCardEnabled && a1ioRtcEnabled,
-          "GEN2 HGR ↔ A1-IO & RTC — $2000-$200F overlap" },
-        { sidEnabled && tms9918Enabled,
-          "A1-SID ↔ TMS9918 — $CC00/$CC01 overlap" },
-        { sidSpecialEditionEnabled && tms9918Enabled,
-          "A1-AUDIO SE ↔ TMS9918 — $CC00-$CC1F overlap" },
-        { sidSpecialEditionEnabled && sidEnabled,
-          "A1-AUDIO SE ↔ A1-SID — same SID chip on two windows" },
-        { jukeBoxEnabled && cffa1Enabled,
-          "Juke-Box ↔ CFFA1 — $9000-$AFDF inside Juke-Box ROM window" },
-        { jukeBoxEnabled && microSDEnabled,
-          "Juke-Box ↔ microSD — $8000-$9FFF inside Juke-Box ROM window" },
-        { jukeBoxEnabled && wifiModemEnabled,
-          "Juke-Box ↔ Wi-Fi Modem — $B000-$B003 inside Juke-Box ROM window" },
-        { jukeBoxEnabled && sidEnabled,
-          "Juke-Box ↔ A1-SID — $CA00 bank latch vs SID register file" },
-        { jukeBoxEnabled && codeTankEnabled,
-          "Juke-Box ↔ CodeTank — share $4000-$7FFF ROM window" },
-    };
-    for (const auto& c : table) {
-        if (c.both) out.emplace_back(c.desc);
+    const pom1::ConflictList conflicts =
+        pom1::activeConflicts(active, pom1::TopologyMode::Strict);
+    for (std::size_t i = 0; i < conflicts.count; ++i) {
+        const pom1::ActiveConflict& conflict = conflicts.entries[i];
+        std::string description{cardLabel(conflict.cardA)};
+        description += " ↔ ";
+        description += cardLabel(conflict.cardB);
+        description += " — ";
+        description += conflict.reason;
+        out.push_back(std::move(description));
     }
     return out;
 }
 
 std::string MainWindow_ImGui::resolveParmigianiConflicts()
 {
-    std::vector<std::string> evicted;
-    auto unplug = [&](const char* name, auto applyOff) {
-        evicted.emplace_back(name);
-        applyOff();
-    };
-    // Order matters: handle the heaviest cards first so a chain of evictions
-    // settles in one pass.
-    if (jukeBoxEnabled && codeTankEnabled) {
-        unplug("Juke-Box", [&] {
-            jukeBoxEnabled = false;
-            emulation->setJukeBoxEnabled(false);
-        });
-    }
-    if (jukeBoxEnabled && (cffa1Enabled || microSDEnabled || wifiModemEnabled || sidEnabled)) {
-        unplug("Juke-Box", [&] {
-            jukeBoxEnabled = false;
-            emulation->setJukeBoxEnabled(false);
-        });
-    }
-    if (sidSpecialEditionEnabled && (tms9918Enabled || sidEnabled)) {
-        unplug("A1-AUDIO SE", [&] {
-            sidSpecialEditionEnabled = false;
-            emulation->setSIDSpecialEditionEnabled(false);
-        });
-    }
-    if (sidEnabled && tms9918Enabled) {
-        unplug("A1-SID", [&] {
-            sidEnabled = false;
-            emulation->setSIDEnabled(false);
-        });
-    }
-    if (graphicsCardEnabled && a1ioRtcEnabled) {
-        unplug("A1-IO & RTC", [&] {
-            a1ioRtcEnabled = false;
-            emulation->setA1IO_RTCEnabled(false);
-            showA1IO_RTC = false;
-        });
-    }
+    pom1::CardSet active;
+    if (graphicsCardEnabled) active.add(pom1::CardId::Gen2);
+    if (a1ioRtcEnabled) active.add(pom1::CardId::A1IoRtc);
+    if (sidEnabled) active.add(pom1::CardId::Sid);
+    if (sidSpecialEditionEnabled) active.add(pom1::CardId::SidSpecialEdition);
+    if (tms9918Enabled) active.add(pom1::CardId::Tms9918);
+    if (jukeBoxEnabled) active.add(pom1::CardId::JukeBox);
+    if (cffa1Enabled) active.add(pom1::CardId::Cffa1);
+    if (microSDEnabled) active.add(pom1::CardId::MicroSD);
+    if (wifiModemEnabled) active.add(pom1::CardId::WifiModem);
+    if (codeTankEnabled) active.add(pom1::CardId::CodeTank);
+    const pom1::CardSet evicted =
+        pom1::resolveTopology(active, pom1::TopologyMode::Strict).evicted;
     if (evicted.empty()) return {};
+
+    if (evicted.contains(pom1::CardId::JukeBox)) {
+        jukeBoxEnabled = false;
+        emulation->setCardEnabled(pom1::CardId::JukeBox, false);
+    }
+    if (evicted.contains(pom1::CardId::SidSpecialEdition)) {
+        sidSpecialEditionEnabled = false;
+        emulation->setCardEnabled(pom1::CardId::SidSpecialEdition, false);
+    }
+    if (evicted.contains(pom1::CardId::Sid)) {
+        sidEnabled = false;
+        emulation->setCardEnabled(pom1::CardId::Sid, false);
+    }
+    if (evicted.contains(pom1::CardId::A1IoRtc)) {
+        a1ioRtcEnabled = false;
+        emulation->setCardEnabled(pom1::CardId::A1IoRtc, false);
+        showA1IO_RTC = false;
+    }
     std::string msg = "[STRICT] Evicted: ";
-    for (size_t i = 0; i < evicted.size(); ++i) {
-        if (i) msg += ", ";
-        msg += evicted[i];
+    bool first = true;
+    for (std::size_t i = 0; i < pom1::kCardCount; ++i) {
+        const auto id = static_cast<pom1::CardId>(i);
+        if (!evicted.contains(id)) continue;
+        if (!first) msg += ", ";
+        msg += cardLabel(id);
+        first = false;
     }
     return msg;
 }
 
-bool MainWindow_ImGui::gateStrictPlug(const char* cardName, bool& uiFlag)
+bool MainWindow_ImGui::gateStrictPlug(pom1::CardId card, bool& uiFlag)
 {
     if (!siliconStrictModeEnabled) return false;
     if (!uiFlag) return false;            // user unplugged — always fine
-    if (!wouldCreateConflict(cardName)) return false;
+    if (!wouldCreateConflict(card)) return false;
     uiFlag = false;                       // revert the UI flip
     std::string msg = "[STRICT] ";
-    msg += cardName;
+    msg += cardLabel(card);
     msg += " refused — multiplexing forbidden. Unplug the conflicting card first.";
     setStatusMessage(msg, 4.0f);
     return true;
 }
 
-bool MainWindow_ImGui::wouldCreateConflict(const char* cardName) const
+bool MainWindow_ImGui::wouldCreateConflict(pom1::CardId card) const
 {
-    if (!cardName) return false;
-    auto eq = [&](const char* a) {
-        return std::strcmp(cardName, a) == 0;
-    };
-    if (eq("GEN2"))       return a1ioRtcEnabled;
-    if (eq("A1-IO-RTC"))  return graphicsCardEnabled;
-    if (eq("A1-SID"))     return tms9918Enabled || sidSpecialEditionEnabled || jukeBoxEnabled;
-    if (eq("TMS9918"))    return sidEnabled || sidSpecialEditionEnabled;
-    if (eq("A1-AUDIO-SE")) return sidEnabled || tms9918Enabled;
-    if (eq("JukeBox"))    return codeTankEnabled || cffa1Enabled || microSDEnabled
-                               || wifiModemEnabled || sidEnabled;
-    if (eq("CodeTank"))   return jukeBoxEnabled;
-    if (eq("CFFA1"))      return jukeBoxEnabled;
-    if (eq("microSD"))    return jukeBoxEnabled;
-    if (eq("WiFiModem"))  return jukeBoxEnabled;
-    return false;
+    pom1::CardSet active;
+    if (graphicsCardEnabled) active.add(pom1::CardId::Gen2);
+    if (a1ioRtcEnabled) active.add(pom1::CardId::A1IoRtc);
+    if (sidEnabled) active.add(pom1::CardId::Sid);
+    if (sidSpecialEditionEnabled) active.add(pom1::CardId::SidSpecialEdition);
+    if (tms9918Enabled) active.add(pom1::CardId::Tms9918);
+    if (jukeBoxEnabled) active.add(pom1::CardId::JukeBox);
+    if (cffa1Enabled) active.add(pom1::CardId::Cffa1);
+    if (microSDEnabled) active.add(pom1::CardId::MicroSD);
+    if (wifiModemEnabled) active.add(pom1::CardId::WifiModem);
+    if (codeTankEnabled) active.add(pom1::CardId::CodeTank);
+    active.remove(card); // UI has already flipped the candidate flag to true.
+    return pom1::wouldCreateConflict(active, card, pom1::TopologyMode::Strict);
 }
 
 void MainWindow_ImGui::renderSiliconStrictWindow()

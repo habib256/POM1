@@ -28,6 +28,7 @@
 
 #include "POM1Build.h"
 #include "Peripheral.h"
+#include "LockOrder.h"
 #include "SocketHandle.h"
 
 #include <atomic>
@@ -100,7 +101,7 @@ public:
     // stops the server and drops the client. Memory::setTelemetryEnabled()
     // calls reset() on enable and shutdown() on disable — the server is NOT
     // opened unless the port is explicitly enabled (--telemetry-port).
-    void reset();
+    void reset() override;
     void shutdown();
 
     // MMIO — registered on the PeripheralBus. Both run on the emulation thread
@@ -231,7 +232,7 @@ private:
     // Optional golden-trace tee of the outbound frame stream (--telemetry-log).
     std::ofstream logFile_;
 
-    mutable std::mutex portMutex;
+    mutable pom1::RankedMutex<pom1::LockRank::Peripheral> portMutex;
 
     // Internal helpers (network ops are desktop-only; WASM gets no-op stubs).
     // schema == true emits a kSchemaSentinel header and never arms lock-step.

@@ -85,12 +85,19 @@ int main()
             sid.advanceCycles(std::min(slice, totalCycles - c));
         }
 
-        std::vector<float> buf(8192, 0.0f);
+        // 100 ms produces ~4410 frames. Consume less than that so this is the
+        // deterministic no-underrun/no-overflow reference, independent of host
+        // scheduling (the concurrent stress deliberately runs unpaced).
+        std::vector<float> buf(4096, 0.0f);
         sid.fillAudioBuffer(buf.data(), static_cast<int>(buf.size()));
         VoiceProbe p = probe(buf);
         std::printf("[direct] non-zero=%d/%zu peak=%.4f\n", p.nonZero, buf.size(), p.peak);
         assert(p.nonZero > kNonZeroFloor && "direct SID produced no audio samples");
         assert(p.peak > 0.01f    && "direct SID samples near zero");
+        pom1::RealtimeDiagnostics realtime;
+        sid.copyRealtimeDiagnostics(realtime);
+        assert(realtime.sidUnderruns == 0 && "controlled SID reference underrun");
+        assert(realtime.sidOverflows == 0 && "controlled SID reference overflow");
     }
 
     // --- Layer 2: via Memory's peripheral bus ---------------------------------

@@ -46,7 +46,7 @@ TelemetryPort::~TelemetryPort()
 
 void TelemetryPort::reset()
 {
-    std::lock_guard<std::mutex> lock(portMutex);
+    std::lock_guard<decltype(portMutex)> lock(portMutex);
     disconnectClient();
     stopServer();
 
@@ -67,7 +67,7 @@ void TelemetryPort::reset()
 
 void TelemetryPort::shutdown()
 {
-    std::lock_guard<std::mutex> lock(portMutex);
+    std::lock_guard<decltype(portMutex)> lock(portMutex);
     disconnectClient();
     stopServer();
     frameBuf.clear();
@@ -77,13 +77,13 @@ void TelemetryPort::shutdown()
 
 void TelemetryPort::setKeyInjector(KeyInjector injector)
 {
-    std::lock_guard<std::mutex> lock(portMutex);
+    std::lock_guard<decltype(portMutex)> lock(portMutex);
     keyInjector = std::move(injector);
 }
 
 void TelemetryPort::setListenPort(uint16_t port)
 {
-    std::lock_guard<std::mutex> lock(portMutex);
+    std::lock_guard<decltype(portMutex)> lock(portMutex);
     listenPort = port;
 }
 
@@ -93,7 +93,7 @@ void TelemetryPort::setListenPort(uint16_t port)
 
 uint8_t TelemetryPort::readReg(uint16_t addr)
 {
-    std::lock_guard<std::mutex> lock(portMutex);
+    std::lock_guard<decltype(portMutex)> lock(portMutex);
     switch (addr) {
     case kRegCtrl: {
         uint8_t status = 0;
@@ -119,7 +119,7 @@ uint8_t TelemetryPort::readReg(uint16_t addr)
 
 void TelemetryPort::writeReg(uint16_t addr, uint8_t value)
 {
-    std::lock_guard<std::mutex> lock(portMutex);
+    std::lock_guard<decltype(portMutex)> lock(portMutex);
     switch (addr) {
     case kRegData:
         // Accumulate the current frame. Overflow is dropped (a single frame
@@ -221,7 +221,7 @@ void TelemetryPort::endFrame(bool schema)
 
 void TelemetryPort::setLogFile(const std::string& path)
 {
-    std::lock_guard<std::mutex> lock(portMutex);
+    std::lock_guard<decltype(portMutex)> lock(portMutex);
     logFile_.close();
     logFile_.clear();
     logFile_.open(path, std::ios::binary | std::ios::trunc);
@@ -233,32 +233,32 @@ void TelemetryPort::setLogFile(const std::string& path)
 
 bool TelemetryPort::isAwaitingAck() const
 {
-    std::lock_guard<std::mutex> lock(portMutex);
+    std::lock_guard<decltype(portMutex)> lock(portMutex);
     return awaitingAck;
 }
 
 void TelemetryPort::clearAwaitingAck()
 {
-    std::lock_guard<std::mutex> lock(portMutex);
+    std::lock_guard<decltype(portMutex)> lock(portMutex);
     awaitingAck = false;
 }
 
 void TelemetryPort::setLockstep(bool on)
 {
-    std::lock_guard<std::mutex> lock(portMutex);
+    std::lock_guard<decltype(portMutex)> lock(portMutex);
     lockstep = on;     // caller (EmulationController) also clears awaitingAck on disarm
     userHeld = on;     // UI-driven hold → suppress the ACK watchdog while paused
 }
 
 bool TelemetryPort::isUserHeld() const
 {
-    std::lock_guard<std::mutex> lock(portMutex);
+    std::lock_guard<decltype(portMutex)> lock(portMutex);
     return userHeld;
 }
 
 void TelemetryPort::serviceStall()
 {
-    std::lock_guard<std::mutex> lock(portMutex);
+    std::lock_guard<decltype(portMutex)> lock(portMutex);
     acceptClient();   // a harness may (re)connect mid-stall
     pollClient();     // recv kAckByte → clears awaitingAck
     flushOutbound();  // make sure the parked frame actually reached the wire
@@ -270,7 +270,7 @@ void TelemetryPort::serviceStall()
 
 void TelemetryPort::advanceCycles(int cycles)
 {
-    std::lock_guard<std::mutex> lock(portMutex);
+    std::lock_guard<decltype(portMutex)> lock(portMutex);
     pollCycleAccum += cycles;
     if (pollCycleAccum < POM1_CPU_CYCLES_PER_MILLISECOND) return;
     pollCycleAccum = 0;
@@ -282,7 +282,7 @@ void TelemetryPort::advanceCycles(int cycles)
 
 void TelemetryPort::copySnapshot(Snapshot& out) const
 {
-    std::lock_guard<std::mutex> lock(portMutex);
+    std::lock_guard<decltype(portMutex)> lock(portMutex);
     out.serverListening = listenFd.valid();
     out.clientConnected = clientFd.valid();
     out.clientAddress   = clientAddress;
@@ -298,7 +298,7 @@ void TelemetryPort::copySnapshot(Snapshot& out) const
 
 void TelemetryPort::injectInbound(const uint8_t* data, std::size_t len)
 {
-    std::lock_guard<std::mutex> lock(portMutex);
+    std::lock_guard<decltype(portMutex)> lock(portMutex);
     for (std::size_t i = 0; i < len; ++i) {
         if (inBuf.size() >= kMaxInBytes) inBuf.pop_front(); // drop-oldest
         inBuf.push_back(data[i]);

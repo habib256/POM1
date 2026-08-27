@@ -31,7 +31,7 @@ public:
     static constexpr size_t   kRomSize = 0x2000; // 8 KB EEPROM
 
     MicroSD();
-    void reset();
+    void reset() override;
 
     // VIA 65C22 register interface (called from Memory::memRead / memWrite)
     uint8_t readRegister(uint16_t address);

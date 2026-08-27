@@ -1075,8 +1075,8 @@ void MainWindow_ImGui::renderTutorialKrusaderWindow()
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::TextColored(ImVec4(0.90f, 0.70f, 0.60f, 1.0f), "Notes");
-        bulletWrapped("Krusader lives in 8 KB ROM at $A000-$BFFF — mutually exclusive with CFFA1, microSD and Juke-Box (same bus window).");
-        bulletWrapped("Integer BASIC ($E000) and Krusader ($A000) coexist — switch between them with E000R / F000R.");
+        bulletWrapped("Krusader lives in an 8 KB ROM linked at $E000-$FFFF; its cold entry is $F000.");
+        bulletWrapped("It replaces Integer BASIC and the standalone Woz Monitor image while loaded; use a Krusader-less preset to restore them.");
         bulletWrapped("`--disable krusader` is a no-op at runtime: ROM unload needs a hard reset. Use a Krusader-less preset instead.");
         bulletWrapped("v1.3 is the shipped ROM; v1.5 adds more 65C02 opcodes if you patch the ROM manually.");
         ImGui::EndChild();

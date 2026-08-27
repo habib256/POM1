@@ -451,7 +451,7 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
             std::vector<std::string> evicted;
             if (microSDEnabled) {
                 microSDEnabled = false;
-                emulation->setMicroSDEnabled(false);
+                emulation->setCardEnabled(pom1::CardId::MicroSD, false);
                 iecCardEnabled = false;    // rides on microSD's VIA — mirror the cascade
                 showIECCard = false;
                 evicted.push_back("microSD");
@@ -460,13 +460,13 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
                 codeTankEnabled = false;
                 showCodeTankLibrary = false;
                 codeTankPendingWozRunAt = 0.0;
-                emulation->setCodeTankEnabled(false);
+                emulation->setCardEnabled(pom1::CardId::CodeTank, false);
                 evicted.push_back("CodeTank");
             }
             if (jukeBoxEnabled) {
                 jukeBoxEnabled = false;
                 showJukeBox = false;
-                emulation->setJukeBoxEnabled(false);
+                emulation->setCardEnabled(pom1::CardId::JukeBox, false);
                 evicted.push_back("Juke-Box");
             }
 
@@ -516,14 +516,14 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
             setStatusMessage(ok ? "WOZ Monitor loaded" : error, 3.0f);
         }
 
-        if (ImGui::Button("Load Krusader  [$A000-$BFFF]")) {
+        if (ImGui::Button("Load Krusader  [$E000-$FFFF]")) {
             std::string error;
             bool ok = emulation->reloadKrusader(error);
             if (!writeProtect) emulation->setWriteInRom(true);
             if (ok) {
                 loadedRoms.erase(std::remove_if(loadedRoms.begin(), loadedRoms.end(),
                     [](const LoadedRegion& r) { return r.start == 0xA000; }), loadedRoms.end());
-                loadedRoms.push_back({"Krusader", 0xA000, 0xBFFF});
+                loadedRoms.push_back({"Krusader", 0xE000, 0xFFFF});
             }
             setStatusMessage(ok ? "Krusader loaded" : error, 3.0f);
         }

@@ -46,6 +46,12 @@ void EmulationController::setPresetRamKB(int kb)
     memory->setPresetRamKB(kb);
 }
 
+int EmulationController::getPresetRamKB() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->getPresetRamKB();
+}
+
 void EmulationController::setSiliconStrictMode(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

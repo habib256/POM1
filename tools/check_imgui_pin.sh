@@ -33,19 +33,37 @@ echo "pin: ${TAG} (IMGUI_VERSION_NUM floor ${NUM})"
 
 rc=0
 
+# Prefer Git's tracked-file view, but source archives intentionally have no
+# .git directory. In that case scan source material while pruning local
+# dependencies, build products and generated distribution trees.
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    pin_matches() {
+        git grep -nI -oE 'v[0-9]+\.[0-9]+\.[0-9]+-docking' \
+            -- . ':!IMGUI_VERSION' 2>/dev/null || true
+    }
+else
+    echo "INFO: no Git metadata; scanning source archive"
+    pin_matches() {
+        find . \
+            \( -path './imgui' -o -path './build' -o -path './build-*' \
+               -o -path './dist' -o -path './node_modules' -o -path './.git' \) -prune \
+            -o -type f -print0 |
+        xargs -0 grep -nIH -oE 'v[0-9]+\.[0-9]+\.[0-9]+-docking' 2>/dev/null || true
+    }
+fi
+
 # -- 1. Every "vX.Y.Z-docking" literal in a tracked file must BE the pin. -----
-# git grep only walks tracked files, so the untracked imgui/ checkout and the
-# build trees are out of scope for free.
-stale="$(git grep -nI -oE 'v[0-9]+\.[0-9]+\.[0-9]+-docking' \
-         -- . ':!IMGUI_VERSION' 2>/dev/null | grep -v ":${TAG}\$" || true)"
+# In a checkout, git grep naturally excludes the local imgui dependency and
+# build trees. The archive fallback above prunes their conventional paths.
+matches="$(pin_matches)"
+stale="$(printf '%s\n' "${matches}" | grep -v ":${TAG}\$" || true)"
 if [ -n "${stale}" ]; then
     echo "FAIL: these carry a Dear ImGui tag that is not ${TAG}:"
     echo "${stale}" | sed 's/^/      /'
     echo "      edit IMGUI_VERSION, then update the literals above to match."
     rc=1
 else
-    n="$(git grep -hI -oE 'v[0-9]+\.[0-9]+\.[0-9]+-docking' -- . ':!IMGUI_VERSION' \
-         2>/dev/null | wc -l | tr -d ' ')"
+    n="$(printf '%s\n' "${matches}" | sed '/^$/d' | wc -l | tr -d ' ')"
     echo "OK: ${n} tag literal(s), all ${TAG}"
 fi
 

@@ -95,7 +95,7 @@ public:
     // Does re-derive the default boot page (the CPU latch at $CA00 powers
     // up in an undefined state on the real card; we re-seat to a known-good
     // page so BD00R works immediately on hard reset).
-    void reset();
+    void reset() override;
 
     // Memory interface. Dispatched by PeripheralBus; the two address-space
     // handles (RAM16/ROM32 window + RAM32/ROM16 window) are registered by

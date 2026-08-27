@@ -144,84 +144,92 @@ CassetteDevice::CassetteDevice()
 
 void CassetteDevice::fillAudioBuffer(float* output, int frameCount)
 {
-    // Direct audio streaming path — used when the tape was loaded with the
-    // ACI card unplugged. miniaudio decodes + resamples the file on demand
-    // at the device's output rate; we just pull frames and apply a brief
-    // ramp-in so Play doesn't click.
+    auto popClick = [&]() -> float {
+        const size_t tail = clickTail.load(std::memory_order_relaxed);
+        if (tail == clickHead.load(std::memory_order_acquire)) return 0.0f;
+        const float sample = clickRing[tail];
+        clickTail.store((tail + 1) % kClickRingCapacity, std::memory_order_release);
+        return sample;
+    };
+    // Direct audio streaming path. The emulation thread has already decoded
+    // and resampled PCM into streamRing, so this realtime path never locks,
+    // allocates or performs file I/O.
     if (audioStreamMode) {
-        std::lock_guard<std::mutex> lock(audioStreamMutex);
-        if (!audioStreamDecoderOpen || !playbackActive ||
-            playbackPaused.load(std::memory_order_acquire)) {
-            std::fill_n(output, frameCount, 0.0f);
-            return;
-        }
-        ma_uint64 framesRead = 0;
-        ma_decoder_read_pcm_frames(audioStreamDecoder.get(),
-                                   output,
-                                   static_cast<ma_uint64>(frameCount),
-                                   &framesRead);
-        audioStreamCursor.fetch_add(framesRead, std::memory_order_relaxed);
-
-        // Headroom so the file doesn't clip when mixed with SID / live
-        // cassette output. -3 dB is enough for typical speech/music.
-        constexpr float kStreamGain = 0.71f;
         const float vol = volume.load(std::memory_order_relaxed);
-        const int consumed = static_cast<int>(framesRead);
-        for (int i = 0; i < consumed; ++i) {
-            output[i] *= kStreamGain * vol;
-            if (audioRampInSamplesRemaining > 0) {
-                const float ramp = 1.0f - (static_cast<float>(audioRampInSamplesRemaining) /
-                                           static_cast<float>(kAudioRampInSamples));
-                output[i] *= ramp;
-                audioRampInSamplesRemaining--;
-            }
+        const uint64_t clearGeneration =
+            streamClearGeneration.load(std::memory_order_acquire);
+        if (clearGeneration != streamConsumerGeneration) {
+            streamTail.store(streamClearHead.load(std::memory_order_acquire),
+                             std::memory_order_release);
+            streamConsumerGeneration = clearGeneration;
         }
-        // EOF → halt playback and zero-fill the remainder.
-        if (consumed < frameCount) {
-            std::fill_n(output + consumed, frameCount - consumed, 0.0f);
-            if (framesRead == 0) {
-                playbackActive = false;
-            }
-        }
-        // Mix the mode-transition clunk on top of the stream output too —
-        // the click has to be heard when a NoTape → AudioStream transition
-        // fires (the decoder hasn't started streaming samples yet, so the
-        // raw output is all zeros without this).
-        {
-            std::lock_guard<std::mutex> lock(audioMutex);
-            if (clickCursor < clickBuffer.size()) {
-                const int mix = std::min<int>(frameCount,
-                    static_cast<int>(clickBuffer.size() - clickCursor));
-                for (int i = 0; i < mix; ++i) {
-                    output[i] += clickBuffer[clickCursor++] * vol;
+        constexpr float kStreamGain = 0.71f;
+        uint64_t consumed = 0;
+        const bool playing = playbackActive.load(std::memory_order_acquire) &&
+                             !playbackPaused.load(std::memory_order_acquire);
+        for (int i = 0; i < frameCount; ++i) {
+            float sample = 0.0f;
+            if (playing) {
+                const size_t tail = streamTail.load(std::memory_order_relaxed);
+                if (tail != streamHead.load(std::memory_order_acquire)) {
+                    sample = streamRing[tail] * kStreamGain * vol;
+                    streamTail.store((tail + 1) % kStreamRingCapacity,
+                                     std::memory_order_release);
+                    ++consumed;
+                    if (audioRampInSamplesRemaining > 0) {
+                        const float ramp = 1.0f -
+                            (static_cast<float>(audioRampInSamplesRemaining) /
+                             static_cast<float>(kAudioRampInSamples));
+                        sample *= ramp;
+                        audioRampInSamplesRemaining--;
+                    }
+                } else {
+#if POM1_REALTIME_DIAGNOSTICS
+                    ringUnderruns.fetch_add(1, std::memory_order_relaxed);
+#endif
                 }
             }
+            output[i] = sample + popClick() * vol;
+        }
+        audioStreamCursor.fetch_add(consumed, std::memory_order_relaxed);
+        if (playing && audioStreamEof.load(std::memory_order_acquire) &&
+            streamTail.load(std::memory_order_acquire) ==
+                streamHead.load(std::memory_order_acquire)) {
+            playbackActive.store(false, std::memory_order_release);
         }
         return;
     }
 
     static constexpr float kFilterAlpha = 0.33f;
-    std::lock_guard<std::mutex> lock(audioMutex);
     if (playbackPaused.load(std::memory_order_acquire)) {
         std::fill_n(output, frameCount, 0.0f);
         audioPlaybackSample = 0.0f;
         return;
     }
     const float vol = volume.load(std::memory_order_relaxed);
+    const uint64_t clearGeneration =
+        pulseClearGeneration.load(std::memory_order_acquire);
+    if (clearGeneration != pulseConsumerGeneration) {
+        pulseTail.store(pulseClearHead.load(std::memory_order_acquire),
+                        std::memory_order_release);
+        pulseConsumerGeneration = clearGeneration;
+        audioPlaybackSample = 0.0f;
+    }
     for (int i = 0; i < frameCount; ++i) {
         // Pulse-mode audio: CPU-side advancePlayback() and toggleOutput()
-        // push segments into audioQueue at the emulated CPU's pace, so
+        // push samples into the pulse ring at the emulated CPU's pace, so
         // the deck speaker stays locked to the 6502 cycle count.  This
         // covers both program-tape playback and recording feedback.
         float targetSample = 0.0f;
-        if (!audioQueue.empty()) {
-            targetSample = audioQueue.front().sampleValue;
-            if (audioQueue.front().remainingSamples > 0) {
-                audioQueue.front().remainingSamples--;
-            }
-            if (audioQueue.front().remainingSamples == 0) {
-                audioQueue.pop_front();
-            }
+        const size_t tail = pulseTail.load(std::memory_order_relaxed);
+        if (tail != pulseHead.load(std::memory_order_acquire)) {
+            targetSample = pulseRing[tail];
+            pulseTail.store((tail + 1) % kPulseRingCapacity,
+                            std::memory_order_release);
+        } else if (playbackActive.load(std::memory_order_relaxed)) {
+#if POM1_REALTIME_DIAGNOSTICS
+            ringUnderruns.fetch_add(1, std::memory_order_relaxed);
+#endif
         }
         if (audioRampInSamplesRemaining > 0) {
             const float ramp = 1.0f - (static_cast<float>(audioRampInSamplesRemaining) /
@@ -233,21 +241,28 @@ void CassetteDevice::fillAudioBuffer(float* output, int frameCount)
         float s = audioPlaybackSample * vol;
         // Mechanical clunk — mixed on top of whatever else is playing so
         // the mode-transition feedback is audible with or without a tape.
-        if (clickCursor < clickBuffer.size()) {
-            s += clickBuffer[clickCursor++] * vol;
-        }
+        s += popClick() * vol;
         output[i] = s;
     }
+}
+
+void CassetteDevice::copyRealtimeDiagnostics(pom1::RealtimeDiagnostics& out) const
+{
+#if POM1_REALTIME_DIAGNOSTICS
+    out.cassetteUnderruns = ringUnderruns.load(std::memory_order_relaxed);
+    out.cassetteOverflows = ringOverflows.load(std::memory_order_relaxed);
+#else
+    (void)out;
+#endif
 }
 
 
 double CassetteDevice::getQueuedAudioSeconds() const
 {
-    std::lock_guard<std::mutex> lock(audioMutex);
-    uint64_t queuedSamples = 0;
-    for (const auto& segment : audioQueue) {
-        queuedSamples += segment.remainingSamples;
-    }
+    const size_t head = pulseHead.load(std::memory_order_acquire);
+    const size_t tail = pulseTail.load(std::memory_order_acquire);
+    const size_t queuedSamples =
+        head >= tail ? head - tail : kPulseRingCapacity - tail + head;
     return static_cast<double>(queuedSamples) / static_cast<double>(audioOutputSampleRate);
 }
 
@@ -301,14 +316,14 @@ void CassetteDevice::resetPlaybackState()
 
 void CassetteDevice::clearLiveAudioState()
 {
-    std::lock_guard<std::mutex> lock(audioMutex);
     audioSampleRemainder = 0.0;
-    audioPlaybackSample = 0.0f;
     // audioRampInSamplesRemaining is atomic — safe to store here even though
     // some callers (e.g. rewindTape) already hold audioStreamMutex; no extra
     // lock and no two-mutex race with the audio-callback thread.
     audioRampInSamplesRemaining = kAudioRampInSamples;
-    audioQueue.clear();
+    pulseClearHead.store(pulseHead.load(std::memory_order_acquire),
+                         std::memory_order_release);
+    pulseClearGeneration.fetch_add(1, std::memory_order_release);
 }
 
 void CassetteDevice::dropLiveAudio()
@@ -372,7 +387,7 @@ void CassetteDevice::playMechanicalClick()
     // ~70 ms damped thud + noise burst, mixed by fillAudioBuffer on top of the
     // current deck output so the user hears it even while a tape plays.
     //
-    // SYNTHESISED OUTSIDE audioMutex, into a cache keyed by sample rate. It
+    // SYNTHESISED outside the callback, into a cache keyed by sample rate. It
     // used to be built under the lock on every deck transition: a ~13 kB heap
     // allocation plus ~3400 iterations of sin/exp/sin, while the real-time
     // callback needs that same lock every period — and, from loadAudioStream,
@@ -402,12 +417,21 @@ void CassetteDevice::playMechanicalClick()
         clickCache_ = std::move(built);
         clickCacheRate_ = rate;
     }
-    // Only this part needs the lock, and it allocates nothing: clickBuffer is
-    // assigned from a cache of identical size after the first click, so the
-    // vector reuses its storage.
-    std::lock_guard<std::mutex> lock(audioMutex);
-    clickBuffer = clickCache_;
-    clickCursor = 0;
+    // Publish the cached waveform into the fixed SPSC click ring. If a click
+    // is already queued the waveforms concatenate; a full ring drops the tail
+    // of the new click rather than blocking the real-time consumer.
+    for (float sample : clickCache_) {
+        const size_t head = clickHead.load(std::memory_order_relaxed);
+        const size_t next = (head + 1) % kClickRingCapacity;
+        if (next == clickTail.load(std::memory_order_acquire)) {
+#if POM1_REALTIME_DIAGNOSTICS
+            ringOverflows.fetch_add(1, std::memory_order_relaxed);
+#endif
+            break;
+        }
+        clickRing[head] = sample;
+        clickHead.store(next, std::memory_order_release);
+    }
 }
 
 void CassetteDevice::fireClickIfModeChanged()
@@ -449,21 +473,14 @@ void CassetteDevice::setPlaybackPaused(bool paused)
 {
     const bool prev = playbackPaused.exchange(paused, std::memory_order_acq_rel);
     if (prev == paused || paused) return;
-    // Resume: reset ramp-in under the relevant mutex so the audio thread
-    // observes a fresh fade-in and we don't click on un-pause.
-    if (audioStreamMode) {
-        std::lock_guard<std::mutex> lock(audioStreamMutex);
-        audioRampInSamplesRemaining = kAudioRampInSamples;
-    } else {
-        std::lock_guard<std::mutex> lock(audioMutex);
-        audioRampInSamplesRemaining = kAudioRampInSamples;
-    }
+    // Atomic because both stream and pulse callbacks consume it.
+    audioRampInSamplesRemaining = kAudioRampInSamples;
 }
 
 void CassetteDevice::seekRelativeSeconds(double deltaSeconds)
 {
     if (!audioStreamMode) return;
-    std::lock_guard<std::mutex> lock(audioStreamMutex);
+    std::lock_guard<decltype(audioStreamMutex)> lock(audioStreamMutex);
     if (!audioStreamDecoderOpen || audioOutputSampleRate == 0) return;
 
     const int64_t rate = static_cast<int64_t>(audioOutputSampleRate);
@@ -479,14 +496,14 @@ void CassetteDevice::seekRelativeSeconds(double deltaSeconds)
         return;
     }
     audioStreamCursor.store(static_cast<uint64_t>(newFrame), std::memory_order_relaxed);
+    clearAudioStreamRing();
     audioRampInSamplesRemaining = kAudioRampInSamples;
 }
 
 double CassetteDevice::getPlaybackPositionSeconds() const
 {
-    // No audioStreamMutex here — see the counters' declaration: the audio
-    // thread holds that lock across a decoder refill (a disk read), and this
-    // is called from publish() under stateMutex on every frame.
+    // No audioStreamMutex here: publish() reads this on every frame and a
+    // one-frame-stale progress value is harmless while the producer refills.
     if (!audioStreamMode) return 0.0;
     const uint32_t rate = audioOutputSampleRate;
     if (rate == 0) return 0.0;
@@ -531,16 +548,17 @@ void CassetteDevice::queueAudioSegment(uint32_t cycles, bool level)
     }
 
     const float sampleValue = level ? 0.22f : -0.22f;
-    std::lock_guard<std::mutex> lock(audioMutex);
-    if (!audioQueue.empty() && audioQueue.back().sampleValue == sampleValue) {
-        audioQueue.back().remainingSamples += sampleCount;
-    } else {
-        audioQueue.push_back({sampleCount, sampleValue});
-    }
-
-    static constexpr size_t kMaxQueuedSegments = 8192;
-    while (audioQueue.size() > kMaxQueuedSegments) {
-        audioQueue.pop_front();
+    for (uint32_t i = 0; i < sampleCount; ++i) {
+        const size_t head = pulseHead.load(std::memory_order_relaxed);
+        const size_t next = (head + 1) % kPulseRingCapacity;
+        if (next == pulseTail.load(std::memory_order_acquire)) {
+#if POM1_REALTIME_DIAGNOSTICS
+            ringOverflows.fetch_add(1, std::memory_order_relaxed);
+#endif
+            break;
+        }
+        pulseRing[head] = sampleValue;
+        pulseHead.store(next, std::memory_order_release);
     }
 }
 
@@ -642,8 +660,57 @@ void CassetteDevice::advanceCycles(int cycles)
         return;
     }
 
-    advancePlayback(static_cast<uint32_t>(cycles));
+    if (audioStreamMode.load(std::memory_order_acquire)) {
+        refillAudioStreamRing();
+    } else {
+        advancePlayback(static_cast<uint32_t>(cycles));
+    }
     currentCycle += static_cast<uint32_t>(cycles);
+}
+
+void CassetteDevice::refillAudioStreamRing()
+{
+    if (!playbackActive.load(std::memory_order_acquire) ||
+        playbackPaused.load(std::memory_order_acquire) ||
+        audioStreamEof.load(std::memory_order_acquire)) {
+        return;
+    }
+
+    constexpr size_t kDecodeBlockFrames = 2048;
+    const size_t head = streamHead.load(std::memory_order_relaxed);
+    const size_t tail = streamTail.load(std::memory_order_acquire);
+    const size_t used = head >= tail ? head - tail
+                                     : kStreamRingCapacity - tail + head;
+    const size_t freeFrames = kStreamRingCapacity - used - 1;
+    if (freeFrames == 0) return;
+
+    const size_t requested = std::min(freeFrames, kDecodeBlockFrames);
+    std::array<float, kDecodeBlockFrames> decoded{};
+    ma_uint64 framesRead = 0;
+    {
+        std::lock_guard<decltype(audioStreamMutex)> lock(audioStreamMutex);
+        if (!audioStreamDecoderOpen || !audioStreamDecoder) return;
+        ma_decoder_read_pcm_frames(audioStreamDecoder.get(), decoded.data(),
+                                   static_cast<ma_uint64>(requested), &framesRead);
+    }
+
+    size_t publishHead = head;
+    for (ma_uint64 i = 0; i < framesRead; ++i) {
+        streamRing[publishHead] = decoded[static_cast<size_t>(i)];
+        publishHead = (publishHead + 1) % kStreamRingCapacity;
+    }
+    streamHead.store(publishHead, std::memory_order_release);
+    if (framesRead < static_cast<ma_uint64>(requested)) {
+        audioStreamEof.store(true, std::memory_order_release);
+    }
+}
+
+void CassetteDevice::clearAudioStreamRing()
+{
+    streamClearHead.store(streamHead.load(std::memory_order_acquire),
+                          std::memory_order_release);
+    streamClearGeneration.fetch_add(1, std::memory_order_release);
+    audioStreamEof.store(false, std::memory_order_release);
 }
 
 void CassetteDevice::beginRecordingIfNeeded()
@@ -741,11 +808,12 @@ uint8_t CassetteDevice::readTapeInput()
 void CassetteDevice::rewindTape()
 {
     if (audioStreamMode) {
-        std::lock_guard<std::mutex> lock(audioStreamMutex);
+        std::lock_guard<decltype(audioStreamMutex)> lock(audioStreamMutex);
         if (audioStreamDecoderOpen) {
             ma_decoder_seek_to_pcm_frame(audioStreamDecoder.get(), 0);
         }
         audioStreamCursor.store(0, std::memory_order_relaxed);
+        clearAudioStreamRing();
         playbackActive = false;
         clearLiveAudioState();
         return;
@@ -774,7 +842,7 @@ void CassetteDevice::playTape()
     if (!loadedTapeReady) return;
     playbackPaused.store(false, std::memory_order_release);
     if (audioStreamMode) {
-        std::lock_guard<std::mutex> lock(audioStreamMutex);
+        std::lock_guard<decltype(audioStreamMutex)> lock(audioStreamMutex);
         if (!audioStreamDecoderOpen) return;
         // Resume from the current cursor — REW is what rewinds to 0.
         playbackActive = true;
@@ -826,7 +894,7 @@ void CassetteDevice::ejectTape()
 {
     closeAudioStream();
     // Clear the audio queue before mutating loadedDurations. The audio
-    // thread never touches loadedDurations (it only drains audioQueue),
+    // thread never touches loadedDurations (it only drains the pulse ring),
     // so there is no data race, but flushing avoids stale samples.
     stopPulseAudio();
     audioStreamMode = false;
@@ -1205,17 +1273,12 @@ bool CassetteDevice::loadAudioStream(const std::string& path)
     // Build the decoder BEFORE taking audioStreamMutex. `ma_decoder_init_file`
     // opens the file and probes its format, and `ma_decoder_get_length_in_pcm_
     // frames` can walk an entire MP3 to count its frames — hundreds of ms off a
-    // Pi's SD card. The audio callback needs this same mutex every buffer
-    // period (~2.7 ms at 128 frames / 48 kHz), so holding it across that work
-    // starved the callback and made inserting a tape audibly drop out. Note the
-    // failure is neither a lock-order inversion nor a data race, so neither
-    // LockOrder.h nor TSan can see it: it is purely how LONG the lock is held.
-    // Same discipline as SID — do the slow part unlocked, swap under a short
-    // lock, and retire the old object once the lock is released.
+    // Pi's SD card. Keep that work outside the producer/UI decoder mutex, swap
+    // under a short lock, and retire the old object after releasing it.
     //
     // Decode to mono float32 at the device's output sample rate so the audio
-    // callback can push samples straight to the mixer. miniaudio resamples
-    // internally when the source rate differs.
+    // producer can push samples straight into the PCM ring. miniaudio
+    // resamples internally when the source rate differs.
     auto fresh = std::make_unique<ma_decoder>();
     ma_decoder_config cfg = ma_decoder_config_init(
         ma_format_f32, 1, audioOutputSampleRate);
@@ -1235,12 +1298,13 @@ bool CassetteDevice::loadAudioStream(const std::string& path)
 
     std::unique_ptr<ma_decoder> retired;
     {
-        std::lock_guard<std::mutex> lock(audioStreamMutex);
+        std::lock_guard<decltype(audioStreamMutex)> lock(audioStreamMutex);
         retired = std::move(audioStreamDecoder);
         audioStreamDecoder = std::move(fresh);
         audioStreamDecoderOpen = true;
         audioStreamCursor.store(0, std::memory_order_relaxed);
         audioStreamTotalFrames.store(total, std::memory_order_relaxed);
+        clearAudioStreamRing();
         audioStreamMode   = true;
         loadedTapePath    = path;
         loadedTapeReady   = true;
@@ -1263,16 +1327,18 @@ CassetteDevice::~CassetteDevice()
 
 void CassetteDevice::closeAudioStream()
 {
-    // Steal the decoder under the lock, tear it down outside it:
-    // `ma_decoder_uninit` frees the backend's buffers and closes the file, and
-    // the audio callback may be spinning on this mutex while that happens.
+    // Steal the decoder under the lock and tear it down outside it. Only the
+    // emulation-thread producer uses this mutex; the callback consumes the PCM
+    // ring and can keep returning silence throughout teardown.
+    playbackActive.store(false, std::memory_order_release);
     std::unique_ptr<ma_decoder> retired;
     {
-        std::lock_guard<std::mutex> lock(audioStreamMutex);
+        std::lock_guard<decltype(audioStreamMutex)> lock(audioStreamMutex);
         retired = std::move(audioStreamDecoder);
         audioStreamDecoderOpen = false;
         audioStreamCursor.store(0, std::memory_order_relaxed);
         audioStreamTotalFrames.store(0, std::memory_order_relaxed);
+        clearAudioStreamRing();
     }
     if (retired) ma_decoder_uninit(retired.get());
 }

@@ -7,8 +7,20 @@
 // through ImGui geometry stays in MainWindow_Presets.cpp.
 
 #include "MachinePresets.h"
+#include "CardTopology.h"
 
 namespace pom1 {
+namespace {
+
+template <typename... Ids>
+constexpr CardSet cards(Ids... ids)
+{
+    CardSet result;
+    (result.add(ids), ...);
+    return result;
+}
+
+} // namespace
 
 // Parmigiani's golden rule — "one board at a time".
 // Claudio PARMIGIANI (P-LAB) insists that on real Apple-1 hardware you plug
@@ -38,8 +50,8 @@ namespace pom1 {
 //     preset; the BOTTOM slot (y=288, height≈476) carries the
 //     peripheral's own visualisation panel (or a second useful window
 //     if the card has no dedicated panel: CFFA1, microSD, SID).
-//   - Last preset (POM1 Multiplexing Fantasy) is the shipped "default"
-//     preset — its layout MUST stay byte-identical to the shipped
+//   - PresetId::Pom1Fantasy is the shipped default — its layout MUST stay
+//     byte-identical to the shipped
 //     screenshot reference (the README mentions it). Don't touch.
 //     Every other preset mirrors its geometry. First-time use writes
 //     ini/imgui_preset_NN.ini + ini/preset_NN.size (NN = index); subsequent launches
@@ -57,7 +69,7 @@ const MachineConfig kMachinePresets[] = {
     // cassette" (8 KB dual-bank + ACI + Integer cassette), TMS9918 = "TMS9918
     // (CodeTank)" (8 KB + TMS9918 + CodeTank), GEN2 = "GEN2 HGR Color" (48 KB +
     // GEN2 + ACI). Listed FIRST in the Presets menu; the array still ends with
-    // POM1 Fantasy so "default = last" holds.
+    // Historical indices remain stable; the default is kDefaultPresetId.
     {   // 0 — cc65 / asm text development
         "Apple-1 CC65 Development Bench",
         "Development bench for cc65 (C / 6502 asm) Apple-1 text programs. Same "
@@ -67,15 +79,8 @@ const MachineConfig kMachinePresets[] = {
         "this bench mirrors the historical October-1976 profile it builds for "
         "(preset_ram_profiles_smoke pins that mirror). The in-app DevBench loads "
         "this profile for the Apple-1 asm/C targets.",
-        false, false, false, false, false, false, false,
-        /*pr40*/ false,
-        false, false, /*aci*/ true, /*ramKB*/ 8, BasicType::IntegerCassette,
-        /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
-        /*gt6144*/ false,
-        /*iecCard*/ false,
-        /*extendedAci*/ false,
+        cards(CardId::Aci), /*krusader*/ false, /*ramKB*/ 8,
+        BasicType::IntegerCassette, {}, {},
         {
             {"Apple 1 Screen", {10, 61}, {843, 701}},
         }, 1
@@ -87,16 +92,9 @@ const MachineConfig kMachinePresets[] = {
         "TMS9918A VDP ($CC00/$CC01) + the CodeTank 28c256 ROM daughterboard "
         "($4000-$7FFF) so the DevBench can flash built programs as a CodeTank dev "
         "cartridge. The in-app DevBench loads this profile for the TMS9918 asm/C targets.",
-        false, false, false, true, false, false, false,
-        /*pr40*/ false,
-        false, false, /*aci*/ false, /*ramKB*/ 8, BasicType::None,
-        /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ true, CodeTank::Jumper::Lower16,
-        /*codeTankRom*/ "roms/codetank/Codetank_ARCADE.rom",
-        /*gt6144*/ false,
-        /*iecCard*/ false,
-        /*extendedAci*/ false,
+        cards(CardId::Tms9918, CardId::CodeTank), /*krusader*/ false,
+        /*ramKB*/ 8, BasicType::None, {},
+        {CodeTank::Jumper::Lower16, "roms/codetank/Codetank_ARCADE.rom"},
         {
             {"Apple 1 Screen",               {10,  61}, {843, 701}},
             {"P-LAB Graphic Card (TMS9918)", {858, 61}, {338, 300}},
@@ -109,15 +107,8 @@ const MachineConfig kMachinePresets[] = {
         "(the GEN2 card's DRAM doubles as the RAM expansion; HGR pages $2000/$4000 "
         "are RAM-backed), GEN2 HGR + ACI plugged. The in-app DevBench loads this "
         "profile for the GEN2 HGR asm/C targets.",
-        true, false, false, false, false, false, false,
-        /*pr40*/ false,
-        false, false, /*aci*/ true, /*ramKB*/ 48, BasicType::None,
-        /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
-        /*gt6144*/ false,
-        /*iecCard*/ false,
-        /*extendedAci*/ true,
+        cards(CardId::Gen2, CardId::Aci, CardId::ExtendedAci),
+        /*krusader*/ false, /*ramKB*/ 48, BasicType::None, {}, {},
         {
             {"Apple 1 Screen",                       {10,  61}, {843, 701}},
             {"Uncle Bernie's GEN2 HGR Graphic Card", {858, 60}, {338, 264}},
@@ -127,15 +118,7 @@ const MachineConfig kMachinePresets[] = {
     {
         "Bare Apple-1 (July 1976)",
         "Pre-ACI original: 6502, 4 KB RAM, PIA 6821, WOZ Monitor.",
-        false, false, false, false, false, false, false,
-        /*pr40*/ false,
-        false, false, false, 4, BasicType::None,
-        /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
-        /*gt6144*/ false,
-        /*iecCard*/ false,
-        /*extendedAci*/ false,
+        {}, /*krusader*/ false, 4, BasicType::None, {}, {},
         // Right column carries two 1976-era photos of Woz + Jobs with
         // the Apple-1 — the portrait (standing Woz, seated Jobs) on
         // top and the landscape demo-session shot below. Fitting
@@ -153,15 +136,8 @@ const MachineConfig kMachinePresets[] = {
         "8 KB RAM (4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF — Parmigiani's "
         "standard dual-bank layout), PIA 6821, Integer BASIC cassette ready "
         "to load into the upper 4 KB RAM bank, WOZ Monitor.",
-        false, false, false, false, false, false, false,
-        /*pr40*/ false,
-        false, false, true, 8, BasicType::IntegerCassette,
-        /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
-        /*gt6144*/ false,
-        /*iecCard*/ false,
-        /*extendedAci*/ false,
+        cards(CardId::Aci), /*krusader*/ false, 8,
+        BasicType::IntegerCassette, {}, {},
         {
             {"Apple 1 Screen",           {10,  61},  {843, 701}},
             {"Tutorial: Cassette (ACI)", {858, 61},  {338, 223}},
@@ -178,15 +154,8 @@ const MachineConfig kMachinePresets[] = {
         "PR-40 printer interface in Mixed switch mode. Power-on framebuffer state "
         "is visible SRAM bistable noise; programs clear it before drawing. See "
         "GT6144.h for the 4-phase command protocol.",
-        false, false, false, false, false, false, false,
-        /*pr40*/ true,
-        false, false, /*aci*/ true, /*ramKB*/ 8, BasicType::None,
-        /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
-        /*gt6144*/ true,
-        /*iecCard*/ false,
-        /*extendedAci*/ false,
+        cards(CardId::Pr40, CardId::Aci, CardId::Gt6144),
+        /*krusader*/ false, /*ramKB*/ 8, BasicType::None, {}, {},
         {
             {"Apple 1 Screen",                 {10,  61},  {843, 701}},
             // 4:3 content lives inside whatever size we give the window;
@@ -202,15 +171,8 @@ const MachineConfig kMachinePresets[] = {
         "$0000-$0FFF + 4 KB at $E000-$EFFF — Parmigiani's standard layout, same "
         "as 99 % of Originals). Krusader assembler and ACI cassette; "
         "Integer BASIC can be loaded from cassette when needed.",
-        false, false, false, false, false, false, false,
-        /*pr40*/ false,
-        true, false, true, 8, BasicType::None,
-        /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
-        /*gt6144*/ false,
-        /*iecCard*/ false,
-        /*extendedAci*/ true,
+        cards(CardId::Aci, CardId::ExtendedAci), /*krusader*/ true,
+        8, BasicType::None, {}, {},
         {
             {"Apple 1 Screen",        {10,  61},  {843, 701}},
             {"Tutorial: Krusader",    {858, 61},  {338, 223}},
@@ -223,15 +185,8 @@ const MachineConfig kMachinePresets[] = {
         "8 KB dual-bank RAM (4 KB at $0000-$0FFF + 4 KB at $E000-$EFFF — "
         "Parmigiani's standard layout). Applesoft Lite spans $E000-$FFFF in "
         "the CFFA1 build, so the high bank holds the BASIC ROM.",
-        false, false, false, false, false, false, false,
-        /*pr40*/ false,
-        false, true, false, 8, BasicType::ApplesoftLite,
-        /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
-        /*gt6144*/ false,
-        /*iecCard*/ false,
-        /*extendedAci*/ false,
+        cards(CardId::Cffa1), /*krusader*/ false, 8,
+        BasicType::ApplesoftLite, {}, {},
         {
             // CFFA1 has no dedicated window (transparent storage); pair
             // the storage tutorial with the BASIC tutorial since the
@@ -250,15 +205,8 @@ const MachineConfig kMachinePresets[] = {
         "ROM: the SD CARD OS loads it from the card into that RAM at "
         "$6000-$7FFF (cold/warm: 6000R / 6003R). The card's only EEPROM is the "
         "8 KB SD CARD OS at $8000-$9FFF; 65C22 at $A000.",
-        false, true, false, false, false, false, false,
-        /*pr40*/ false,
-        false, false, false, 32, BasicType::ApplesoftLite,
-        /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
-        /*gt6144*/ false,
-        /*iecCard*/ false,
-        /*extendedAci*/ false,
+        cards(CardId::MicroSD), /*krusader*/ false, 32,
+        BasicType::ApplesoftLite, {}, {},
         {
             // microSD is also transparent storage — no dedicated panel.
             // Show both the storage tutorial and the Applesoft one since
@@ -278,16 +226,9 @@ const MachineConfig kMachinePresets[] = {
         "on real P-LAB silicon - it has no edge connector. Type 4000R: Lower jumper "
         "boots the 3-game menu (1=Galaga, 2=Sokoban, 3=Snake); Upper jumper "
         "runs TMS LOGO V2.6 directly.",
-        false, false, false, true, false, false, false,
-        /*pr40*/ false,
-        false, false, false, 8, BasicType::None,
-        /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ true, CodeTank::Jumper::Lower16,
-        /*codeTankRom*/ "roms/codetank/Codetank_ARCADE.rom",
-        /*gt6144*/ false,
-        /*iecCard*/ false,
-        /*extendedAci*/ false,
+        cards(CardId::Tms9918, CardId::CodeTank), /*krusader*/ false,
+        8, BasicType::None, {},
+        {CodeTank::Jumper::Lower16, "roms/codetank/Codetank_ARCADE.rom"},
         {
             // Factory layout matches ini_defaults/imgui_preset_09.ini (also
             // seeded as build/ini/ when pre-generating preset layouts).
@@ -306,16 +247,10 @@ const MachineConfig kMachinePresets[] = {
         "The microSD stays unplugged even here: its Applesoft Lite EEPROM window "
         "($6000-$7FFF) sits inside the CodeTank ROM ($4000-$7FFF) — plug it from the "
         "Hardware menu and the CodeTank pops out. Provided for convenience only.",
-        false, false, true, true, true, true, true,
-        /*pr40*/ false,
-        false, false, false, 64, BasicType::Integer,
-        /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ true, CodeTank::Jumper::Lower16,
-        /*codeTankRom*/ "roms/codetank/Codetank_ARCADE.rom",
-        /*gt6144*/ false,
-        /*iecCard*/ false,
-        /*extendedAci*/ false,
+        cards(CardId::Sid, CardId::Tms9918, CardId::A1IoRtc,
+              CardId::WifiModem, CardId::TerminalCard, CardId::CodeTank),
+        /*krusader*/ false, 64, BasicType::Integer, {},
+        {CodeTank::Jumper::Lower16, "roms/codetank/Codetank_ARCADE.rom"},
         {
             // P-LAB Fantasy departs from the tutorial+peripheral template:
             // the right column stacks three cards so the user can see
@@ -326,8 +261,8 @@ const MachineConfig kMachinePresets[] = {
             {"Apple 1 Screen",                 {11,  60},  {843, 701}},
             // Right column: live TMS9918 framebuffer viewer on top,
             // static P-LAB TMS9918 PCB photo beneath. The I/O Board &
-            // RTC and Wi-Fi Modem cards are still plugged (cfg.a1ioRtc
-            // / cfg.wifiModem) so their state updates at runtime, but
+            // RTC and Wi-Fi Modem cards are still present in cfg.cards, so
+            // their state updates at runtime, but
             // their windows stay closed by default — the user can open
             // them from the Hardware menu when needed. Positions below
             // match the ini the user has been iterating on.
@@ -346,15 +281,8 @@ const MachineConfig kMachinePresets[] = {
         "the release board is designed to coexist with it (Q7: the PCB even "
         "has a cutout for the ACI jacks), and Apple II ports keep their "
         "$C030 SPEAKER accesses for sound through the ACI TAPE OUT.",
-        true, false, false, false, false, false, false,
-        /*pr40*/ false,
-        false, false, true, 48, BasicType::None,
-        /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
-        /*gt6144*/ false,
-        /*iecCard*/ false,
-        /*extendedAci*/ true,
+        cards(CardId::Gen2, CardId::Aci, CardId::ExtendedAci),
+        /*krusader*/ false, 48, BasicType::None, {}, {},
         {
             {"Apple 1 Screen",                       {10,  61},  {843, 701}},
             {"Uncle Bernie's GEN2 HGR Graphic Card", {858, 60},  {338, 180}},
@@ -371,15 +299,9 @@ const MachineConfig kMachinePresets[] = {
         "Cassette Deck + Welcome panels already open to the right of the Apple 1 screen; "
         "your layout customisations persist under ini/imgui_preset_12.ini "
         "(plus ini/preset_12.size for the OS window frame).",
-        false, true, true, false, false, true, true,
-        /*pr40*/ false,
-        false, false, true, 64, BasicType::ApplesoftLite,
-        /*sidSE*/ false,
-        /*jukeBox*/ false, JukeBox::Jumper::RAM16_ROM32, JukeBox::ChipMode::Flash,
-        /*codeTank*/ false, CodeTank::Jumper::Lower16, /*codeTankRom*/ nullptr,
-        /*gt6144*/ false,
-        /*iecCard*/ false,
-        /*extendedAci*/ true,
+        cards(CardId::MicroSD, CardId::Sid, CardId::WifiModem,
+              CardId::TerminalCard, CardId::Aci, CardId::ExtendedAci),
+        /*krusader*/ false, 64, BasicType::ApplesoftLite, {}, {},
         {
             // Positions / sizes match the shipped POM1 Fantasy screenshot
             // so the first launch (no saved ini/imgui_preset_12.ini yet)
@@ -402,6 +324,52 @@ const char* machinePresetName(int index)
 {
     if (index < 0 || index >= kMachinePresetCount) return nullptr;
     return kMachinePresets[index].name;
+}
+
+PresetId presetIdFromIndex(int index)
+{
+    if (index < 0 || index >= presetIndex(PresetId::Count)) return PresetId::Invalid;
+    return static_cast<PresetId>(index);
+}
+
+const MachineConfig* machinePreset(PresetId id)
+{
+    const int index = presetIndex(id);
+    if (index < 0 || index >= kMachinePresetCount) return nullptr;
+    return &kMachinePresets[index];
+}
+
+bool isFantasyPreset(PresetId id)
+{
+    return id == PresetId::PLabFantasy || id == PresetId::Pom1Fantasy;
+}
+
+bool validateMachinePresets(std::string& error)
+{
+    if (kMachinePresetCount != presetIndex(PresetId::Count)) {
+        error = "PresetId count does not match kMachinePresets";
+        return false;
+    }
+    for (int index = 0; index < kMachinePresetCount; ++index) {
+        const PresetId id = presetIdFromIndex(index);
+        const MachineConfig& preset = kMachinePresets[index];
+        const CardSet cards = preset.enabledCards();
+        for (std::size_t cardIndex = 0; cardIndex < kCardCount; ++cardIndex) {
+            const auto card = static_cast<CardId>(cardIndex);
+            if (cards.contains(card) &&
+                (cards & requiredCards(card)) != requiredCards(card)) {
+                error = std::string(preset.name) + ": missing card dependency";
+                return false;
+            }
+        }
+        if (!isFantasyPreset(id) &&
+            !activeConflicts(cards, TopologyMode::Strict).empty()) {
+            error = std::string(preset.name) + ": conflict in strict preset";
+            return false;
+        }
+    }
+    error.clear();
+    return true;
 }
 
 } // namespace pom1

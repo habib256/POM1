@@ -70,7 +70,7 @@ TerminalCard::~TerminalCard()
 
 void TerminalCard::reset()
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     disconnectClient();
     stopServer();
 
@@ -96,7 +96,7 @@ void TerminalCard::reset()
 
 void TerminalCard::setKeyInjector(KeyInjector injector)
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     keyInjector = std::move(injector);
 }
 
@@ -106,7 +106,7 @@ void TerminalCard::setKeyInjector(KeyInjector injector)
 
 void TerminalCard::onDisplayWrite(uint8_t rawValue)
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     if (!clientFd) return;
 
     if (eightBitMode) {
@@ -164,7 +164,7 @@ void TerminalCard::onDisplayWrite(uint8_t rawValue)
 
 void TerminalCard::advanceCycles(int cycles)
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     pollCycleAccum += cycles;
     if (pollCycleAccum < POM1_CPU_CYCLES_PER_MILLISECOND) return;
     pollCycleAccum = 0;
@@ -178,7 +178,7 @@ void TerminalCard::advanceCycles(int cycles)
     // still holding cardMutex — sendToClient relies on that convention.
     std::string toEmit;
     {
-        std::lock_guard<std::mutex> sslock(screenshotResultMutex);
+        std::lock_guard<decltype(screenshotResultMutex)> sslock(screenshotResultMutex);
         if (!screenshotResultPending.empty()) {
             toEmit.swap(screenshotResultPending);
         }
@@ -196,7 +196,7 @@ void TerminalCard::setScreenshotResult(const std::string& absPath, bool ok)
     } else {
         msg = "\r\n[SCREENSHOT FAILED: " + absPath + "]\r\n";
     }
-    std::lock_guard<std::mutex> lock(screenshotResultMutex);
+    std::lock_guard<decltype(screenshotResultMutex)> lock(screenshotResultMutex);
     screenshotResultPending = std::move(msg);
 }
 
@@ -206,7 +206,7 @@ void TerminalCard::setScreenshotResult(const std::string& absPath, bool ok)
 
 void TerminalCard::copySnapshot(Snapshot& out) const
 {
-    std::lock_guard<std::mutex> lock(cardMutex);
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
     out.serverListening = listenFd.valid();
     out.clientConnected = clientFd.valid();
     out.clientAddress = clientAddress;

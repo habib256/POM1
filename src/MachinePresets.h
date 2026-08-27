@@ -26,6 +26,10 @@
 #ifndef POM1_MACHINE_PRESETS_H
 #define POM1_MACHINE_PRESETS_H
 
+#include <cstdint>
+#include <string>
+
+#include "CardTypes.h"
 #include "CodeTank.h"
 #include "JukeBox.h"
 
@@ -46,14 +50,46 @@ struct MachineWindowPlacement {
 
 enum class BasicType { None, Integer, IntegerCassette, ApplesoftLite };
 
+struct JukeBoxPresetOptions {
+    JukeBox::Jumper jumper = JukeBox::Jumper::RAM16_ROM32;
+    JukeBox::ChipMode chipMode = JukeBox::ChipMode::Flash;
+};
+
+struct CodeTankPresetOptions {
+    CodeTank::Jumper jumper = CodeTank::Jumper::Lower16;
+    const char* romPath = nullptr;
+};
+
+/// Stable preset identity. Values deliberately match the historical menu and
+/// on-disk layout indices; append only.
+enum class PresetId : uint8_t {
+    CC65Bench = 0,
+    TMS9918Bench,
+    Gen2Bench,
+    BareJuly1976,
+    IntegerCassette,
+    Gt6144,
+    ReplicaKrusader,
+    Cffa1Applesoft,
+    MicroSDApplesoft,
+    TmsCodeTank,
+    PLabFantasy,
+    Gen2Color,
+    Pom1Fantasy,
+    Count,
+    Invalid = 0xFF,
+};
+
+inline constexpr PresetId kDefaultPresetId = PresetId::Pom1Fantasy;
+constexpr int presetIndex(PresetId id) { return static_cast<int>(id); }
+
 struct MachineConfig {
     const char* name;
     const char* description;
-    bool graphicsCard, microSD, sid, tms9918, a1ioRtc, wifiModem, terminalCard;
-    bool pr40Printer;   // SWTPC PR-40 (Jobs Oct. 1976 Interface Age hack)
+    CardSet cards;
+    // Krusader is a ROM payload, not an expansion card, so it deliberately
+    // stays outside CardSet.
     bool krusader;
-    bool cffa1;
-    bool aci;                   // Apple Cassette Interface (false for pre-ACI Bare 4K)
     int  ramKB;                 // Usable RAM in kilobytes (8 = standard dual-bank Apple-1)
     BasicType basicType;
     // A1-AUDIO Special Edition: Claudio Parmigiani's 10-unit A1-AUDIO card
@@ -61,16 +97,13 @@ struct MachineConfig {
     // prototype A1-SID, but the register window lives at $CC00-$CC1F instead
     // of $C800-$CFFF. Collides with TMS9918 at $CC00/$CC01 — the preset
     // layer enforces mutual exclusivity with `tms9918`.
-    bool sidSpecialEdition;
     // P-LAB Apple-1 Juke-Box (Claudio Parmigiani & Jacopo Rosselli). When
     // true, the preset plugs the Juke-Box card at $4000-$BFFF or
     // $8000-$BFFF (per `jukeBoxJumper`), loads `roms/jukebox.rom` with the
     // chip-mode stored in `jukeBoxChipMode`, and claims the Px/Sx bank
     // latch at $CA00. Mutually exclusive with CFFA1, microSD, Krusader,
     // Wi-Fi Modem and A1-SID — the preset layer enforces that.
-    bool jukeBox;
-    JukeBox::Jumper jukeBoxJumper;
-    JukeBox::ChipMode jukeBoxChipMode;
+    JukeBoxPresetOptions jukeBox;
     // P-LAB CodeTank — 28c256 ROM daughterboard at $4000-$7FFF that
     // physically piggybacks the TMS9918 Graphic Card on real P-LAB
     // hardware. It has no edge connector and no on-board address decoder,
@@ -78,20 +111,10 @@ struct MachineConfig {
     // (see Memory::setCodeTankEnabled), and disabling TMS9918 cascade-
     // unplugs CodeTank. Mutually exclusive with the Juke-Box (overlapping
     // ROM window).
-    bool codeTank;
-    CodeTank::Jumper codeTankJumper;
     // Optional — when non-empty, the named ROM file is loaded into the
     // CodeTank card on plug. Empty falls back to the default probe path
     // (roms/codetank/Codetank_ARCADE.rom, then the legacy roms/codetank.rom).
-    const char* codeTankRomPath;
-    // SWTPC GT-6144 Graphic Terminal (1976) — write-only 64x96 mono framebuffer
-    // at $D00A. No bus conflicts with other cards at that address.
-    bool gt6144;
-    // P-LAB IEC daughterboard for the microSD Storage Card. Drives the
-    // Commodore IEC serial bus on unused 65C22 pins (PORTB bits 2-6) via
-    // an SN7406 inverter. Backed by a virtual 1541 mounted from
-    // disks/iec/dev8.d64. Daughterboard only — requires microSD enabled.
-    bool iecCard;
+    CodeTankPresetOptions codeTank;
     // Uncle Bernie's Extended ACI — the $C500-$C5FF page of the improved
     // Gen-2 cassette interface (Applefritter, august 2026). Daughter page of
     // the ACI's own PROM pair, so it cannot exist without `aci`: enabling it
@@ -101,9 +124,11 @@ struct MachineConfig {
     // and the CC65 bench (#0), which mirrors #4 exactly — see
     // preset_ram_profiles_smoke. So: on for #2 (GEN2 bench), #6 (Briel Krusader),
     // #11 (GEN2 HGR Color) and #12 (POM1 Fantasy).
-    bool extendedAci;
     MachineWindowPlacement layout[8];
     int layoutCount;
+
+    CardSet enabledCards() const { return cards; }
+    bool hasCard(CardId id) const { return cards.contains(id); }
 };
 
 extern const MachineConfig kMachinePresets[];
@@ -117,20 +142,26 @@ int machinePresetCount();
 /// Name of preset `index`, or nullptr when out of range.
 const char* machinePresetName(int index);
 
+PresetId presetIdFromIndex(int index);
+const MachineConfig* machinePreset(PresetId id);
+bool isFantasyPreset(PresetId id);
+
+/// Validates stable identities, dependencies and strict/fantasy conflicts.
+/// Returns false with a concise diagnostic for malformed built-in data.
+bool validateMachinePresets(std::string& error);
+
 // Named indices into kMachinePresets[] that other subsystems depend on by
 // position (DevBench targets in Pom1BenchHost's kP1Targets[], the reverse
 // applyMachineConfig auto-open). Anchoring them here means a preset reorder is
 // a one-line edit instead of a silent DevBench breakage across scattered
 // `t.preset == N` comparisons. Pinned by preset_ram_profiles_smoke.
-inline constexpr int kPresetCC65Bench      = 0;   // Apple-1 CC65 Development Bench
-inline constexpr int kPresetTMS9918Bench   = 1;   // Apple-1 TMS9918 Development Bench
-inline constexpr int kPresetGen2Bench      = 2;   // Apple-1 GEN2 HGR Development Bench
-inline constexpr int kPresetIntegerCassette = 4;  // Apple-1 with ACI & Integer BASIC cassette
-inline constexpr int kPresetMicroSD        = 8;   // P-LAB microSD + Applesoft Lite
-inline constexpr int kPresetTMS9918Card    = 9;   // P-LAB Apple-1 with TMS9918 + CodeTank
-inline constexpr int kPresetGen2Color      = 11;  // Uncle Bernie's GEN2 HGR Color
-// POM1 Multiplexing Fantasy is always the LAST preset (invariant — see
-// applyMachineConfig / the "default = last" contract). Use kMachinePresetCount-1.
+inline constexpr int kPresetCC65Bench = presetIndex(PresetId::CC65Bench);
+inline constexpr int kPresetTMS9918Bench = presetIndex(PresetId::TMS9918Bench);
+inline constexpr int kPresetGen2Bench = presetIndex(PresetId::Gen2Bench);
+inline constexpr int kPresetIntegerCassette = presetIndex(PresetId::IntegerCassette);
+inline constexpr int kPresetMicroSD = presetIndex(PresetId::MicroSDApplesoft);
+inline constexpr int kPresetTMS9918Card = presetIndex(PresetId::TmsCodeTank);
+inline constexpr int kPresetGen2Color = presetIndex(PresetId::Gen2Color);
 
 } // namespace pom1
 

@@ -44,7 +44,7 @@ WiFiModem::~WiFiModem()
 
 void WiFiModem::reset()
 {
-    std::lock_guard<std::mutex> lock(modemMutex);
+    std::lock_guard<decltype(modemMutex)> lock(modemMutex);
 
     disconnect();
 
@@ -85,7 +85,7 @@ void WiFiModem::reset()
 
 uint8_t WiFiModem::readRegister(uint16_t address)
 {
-    std::lock_guard<std::mutex> lock(modemMutex);
+    std::lock_guard<decltype(modemMutex)> lock(modemMutex);
     uint16_t reg = address - kAciaBase;
 
     switch (reg) {
@@ -132,7 +132,7 @@ uint8_t WiFiModem::readRegister(uint16_t address)
 
 void WiFiModem::writeRegister(uint16_t address, uint8_t value)
 {
-    std::lock_guard<std::mutex> lock(modemMutex);
+    std::lock_guard<decltype(modemMutex)> lock(modemMutex);
     uint16_t reg = address - kAciaBase;
 
     switch (reg) {
@@ -164,7 +164,7 @@ void WiFiModem::writeRegister(uint16_t address, uint8_t value)
 
 void WiFiModem::advanceCycles(int cycles)
 {
-    std::lock_guard<std::mutex> lock(modemMutex);
+    std::lock_guard<decltype(modemMutex)> lock(modemMutex);
 
     // Advance rx timing — load next byte from buffer to data register
     if (!rdrfFlag && rxCount > 0) {
@@ -461,7 +461,7 @@ void WiFiModem::handleATH()
 
 void WiFiModem::requestDisconnect()
 {
-    std::lock_guard<std::mutex> lock(modemMutex);
+    std::lock_guard<decltype(modemMutex)> lock(modemMutex);
     handleATH();
 }
 
@@ -950,7 +950,7 @@ void WiFiModem::updateCyclesPerByte()
 
 void WiFiModem::copySnapshot(Snapshot& out) const
 {
-    std::lock_guard<std::mutex> lock(modemMutex);
+    std::lock_guard<decltype(modemMutex)> lock(modemMutex);
     out.statusReg = 0;
     if (rdrfFlag) out.statusReg |= ST_RDRF;
     out.statusReg |= ST_TDRE; // always set (W65C51N bug)

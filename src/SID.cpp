@@ -57,7 +57,7 @@ void SID::rebuildChip(ChipModel m)
 
 void SID::resetChip()
 {
-    std::lock_guard<std::mutex> lock(chipMutex);
+    std::lock_guard<decltype(chipMutex)> lock(chipMutex);
     chip->reset();
     shadowRegs.fill(0);
 }
@@ -85,7 +85,7 @@ void SID::writeRegister(uint8_t reg, uint8_t value)
     // note-on is heard up to kCatchUpCycles early — the one place where the
     // catch-up accumulator would be observable if it were not flushed here.
     flushPendingCycles();
-    std::lock_guard<std::mutex> lock(chipMutex);
+    std::lock_guard<decltype(chipMutex)> lock(chipMutex);
     shadowRegs[reg] = value;
     chip->write(reg, value);
 }
@@ -96,7 +96,7 @@ uint8_t SID::readRegister(uint8_t reg)
     // Same reasoning as writeRegister: OSC3/ENV3 read back the chip's state at
     // the current cycle, so the chip has to BE at the current cycle first.
     flushPendingCycles();
-    std::lock_guard<std::mutex> lock(chipMutex);
+    std::lock_guard<decltype(chipMutex)> lock(chipMutex);
     return chip->read(reg);
 }
 
@@ -117,7 +117,7 @@ void SID::flushPendingCycles()
     pendingCycles = 0;
     if (cycles <= 0) return;
 
-    std::lock_guard<std::mutex> lock(chipMutex);
+    std::lock_guard<decltype(chipMutex)> lock(chipMutex);
     clockChipLocked(cycles);
 }
 
@@ -141,8 +141,12 @@ void SID::clockChipLocked(int cycles)
             // here raced fillAudioBuffer's own ringTail store and could skip or
             // corrupt samples. Overflow only happens if the audio callback
             // stalls, so dropping one fresh sample is inaudible.
-            if (next == ringTail.load(std::memory_order_acquire))
+            if (next == ringTail.load(std::memory_order_acquire)) {
+#if POM1_REALTIME_DIAGNOSTICS
+                ringOverflows.fetch_add(1, std::memory_order_relaxed);
+#endif
                 continue;
+            }
 
             ringBuf[head] = sample;
             ringHead.store(next, std::memory_order_release);
@@ -158,11 +162,24 @@ void SID::fillAudioBuffer(float* output, int frameCount)
         const size_t tail = ringTail.load(std::memory_order_relaxed);
         if (tail == ringHead.load(std::memory_order_acquire)) {
             output[i] = 0.0f;
+#if POM1_REALTIME_DIAGNOSTICS
+            ringUnderruns.fetch_add(1, std::memory_order_relaxed);
+#endif
         } else {
             output[i] = ringBuf[tail];
             ringTail.store((tail + 1) % kRingCapacity, std::memory_order_release);
         }
     }
+}
+
+void SID::copyRealtimeDiagnostics(RealtimeDiagnostics& out) const
+{
+#if POM1_REALTIME_DIAGNOSTICS
+    out.sidUnderruns = ringUnderruns.load(std::memory_order_relaxed);
+    out.sidOverflows = ringOverflows.load(std::memory_order_relaxed);
+#else
+    (void)out;
+#endif
 }
 
 void SID::setChipModel(ChipModel m)
@@ -171,7 +188,7 @@ void SID::setChipModel(ChipModel m)
     // Clock the outgoing chip up to date before it is destroyed: those cycles
     // belong to the 6581 the program was playing, not to the 8580 replacing it.
     flushPendingCycles();
-    std::lock_guard<std::mutex> lock(chipMutex);
+    std::lock_guard<decltype(chipMutex)> lock(chipMutex);
     rebuildChip(m);
     // Restore last-written register state so a music program in flight
     // doesn't go silent on chip swap.
@@ -184,14 +201,14 @@ void SID::setChipModel(ChipModel m)
 
 void SID::copySnapshot(Snapshot& out) const
 {
-    std::lock_guard<std::mutex> lock(chipMutex);
+    std::lock_guard<decltype(chipMutex)> lock(chipMutex);
     out.regs = shadowRegs;
     out.chipModel = currentModel.load(std::memory_order_relaxed);
 }
 
 void SID::serialize(SnapshotWriter& w) const
 {
-    std::lock_guard<std::mutex> lock(chipMutex);
+    std::lock_guard<decltype(chipMutex)> lock(chipMutex);
     w.writeU8(static_cast<uint8_t>(currentModel.load(std::memory_order_relaxed)));
     w.writeBytes(shadowRegs.data(), shadowRegs.size());
 }

@@ -27,6 +27,7 @@
 
 #include "CpuClock.h"
 #include "Peripheral.h"
+#include "LockOrder.h"
 
 #include <cstdint>
 #include <mutex>
@@ -58,7 +59,7 @@ public:
     static constexpr int kMechCycleCpu = POM1_CPU_CLOCK_HZ * 4 / 5;
 
     PR40Printer();
-    void reset();
+    void reset() override;
 
     // ---- Emulation-thread entry points (serialised via Memory's flow) ----
     /// $D012 write sniff. `rawValue` is the unmasked byte (bit 7 may be set
@@ -101,7 +102,7 @@ public:
     void tearOffPage(std::string* dumpedContents = nullptr);
 
 private:
-    mutable std::mutex cardMutex;
+    mutable pom1::RankedMutex<pom1::LockRank::Peripheral> cardMutex;
     SwitchMode mode = SwitchMode::Mixed;
 
     uint8_t fifo[kFifoCapacity]{};

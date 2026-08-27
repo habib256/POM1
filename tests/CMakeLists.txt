@@ -31,7 +31,7 @@ if(UNIX)
     link_libraries(Threads::Threads ${CMAKE_DL_LIBS})
 endif()
 
-# Portability macros, directory-scoped so pom1_core and every test target below
+# Portability macros, directory-scoped so pom1_test_devices and every test target below
 # compiles POM1's sources under the SAME macro set as the app. Defined as an
 # INTERFACE target in the top-level CMakeLists; see the long note there for why
 # a per-target copy is not good enough (C2589 on RewindBuffer.cpp, 22 août
@@ -53,23 +53,48 @@ endif()
 # minimal runner that links against POM1's M6502 + Memory + peripheral core,
 # and registers it with ctest.
 
-set(KLAUS_BIN "${CMAKE_CURRENT_BINARY_DIR}/klaus_6502_functional_test.bin")
+set(POM1_KLAUS_BIN "${CMAKE_CURRENT_BINARY_DIR}/klaus_6502_functional_test.bin"
+    CACHE FILEPATH "Path to Klaus Dormann's 6502 functional-test binary")
+get_filename_component(KLAUS_BIN "${POM1_KLAUS_BIN}" ABSOLUTE
+                       BASE_DIR "${CMAKE_BINARY_DIR}")
 set(KLAUS_URL "https://raw.githubusercontent.com/Klaus2m5/6502_65C02_functional_tests/master/bin_files/6502_functional_test.bin")
 set(KLAUS_SHA256 "fa12bfc761e6f9057e4cc01a665a7b800ff01ae91f598af1e39a1201d01953fd")
+set(KLAUS_AVAILABLE FALSE)
+set(KLAUS_DOWNLOADED FALSE)
 
 if(NOT EXISTS "${KLAUS_BIN}")
     message(STATUS "Downloading Klaus 6502 functional test binary (~64 KB)...")
+    get_filename_component(KLAUS_BIN_DIR "${KLAUS_BIN}" DIRECTORY)
+    file(MAKE_DIRECTORY "${KLAUS_BIN_DIR}")
     file(DOWNLOAD "${KLAUS_URL}" "${KLAUS_BIN}"
-         EXPECTED_HASH SHA256=${KLAUS_SHA256}
          TIMEOUT 30
          STATUS DOWNLOAD_STATUS)
     list(GET DOWNLOAD_STATUS 0 DOWNLOAD_CODE)
     if(NOT DOWNLOAD_CODE EQUAL 0)
         list(GET DOWNLOAD_STATUS 1 DOWNLOAD_MSG)
         message(WARNING "Klaus test binary download failed: ${DOWNLOAD_MSG} — "
-                        "test_klaus_6502 will be built but will fail at run time "
-                        "until the file is available at ${KLAUS_BIN}")
+                        "klaus_6502_functional will not be registered. "
+                        "Provide it with -DPOM1_KLAUS_BIN=/path/to/6502_functional_test.bin")
         file(REMOVE "${KLAUS_BIN}")  # leave no truncated file behind
+    else()
+        set(KLAUS_DOWNLOADED TRUE)
+    endif()
+endif()
+
+# Hash only a complete local file. CMake's EXPECTED_HASH makes a network error
+# look like a checksum error and can abort configuration before the test can be
+# disabled cleanly.
+if(EXISTS "${KLAUS_BIN}")
+    file(SHA256 "${KLAUS_BIN}" KLAUS_ACTUAL_SHA256)
+    if(KLAUS_ACTUAL_SHA256 STREQUAL KLAUS_SHA256)
+        set(KLAUS_AVAILABLE TRUE)
+    else()
+        message(WARNING
+            "Klaus binary at ${KLAUS_BIN} has SHA-256 ${KLAUS_ACTUAL_SHA256}; "
+            "expected ${KLAUS_SHA256}. klaus_6502_functional will not be registered.")
+        if(KLAUS_DOWNLOADED)
+            file(REMOVE "${KLAUS_BIN}")
+        endif()
     endif()
 endif()
 
@@ -77,7 +102,8 @@ endif()
 # in. UI (Screen_ImGui, MainWindow_*, EmulationController) is deliberately
 # left out: the Klaus test drives the CPU directly, no ImGui context needed.
 #
-# These files are compiled ONCE, into the `pom1_core` OBJECT library below, and
+# These files are compiled ONCE, into the `pom1_test_devices` OBJECT library
+# below, and
 # every test binary consumes the resulting objects. They used to be listed as
 # plain sources in each add_executable, so each of the 50 test targets compiled
 # all 24 of them from scratch: a full build ran 1435 compilations, 1300 of them
@@ -96,6 +122,9 @@ set(POM1_TEST_CORE_FILES
     ${CMAKE_SOURCE_DIR}/src/M6502.cpp
     ${CMAKE_SOURCE_DIR}/src/Memory.cpp
     ${CMAKE_SOURCE_DIR}/src/MemorySnapshot.cpp
+    ${CMAKE_SOURCE_DIR}/src/CardTopology.cpp
+    ${CMAKE_SOURCE_DIR}/src/MachineCoordinator.cpp
+    ${CMAKE_SOURCE_DIR}/src/RomLoader.cpp
     ${CMAKE_SOURCE_DIR}/src/PeripheralBus.cpp
     ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
     ${CMAKE_SOURCE_DIR}/src/Logger.cpp
@@ -119,21 +148,28 @@ set(POM1_TEST_CORE_FILES
     ${CMAKE_SOURCE_DIR}/src/Gen2VideoScanner.cpp
 )
 
-add_library(pom1_core OBJECT ${POM1_TEST_CORE_FILES})
-target_include_directories(pom1_core PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    # GraphicsCard.h / Screen_ImGui.h are still reachable transitively via
-    # Memory's peripheral unique_ptrs — headers only, no ImGui symbols called.
-    ${CMAKE_SOURCE_DIR}/imgui
-)
+add_library(pom1_test_devices OBJECT ${POM1_TEST_CORE_FILES})
 # SID.cpp includes third_party/libresidfp/src/SID.h; the target exports that
 # directory PUBLIC, so linking it here is how the object library gets the path.
 # An OBJECT library takes the usage requirements without producing a link step.
-target_link_libraries(pom1_core PRIVATE libresidfp_static)
+target_link_libraries(pom1_test_devices PRIVATE pom1_devices)
 
 # Every `add_executable(... ${POM1_TEST_CORE_SOURCES})` below is unchanged — the
 # variable now expands to the compiled objects instead of the source paths.
-set(POM1_TEST_CORE_SOURCES $<TARGET_OBJECTS:pom1_core>)
+set(POM1_TEST_CORE_SOURCES $<TARGET_OBJECTS:pom1_test_devices>)
+
+# Common wiring for tests that exercise the shared device object set. Optional
+# ARGS are appended after the executable and TIMEOUT defaults to 30 seconds.
+function(pom1_add_smoke_test TARGET SOURCE TEST_NAME)
+    cmake_parse_arguments(SMOKE "" "TIMEOUT" "ARGS" ${ARGN})
+    if(NOT SMOKE_TIMEOUT)
+        set(SMOKE_TIMEOUT 30)
+    endif()
+    add_executable(${TARGET} ${SOURCE} ${POM1_TEST_CORE_SOURCES})
+    target_link_libraries(${TARGET} PRIVATE pom1_devices)
+    add_test(NAME ${TEST_NAME} COMMAND ${TARGET} ${SMOKE_ARGS})
+    set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${SMOKE_TIMEOUT})
+endfunction()
 
 add_executable(test_klaus_6502
     klaus_6502_functional_test.cpp
@@ -154,86 +190,57 @@ if(WIN32)
     target_link_libraries(test_klaus_6502 PRIVATE ws2_32)
 endif()
 
-add_test(NAME klaus_6502_functional
-         COMMAND test_klaus_6502 "${KLAUS_BIN}")
-set_tests_properties(klaus_6502_functional PROPERTIES
-    TIMEOUT 30    # wallclock cap; the CPU-bound inner loop usually completes in 2-4 s
-)
+if(KLAUS_AVAILABLE)
+    add_test(NAME klaus_6502_functional
+             COMMAND test_klaus_6502 "${KLAUS_BIN}")
+    set_tests_properties(klaus_6502_functional PROPERTIES
+        TIMEOUT 30 # wallclock cap; the CPU-bound inner loop usually completes in 2-4 s
+    )
+else()
+    message(STATUS "Klaus functional test disabled (no verified binary available)")
+endif()
 
 # -- Tom Harte 65x02 cycle-exact oracle (Route B) -----------------------------
 # Replays the committed Harte fixture (tests/cpu/harte_6502.bin, built once by
 # tools/gen_harte_fixture.py from SingleStepTests/ProcessorTests) one instruction
 # per case: seed CPU + RAM, step, compare final regs + RAM + cycle count. Same
 # POM1 core as the Klaus runner.
-add_executable(test_cpu_harte
-    cpu_harte_test.cpp
-    ${POM1_TEST_CORE_SOURCES}
-)
-target_include_directories(test_cpu_harte PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/imgui
-)
-target_link_libraries(test_cpu_harte PRIVATE libresidfp_static)
-if(WIN32)
-    target_link_libraries(test_cpu_harte PRIVATE ws2_32)
-endif()
-add_test(NAME cpu_harte_smoke
-         COMMAND test_cpu_harte "${CMAKE_SOURCE_DIR}/tests/cpu/harte_6502.bin")
-set_tests_properties(cpu_harte_smoke PROPERTIES TIMEOUT 60)
+pom1_add_smoke_test(test_cpu_harte cpu_harte_test.cpp cpu_harte_smoke
+    TIMEOUT 60 ARGS "${CMAKE_SOURCE_DIR}/tests/cpu/harte_6502.bin")
 
 # -- IRQ/NMI line-timing oracle (Route A) -------------------------------------
 # Self-contained: pins the interrupt entry sequence (7-cycle cost, vectors,
 # pushed-P B bit, NMI non-maskable + edge-cleared, RTI) that Harte's opcode
 # cases can't reach. Same POM1 core as the Klaus/Harte runners.
-add_executable(test_cpu_interrupt
-    cpu_interrupt_test.cpp
-    ${POM1_TEST_CORE_SOURCES}
-)
-target_include_directories(test_cpu_interrupt PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/imgui
-)
-target_link_libraries(test_cpu_interrupt PRIVATE libresidfp_static)
-if(WIN32)
-    target_link_libraries(test_cpu_interrupt PRIVATE ws2_32)
-endif()
-add_test(NAME cpu_interrupt_smoke COMMAND test_cpu_interrupt)
-set_tests_properties(cpu_interrupt_smoke PROPERTIES TIMEOUT 30)
+pom1_add_smoke_test(test_cpu_interrupt cpu_interrupt_test.cpp
+    cpu_interrupt_smoke)
 
 # -- Undocumented-opcode PC-length oracle -------------------------------------
 # Pins the PC advance of all 105 illegal opcodes (Harte covers only the 151
 # documented ones) so a multi-byte undocumented opcode can never silently
 # regress to the 1-byte fallback that once desynced the stream.
-add_executable(test_cpu_pc_length
-    cpu_pc_length_test.cpp
-    ${POM1_TEST_CORE_SOURCES}
-)
-target_include_directories(test_cpu_pc_length PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/imgui
-)
-target_link_libraries(test_cpu_pc_length PRIVATE libresidfp_static)
-if(WIN32)
-    target_link_libraries(test_cpu_pc_length PRIVATE ws2_32)
-endif()
-add_test(NAME cpu_pc_length_smoke COMMAND test_cpu_pc_length)
-set_tests_properties(cpu_pc_length_smoke PROPERTIES TIMEOUT 30)
+pom1_add_smoke_test(test_cpu_pc_length cpu_pc_length_test.cpp
+    cpu_pc_length_smoke)
 
 # -- Undocumented-opcode cycle oracle -----------------------------------------
-add_executable(test_cpu_illegal_cycles
-    cpu_illegal_cycles_test.cpp
-    ${POM1_TEST_CORE_SOURCES}
-)
-target_include_directories(test_cpu_illegal_cycles PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/imgui
-)
-target_link_libraries(test_cpu_illegal_cycles PRIVATE libresidfp_static)
-if(WIN32)
-    target_link_libraries(test_cpu_illegal_cycles PRIVATE ws2_32)
-endif()
-add_test(NAME cpu_illegal_cycles_smoke COMMAND test_cpu_illegal_cycles)
-set_tests_properties(cpu_illegal_cycles_smoke PROPERTIES TIMEOUT 30)
+pom1_add_smoke_test(test_cpu_illegal_cycles cpu_illegal_cycles_test.cpp
+    cpu_illegal_cycles_smoke)
+
+# Stable card identities + descriptor registry + compact CardSet semantics.
+# Uses Memory::cardSlots() directly so no second descriptor table can drift.
+pom1_add_smoke_test(test_card_registry card_registry_smoke_test.cpp
+    card_registry_smoke)
+
+pom1_add_smoke_test(test_card_topology card_topology_smoke_test.cpp
+    card_topology_smoke)
+target_sources(test_card_topology PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/MachinePresets.cpp)
+
+# Real-time source registry: removeSource is the lifetime fence for a callback
+# already pinned to the retired immutable list. Hardware output is disabled;
+# the test drives mixSources from a synthetic callback thread.
+pom1_add_smoke_test(test_audio_source_lifetime audio_source_lifetime_test.cpp
+    audio_source_lifetime_smoke)
 
 # -- PeripheralBus dispatch smoke test ----------------------------------------
 # Self-contained: the bus has no dependency on Memory, peripherals, or
@@ -812,6 +819,7 @@ add_executable(test_bench_cc65
     ${CMAKE_SOURCE_DIR}/src/Pom1BenchCc65.cpp
     ${CMAKE_SOURCE_DIR}/src/Pom1BenchTargets.cpp
     ${CMAKE_SOURCE_DIR}/src/MachinePresets.cpp
+    ${CMAKE_SOURCE_DIR}/src/CardTopology.cpp
     ${CMAKE_SOURCE_DIR}/src/DbgFile.cpp
     ${CMAKE_SOURCE_DIR}/src/Logger.cpp
     ${CMAKE_SOURCE_DIR}/src/bench/ProcessUtil.cpp
@@ -1005,7 +1013,9 @@ set_tests_properties(sid_audio_smoke PROPERTIES TIMEOUT 10)
 # and asserts the demo's first three bytes (A9 FF 48 = LDA #$FF / PHA) end up
 # at $0280 (the tape's natural load address — see cassettes/tapeinfo.txt).
 # Gate for any change to pulse extraction timing, ACI ROM emulation, or
-# keyboard input wiring. Also validates kTapeFileTimebaseHz = POM1_CPU_CLOCK_HZ.
+# keyboard input wiring. Before the pulse path it also drains the cassette's
+# AudioSource directly and requires non-zero PCM with no renderer/callback.
+# Also validates kTapeFileTimebaseHz = POM1_CPU_CLOCK_HZ.
 add_executable(test_aci_tape_loading
     aci_tape_loading_test.cpp
     ${POM1_TEST_CORE_SOURCES}
@@ -1594,7 +1604,9 @@ set_tests_properties(pia_ddr_smoke PROPERTIES TIMEOUT 10)
 # Wall-clock based, so the bands are loose; they only separate "measured" from
 # "target" and from the burst-rate bug (charging elapsed time only to the slices
 # that ran the CPU, which reads x1 as tens of MHz). The only test linking
-# EmulationController.cpp, hence the extra sources.
+# EmulationController.cpp, hence the extra sources. It also alternates SID and
+# Juke-Box configurations 32 times while the real emulation thread runs,
+# asserting every published snapshot is a complete topology.
 add_executable(test_measured_cpu_rate
     measured_cpu_rate_test.cpp
     ${CMAKE_SOURCE_DIR}/src/EmulationController.cpp
@@ -1604,7 +1616,6 @@ add_executable(test_measured_cpu_rate
     ${CMAKE_SOURCE_DIR}/src/RewindBuffer.cpp
     ${CMAKE_SOURCE_DIR}/src/SnapshotPublisher.cpp
     ${CMAKE_SOURCE_DIR}/src/KeyboardController.cpp
-    ${CMAKE_SOURCE_DIR}/src/RomLoader.cpp
     ${POM1_TEST_CORE_SOURCES}
 )
 target_include_directories(test_measured_cpu_rate PRIVATE
@@ -1620,6 +1631,33 @@ add_test(NAME measured_cpu_rate_smoke
          COMMAND test_measured_cpu_rate
          WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set_tests_properties(measured_cpu_rate_smoke PROPERTIES TIMEOUT 30)
+
+# Production concurrency triangle: the controller's real emulation producer,
+# a snapshot/render consumer and the lock-free audio mixer callback. Hardware
+# audio stays disabled, so the synthetic callback is the sole ring consumer.
+add_executable(test_concurrent_frontends
+    concurrent_frontends_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController_State.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController_Machine.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController_Cards.cpp
+    ${CMAKE_SOURCE_DIR}/src/RewindBuffer.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotPublisher.cpp
+    ${CMAKE_SOURCE_DIR}/src/KeyboardController.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_concurrent_frontends PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/imgui
+)
+target_link_libraries(test_concurrent_frontends PRIVATE libresidfp_static)
+if(WIN32)
+    target_link_libraries(test_concurrent_frontends PRIVATE ws2_32)
+endif()
+add_test(NAME concurrent_frontends_smoke COMMAND test_concurrent_frontends)
+set_tests_properties(concurrent_frontends_smoke PROPERTIES
+    TIMEOUT 30
+    LABELS "concurrency;audio")
 
 # msbasic_smoke -- Microsoft BASIC 6502 on the Apple-1 ($E000, shares the window
 # with Integer BASIC). Boots the shipped ROM on the emulated 6502 and asks it to
@@ -1839,9 +1877,12 @@ if(Python3_FOUND)
                          TIMEOUT 60 SKIP_RETURN_CODE 77)
 
     # ── headless_preset_matrix — boot every preset with no display ────────────
-    # The widest test in the suite for its cost: `--headless --preset N
-    # --exit-after-cycles 2000000` for each of the 13 presets, asserting exit 0,
-    # no ERROR log line and the CPU parked in the Woz Monitor ($FF00-$FFFF).
+    # The widest test in the suite for its cost: every preset first runs a
+    # loaded three-byte loop for exactly one cycle with zero UI frames, then
+    # boots for 2M cycles and must park in the Woz Monitor ($FF00-$FFFF).
+    # A second discovered axis tries every card absent from every preset:
+    # accepted combinations execute the first-cycle probe; strict conflicts
+    # must be rejected before mutation. Fantasy presets remain permissive.
     # Covers applyHeadlessConfig's full card fan-out (RAM profile, jumpers, plug
     # cascades, Parmigiani evictions, every card's reset + bus registration) —
     # the path that breaks when a card is added, and which no unit test reached
@@ -1966,6 +2007,17 @@ if(Python3_FOUND)
                      "${CMAKE_SOURCE_DIR}/tools/check_doc_paths.py"
              WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(doc_paths_sync PROPERTIES TIMEOUT 60)
+endif()
+
+# Architecture direction + trend baseline. It rejects a new core/device -> UI
+# include immediately while reporting growth of the known large components and
+# header fan-out. Existing debt is explicit in architecture_baseline.json.
+if(Python3_FOUND)
+    add_test(NAME architecture_check
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/check_architecture.py"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(architecture_check PROPERTIES TIMEOUT 60)
 endif()
 
 # cli_flags_sync -- the fourth guard of the version_sync / imgui_pin_sync /
@@ -2149,7 +2201,6 @@ add_executable(test_cli_dispatcher
     ${CMAKE_SOURCE_DIR}/src/RewindBuffer.cpp
     ${CMAKE_SOURCE_DIR}/src/SnapshotPublisher.cpp
     ${CMAKE_SOURCE_DIR}/src/KeyboardController.cpp
-    ${CMAKE_SOURCE_DIR}/src/RomLoader.cpp
     ${POM1_TEST_CORE_SOURCES}
 )
 target_include_directories(test_cli_dispatcher PRIVATE
@@ -2164,6 +2215,51 @@ if(WIN32)
 endif()
 add_test(NAME cli_dispatcher_smoke COMMAND test_cli_dispatcher)
 set_tests_properties(cli_dispatcher_smoke PROPERTIES TIMEOUT 15)
+
+# ── Bind shared-object consumers to their logical layer ─────────────────────
+# POM1_TEST_CORE_SOURCES is a generator expression in add_executable(), which
+# contributes object files but does NOT propagate pom1_test_devices' usage
+# requirements. Discover every consumer after all targets have been declared
+# and bind it to pom1_devices. This closes the historical gap where adding a
+# smoke test meant remembering src/, ImGui headers, libresidfp and ws2_32 by
+# hand. A future consumer is classified automatically at configure time.
+get_property(pom1_test_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+set(pom1_device_consumer_count 0)
+foreach(pom1_target IN LISTS pom1_test_targets)
+    get_target_property(pom1_target_type ${pom1_target} TYPE)
+    if(NOT pom1_target_type STREQUAL "EXECUTABLE")
+        continue()
+    endif()
+    get_target_property(pom1_target_sources ${pom1_target} SOURCES)
+    if("$<TARGET_OBJECTS:pom1_test_devices>" IN_LIST pom1_target_sources)
+        get_target_property(pom1_target_links ${pom1_target} LINK_LIBRARIES)
+        if(pom1_target_links AND NOT pom1_target_links STREQUAL "pom1_target_links-NOTFOUND")
+            # These requirements now arrive through pom1_devices. Remove the
+            # legacy copies so Apple ld does not warn about duplicate archives
+            # and Windows does not carry two independent ws2_32 declarations.
+            list(REMOVE_ITEM pom1_target_links libresidfp_static ws2_32)
+            set_property(TARGET ${pom1_target} PROPERTY LINK_LIBRARIES
+                         "${pom1_target_links}")
+        endif()
+        if(NOT "pom1_devices" IN_LIST pom1_target_links)
+            target_link_libraries(${pom1_target} PRIVATE pom1_devices)
+        endif()
+        math(EXPR pom1_device_consumer_count "${pom1_device_consumer_count} + 1")
+
+        # Configuration-time assertion: the source/object relationship and
+        # declared architecture layer may never drift apart again.
+        get_target_property(pom1_verified_links ${pom1_target} LINK_LIBRARIES)
+        if(NOT "pom1_devices" IN_LIST pom1_verified_links)
+            message(FATAL_ERROR
+                "${pom1_target} consumes pom1_test_devices but is not linked to pom1_devices")
+        endif()
+    endif()
+endforeach()
+if(pom1_device_consumer_count EQUAL 0)
+    message(FATAL_ERROR "No pom1_test_devices consumer was classified")
+endif()
+message(STATUS
+    "POM1: ${pom1_device_consumer_count} test targets bound to pom1_devices")
 
 # ── Timeout scaling under sanitizers ─────────────────────────────────────────
 # Every TIMEOUT above is sized for an optimised build. ASan/UBSan/TSan slow the

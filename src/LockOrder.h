@@ -1,8 +1,8 @@
 // LockOrder.h -- runtime enforcement of POM1's documented mutex order.
 //
-// POM1 has exactly three locks, and one rule about them:
+// POM1's core and peripheral locks follow one rule:
 //
-//     stateMutex  >  keyboard.keyMutex  >  publisher.snapshotMutex
+// state > rewind > keyboard > snapshot > peripheral > peripheral-inner
 //
 // That rule was written down in eight places (all four EmulationController
 // TUs, KeyboardController.h, SnapshotPublisher.h, Peripheral.h, CLAUDE.md) and
@@ -44,7 +44,9 @@ namespace pom1 {
 /// to right: stateMutex outermost, snapshotMutex innermost. Leave gaps so a
 /// fourth lock can slot in between two existing ones without renumbering.
 enum class LockRank : int {
-    Snapshot = 10,   ///< SnapshotPublisher::snapshotMutex -- innermost
+    PeripheralInner = 1, ///< Terminal screenshot result, nested under its card
+    Peripheral = 5,  ///< Card/device state mutexes
+    Snapshot = 10,   ///< SnapshotPublisher::snapshotMutex
     Keyboard = 20,   ///< KeyboardController::keyMutex
     Rewind   = 25,   ///< EmulationController::rewindMutex -- delta encoding off the state lock
     State    = 30,   ///< EmulationController::stateMutex -- outermost
@@ -54,8 +56,8 @@ enum class LockRank : int {
 
 namespace lockorder {
 
-/// Ranks currently held by THIS thread, innermost last. Fixed capacity: three
-/// locks exist and nothing nests deeper, so a stack array keeps the hot path
+/// Ranks currently held by THIS thread, innermost last. Fixed capacity exceeds
+/// the deepest supported hierarchy, so a stack array keeps the hot path
 /// allocation-free (and usable from the audio callback, where allocating would
 /// be a bug of its own).
 struct HeldStack {
@@ -80,7 +82,8 @@ inline void willAcquire(LockRank rank)
         // be strictly decreasing, so it is the smallest one.
         assert(static_cast<int>(rank) < s.ranks[s.depth - 1] &&
                "POM1 lock-order violation: see the rank table in LockOrder.h. "
-               "The order is stateMutex > keyMutex > snapshotMutex; taking a "
+               "The order is state > rewind > keyboard > snapshot > "
+               "peripheral > peripheral-inner; taking a "
                "lock at or outside the innermost one you already hold is the "
                "inversion that deadlocks the emulation thread.");
     }

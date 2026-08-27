@@ -168,8 +168,13 @@ if(POM1_GLES)
     message(STATUS "POM1: GL tier = OpenGL ES 3.0 / GLSL ES 300")
 endif()
 
-# ImGui
-set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
+# ImGui. Keep IMGUI_DIR as the internal compatibility name, but expose the
+# checkout location so source archives and hermetic builders can provide an
+# already-populated dependency without writing into the source tree.
+set(POM1_IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/imgui" CACHE PATH
+    "Path to an existing Dear ImGui docking-branch checkout")
+get_filename_component(IMGUI_DIR "${POM1_IMGUI_DIR}" ABSOLUTE
+                       BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 # The pin lives in the repo-root IMGUI_VERSION file — one line, two fields:
 # "<git tag> <IMGUI_VERSION_NUM floor>". Same idiom as VERSION: derive it
 # wherever a consumer can read a file, and let tools/check_imgui_pin.sh (ctest
@@ -197,7 +202,8 @@ list(GET POM1_IMGUI_PIN_FIELDS 1 POM1_IMGUI_MIN_VERSION_NUM)
 if(NOT EXISTS "${IMGUI_DIR}/imgui.h")
     message(FATAL_ERROR
         "Dear ImGui is missing from ${IMGUI_DIR}.\n"
-        "Run ./setup_pom1.sh (setup_pom1.bat on Windows), or clone it yourself:\n"
+        "Set -DPOM1_IMGUI_DIR=/path/to/imgui, run ./setup_pom1.sh "
+        "(setup_pom1.bat on Windows), or clone it yourself:\n"
         "  git clone --depth 1 --branch ${POM1_IMGUI_TAG} "
         "https://github.com/ocornut/imgui.git")
 endif()
@@ -309,8 +315,10 @@ set(SOURCES
     ${POM1_SRC_DIR}/X11ErrorGuard.cpp
     ${POM1_SRC_DIR}/CassetteDevice.cpp
     ${POM1_SRC_DIR}/CassetteDeck_ImGui.cpp
+    ${POM1_SRC_DIR}/CardTopology.cpp
     ${POM1_SRC_DIR}/CliDispatcher.cpp
     ${POM1_SRC_DIR}/MachinePresets.cpp
+    ${POM1_SRC_DIR}/MachineCoordinator.cpp
     ${POM1_SRC_DIR}/EmulationController.cpp
     ${POM1_SRC_DIR}/EmulationController_State.cpp
     ${POM1_SRC_DIR}/EmulationController_Machine.cpp
@@ -618,7 +626,7 @@ endif()
 # These are not preferences, they are correctness switches for the Windows
 # headers, and they must be identical wherever POM1's own .cpp files are
 # compiled. They used to be set with target_compile_definitions() on the POM1
-# executable ALONE, so `pom1_core` and the 50 test targets compiled the very
+# executable ALONE, so the shared test objects and 50 test targets compiled the very
 # same sources under a different set of macros. The 22 août 2026 breakage is
 # the canonical symptom: POM1.exe built cleanly while test_rewind_buffer,
 # test_cli_dispatcher and test_measured_cpu_rate all died on RewindBuffer.cpp
@@ -647,6 +655,42 @@ if(MSVC)
     target_compile_options(pom1_build_flags INTERFACE /utf-8)
 endif()
 
+# ── Logical architecture targets ────────────────────────────────────────────
+# These targets materialise dependency direction before source ownership is
+# moved out of the historical executable. They deliberately carry usage
+# requirements only: Release app objects use NDEBUG while the test copy of the
+# device layer must retain assert(), so sharing one OBJECT library would change
+# behaviour. Sources can migrate behind these seams incrementally.
+add_library(pom1_core INTERFACE)
+target_include_directories(pom1_core INTERFACE ${POM1_SRC_DIR})
+target_link_libraries(pom1_core INTERFACE pom1_build_flags)
+
+add_library(pom1_devices INTERFACE)
+target_link_libraries(pom1_devices INTERFACE pom1_core libresidfp_static)
+# Transitional header dependency: Memory owns devices whose headers still
+# reach Screen_ImGui/GraphicsCard. Phase 1 will remove ImGui from this layer.
+target_include_directories(pom1_devices INTERFACE ${IMGUI_DIR})
+if(WIN32)
+    target_link_libraries(pom1_devices INTERFACE ws2_32)
+endif()
+
+add_library(pom1_app INTERFACE)
+target_link_libraries(pom1_app INTERFACE pom1_devices)
+
+add_library(pom1_ui INTERFACE)
+target_link_libraries(pom1_ui INTERFACE pom1_app)
+target_include_directories(pom1_ui INTERFACE
+    ${IMGUI_DIR}
+    ${IMGUI_DIR}/backends
+    ${POM1_SRC_DIR}/bench
+    ${POM1_SRC_DIR}/hgrpaint
+    ${POM1_SRC_DIR}/tmspaint
+    ${POM1_SRC_DIR}/tmssprite
+    ${POM1_SRC_DIR}/hgrsprite
+    ${POM1_SRC_DIR}/sfxbeep
+    ${POM1_SRC_DIR}/sidtrack
+)
+
 set(POM1_OWN_SOURCES
     ${SOURCES}
     ${POM1_RENDERER_SOURCES}
@@ -667,12 +711,13 @@ set_source_files_properties(${POM1_OWN_SOURCES} PROPERTIES
 # libresidfp (vendored, third_party/libresidfp). PUBLIC include dir on the
 # static lib propagates ${SRC_DIR}/third_party/libresidfp/src to consumers,
 # so SID.cpp can include "residfp/residfp_defs.h" and the upstream SID.h.
-target_link_libraries(${PROJECT_NAME} libresidfp_static)
+target_link_libraries(${PROJECT_NAME} pom1_ui)
 
 # Portability macros — same INTERFACE target the tests link, so the app and the
 # 50 test binaries compile POM1's sources under one macro set. See the
 # pom1_build_flags block above.
-target_link_libraries(${PROJECT_NAME} pom1_build_flags)
+# pom1_build_flags arrives through pom1_ui -> pom1_app -> pom1_devices ->
+# pom1_core, making the intended dependency direction visible to CMake.
 
 # miniaudio (AudioDevice.cpp) dlopens its ALSA/Pulse/JACK backends and spawns
 # threads — link libdl/libpthread EXPLICITLY instead of riding on whatever the
@@ -1087,7 +1132,7 @@ else()
 
     # (MSVC portability macros — _CRT_SECURE_NO_WARNINGS / NOMINMAX /
     # WIN32_LEAN_AND_MEAN / /utf-8 — moved to the pom1_build_flags INTERFACE
-    # target above, which the app, pom1_core and every test target link. They
+    # target above, which the app, logical layers and every test target link. They
     # were set here on ${PROJECT_NAME} alone, which is what let the app and its
     # own tests compile the same sources under different macros.)
 

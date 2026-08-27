@@ -56,7 +56,7 @@ public:
 
     // Reset only re-seats transient state. The ROM buffer is preserved
     // across reset (matching real EEPROM persistence).
-    void reset() {}
+    void reset() override {}
 
     // Memory interface dispatched by PeripheralBus when the card is plugged.
     // Reads return $FF when no ROM has been loaded.

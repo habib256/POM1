@@ -1,0 +1,15 @@
+{
+  "allowed_reverse_dependencies": [],
+  "metric_ceilings": {
+    "controller_lines": 3079,
+    "mainwindow_lines": 17378,
+    "memory_lines": 4247,
+    "sources_outside_test_devices": 87
+  },
+  "header_fanout_ceilings": {
+    "EmulationController.h": 15,
+    "GraphicsCard.h": 9,
+    "MainWindow_ImGui.h": 18,
+    "Memory.h": 58
+  }
+}
