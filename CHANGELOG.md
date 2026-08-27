@@ -10,6 +10,30 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — consolidation architecturale, phases 0 à 3
+
+La première moitié de la consolidation est livrée et quitte `TODO.md`. Le build
+matérialise désormais les couches `pom1_ui → pom1_app → pom1_devices → pom1_core`,
+accepte des dépendances locales configurables et applique un cliquet architectural
+sur les dépendances, la taille des façades et le fan-out des en-têtes.
+
+La configuration matérielle a une source de vérité typée (`CardId`,
+`CardDescriptor`, `CardSet`) et une politique pure dans `CardTopology`. Presets,
+CLI, GUI et mode headless exécutent les mêmes `TransitionPlan`; les dépendances et
+conflits des cartes sont couverts exhaustivement.
+
+`MachineCoordinator` applique désormais presets et changements de cartes comme des
+transactions déterministes, sans délai en frames : arrêt du CPU, détachement,
+reset, configuration, attachement, activation et publication atomique. La matrice
+headless couvre les 13 presets et leurs combinaisons de cartes avant toute frame de
+rendu.
+
+Enfin, le callback audio ne verrouille, n’alloue et ne réalise plus d’I/O. Les rings
+SID/cassette sont SPSC, le retrait d’une source est une barrière de durée de vie,
+la hiérarchie des verrous est vérifiée et le stress concurrent exerce ensemble
+émulation, snapshots/rendu et mixage sous TSan. `RealtimeDiagnostics` mesure les
+attentes, détentions, callbacks, underruns et débordements dans les builds de test.
+
 ### Fixed — `--run … --step N` n'exécute que les N instructions demandées
 
 Vrai défaut, trouvé en poursuivant les trois micro-tests TMS9918 qui échouaient sous
