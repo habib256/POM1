@@ -12,73 +12,102 @@ et le logiciel 6502 dans [`dev/TODO6502.md`](dev/TODO6502.md).
 - Une réalisation quitte immédiatement ce fichier pour `CHANGELOG.md`.
 - 🚫 signifie qu’une ressource externe empêche réellement d’avancer.
 
-## Maintenant — consolidation du cœur
+## Maintenant — trois chantiers, dans cet ordre
 
-POM1 est un monolithe modulaire sain et très testé. La topologie, le cycle de vie
-des cartes et le chemin audio temps réel sont stabilisés. La priorité est désormais
-de séparer l’état émulé des services hôte sans réécriture du CPU, du bus, des
-renderers ou du format de snapshot.
+POM1 est un monolithe modulaire sain et très testé : 118 tests verts en ~55 s,
+oracles CPU cycle-exacts, fuzzers qui ont trouvé de vrais défauts, ordre des
+verrous prouvé. Le cœur n'est pas le problème.
 
-Architecture cible : panneaux UI → commandes et vues immuables → façade applicative
-thread-safe → `MachineCoordinator` (`CpuRunner`, `CardTopology`, `StateManager`) →
-espace d’adressage, `PeripheralBus` et périphériques. Audio, fichiers, réseau et
-rendu sont injectés à la racine de l’application.
+Le problème est le **périmètre** : sur ~85 600 lignes de `src/`, l'émulateur
+proprement dit en représente moins de 30 %, l'UI 20 % sans couverture directe,
+et l'outillage de développement 21 % — un second produit qui partage un
+processus, un build, une matrice de portage et un mainteneur. Les trois
+chantiers ci-dessous attaquent cela dans l'ordre du risque réel.
 
-### 1. Services hôte injectés (1–2 semaines)
+Les grands refactors d'architecture précédemment planifiés (`PeripheralManager`,
+`CpuRunner`, `StateManager`, migration panneau par panneau) sont **écartés** :
+voir la section dédiée plus bas. Ils totalisaient 11 à 19 semaines de refactor
+pur, sans valeur utilisateur, sur un cœur actuellement stable.
 
-- [ ] **Étendre `ResourceLocator` aux consommateurs restants** `[S · solid]` — `src/ResourceLocator.{h,cpp}` porte l'ordre de recherche unique et `Memory` le reçoit (sondes implicites du constructeur supprimées, `resource_locator_smoke`). Reste à y router les ~60 sondes `../` encore dispersées dans l'UI, le Bench et `GraphicsCard`/`Screen_ImGui`, et à couvrir les ressources web.
-- [ ] **Injecter le service audio** `[M · critical]` — le réseau et les fichiers sont faits : plus aucun socket n'est ouvert sans branchement de carte (`TerminalCard::setEnabled`), et les ressources passent par `ResourceLocator` (`hermetic_core_smoke` épingle les deux). Reste `AudioDevice`, toujours construit par `Memory` : fournir un `IAudioService` injecté depuis `main_imgui` avec un double en mémoire pour les tests. Mesure de référence : construction d'un cœur hermétique 133 ms, dont l'essentiel est cet objet.
+Architecture pour les humains : [`ARCHITECTURE.md`](ARCHITECTURE.md). Invariants
+et pièges : [`CLAUDE.md`](CLAUDE.md).
 
-> Sortie : `Memory` ne crée plus d’`AudioDevice` et ne découvre aucune ressource
-> hôte ; un test hermétique construit le cœur avec des doubles en mémoire.
+### 1. Isoler l'environnement de développement (2–3 semaines)
 
-### 2. Propriété des périphériques (2–4 semaines)
+Une régression dans un éditeur graphique bloque aujourd'hui une release
+d'émulateur, et la matrice de portage (Linux / macOS Metal+GL / Windows / WASM /
+Pi GLES / borne PGO) est payée sur 100 % du code. Objectif : pouvoir bâtir,
+tester et publier l'émulateur **sans** les 18 300 lignes d'outillage.
 
-- [ ] **Créer `PeripheralManager`** `[L · critical]` — transférer depuis `Memory` la propriété et le cycle de vie des cartes, les bindings `PeripheralBus`, les endpoints audio/réseau et l’exécution des `TransitionPlan`. Préserver `memRead()`, `memWrite()` et `PeripheralBus` comme interfaces stables pendant la migration.
-- [ ] **Abaisser le cliquet architectural à chaque extraction** `[S · solid]` — mettre à jour `architecture_baseline.json` uniquement vers le bas. Cibles de phase : `Memory` < 2 500 lignes et `Memory.h` inclus par moins de 25 unités de traduction.
+- [ ] **Mettre l'outillage derrière une option CMake** `[M · critical]` — regrouper `src/bench/`, `src/hgrpaint/`, `src/hgrsprite/`, `src/tmspaint/`, `src/tmssprite/`, `src/sfxbeep/`, `src/sidtrack/`, `src/Pom1BenchHost.cpp`, `src/Pom1HgrPaintHost.cpp`, `src/Pom1TmsPaintHost.cpp` et les compilateurs BASIC derrière `POM1_DEVTOOLS` (ON par défaut). Portée mesurée : 76 références réparties sur 6 fichiers seulement (`src/MainWindow_ImGui.h` en concentre 32, `src/MainWindow_ImGui.cpp` 17) — c'est borné. Critère : `-DPOM1_DEVTOOLS=OFF` compile, démarre et passe `ctest`.
+- [ ] **Séparer la voie de test** `[S · solid]` — étiqueter les tests (`LABELS emulator` / `devtools`) dans `tests/CMakeLists.txt` ; `ctest -L emulator` doit être vert sans cc65 ni éditeur, et devient la porte de release de l'émulateur.
+- [ ] **Épingler la frontière** `[S · solid]` — aucun fichier hors outillage ne doit inclure un en-tête d'éditeur ou de bench ; ajouter la règle à `tools/check_architecture.py` à côté de l'interdiction ImGui/MainWindow existante.
+- [ ] **Décider ensuite du packaging** `[S · solid]` — une fois la frontière tenue, trancher explicitement : release unique avec outillage, ou build « émulateur seul » pour la borne et le WASM. Ne pas trancher avant d'avoir la mesure de taille et de temps de build des deux.
 
-> Sortie : `Memory` ne porte plus que l’espace d’adressage, PIA et MMIO cœur ;
-> aucun cycle de vie de carte ne dépend d’elle.
+> Sortie : `-DPOM1_DEVTOOLS=OFF` produit un émulateur complet, testé et
+> publiable ; l'outillage a sa propre voie de test.
 
-### 3. Vues et snapshots indépendants (1–2 semaines)
+### 2. Services hôte injectés, puis geler `Memory` (1–2 semaines)
 
-- [ ] **Extraire les DTO publiés** `[M · solid]` — définir `CpuView`, `MachineView`, `CardView` et les snapshots de cartes hors des classes concrètes ; conserver temporairement des alias de compatibilité.
-- [ ] **Libérer `EmulationSnapshot.h` des périphériques concrets** `[M · solid]` — retirer notamment les dépendances vers `JukeBox`, `CodeTank`, TMS9918, réseau et imprimante ; basculer les consommateurs d’enums vers `CardTypes.h`.
+- [ ] **Injecter le service audio** `[M · critical]` — le réseau et les fichiers sont faits : plus aucun socket n'est ouvert sans branchement de carte (`TerminalCard::setEnabled`), et les ressources passent par `ResourceLocator` (`hermetic_core_smoke` épingle les deux). Reste `AudioDevice`, toujours construit par `Memory` : fournir un `IAudioService` injecté depuis `src/main_imgui.cpp` avec un double en mémoire pour les tests. Mesure de référence : construction d'un cœur hermétique 133 ms, dont l'essentiel est cet objet.
+- [ ] **Étendre `ResourceLocator` aux consommateurs restants** `[S · solid]` — `src/ResourceLocator.h` porte l'ordre de recherche unique et `Memory` le reçoit (`resource_locator_smoke`). Reste à y router les ~60 sondes `../` encore dispersées dans l'UI, le Bench et `GraphicsCard`/`Screen_ImGui`, et à couvrir les ressources web.
+- [ ] **Geler `Memory` au lieu de le démembrer** `[S · solid]` — `PeripheralManager` est écarté ; la contrainte devient un cliquet strictement décroissant. Règle : aucune nouvelle méthode publique sur `Memory` (~190 aujourd'hui), aucun nouvel inclus de `Memory.h` (59 unités de traduction), et toute extraction abaisse les plafonds de `tools/architecture_baseline.json`. Ajouter le compte de méthodes publiques aux métriques mesurées par `tools/check_architecture.py`, qui ne mesure aujourd'hui que des lignes et du fan-out.
 
-> Sortie : `EmulationSnapshot.h` ne contient que des types de vue stables et son
-> fan-out n’entraîne plus la recompilation des implémentations de cartes.
+> Sortie : `Memory` ne crée plus d'`AudioDevice` et ne découvre aucune ressource
+> hôte ; un test hermétique construit le cœur avec des doubles en mémoire ; la
+> taille de `Memory` ne peut plus croître.
 
-### 4. Façade applicative mince (2–3 semaines)
+### 3. Sortir les décisions de l'UI (3–4 semaines, incrémental)
 
-- [ ] **Extraire `CpuRunner`** `[L · critical]` — pacing, run, pause, step et slices, sans changer la sémantique headless/WASM.
-- [ ] **Extraire `StateManager`** `[L · critical]` — snapshots, sauvegarde, restauration et rewind ; la façade applicative conserve le verrouillage et la publication atomique.
-- [ ] **Remplacer les passthroughs par des commandes structurées** `[M · solid]` — préférer `applyCardConfiguration`, `applyMachinePreset` et `executeMachineCommand` aux wrappers par carte ; supprimer chaque ancienne API dès son dernier appelant.
-- [ ] **Abaisser `EmulationController` sous 1 500 lignes** `[M · solid]` — le cliquet doit mesurer simultanément lignes, méthodes publiques et fan-out.
+17 100 lignes de `MainWindow_*` sans test direct, et c'est là que vivaient les
+défauts connus (backspace destructif, six défauts du plein écran, auto-dial BBS
+perdu). La méthode a déjà fait ses preuves — `src/Apple1KeyMap.h`,
+`src/WindowGeometry.h`, `src/StagedCardConfiguration.h` — mais ne couvre que
+quelques centaines de lignes. **Viser les ~2 000 lignes qui portent des
+décisions, pas les 17 000 qui dessinent.**
 
-> Sortie : le contrôleur coordonne les commandes thread-safe mais ne contient ni
-> moteur CPU, ni gestionnaire d’état, ni logique propre à une carte.
+- [ ] **Supprimer le miroir matériel de l'UI** `[M · critical]` — l'état des cartes provient exclusivement de la vue publiée (`CardSet`) ; l'UI ne garde que les champs en cours d'édition et les erreurs de validation. C'est la duplication qui a rendu possible la régression d'auto-dial.
+- [ ] **Extraire les décisions de layout et de plein écran** `[M · solid]` — la règle d'attente sur `DisplaySize`, l'arbitrage plein écran natif macOS, la persistance `.size` et le choix « quelle géométrie s'applique » sont des fonctions pures ; les six défauts d'août 2026 y vivaient et aucun n'était épinglable sur place.
+- [ ] **Extraire les décisions de presets et de topologie** `[M · solid]` — quel preset, quelles cartes, quel ROM, quelles fenêtres ouvertes : `src/MachinePresets.h` et `src/CardTopology.h` portent déjà les données et la politique ; l'UI ne doit plus contenir que la composition.
+- [ ] **Unifier fenêtres, menus et raccourcis par identifiant stable** `[M · solid]` — un registre unique alimentant menus, raccourcis et persistance, puis une palette de commandes qui en dérive. Préserver l'interdiction des raccourcis Ctrl+lettre, réservés aux codes de contrôle Apple-1 (`shortcuts_sync`).
+- [ ] **Un test par décision extraite** `[S · solid]` — chaque extraction arrive avec son smoke test qui ne lie ni ImGui ni GLFW, comme `mainwindow_logic_smoke` et `staged_card_configuration_smoke`.
 
-## Ensuite — interface et industrialisation
+> Sortie : les décisions de l'UI sont testées hors ImGui ; `MainWindow_*` ne
+> contient plus que menus, docking, dessin et orchestration.
 
-### 5. UI par panneaux (4–6 semaines, incrémental)
+## Ensuite
 
-- [ ] **Faire du registre de fenêtres une fabrique d’`IPanel`** `[L · solid]` — chaque panneau possède visibilité, état transitoire, géométrie, modèle de vue et `render(AppContext&)` ; `MainWindow_ImGui` conserve menus, docking, layout et orchestration.
-- [ ] **Migrer un panneau par PR** `[L · solid]` — ordre : Silicon Strict et presets, panneaux de cartes, debug, dialogues fichier, puis éditeurs. Ajouter un test de logique par panneau migré.
-- [ ] **Supprimer le miroir matériel de l’UI** `[M · critical]` — l’état des cartes provient exclusivement de `MachineView`/`CardSet` ; l’UI ne garde que les champs en édition et les erreurs de validation.
-- [ ] **Unifier fenêtres, menus et raccourcis par identifiant stable** `[M · solid]` — ouvrir ensuite une palette de commandes dérivée du registre. Préserver l’interdiction des raccourcis Ctrl+lettre, réservés aux codes de contrôle Apple-1.
-- [ ] **Réduire le noyau `MainWindow_ImGui`** `[M · solid]` — cible : moins de 500 lignes de déclaration et moins de 5 000 lignes cumulées d’orchestration `MainWindow_*`.
+### 4. Dette ciblée (à traiter quand elle gêne, pas avant)
 
-### 6. Qualité, sécurité et chaîne de livraison (1–2 semaines)
+- [ ] **Libérer `EmulationSnapshot.h` des périphériques concrets** `[M · solid]` — retirer les dépendances vers `JukeBox`, `CodeTank`, TMS9918, réseau et imprimante ; basculer les consommateurs d'enums vers `src/CardTypes.h`. Justification mesurable : temps de recompilation, pas esthétique. À faire quand le fan-out coûte réellement.
+- [ ] **Remplacer les passthroughs par des commandes structurées** `[M · solid]` — préférer `applyCardConfiguration` et `setCardEnabled` aux wrappers par carte sur `EmulationController` (~215 méthodes publiques) ; supprimer chaque ancienne API dès son dernier appelant. Aucun grand refactor : on ne retire que ce qui n'a plus d'appelant.
 
-- [ ] **Mesurer la couverture par module** `[S · solid]` — publier couverture lignes/branches et définir des seuils sur les parseurs, la topologie, les snapshots et le cœur CPU plutôt qu’un pourcentage global trompeur.
+### 5. Qualité, sécurité et chaîne de livraison (1–2 semaines)
+
+- [ ] **Mesurer la couverture par module** `[S · solid]` — publier couverture lignes/branches et définir des seuils sur les parseurs, la topologie, les snapshots et le cœur CPU plutôt qu'un pourcentage global trompeur.
 - [ ] **Ajouter une analyse statique incrémentale** `[M · solid]` — `clang-tidy` sur le code POM1 modifié, avec baseline initiale explicite ; ne pas analyser le code vendu.
 - [ ] **Passer Windows en warnings-as-errors** `[S · solid]` — nettoyer les conversions POM1 restantes, exclure `stb_vorbis.c`, puis activer `/WX` dans le job Windows.
 - [ ] **Épingler les GitHub Actions par SHA** `[S · solid]` — conserver le tag lisible en commentaire et automatiser les mises à jour de dépendances.
 - [ ] **Produire SBOM et inventaire de licences** `[M · solid]` — attacher les deux aux releases et vérifier les composants vendus/bundlés.
-- [ ] **Ajouter des budgets de performance** `[M · solid]` — seuils reproductibles pour débit CPU, callback audio, application d’un preset et rewind ; alerter sur tendance avant de bloquer une PR.
-- [ ] **Créer un bundle local de diagnostic** `[M · solid]` — *Aide → Signaler un problème* assemble versions, journal, snapshot et configuration dans un zip explicitement choisi par l’utilisateur, sans télémétrie automatique. Éviter du travail non async-signal-safe dans un handler fatal.
-- [ ] **Alléger le dépôt Git** `[M · nice]` — inventorier les gros PDF, ZIP, vidéos, images et binaires FPGA ; conserver les sources indispensables, déplacer les archives vers releases/LFS ou un dépôt documentaire, puis documenter leur provenance.
+- [ ] **Ajouter des budgets de performance** `[M · solid]` — seuils reproductibles pour débit CPU, callback audio, application d'un preset et rewind ; alerter sur tendance avant de bloquer une PR.
+- [ ] **Créer un bundle local de diagnostic** `[M · solid]` — *Aide → Signaler un problème* assemble versions, journal, snapshot et configuration dans un zip explicitement choisi par l'utilisateur, sans télémétrie automatique. Éviter du travail non async-signal-safe dans un handler fatal.
+- [ ] **Alléger le dépôt Git** `[M · nice]` — inventorier les gros PDF, ZIP, vidéos, images et binaires FPGA ; conserver les sources indispensables, déplacer les archives vers releases/LFS ou un dépôt documentaire, puis documenter leur provenance. Repère : `.git` pèse 387 Mo, dont un `.po` de 32 Mo, un PDF de 18,5 Mo et une vidéo de 8,3 Mo. Le coût de ce chantier ne fait qu'augmenter.
 - [ ] **Automatiser la porte de sortie de consolidation** `[S · solid]` — réunir warnings-as-errors sur trois OS, matrice headless, navigateur WASM, sanitizers, fuzz smoke, couverture et bundle de diagnostic dans une checklist release.
+
+## Écarté — architecture non retenue pour l'instant
+
+Ces chantiers ont été planifiés puis écartés après évaluation. Ils ne sont pas
+absurdes ; ils sont **mal rentables à un mainteneur** : refactor pur, sans
+valeur utilisateur, avec un risque de régression réel sur un cœur stable et
+vert. Conservés ici pour être réactivés si un besoin concret apparaît — et ce
+besoin doit être nommé au moment de la réactivation.
+
+- **`PeripheralManager`** `[L]` — transférer depuis `Memory` la propriété et le cycle de vie des cartes. Écarté : `src/CardTopology.h` et `src/MachineCoordinator.h` fournissent déjà la politique et le plan de transition ; déplacer la propriété ne corrige aucun défaut connu. Remplacé par « geler `Memory` » (chantier 2). *Réactiver si* : une deuxième machine (POM2) doit partager la gestion des cartes.
+- **`CpuRunner` et `StateManager`** `[L]` — extraire le pacing et l'état hors de `EmulationController`. Écarté : le découpage en 4 unités de traduction a déjà réglé la lisibilité, et le contrôleur est le seul point où l'ordre des verrous est tenu — le fragmenter déplace le risque sans le réduire. *Réactiver si* : un second frontend a besoin du moteur sans le contrôleur.
+- **Abaisser `EmulationController` sous 1 500 lignes** `[M]` — cible de ligne sans défaut associé. Remplacé par la suppression des passthroughs au fil de l'eau (chantier 4).
+- **Fabrique d'`IPanel`, migration panneau par panneau, et cible « noyau `MainWindow_ImGui` sous 500 lignes »** `[L]` — 4 à 6 semaines pour ré-héberger du code de dessin déjà fonctionnel. Écarté au profit de l'extraction des seules décisions (chantier 3), qui apporte la testabilité sans la réécriture. *Réactiver si* : les panneaux doivent devenir dynamiques (plugins, panneaux externes).
+- **Extraire les DTO `CpuView` / `MachineView` / `CardView`** `[M]` — utile en principe, mais `src/SnapshotPublisher.h` remplit déjà le rôle. Ne garder que la partie mesurable : libérer `EmulationSnapshot.h` (chantier 4).
+
 
 ## Plus tard — produit et fidélité
 
