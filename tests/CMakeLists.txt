@@ -1895,6 +1895,22 @@ if(Python3_FOUND)
     set_tests_properties(headless_preset_matrix PROPERTIES
                          TIMEOUT 300 SKIP_RETURN_CODE 77)
 
+    # ── bbs_autodial — software/NET auto-dial against a local fake BBS ───────
+    # Offline end to end: the shipped WOZMON dumps still load at $0280 and still
+    # carry a NUL-terminated ATDT string, then the same program — with only its
+    # dial target rewritten to a listener the harness owns on 127.0.0.1 — is run
+    # on a headless POM1 and must reach the ACIA at $B000, connect exactly once
+    # and display CONNECT. Guards the chain the user sees; the commit-with-
+    # nothing-staged decision that broke it lives in the UI and is pinned by
+    # staged_card_configuration_smoke instead.
+    add_test(NAME bbs_autodial
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/test_bbs_autodial.py"
+                     --pom1 "$<TARGET_FILE:pom1_imgui>"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(bbs_autodial PROPERTIES
+                         TIMEOUT 120 SKIP_RETURN_CODE 77)
+
     # ── size_report_smoke — tools/size_report.py + the DevBench archive link ──
     # Rebuilds the gen2c runtime archive from dev/bench/gen2c.json (pins the
     # spec: every listed source must exist and compile), links a text-only
@@ -2168,6 +2184,16 @@ add_executable(test_terminal_card
 target_include_directories(test_terminal_card PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME terminal_card_smoke COMMAND test_terminal_card)
 set_tests_properties(terminal_card_smoke PROPERTIES TIMEOUT 10)
+
+# The UI's card-configuration transaction. Pure value logic — no ImGui, no
+# GLFW, no Memory — which is the whole point: it is the decision half of the
+# GUI hardware rail, and the BBS auto-dial regression lived there.
+add_executable(test_staged_card_configuration
+    staged_card_configuration_smoke_test.cpp
+)
+target_include_directories(test_staged_card_configuration PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME staged_card_configuration_smoke COMMAND test_staged_card_configuration)
+set_tests_properties(staged_card_configuration_smoke PROPERTIES TIMEOUT 10)
 
 # P-LAB MODEM BBS — 65C51 ACIA register file + Hayes AT parser. No ATD is
 # issued, so no connection is attempted.

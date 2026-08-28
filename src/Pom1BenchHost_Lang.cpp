@@ -125,12 +125,12 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
             r.ok = false;
             return r;
         }
-        // When the switch to preset 1 was applied fresh (e.g. the Mode selector, or a
-        // Run from another preset), applyMachineConfig queued the preset's DEFAULT
-        // CodeTank ROM (Codetank_ARCADE.rom) for the still-pending plug. Clear that
-        // path now so applyPendingCardConfiguration() does NOT reload ARCADE over the
+        // A fresh switch to preset 1 (the Mode selector, or a Run from another
+        // preset) carries the preset's DEFAULT CodeTank ROM, Codetank_ARCADE.rom.
+        // Open a transaction over the live machine with an EMPTY cart path so the
+        // commit below re-configures the card without reloading ARCADE over the
         // Applesoft cartridge we just inserted.
-        mw_->stagedCardConfiguration.codeTankRomPath.clear();
+        mw_->stageCardConfiguration().codeTankRomPath.clear();
     }
     mw_->applyPendingCardConfiguration();
 
@@ -510,7 +510,7 @@ bench::BuildResult Pom1BenchHost::injectLogo(int target, const std::string& src,
             r.console = "[bench] " + interp + ": Codetank_BASIC_LOGO.rom load FAILED — " + err + "\n";
             r.status = interp + ": ROM load failed"; r.ok = false; return r;
         }
-        mw_->stagedCardConfiguration.codeTankRomPath.clear();
+        mw_->stageCardConfiguration().codeTankRomPath.clear();
     }
     mw_->applyPendingCardConfiguration();
 

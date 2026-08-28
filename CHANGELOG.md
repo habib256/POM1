@@ -33,6 +33,40 @@ SID/cassette sont SPSC, le retrait d’une source est une barrière de durée de
 la hiérarchie des verrous est vérifiée et le stress concurrent exerce ensemble
 émulation, snapshots/rendu et mixage sous TSan. `RealtimeDiagnostics` mesure les
 attentes, détentions, callbacks, underruns et débordements dans les builds de test.
+### Fixed — l'auto-connexion BBS depuis `software/NET` composait dans le vide
+
+Charger `software/NET/bbs.fozztexx.com.txt` branchait bien le Wi-Fi Modem et
+lançait bien le programme d'auto-dial à `$0280` — mais plus aucune connexion
+n'aboutissait. Le programme tournait pourtant : il écrivait sa commande `ATDT`
+dans de la RAM nue, parce que la carte n'était plus sur le bus.
+
+`CardConfigurationRequest::cards` décrit une topologie **absolue** :
+`MachineCoordinator` détache toute carte que la requête ne nomme pas. Or la
+requête vide et l'absence de requête étaient indiscernables. `performMemoryLoad()`
+— comme six chemins du DevBench — valide toute transaction ouverte avant de
+toucher à la mémoire, et `applyMachineConfig()` a déjà validé la sienne : cet
+appel de vidange trouvait donc une requête vide et l'appliquait, c'est-à-dire
+demandait la machine sans aucune carte. Le modem quittait le bus quelques
+microsecondes avant que le programme n'écrive en `$B000`.
+
+`pom1::StagedCardConfiguration` porte désormais cette distinction. Une
+transaction non ouverte ne valide rien, et le premier `stage()` initialise la
+cible depuis la machine **vivante** — cartes et options de carte — de sorte
+qu'un amendement (« brancher aussi le TMS9918 », les lanceurs du sélecteur de
+profil, un changement de cartouche DevBench) s'ajoute au bus au lieu de le
+remplacer par une machine mono-carte ; `applyMachineConfig()` continue d'écraser
+`cards` en bloc. `clear()` réinitialise tout sauf `mode`, seul porteur du choix
+Strict/Fantasy. Trois lanceurs du sélecteur amendaient après validation et
+n'avaient donc plus aucun effet : ils valident maintenant leur amendement.
+
+Le type est de la logique de valeur pure — ni ImGui, ni GLFW, ni `Memory` — donc
+atteignable par un test (`staged_card_configuration_smoke`), suivant la même
+règle de couture qu'`Apple1KeyMap` et `WindowGeometry`. Le nouveau `bbs_autodial`
+épingle l'autre bout, hors ligne : les deux fichiers livrés chargent toujours en
+`$0280` avec une chaîne `ATDT` terminée par un NUL, puis le même programme — sa
+seule cible de composition réécrite vers un serveur BBS factice tenu par le
+harnais sur `127.0.0.1` — atteint l'ACIA en `$B000`, se connecte **une seule
+fois** et affiche `CONNECT`. Le comportement manuel d'`ATmodem.txt` est inchangé.
 
 ### Fixed — `--run … --step N` n'exécute que les N instructions demandées
 

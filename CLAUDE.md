@@ -112,6 +112,28 @@ Claudio PARMIGIANI (P-LAB designer): on real hardware exactly ONE P-LAB card is 
   bool)`; all fifteen per-card `setXxxEnabled()` controller wrappers are gone.
   `card_registry_smoke` executes the daughterboard cascades and representative
   SID/Juke-Box exclusions through the real coordinator.
+- **The UI's staging rail — `StagedCardConfiguration.h`.** `request.cards` is an
+  **ABSOLUTE** target set: `MachineCoordinator` detaches every card the request
+  does NOT name, so the DTO alone cannot tell *"nothing staged"* from *"stage
+  the empty machine"*. The GUI needs that distinction because
+  `performMemoryLoad()` and six DevBench paths commit up front to flush a
+  preset's plugs before the CPU runs, and `applyMachineConfig()` has usually
+  committed already — the unguarded repeat applied the empty topology and swept
+  **every card off the bus**. That is what silently broke BBS auto-dial: loading
+  `software/NET/bbs.*.txt` unplugged the Wi-Fi modem microseconds before the
+  program at `$0280` started writing to the ACIA at `$B000`, so it dialled into
+  RAM. `pom1::StagedCardConfiguration` carries `pending()` alongside the request
+  and is **pure value logic** (no ImGui, no GLFW, no `Memory` — same seam rule as
+  `Apple1KeyMap`/`WindowGeometry`, pinned by `staged_card_configuration_smoke`).
+  Two rules it enforces: an untouched transaction commits **nothing**, and the
+  **first** `stage()` seeds cards *and* board options from the LIVE machine so an
+  amend (*"also plug the TMS9918"*, the chooser launchers, a DevBench cart swap)
+  adds to what is on the bus instead of replacing it with a single-card machine —
+  `applyMachineConfig()` still assigns `cards` wholesale over that seed. `clear()`
+  resets everything **except `mode`**, the only carrier of Strict-vs-Fantasy (the
+  machine stores no topology mode). Every write to the staged request goes
+  through `MainWindow_ImGui::stageCardConfiguration()`; there is no headless
+  equivalent — `applyHeadlessConfig()` builds one request and commits it once.
 - **Peripheral lifecycle (phase 2, incremental)** — `Peripheral` tracks
   `Constructed → Attached → Reset → Active`; transitions are idempotent and
   skipped phases fail. `MachineCoordinator` owns attach/detach markers and
@@ -275,6 +297,8 @@ Load-bearing pins worth knowing:
 - **`measured_cpu_rate_smoke`** — the status bar's MEASURED clock rate (`EmulationController::getMeasuredCpuHz`) vs the pacer's target. Wall-clock based, loose bands; it separates "measured" from "target" and from the burst-rate bug (charging elapsed time only to slices that ran the CPU reads x1 as tens of MHz). Also pins that a parked CPU publishes 0 — the window only refreshes inside `runEmulationSlice`, which the park branch skips.
 - **`lock_order_smoke`** — the mutex order (`stateMutex > keyboard.keyMutex > publisher.snapshotMutex`) is now ENFORCED, not just documented: `src/LockOrder.h` gives each lock a rank and asserts a thread only ever takes one strictly inside what it already holds. `PriorityMutex` carries the `State` rank; `keyMutex` and `snapshotMutex` are `pom1::RankedMutex<...>` (BasicLockable, so the six existing `lock_guard` sites only changed their template argument). Compiled out under `NDEBUG`, live in the test binaries (`-UNDEBUG`) and in Debug builds — and layout-identical either way, so no ABI hazard. The test **forks a child per inversion and reaps `SIGABRT`**, which is the point: a checker that never fires reads as coverage while providing none. It carries a control case for the same reason — a checker that aborted on *everything* would otherwise pass every assertion.
 - **`doc_paths_sync`** — third guard of the `version_sync` / `imgui_pin_sync` family (`tools/check_doc_paths.py`): every source path the markdown cites in backticks must exist. 370 citations checked, resolved against the repo root, the citing document's own directory, `src/`, `dev/` and `dev/lib/` — those last three being the conventions the docs actually use. `CHANGELOG.md` is excluded whole (a changelog naming a file that has since moved is correct history, not drift), as are `EXTERNAL_ROOTS` (POM2, upstream demos, toolkit headers) and filename templates like `imgui_preset_NN.ini`. Replaces a manual pass — the git log already contains one that fixed 20 drifts by hand.
+- **`staged_card_configuration_smoke`** — the UI's card-configuration transaction (`StagedCardConfiguration.h`, above). Pins that an untouched transaction has nothing to commit (the BBS regression), that the first `stage()` seeds cards + board options from the live machine so an amend adds rather than replaces, that a wholesale `cards` assignment still wins (`applyMachineConfig`), that `clear()` preserves `mode`, and that `stage()` seeds once per transaction. Links nothing but the header — the point is that this decision is reachable without ImGui.
+- **`bbs_autodial`** — the user-visible end of the same regression, offline (`tools/test_bbs_autodial.py`). Phase A reads both shipped `software/NET/bbs.*.txt` dumps as text and pins load address `$0280` + a NUL-terminated `ATDT <host>:23`. Phase B runs the SAME program with only its dial target rewritten to a listener the harness owns on `127.0.0.1`, and asserts the loader reports run `$0280`, the modem logs the dial, the emulated display shows the echoed `ATDT` and the modem's `CONNECT`, and the fake BBS accepted **exactly one** connection. No Internet is used or needed. It does NOT guard the staging decision — that lives in the UI, which no test binary links.
 - **`extended_aci_smoke`** — Uncle Bernie's Extended ACI end to end: pins the `$C500` mapping / write-protect / ACI cascade *both ways*, then plays his own `cassettes/codebrk.aiff` through the real pulse path, types `C500R` + `RX RX`, and asserts Codebreaker autostarts (banner on `$D012`). Also the **only** gate on POM1's hand-rolled AIFF reader.
 
 **CMake layers and test build model.** The dependency direction is materialised

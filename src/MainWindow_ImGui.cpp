@@ -176,19 +176,45 @@ void MainWindow_ImGui::destroyPom1()
     keyboardPhotoLoadTried = false;
 }
 
+// Open (or amend) the pending card-configuration transaction. See the header
+// for why every write to stagedCardConfiguration has to come through here.
+pom1::CardConfigurationRequest& MainWindow_ImGui::stageCardConfiguration()
+{
+    // Board options ride the seed too: planConfiguration() re-configures every
+    // target card, so an amend carrying a stale jumper would silently revert a
+    // jumper the user set through the Hardware menu since the last commit.
+    pom1::MachineTopologySeed live;
+    live.cards           = emulation->getEnabledCards();
+    live.jukeBoxJumper   = emulation->getJukeBoxJumper();
+    live.jukeBoxChipMode = emulation->getJukeBoxChipMode();
+    live.codeTankJumper  = emulation->getCodeTankJumper();
+    return stagedCardConfiguration.stage(live);
+}
+
 // Commit the preset/CLI hardware intent synchronously. Safe on repeat: the
-// request is cleared after the transaction.
+// request is cleared after the transaction, and a drain with nothing staged
+// is a genuine no-op rather than a request for the empty machine.
+//
+// That distinction is load-bearing. CardConfigurationRequest::cards is an
+// ABSOLUTE target set: MachineCoordinator detaches everything the request does
+// not name. The load paths and the DevBench call this up front to flush a
+// preset's plugs before starting the CPU, and applyMachineConfig() has usually
+// drained already — so an unguarded repeat applied the empty topology and
+// unplugged every card. That is what silently broke BBS auto-dial: loading
+// software/NET/bbs.*.txt swept the Wi-Fi modem off the bus microseconds before
+// the program at $0280 started writing to the ACIA at $B000.
 void MainWindow_ImGui::applyPendingCardConfiguration()
 {
+    if (!stagedCardConfiguration.pending()) return;
     const bool runCassettePreload = stagedCassetteAudioActive;
-    if (stagedCardConfiguration.cards.contains(pom1::CardId::JukeBox))
+    if (stagedCardConfiguration.request().cards.contains(pom1::CardId::JukeBox))
         evictMemoryMapRegionsForJukeBox();
 
     // Attach the complete topology before activating producers or loading a
     // tape. In particular, loadTape() inspects the ACI attachment to choose
     // pulse/program mode versus raw audio-stream mode.
     const pom1::CardConfigurationResult topologyResult =
-        emulation->applyCardConfiguration(stagedCardConfiguration);
+        emulation->applyCardConfiguration(stagedCardConfiguration.request());
     if (!topologyResult) {
         pom1::log().error("POM1", "rejected deferred card topology: " +
                          topologyResult.message);
@@ -233,23 +259,7 @@ void MainWindow_ImGui::applyPendingCardConfiguration()
                 preloadTapePath + "': " + err);
         }
     }
-    stagedCardConfiguration.cards = {};
-    stagedCardConfiguration.codeTankRomPath.clear();
-    stagedCardConfiguration.systemRomProfile =
-        pom1::CardConfigurationRequest::SystemRomProfile::Preserve;
-    stagedCardConfiguration.loadKrusader = false;
-    stagedCardConfiguration.loadCffa1Firmware = false;
-    stagedCardConfiguration.coldReset = false;
-    stagedCardConfiguration.animateBoot = true;
-    stagedCardConfiguration.activateCassetteAudio = false;
-    stagedCardConfiguration.presetRamKB.reset();
-    stagedCardConfiguration.siliconStrict.reset();
-    stagedCardConfiguration.outOfRangeStrict.reset();
-    stagedCardConfiguration.vramNoiseOnReset.reset();
-    stagedCardConfiguration.systemRamNoiseOnReset.reset();
-    stagedCardConfiguration.cpuDecimalBugNMOS.reset();
-    stagedCardConfiguration.dramRefresh.reset();
-    stagedCardConfiguration.gen2RandomPowerOn.reset();
+    stagedCardConfiguration.clear();
     stagedCassetteAudioActive = false;
     stagedPresetTapePath.clear();
     stagedPresetTapeForceProgramMode = false;
@@ -284,8 +294,8 @@ void MainWindow_ImGui::applyBootConfig(int presetIndex)
 void MainWindow_ImGui::applyBootCliOverrides()
 {
     auto queueCard = [this](pom1::CardId card, bool enabled) {
-        if (enabled) stagedCardConfiguration.cards.add(card);
-        else stagedCardConfiguration.cards.remove(card);
+        if (enabled) stageCardConfiguration().cards.add(card);
+        else stageCardConfiguration().cards.remove(card);
     };
     // The P-LAB Terminal Card stays UNPLUGGED at startup regardless of the
     if (terminalCardOverride) {
@@ -429,18 +439,18 @@ void MainWindow_ImGui::applyBootCliOverrides()
     }
     if (jukeBoxJumperOverride) {
         jukeBoxJumper        = *jukeBoxJumperOverride;
-        stagedCardConfiguration.jukeBoxJumper = *jukeBoxJumperOverride;
+        stageCardConfiguration().jukeBoxJumper = *jukeBoxJumperOverride;
     }
     if (jukeBoxChipModeOverride) {
         jukeBoxChipMode        = *jukeBoxChipModeOverride;
-        stagedCardConfiguration.jukeBoxChipMode = *jukeBoxChipModeOverride;
+        stageCardConfiguration().jukeBoxChipMode = *jukeBoxChipModeOverride;
     }
     if (codeTankJumperOverride) {
         codeTankJumper        = *codeTankJumperOverride;
-        stagedCardConfiguration.codeTankJumper = *codeTankJumperOverride;
+        stageCardConfiguration().codeTankJumper = *codeTankJumperOverride;
     }
     if (!codeTankRomPathOverride.empty()) {
-        stagedCardConfiguration.codeTankRomPath = codeTankRomPathOverride;
+        stageCardConfiguration().codeTankRomPath = codeTankRomPathOverride;
         codeTankRomPathOverride.clear();
     }
     if (siliconStrictModeOverride) {

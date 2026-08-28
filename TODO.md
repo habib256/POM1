@@ -19,10 +19,6 @@ des cartes et le chemin audio temps réel sont stabilisés. La priorité est dé
 de séparer l’état émulé des services hôte sans réécriture du CPU, du bus, des
 renderers ou du format de snapshot.
 
-### Régression prioritaire
-
-- [ ] **Rétablir l’auto-connexion BBS depuis `software/NET`** `[S · critical]` — le chargement de `bbs.fozztexx.com.txt` ou `bbs.retrocampus.com.txt` branche/réinitialise encore le Wi-Fi Modem, mais ne lance plus le programme d’auto-dial à `$0280`. Identifier la rupture entre chargement, action différée et démarrage CPU ; rétablir le lancement automatique sans modifier le comportement manuel d’`ATmodem.txt`. Ajouter un test sans Internet avec connecteur factice qui épingle chargement à `$0280`, exécution, commande `ATDT` émise et tentative de connexion unique.
-
 Architecture cible : panneaux UI → commandes et vues immuables → façade applicative
 thread-safe → `MachineCoordinator` (`CpuRunner`, `CardTopology`, `StateManager`) →
 espace d’adressage, `PeripheralBus` et périphériques. Audio, fichiers, réseau et
