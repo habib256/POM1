@@ -34,6 +34,345 @@ la hiérarchie des verrous est vérifiée et le stress concurrent exerce ensembl
 émulation, snapshots/rendu et mixage sous TSan. `RealtimeDiagnostics` mesure les
 attentes, détentions, callbacks, underruns et débordements dans les builds de test.
 
+### Fixed — POM1 ouvrait un port TCP que personne n'avait demandé
+
+`TerminalCard::reset()` appelait `startServer()` sans condition, et
+`Memory::resetMemory()` réinitialise toutes les cartes qu'elles soient branchées
+ou non. Résultat : **tout** processus POM1 et **tout** binaire de test écoutait
+sur `localhost:6502` alors que la Terminal Card est débranchée par défaut.
+
+Mesuré : un `Memory` nu, audio désactivé, carte signalée `enabled? 0`, liait
+quand même le port — deux fois — et un second cœur dans le même processus
+échouait avec `failed to bind port 6502 (already in use?)`.
+
+Le coût était déjà visible dans l'arbre : `terminal_card_smoke` porte en
+en-tête « reset() calls startServer(), so it BINDS localhost:6502. This test
+therefore never calls reset() ». Quelqu'un avait remarqué le défaut et l'avait
+contourné **dans le test**, qui épinglait du coup les valeurs par défaut du
+firmware depuis les initialiseurs de membres plutôt que depuis le `reset()` qui
+les restaure réellement.
+
+`TelemetryPort`, juste à côté, n'ouvre son serveur que lorsqu'il est activé
+depuis toujours. `TerminalCard::setEnabled()` aligne la carte dessus,
+`Memory::setTerminalCardEnabled()` le pilote, et `reset()` ne réécoute que si la
+carte est branchée. `--terminal` fonctionne comme avant — les harnais telnet le
+passent tous. Le contournement a disparu du test, qui couvre maintenant le vrai
+chemin.
+
+### Added — `hermetic_core_smoke`, le critère de sortie sous forme d'assertion
+
+Un cœur construit pour un test ne touche que ce qu'on lui donne. Deux cœurs
+coexistent dans un même processus sans socket, `resetMemory()` n'en ouvre pas,
+une racine injectée qui contient une ROM est bien celle utilisée, et une racine
+vide se rabat sur le moniteur intégré **en le signalant**.
+
+Le test dit aussi explicitement ce qu'il ne prétend **pas** encore : `Memory`
+construit toujours un `AudioDevice`, simplement sans initialiser le matériel
+quand on le lui demande. Coût de construction : **133 ms contre 205 ms**, le
+reste étant précisément cet objet audio — c'est la moitié restante de l'item.
+
+### Fixed — les ressources étaient cherchées à des profondeurs différentes selon l'appelant
+
+Chaque consommateur réimplémentait le même parcours « essayer `x`, puis `../x`,
+puis `../../x` » — et ils n'étaient pas d'accord sur la hauteur à remonter.
+`Memory::loadROM()` montait d'**un** niveau, les sondes sdcard/disks/cfcard de
+**deux**, la sonde CodeTank de **trois**. Lancé depuis `build/tests/`, POM1
+trouvait donc les images disque mais pas les ROMs, puis substituait
+silencieusement son moniteur Woz intégré (`WARN: loaded from built-in
+fallback`) et continuait. Vérifié dans les deux sens : depuis `build/tests/`,
+les ROMs se chargent maintenant toutes.
+
+`pom1::ResourceLocator` porte un ordre unique : le répertoire courant et trois
+ancêtres, puis le répertoire de l'exécutable et les dispositions que les
+empaqueteurs mettent autour (`Resources/` d'un `.app` macOS, `share/POM1/` d'un
+AppImage), dédoublonnés. Un chemin **absolu** est rendu tel quel, jamais réécrit
+— `--iec-disk /tmp/x.d64` et les sélecteurs de fichiers passent par là.
+
+`defaultLocator()` rend **par valeur** et recalcule la moitié « répertoire
+courant » à chaque appel : ce répertoire est un état vivant
+(`pom1_macos_provision_user_data_dir()` fait un `chdir` au démarrage, les tests
+en font vers des bacs à sable), et le mettre en cache faisait dépendre la
+résolution du *moment* où le localisateur était touché pour la première fois.
+`rom_fallback_smoke` a attrapé exactement ça — il trouvait encore les vraies
+ROMs depuis son bac à sable. Seule la moitié dérivée de l'exécutable est mise en
+cache ; elle ne bouge pas.
+
+### Changed — `Memory` reçoit son localisateur de ressources
+
+`Memory` prend un `ResourceLocator` (par défaut, donc tous les appelants
+existants sont inchangés) et le **conserve** : `loadROM()` le consulte à chaque
+changement de preset, pas seulement à la construction. Les quatre sondes
+implicites du constructeur disparaissent.
+
+C'est aussi le seul moyen de dire « aucune ROM nulle part » : les ressources
+étant désormais cherchées à côté de l'exécutable, un `chdir` vers un répertoire
+vide ne suffit plus — le binaire de test vit lui-même dans l'arbre.
+`rom_fallback_smoke` exprime maintenant son intention avec
+`ResourceLocator::rootedAt(sandbox)`, ce qui est plus juste que ce qu'il faisait.
+
+### Added — campagne de fuzzing nocturne en CI
+
+Les quatre cibles tournent déjà en pilote déterministe à chaque PR (~1 s). Le
+nouveau job `fuzz` de `ci.yml` reconstruit les mêmes vérifications derrière
+`LLVMFuzzerTestOneInput` avec clang — Apple clang et g++ ne fournissent pas
+libFuzzer, ce qui est précisément pourquoi le pilote déterministe est le défaut
+et non le repli — et laisse libFuzzer les piloter 15 minutes chacune.
+
+Le corpus est mis en cache d'une nuit à l'autre et amorcé depuis les fichiers
+livrés : les ~120 vidages hexadécimaux de `software/`, les enregistrements de
+`cassettes/`, un `.d64`, et un instantané produit par une exécution headless
+réelle. L'amorçage aplatit les chemins avec un préfixe dérivé du chemin, car le
+même nom de base existe dans plusieurs sous-dossiers de `software/` et une copie
+simple n'en gardait qu'un — un corpus silencieusement plus petit qu'il n'en a
+l'air. Vérifié à sec : 66 vidages sur 66 arrivent.
+
+Une trouvaille fait échouer le job et téléverse l'entrée fautive en artefact.
+C'est elle le livrable : elle devient un cas de régression dans le `*_smoke`
+correspondant, comme l'ont fait tous les défauts que ces cibles ont déjà
+trouvés.
+
+### Fixed — une carte échouant en cours de désérialisation laissait la machine modifiée
+
+La porte structurelle ajoutée précédemment atteste la **forme** du fichier, pas
+la charge utile propre à chaque carte : cette grammaire vit dans le
+`deserialize` de la carte, et plusieurs d'entre elles restaurent des champs
+avant de pouvoir rejeter ce qui suit. `PR40Printer` a déjà écrit son mode, sa
+FIFO et quatre compteurs quand il valide le nombre de lignes du rouleau.
+
+Mesuré avant correction, en forgeant ce compteur : la machine se retrouvait avec
+le CPU **et** la RAM de l'instantané (`PC=$1234`, `$0300=$AA`) alors que
+l'appelant recevait un échec — plus une imprimante à moitié restaurée par-dessus.
+
+L'application est désormais encadrée d'un retour arrière : une copie de la
+machine vivante est conservée et remise en place si la restauration échoue.
+Mesures ayant motivé le choix plutôt qu'une refonte des quinze `deserialize` :
+sérialiser coûte **16 µs** contre les **452 µs** que prend déjà une
+restauration, soit 3,6 % — et cela couvre *toute* défaillance, y compris une
+exception levée par une carte. Le chemin de recherche du rewind le paie aussi et
+ne le voit pas.
+
+Après correction, même entrée forgée : `PC=$BEEF`, `$0300=$55` — l'état
+antérieur, intact.
+
+### Fixed — les chaînes de secteurs D64 étaient parcourues au compteur, pas par détection de cycle
+
+Un D64 est une structure **chaînée** : chaque bloc de répertoire et chaque
+secteur de fichier nomme le suivant, et rien nulle part n'enregistre la longueur
+d'une chaîne — on l'apprend en suivant les liens. Une image corrompue peut donc
+faire pointer une chaîne sur elle-même, et la seule condition d'arrêt saine est
+« je suis déjà passé ici ».
+
+Les compteurs qui en tenaient lieu étaient des suppositions, fausses dans les
+deux sens : le parcours de fichier autorisait 1000 sauts sur un disque de 683
+secteurs, si bien qu'un secteur pointant sur lui-même produisait un « fichier »
+de 254 Ko à partir d'une image de 174 Ko ; le parcours de répertoire n'en
+autorisait que 256, soit moins que les 683 blocs qu'une chaîne de répertoire
+pathologique mais **légale** pourrait occuper. `VisitedSectors` (683 bits) les
+remplace tous les cinq : moins cher que le compteur, et exact.
+
+Trouvé en fuzzant. Dans la même passe : les compteurs de blocs libres du BAM
+sont désormais bornés par la géométrie au lieu d'être crus sur parole — un
+disque tout à `$FF` annonçait « 8670 BLOCKS FREE » sur un disque qui en compte
+664. Un secteur ne peut pas avoir plus de blocs libres qu'il n'en contient.
+Cosmétique (la valeur alimente le pied de liste du répertoire), mais faux.
+
+### Changed — le D64 se monte depuis la mémoire
+
+`D64Image::mountBytes()` accepte les octets ; `mount(chemin)` lit via
+`pom1::readFileBounded()` et délègue, de sorte qu'un fichier et un tampon
+passent exactement les mêmes règles d'acceptation — un D64 fait 35 pistes, avec
+ou sans les 683 octets d'erreur finaux, et rien d'autre n'en est un. Le format
+devient au passage atteignable par un test ou un fuzzer sans disque sur disque,
+ce qui est ce qui a permis de trouver les deux défauts ci-dessus.
+
+### Fixed — une sauvegarde tronquée laissait la machine à moitié restaurée
+
+Appliquer un instantané écrit directement dans la machine vivante, section par
+section. Un fichier abîmé en cours de route laissait donc un **hybride** tout en
+renvoyant un échec propre. Mesuré plutôt que supposé : un instantané réel de
+116 933 octets tronqué à 200 octets renvoyait bien `false`, mais le compteur
+ordinal valait déjà `$1234` — la valeur de l'instantané — au-dessus d'une RAM
+jamais remplacée. Un PC qui pointe dans un programme absent de la mémoire, c'est
+une machine qui va exécuter n'importe quoi. Le rejeu du rewind passe par les
+mêmes blocs.
+
+`pom1::validateSnapshot()` (pur, dans `SnapshotIO`) tranche à partir des octets
+seuls avant que le moindre état ne bouge : magie, version, parcours des
+sections avec vérification de chaque longueur contre les octets **restants**,
+les deux longueurs légales de la section `MEM`, et le compteur d'événements de
+`GEN2VID` borné par la charge utile réellement présente — ce compteur pilote un
+`reserve()`. `Memory::loadSnapshot(chemin)` lit désormais le fichier et délègue
+au chemin par tampon, de sorte qu'un fichier et un bloc de rewind franchissent
+la **même** porte ; lire directement depuis le disque la contournait, et c'est le
+chemin fichier qui voit les fichiers que POM1 n'a pas écrits.
+
+La porte couvre tout le cas d'entrée hostile — troncature et longueurs forgées ;
+la charge utile propre à chaque carte reste du ressort de son `deserialize`.
+
+### Changed — une seule lecture de fichier bornée pour tous les analyseurs
+
+`pom1::readFileBounded()` (`FileBytes.h`) remplace trois copies du même préambule
+« vérifier la taille puis avaler le fichier ». L'ordre est tout l'intérêt :
+avaler le fichier **est** l'allocation que la limite existe pour empêcher, donc
+une borne vérifiée après la lecture a déjà perdu. Images mémoire, conteneurs
+cassette et instantanés passent tous par là, ce qui rend la règle impossible à
+oublier sur un quatrième site.
+
+### Fixed — deux défauts des conteneurs cassette, trouvés en les fuzzant
+
+**Une fréquence d'échantillonnage sans borne supérieure.** L'analyseur AIFF a
+toujours été borné par son décodeur de flottant 80 bits ; l'analyseur WAV ne
+bornait rien. Un fichier pouvait déclarer quatre milliards de hertz et être
+accepté. La borne basse comptait davantage : les durées valent
+`deltaSamples × CPU_HZ ÷ fréquence` puis sont réduites en `uint32`, et à 1 Hz un
+intervalle de 5000 échantillons atteint déjà 5,1e9 — une conversion qu'UBSan
+qualifie de « outside the range of representable values of type
+`unsigned int` », c'est-à-dire un comportement indéfini, pas un débordement
+défini. Les deux analyseurs bornent maintenant la fréquence à une fenêtre
+plausible, et `pcmToDurations()` sature dans le domaine des doubles avant de
+réduire — les fichiers décodés par miniaudio passent aussi par là.
+
+**NaN et infini traversaient jusqu'au décodeur d'impulsions.** Un conteneur
+flottant transporte n'importe quel motif binaire, et rien en aval n'y était
+préparé : le décodeur compare chaque échantillon à un seuil, et toute
+comparaison avec un NaN est fausse. Un WAV flottant corrompu se lisait donc
+comme une ligne plate et ressortait en « no detectable cassette signal », ce qui
+n'apprend rien à l'utilisateur sur le vrai problème. Les échantillons non finis
+deviennent du silence, sont comptés et signalés.
+
+### Changed — les conteneurs cassette WAV et AIFF deviennent des fonctions pures
+
+`CassetteDevice` lisait le fichier, l'analysait, le mixait et rangeait le
+résultat d'un seul tenant. Aucun des deux analyseurs ne pouvait donc être testé
+ni fuzzé sans périphérique audio, et celui de l'AIFF — écrit par POM1 puisque
+miniaudio n'a pas de moteur AIFF, et que l'AIFF est ce qu'émet le synthétiseur
+`ACIace` d'Uncle Bernie — n'était gardé que par un seul test de bout en bout.
+
+`src/PcmFile.{h,cpp}` reçoit des octets et rend du flottant mono, une fréquence
+et un diagnostic. `CassetteDevice::loadPcmTape()` est le corps partagé
+taille-lecture-analyse-décodage derrière `loadWavTape` et `loadAiffTape`. Rien de
+partiel ne s'échappe : un refus ne porte aucun échantillon, et une largeur non
+supportée est refusée **avant** de décoder la moindre trame — l'ancienne version
+la découvrait depuis l'intérieur de la boucle, après avoir déjà mixé et rangé
+toutes les trames précédentes.
+
+**Bornes.** `kMaxPcmFileBytes` (256 Mo) est vérifiée avant la lecture du fichier.
+`kMaxPcmFrames` n'est pas nouvelle : c'est la limite de trente minutes que
+`loadMiniaudioTape()` applique depuis toujours, dont le commentaire dit qu'elle
+« prevents accidental 2-hour podcast loads from chewing memory ». Les deux
+analyseurs écrits à la main n'avaient **aucune limite**, donc le cas exact que
+décrit ce commentaire était refusé en `.mp3` et accepté en `.wav`. La troncature
+est signalée, jamais silencieuse.
+
+`pcm_file_smoke` (douze sections) et `pcm_file_fuzz_smoke` couvrent l'ensemble ;
+une campagne de 200 000 entrées sous ASan+UBSan est propre.
+
+### Fixed — une adresse trop large ne s'interprète plus différemment selon l'OS
+
+Trouvé en durcissant les chargeurs, pas en les fuzzant. Les analyseurs
+convertissaient les jetons hexadécimaux avec `strtol`, dont le type `long` fait
+64 bits sur macOS et Linux mais 32 bits sur Windows : un jeton trop large
+saturait différemment sur chacun. Une ligne d'adresse TurboType `100000000` se
+tronquait en `$0000` sur les hôtes 64 bits — les octets suivants partaient donc
+en **page zéro** — pendant que l'hôte 32 bits plafonnait ailleurs et les
+ignorait. Même fichier, deux machines, deux résultats, dont aucun n'était
+l'intention du fichier.
+
+Les adresses passent désormais par une accumulation vérifiée. L'analyseur
+structuré en lignes n'a aucune règle de jeton fusionné sur laquelle se rabattre :
+une adresse qu'il ne peut pas représenter est une ligne malformée, ignorée et
+signalée. L'analyseur joint conserve sa lecture documentée du même jeton
+(données fusionnées + adresse). Le comportement est identique sur toutes les
+plateformes.
+
+### Added — durcissement et fuzzing des chargeurs d'image mémoire
+
+`kMaxMemoryImageBytes` (8 Mo) borne l'entrée : `Memory::loadHexDump()` vérifie la
+**taille du fichier avant de le lire**, `parseMemoryImage()` revérifie pour tout
+autre appelant, et les deux partagent `memoryImageTooLargeMessage()` pour ne pas
+raconter deux histoires différentes de la même limite. Calibrage : le plus gros
+programme livré fait ~100 Ko, une image couvrant les 64 Ko en WOZMON quelques
+centaines de Ko. Les avertissements de quartet impair indiquent maintenant
+l'**adresse** de la première occurrence, pas seulement un décompte.
+
+`memory_image_fuzz_smoke` prend deux formes issues d'un seul fichier. Par défaut,
+un pilote **déterministe** (graine fixe, donc un échec se reproduit à l'octet
+près) rejoue un corpus de formes réelles, le mute vers la ponctuation qui pilote
+l'analyseur, et soumet **chaque** résultat au contrat de l'en-tête : confinement
+aux 64 Ko, `byteCount` cohérent avec les plages, aucune écriture sur une image
+rejetée, `zones()` en accord plage par plage, sortie bornée par l'entrée, et
+résultat identique à la seconde analyse. Avec `-DPOM1_FUZZERS=ON`, les mêmes
+vérifications passent derrière `LLVMFuzzerTestOneInput` pour la campagne ASan
+longue. Le pilote déterministe est le défaut et non le repli : Apple clang ne
+fournit pas libFuzzer, donc une porte uniquement libFuzzer ne s'exécuterait
+simplement pas sur macOS.
+
+Une campagne de 60 000 entrées sous ASan+UBSan n'a révélé aucune faute mémoire.
+
+### Changed — les chargeurs d'image mémoire deviennent des fonctions pures
+
+`Memory::loadHexDump()` entrelaçait analyse, écritures dans `mem[]` et appels à
+`pom1::log()`. Les trois dialectes vivent désormais dans
+`src/MemoryImageLoader.{h,cpp}` : `pom1::parseMemoryImage(contenu, nom)` reçoit
+des octets et un nom — jamais ouvert, il ne sert qu'au libellé des diagnostics
+et à la seule règle d'extension dont les formats aient besoin, `.tur` — et rend
+un `MemoryImage` complet : écritures en plages contiguës, adresse d'exécution,
+nombre d'octets et diagnostics typés. Ni `Memory`, ni système de fichiers, ni
+journal. `Memory::loadHexDump()` se réduit à analyser, décider, appliquer.
+
+Le comportement de chaque dialecte est conservé à l'octet près — WOZMON hex,
+Intel HEX et TurboType, y compris les pièges que chaque branche existe pour
+éviter (fusion des zones, jeton de 1-2 chiffres avant `:` traité comme donnée,
+jetons fusionnés données+adresse et données+run, marqueur `X` nu, détection
+d'Intel HEX par la forme). Les 120 fichiers livrés sous `software/` sont tous du
+hex WOZ 6502 ; aucun n'est de l'Intel HEX.
+
+**Plus aucune mutation partielle.** L'ancien chargeur écrivait chaque
+enregistrement Intel HEX en RAM au fur et à mesure et ne découvrait qu'ensuite
+celui qui dépassait les 64 Ko du 6502 — les précédents étaient déjà en mémoire.
+De même, un fichier n'établissant aucune adresse déversait ses octets errants en
+page zéro avant de renvoyer une erreur. Une image rejetée ne porte désormais
+aucune écriture.
+
+`memory_image_loader_smoke` couvre les dix points sans machine émulée ni
+fichier ; le cliquet architectural descend en conséquence (`memory_lines`
+4247 → 3892, `sources_outside_test_devices` 87 → 86).
+
+### Fixed — l'auto-connexion BBS depuis `software/NET` composait dans le vide
+
+Charger `software/NET/bbs.fozztexx.com.txt` branchait bien le Wi-Fi Modem et
+lançait bien le programme d'auto-dial à `$0280` — mais plus aucune connexion
+n'aboutissait. Le programme tournait pourtant : il écrivait sa commande `ATDT`
+dans de la RAM nue, parce que la carte n'était plus sur le bus.
+
+`CardConfigurationRequest::cards` décrit une topologie **absolue** :
+`MachineCoordinator` détache toute carte que la requête ne nomme pas. Or la
+requête vide et l'absence de requête étaient indiscernables. `performMemoryLoad()`
+— comme six chemins du DevBench — valide toute transaction ouverte avant de
+toucher à la mémoire, et `applyMachineConfig()` a déjà validé la sienne : cet
+appel de vidange trouvait donc une requête vide et l'appliquait, c'est-à-dire
+demandait la machine sans aucune carte. Le modem quittait le bus quelques
+microsecondes avant que le programme n'écrive en `$B000`.
+
+`pom1::StagedCardConfiguration` porte désormais cette distinction. Une
+transaction non ouverte ne valide rien, et le premier `stage()` initialise la
+cible depuis la machine **vivante** — cartes et options de carte — de sorte
+qu'un amendement (« brancher aussi le TMS9918 », les lanceurs du sélecteur de
+profil, un changement de cartouche DevBench) s'ajoute au bus au lieu de le
+remplacer par une machine mono-carte ; `applyMachineConfig()` continue d'écraser
+`cards` en bloc. `clear()` réinitialise tout sauf `mode`, seul porteur du choix
+Strict/Fantasy. Trois lanceurs du sélecteur amendaient après validation et
+n'avaient donc plus aucun effet : ils valident maintenant leur amendement.
+
+Le type est de la logique de valeur pure — ni ImGui, ni GLFW, ni `Memory` — donc
+atteignable par un test (`staged_card_configuration_smoke`), suivant la même
+règle de couture qu'`Apple1KeyMap` et `WindowGeometry`. Le nouveau `bbs_autodial`
+épingle l'autre bout, hors ligne : les deux fichiers livrés chargent toujours en
+`$0280` avec une chaîne `ATDT` terminée par un NUL, puis le même programme — sa
+seule cible de composition réécrite vers un serveur BBS factice tenu par le
+harnais sur `127.0.0.1` — atteint l'ACIA en `$B000`, se connecte **une seule
+fois** et affiche `CONNECT`. Le comportement manuel d'`ATmodem.txt` est inchangé.
+
 ### Fixed — `--run … --step N` n'exécute que les N instructions demandées
 
 Vrai défaut, trouvé en poursuivant les trois micro-tests TMS9918 qui échouaient sous

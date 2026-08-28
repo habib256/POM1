@@ -339,13 +339,11 @@ std::vector<std::string> MainWindow_ImGui::evictStorageCards()
 bool MainWindow_ImGui::performMemoryLoad(const std::string& path,
                                          int fileType, uint16_t address)
 {
-    // Force-fire any deferred preset plug-in first. applyMachineConfig
-    // queues card enables on a 15-frame countdown (~200 ms) to work around
-    // the silent-card-on-boot bug; if the user hits Load inside that window
-    // the new program's reset vector fires before the preset's cards reach
-    // the Memory bus, and early writes to e.g. $CC00/$CC01 vanish into RAM.
-    // Draining pending plugs here closes the race without changing the
-    // boot-time behaviour.
+    // Commit any card-configuration transaction still open before touching
+    // memory: the program about to load must not start running against a
+    // half-composed machine (early writes to e.g. $CC00/$CC01 would vanish
+    // into RAM). A no-op when nothing is staged, which is the usual case —
+    // applyMachineConfig() commits its own transaction.
     applyPendingCardConfiguration();
 
     // Auto-enable hardware cards based on source directory.

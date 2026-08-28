@@ -261,6 +261,9 @@ private:
 
     bool loadAciTape(const std::string& path);
     bool saveAciTape(const std::string& path) const;
+    // Shared body of the two hand-rolled container paths: size-check, read,
+    // hand the bytes to the pure parser in PcmFile.h, decode pulses.
+    bool loadPcmTape(const std::string& path, bool aiff);
     bool loadWavTape(const std::string& path);
     // Hand-rolled AIFF/AIFF-C PCM reader — miniaudio has no AIFF backend and
     // AIFF is what Uncle Bernie's ACIace tape synthesiser emits, so extended-

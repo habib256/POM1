@@ -1,4 +1,7 @@
 #include "CassetteDevice.h"
+#include "PcmFile.h"
+#include "FileBytes.h"
+#include "Logger.h"
 #include "POM1Build.h"
 #include "SnapshotIO.h"
 
@@ -25,11 +28,6 @@ constexpr char kAciMagic[] = "POM1ACI1";
 constexpr uint32_t kMaxRealtimeGapCycles = 50000;
 constexpr uint32_t kAudioRampInSamples = 64;
 
-uint16_t readLe16(const uint8_t* data)
-{
-    return static_cast<uint16_t>(data[0] | (static_cast<uint16_t>(data[1]) << 8));
-}
-
 uint32_t readLe32(const uint8_t* data)
 {
     return static_cast<uint32_t>(data[0]) |
@@ -38,45 +36,6 @@ uint32_t readLe32(const uint8_t* data)
            (static_cast<uint32_t>(data[3]) << 24);
 }
 
-// AIFF is big-endian throughout (IFF, Motorola order) — the mirror of the
-// RIFF/WAV helpers above.
-uint16_t readBe16(const uint8_t* data)
-{
-    return static_cast<uint16_t>((static_cast<uint16_t>(data[0]) << 8) | data[1]);
-}
-
-uint32_t readBe32(const uint8_t* data)
-{
-    return (static_cast<uint32_t>(data[0]) << 24) |
-           (static_cast<uint32_t>(data[1]) << 16) |
-           (static_cast<uint32_t>(data[2]) << 8) |
-           static_cast<uint32_t>(data[3]);
-}
-
-// AIFF stores the sample rate as an IEEE-754 80-bit extended float, the one
-// field that makes the format annoying to parse by hand. Layout: 1 sign bit,
-// 15 exponent bits (bias 16383), then a 64-bit mantissa whose integer bit is
-// EXPLICIT (unlike 32/64-bit IEEE) — so the value is simply
-// mantissa * 2^(exponent - 16383 - 63). Returns 0 on the denormal/NaN/absurd
-// cases, which every caller treats as "invalid file".
-uint32_t readBe80Float(const uint8_t* data)
-{
-    const uint16_t expField = readBe16(data);
-    const int exponent = static_cast<int>(expField & 0x7FFF);
-    uint64_t mantissa = 0;
-    for (int i = 0; i < 8; ++i) {
-        mantissa = (mantissa << 8) | data[2 + i];
-    }
-    if (exponent == 0 || exponent == 0x7FFF || mantissa == 0) return 0;
-
-    const int shift = exponent - 16383 - 63;
-    // Sample rates live in [1, 1e7]; anything needing a shift outside this
-    // window is not a rate, so bail rather than UB on the shift itself.
-    if (shift > 0 || shift < -63) return 0;
-    const double value = static_cast<double>(mantissa) * std::pow(2.0, shift);
-    if (value < 1.0 || value > 10000000.0) return 0;
-    return static_cast<uint32_t>(value + 0.5);
-}
 
 void writeLe16(std::ofstream& file, uint16_t value)
 {
@@ -1115,102 +1074,42 @@ bool CassetteDevice::saveAciTape(const std::string& path) const
     return true;
 }
 
-bool CassetteDevice::loadWavTape(const std::string& path)
+// Read the file, then hand the bytes to the pure parser (PcmFile.h) and the
+// mono samples to the pulse decoder. The parse used to happen inside this
+// function, interleaved with the read and the mix, so it could be neither
+// tested nor fuzzed without an audio device — and it could not bound what it
+// was about to allocate.
+bool CassetteDevice::loadPcmTape(const std::string& path, bool aiff)
 {
-    std::ifstream file(path, std::ios::binary);
-    if (!file.is_open()) {
-        lastError = "Cannot open tape file: " + path;
+    // Size FIRST, then read. These two parsers had no length limit at all,
+    // while the miniaudio path next door has capped MP3/FLAC/Vorbis at thirty
+    // minutes since it was written — so the "accidental 2-hour podcast" its
+    // comment describes was refused as an .mp3 and accepted as a .wav.
+    std::vector<uint8_t> bytes;
+    if (!pom1::readFileBounded(path, pom1::kMaxPcmFileBytes, "cassette tape",
+                               bytes, lastError))
+        return false;
+
+    const pom1::PcmAudio audio = aiff ? pom1::parseAiffPcm(bytes.data(), bytes.size())
+                                      : pom1::parseWavPcm(bytes.data(), bytes.size());
+    if (!audio.ok) {
+        lastError = audio.error;
         return false;
     }
-
-    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)),
-                               std::istreambuf_iterator<char>());
-    if (bytes.size() < 44 || std::memcmp(bytes.data(), "RIFF", 4) != 0 ||
-        std::memcmp(bytes.data() + 8, "WAVE", 4) != 0) {
-        lastError = "Invalid WAV file";
-        return false;
-    }
-
-    uint16_t audioFormat = 0;
-    uint16_t channels = 0;
-    uint32_t sampleRate = 0;
-    uint16_t bitsPerSample = 0;
-    const uint8_t* dataChunk = nullptr;
-    uint32_t dataSize = 0;
-
-    size_t offset = 12;
-    while (offset + 8 <= bytes.size()) {
-        const uint8_t* chunk = bytes.data() + offset;
-        const uint32_t chunkSize = readLe32(chunk + 4);
-        offset += 8;
-        // Compare against the remaining byte count rather than offset+chunkSize:
-        // on 32-bit size_t (wasm32) a crafted chunkSize near 0xFFFFFFFF would wrap
-        // offset+chunkSize below bytes.size() and slip past this guard.
-        if (chunkSize > bytes.size() - offset) {
-            break;
-        }
-
-        if (std::memcmp(chunk, "fmt ", 4) == 0 && chunkSize >= 16) {
-            audioFormat = readLe16(bytes.data() + offset + 0);
-            channels = readLe16(bytes.data() + offset + 2);
-            sampleRate = readLe32(bytes.data() + offset + 4);
-            bitsPerSample = readLe16(bytes.data() + offset + 14);
-        } else if (std::memcmp(chunk, "data", 4) == 0) {
-            dataChunk = bytes.data() + offset;
-            dataSize = chunkSize;
-        }
-
-        offset += chunkSize + (chunkSize & 1u);
-    }
-
-    if (dataChunk == nullptr || channels == 0 || sampleRate == 0) {
-        lastError = "WAV file is missing format or data chunks";
-        return false;
-    }
-    if (audioFormat != 1 && audioFormat != 3) {
-        lastError = "Unsupported WAV format (only PCM and float are supported)";
-        return false;
-    }
-
-    const size_t bytesPerSample = bitsPerSample / 8;
-    if (bytesPerSample == 0 || dataSize < bytesPerSample * channels) {
-        lastError = "Unsupported WAV sample format";
-        return false;
-    }
-
-    const size_t frameCount = dataSize / (bytesPerSample * channels);
-    std::vector<float> samples;
-    samples.reserve(frameCount);
-
-    for (size_t frame = 0; frame < frameCount; ++frame) {
-        float mixed = 0.0f;
-        for (uint16_t ch = 0; ch < channels; ++ch) {
-            const uint8_t* samplePtr = dataChunk + (frame * channels + ch) * bytesPerSample;
-            float value = 0.0f;
-            if (audioFormat == 1 && bitsPerSample == 8) {
-                value = (static_cast<int>(samplePtr[0]) - 128) / 128.0f;
-            } else if (audioFormat == 1 && bitsPerSample == 16) {
-                const int16_t s = static_cast<int16_t>(readLe16(samplePtr));
-                value = static_cast<float>(s) / 32768.0f;
-            } else if (audioFormat == 3 && bitsPerSample == 32) {
-                float f = 0.0f;
-                std::memcpy(&f, samplePtr, sizeof(float));
-                value = f;
-            } else {
-                lastError = "Only WAV PCM 8/16-bit and float32 are supported";
-                return false;
-            }
-            mixed += value;
-        }
-        samples.push_back(mixed / static_cast<float>(channels));
-    }
+    if (!audio.warning.empty())
+        pom1::log().warn("Tape", std::filesystem::path(path).filename().string() +
+                                     ": " + audio.warning);
 
     std::vector<uint32_t> durations;
     bool initialLevel = false;
-    if (!pcmToDurations(samples, sampleRate, durations, initialLevel, lastError)) {
+    if (!pcmToDurations(audio.mono, audio.sampleRate, durations, initialLevel, lastError))
         return false;
-    }
     return loadPlaybackDurations(std::move(durations), initialLevel, path);
+}
+
+bool CassetteDevice::loadWavTape(const std::string& path)
+{
+    return loadPcmTape(path, /*aiff=*/false);
 }
 
 bool CassetteDevice::pcmToDurations(const std::vector<float>& mono,
@@ -1257,9 +1156,19 @@ bool CassetteDevice::pcmToDurations(const std::vector<float>& mono,
 
         if (newLevel != currentLevel) {
             const size_t deltaSamples = i - lastTransition;
-            const uint32_t cycles = std::max<uint32_t>(1, static_cast<uint32_t>(
-                std::llround(static_cast<double>(deltaSamples) * static_cast<double>(kTapeFileTimebaseHz) /
-                             static_cast<double>(sampleRate))));
+            // Clamp INSIDE the double domain, before narrowing. Converting an
+            // out-of-range floating value to uint32_t is undefined behaviour,
+            // not a wrap: a low declared sample rate over a long gap reaches
+            // 5.1e9 with ease, and UBSan calls it exactly that. PcmFile.h bounds
+            // the rate the two hand-rolled parsers accept, but miniaudio-decoded
+            // files arrive here too, so the arithmetic itself has to be safe.
+            const double rawCycles =
+                std::llround(static_cast<double>(deltaSamples) *
+                             static_cast<double>(kTapeFileTimebaseHz) /
+                             static_cast<double>(sampleRate));
+            const uint32_t cycles = static_cast<uint32_t>(std::min(
+                std::max(rawCycles, 1.0),
+                static_cast<double>(std::numeric_limits<uint32_t>::max())));
             outDurations.push_back(cycles);
             currentLevel = newLevel;
             lastTransition = i;
@@ -1345,145 +1254,11 @@ void CassetteDevice::closeAudioStream()
 
 bool CassetteDevice::loadAiffTape(const std::string& path)
 {
-    // Why POM1 parses AIFF by hand: miniaudio decodes WAV/FLAC/MP3 (+Vorbis)
-    // and nothing else, but AIFF is the format Uncle Bernie's `ACIace`
-    // synthesiser emits, so every extended-ACI recording circulating on
-    // Applefritter (codebrk.aiff & friends) arrives as one. The subset below
-    // is exactly what a synthesised cassette needs: uncompressed PCM, plus
-    // AIFF-C's byte-swapped `sowt` and `fl32` because some converters
-    // re-wrap ACIace output that way.
-    std::ifstream file(path, std::ios::binary);
-    if (!file.is_open()) {
-        lastError = "Cannot open tape file: " + path;
-        return false;
-    }
-
-    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)),
-                               std::istreambuf_iterator<char>());
-    const bool isAifc = bytes.size() >= 12 && std::memcmp(bytes.data() + 8, "AIFC", 4) == 0;
-    if (bytes.size() < 12 || std::memcmp(bytes.data(), "FORM", 4) != 0 ||
-        (std::memcmp(bytes.data() + 8, "AIFF", 4) != 0 && !isAifc)) {
-        lastError = "Invalid AIFF file";
-        return false;
-    }
-
-    uint16_t channels = 0;
-    uint16_t bitsPerSample = 0;
-    uint32_t sampleRate = 0;
-    uint32_t commFrames = 0;
-    bool haveComm = false;
-    bool littleEndianSamples = false;   // AIFF-C 'sowt'
-    bool floatSamples = false;          // AIFF-C 'fl32'
-    const uint8_t* soundData = nullptr;
-    uint32_t soundSize = 0;
-
-    size_t offset = 12;
-    while (offset + 8 <= bytes.size()) {
-        const uint8_t* chunk = bytes.data() + offset;
-        const uint32_t chunkSize = readBe32(chunk + 4);
-        offset += 8;
-        // Same overflow-safe form as the WAV parser: compare against the
-        // bytes REMAINING, never offset+chunkSize (which wraps on wasm32).
-        if (chunkSize > bytes.size() - offset) break;
-
-        if (std::memcmp(chunk, "COMM", 4) == 0 && chunkSize >= 18) {
-            const uint8_t* c = bytes.data() + offset;
-            channels      = readBe16(c + 0);
-            commFrames    = readBe32(c + 2);
-            bitsPerSample = readBe16(c + 6);
-            sampleRate    = readBe80Float(c + 8);
-            haveComm      = true;
-            if (isAifc && chunkSize >= 22) {
-                const uint8_t* comp = c + 18;
-                if (std::memcmp(comp, "sowt", 4) == 0)      littleEndianSamples = true;
-                else if (std::memcmp(comp, "fl32", 4) == 0 ||
-                         std::memcmp(comp, "FL32", 4) == 0) floatSamples = true;
-                else if (std::memcmp(comp, "NONE", 4) != 0) {
-                    lastError = "Unsupported AIFF-C compression (expected NONE/sowt/fl32)";
-                    return false;
-                }
-            }
-        } else if (std::memcmp(chunk, "SSND", 4) == 0 && chunkSize >= 8) {
-            // SSND leads with offset + blockSize; the frames start after them,
-            // displaced by `ssndOffset` bytes of alignment padding.
-            const uint32_t ssndOffset = readBe32(bytes.data() + offset);
-            if (static_cast<uint64_t>(ssndOffset) + 8 > chunkSize) {
-                lastError = "Malformed AIFF SSND chunk";
-                return false;
-            }
-            soundData = bytes.data() + offset + 8 + ssndOffset;
-            soundSize = chunkSize - 8 - ssndOffset;
-        }
-
-        offset += chunkSize + (chunkSize & 1u);   // IFF chunks are word-aligned
-    }
-
-    if (!haveComm || soundData == nullptr || channels == 0 || sampleRate == 0) {
-        lastError = "AIFF file is missing COMM or SSND chunks";
-        return false;
-    }
-    if (bitsPerSample != 8 && bitsPerSample != 16 && bitsPerSample != 24 &&
-        bitsPerSample != 32) {
-        lastError = "Unsupported AIFF sample width (expected 8/16/24/32-bit)";
-        return false;
-    }
-    if (floatSamples && bitsPerSample != 32) {
-        lastError = "AIFF fl32 requires 32-bit samples";
-        return false;
-    }
-
-    const size_t bytesPerSample = bitsPerSample / 8u;
-    const size_t frameStride = bytesPerSample * channels;
-    size_t frameCount = soundSize / frameStride;
-    // COMM's frame count is authoritative when it's the smaller of the two —
-    // trailing garbage after the last frame is common in synthesised files.
-    if (commFrames != 0 && commFrames < frameCount) frameCount = commFrames;
-    if (frameCount == 0) {
-        lastError = "AIFF file contains no audio frames";
-        return false;
-    }
-
-    std::vector<float> samples;
-    samples.reserve(frameCount);
-    for (size_t frame = 0; frame < frameCount; ++frame) {
-        float mixed = 0.0f;
-        for (uint16_t ch = 0; ch < channels; ++ch) {
-            const uint8_t* p = soundData + frame * frameStride + ch * bytesPerSample;
-            float value = 0.0f;
-            if (floatSamples) {
-                uint8_t le[4] = { p[3], p[2], p[1], p[0] };   // fl32 is big-endian
-                if (littleEndianSamples) std::memcpy(le, p, 4);
-                std::memcpy(&value, le, sizeof(float));
-            } else if (bitsPerSample == 8) {
-                // AIFF PCM is SIGNED at every width, including 8-bit — the one
-                // place it differs from WAV, whose 8-bit samples are unsigned.
-                value = static_cast<float>(static_cast<int8_t>(p[0])) / 128.0f;
-            } else if (bitsPerSample == 16) {
-                const int16_t s = static_cast<int16_t>(littleEndianSamples ? readLe16(p)
-                                                                           : readBe16(p));
-                value = static_cast<float>(s) / 32768.0f;
-            } else if (bitsPerSample == 24) {
-                const int32_t raw = littleEndianSamples
-                    ? ((static_cast<int32_t>(p[2]) << 16) | (p[1] << 8) | p[0])
-                    : ((static_cast<int32_t>(p[0]) << 16) | (p[1] << 8) | p[2]);
-                const int32_t s = (raw & 0x800000) ? (raw - 0x1000000) : raw;
-                value = static_cast<float>(s) / 8388608.0f;
-            } else {
-                const int32_t s = static_cast<int32_t>(littleEndianSamples ? readLe32(p)
-                                                                          : readBe32(p));
-                value = static_cast<float>(s) / 2147483648.0f;
-            }
-            mixed += value;
-        }
-        samples.push_back(mixed / static_cast<float>(channels));
-    }
-
-    std::vector<uint32_t> durations;
-    bool initialLevel = false;
-    if (!pcmToDurations(samples, sampleRate, durations, initialLevel, lastError)) {
-        return false;
-    }
-    return loadPlaybackDurations(std::move(durations), initialLevel, path);
+    // POM1 parses AIFF itself because miniaudio decodes WAV/FLAC/MP3 (+Vorbis)
+    // and nothing else, while AIFF is exactly the format Uncle Bernie's
+    // `ACIace` synthesiser emits — every extended-ACI recording circulating on
+    // Applefritter (codebrk.aiff & friends) arrives as one.
+    return loadPcmTape(path, /*aiff=*/true);
 }
 
 bool CassetteDevice::loadMiniaudioTape(const std::string& path)

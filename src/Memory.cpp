@@ -28,8 +28,8 @@
 
 #include "Memory.h"
 #include "CardTopology.h"
-#include "HexDumpFile.h"
-#include "IntelHexFile.h"
+#include "MemoryImageLoader.h"
+#include "FileBytes.h"
 #include "Logger.h"
 #include "M6502.h"
 #include "TMS9918.h"
@@ -166,8 +166,10 @@ constexpr uint8_t kExtendedAciRom[0x100] = {
 
 } // namespace
 
-Memory::Memory(bool initializeAudioHardware)
+Memory::Memory(bool initializeAudioHardware, pom1::ResourceLocator locator)
+    : resources_(std::move(locator))
 {
+    const pom1::ResourceLocator& resources = resources_;
     audioDevice = std::make_unique<AudioDevice>(initializeAudioHardware);
     // Pass the audio device's actual sample rate (44.1 kHz requested but
     // miniaudio may negotiate 48 kHz on Apple Silicon, and the browser
@@ -185,40 +187,22 @@ Memory::Memory(bool initializeAudioHardware)
     tms9918 = std::make_unique<TMS9918>();
     sid = std::make_unique<pom1::SID>(static_cast<int>(actualRate));
     microSD = std::make_unique<MicroSD>();
-    // Set SD card path: try common locations relative to executable
-    for (const auto& dir : {"sdcard", "../sdcard", "../../sdcard"}) {
-        if (std::filesystem::is_directory(dir)) {
-            microSD->setSDCardPath(std::filesystem::canonical(dir).string());
-            break;
-        }
-    }
+    // Where the data lives is the locator's business, not three hand-rolled
+    // ../ walks that climbed different distances (see ResourceLocator.h).
+    if (const auto sd = resources.findDirectory("sdcard"); !sd.empty())
+        microSD->setSDCardPath(sd.string());
     iecCard = std::make_unique<pom1::IECCard>();
-    // Probe for the device-8 disk image. MVP supports a single drive.
-    for (const auto& dir : {"disks", "../disks", "../../disks"}) {
-        if (std::filesystem::is_directory(dir)) {
-            auto imgPath = std::filesystem::canonical(dir).string() + "/iec/dev8.d64";
-            if (std::filesystem::exists(imgPath)) {
-                iecCard->mountDisk(imgPath);
-            }
-            break;
-        }
-    }
+    // Device-8 disk image. MVP supports a single drive.
+    if (const auto dev8 = resources.find("disks/iec/dev8.d64"); !dev8.empty())
+        iecCard->mountDisk(dev8.string());
     wifiModem = std::make_unique<WiFiModem>();
     terminalCard = std::make_unique<TerminalCard>();
     pr40Printer = std::make_unique<PR40Printer>();
     gt6144 = std::make_unique<GT6144>();
     a1ioRtc = std::make_unique<A1IO_RTC>();
     cffa1 = std::make_unique<CFFA1>();
-    // Probe for CF card disk image
-    for (const auto& dir : {"cfcard", "../cfcard", "../../cfcard"}) {
-        if (std::filesystem::is_directory(dir)) {
-            auto imgPath = std::filesystem::canonical(dir).string() + "/cfcard.po";
-            if (std::filesystem::exists(imgPath)) {
-                cffa1->openDiskImage(imgPath);
-            }
-            break;
-        }
-    }
+    if (const auto cf = resources.find("cfcard/cfcard.po"); !cf.empty())
+        cffa1->openDiskImage(cf.string());
     jukeBox = std::make_unique<JukeBox>();
     codeTank = std::make_unique<CodeTank>();
     terminalCard->setKeyInjector([this](char key, bool raw) {
@@ -685,6 +669,12 @@ void Memory::deactivateCassetteAudioSource()
     cassetteAudioActive = false;
 }
 
+void Memory::setTerminalCardEnabled(bool b)
+{
+    terminalCardEnabled = b;
+    terminalCard->setEnabled(b);   // the TCP listener follows the plug
+}
+
 void Memory::setA1IO_RTCEnabled(bool b)
 {
     a1ioRtcEnabled = b;
@@ -1110,17 +1100,17 @@ int Memory::loadROM(const char* filename, uint16_t startAddress, size_t maxSize,
 {
     lastError.clear();
 
-    const std::string searchPaths[] = {
-        filename,
-        std::string("roms/") + filename,
-        std::string("../roms/") + filename
-    };
-
+    // This site used to climb ONE level while the disk-image probes climbed
+    // two and the CodeTank probe three, so running from build/tests/ found the
+    // disks but not the ROMs — and POM1 then substituted its built-in Woz
+    // Monitor with a WARN nobody reads. One search order now, via the locator.
     std::ifstream file;
-    for (const auto& path : searchPaths) {
-        file.open(path, std::ios::binary);
-        if (file.is_open())
-            break;
+    for (const std::string& rel : {std::string(filename),
+                                   std::string("roms/") + filename}) {
+        const std::filesystem::path resolved = resources_.find(rel);
+        if (resolved.empty()) continue;
+        file.open(resolved, std::ios::binary);
+        if (file.is_open()) break;
     }
 
     if (!file.is_open()) {
@@ -1395,412 +1385,65 @@ int Memory::loadHexDump(const char* filename, uint16_t &startAddress, int* bytes
 {
     if (bytesLoaded) *bytesLoaded = 0;
     if (zones) zones->clear();
-    // Tracks the current contiguous zone we're filling. Each address-prefix
-    // ('AAAA:') flip closes the previous zone and starts a new one. The final
-    // zone is closed at end of parse. zoneActive distinguishes "no zone yet"
-    // (before the first address) from "zone in progress".
-    uint16_t zoneStart = 0;
-    unsigned int zoneLastAddr = 0; // last address actually written
-    bool zoneActive = false;
-    auto closeZone = [&]() {
-        if (!zones || !zoneActive) return;
-        zones->push_back({zoneStart, static_cast<uint16_t>(zoneLastAddr)});
-        zoneActive = false;
-    };
-    std::ifstream file(filename);
-    if (!file.is_open()) {
-        pom1::log().error("Mem", std::string("Cannot open file: ") + filename);
+
+    // Size FIRST, then read. A hex dump is text describing at most 64 KB of
+    // 6502 memory; anything past kMaxMemoryImageBytes is not one, and slurping
+    // it to find that out is exactly the allocation the limit exists to avoid.
+    // (parseMemoryImage repeats the check for its other callers.)
+    const std::string displayName =
+        std::filesystem::path(filename).filename().string();
+    std::vector<uint8_t> raw;
+    std::string readError;
+    if (!pom1::readFileBounded(filename, pom1::kMaxMemoryImageBytes,
+                               "memory image", raw, readError)) {
+        pom1::log().error("Mem", readError);
+        return 1;
+    }
+    const std::string content(raw.begin(), raw.end());
+
+    // Parse to completion FIRST (MemoryImageLoader.h — pure, no mem[] in
+    // sight), then decide, then apply. The order matters: this function used to
+    // write each byte as it recognised it, so an Intel HEX whose fifth record
+    // lay outside the 6502's 64 KB left the first four already in RAM before
+    // returning the error. A rejected image now carries no writes at all.
+    const pom1::MemoryImage image = pom1::parseMemoryImage(content, displayName);
+
+    if (!image.ok) {
+        // Nothing usable in the file. Report whatever the parser objected to;
+        // a dump that simply established no address says nothing at all, which
+        // is the historical silent "return 1".
+        for (const auto& d : image.diagnostics)
+            if (d.severity == pom1::MemoryImageDiagnostic::Severity::Error)
+                pom1::log().error("Mem", d.message);
         return 1;
     }
 
-    // Lire tout le fichier en une seule chaîne
-    std::string content((std::istreambuf_iterator<char>(file)),
-                         std::istreambuf_iterator<char>());
-    file.close();
-
-    // Supprimer les commentaires (//, #, ;) — en début de ligne ou inline.
-    // `cleaned` joins the surviving lines WITHOUT a separator (the legacy
-    // parser's "merged data + address" branches exist precisely to undo that);
-    // `lines` keeps them apart for the TurboType parser, which needs the line
-    // structure to tell ":data" from "address:".
-    std::string cleaned;
-    std::vector<std::string> lines;
-    // A ".tur" takes the line-structured parser WHATEVER its content, because
-    // the "T" marker it is normally selected by is optional in the wild: a
-    // TurboType file may be published as plain "AAAA: bytes" blocks with no
-    // T/X markers at all (HoneyCrisp wraps those into a synthetic T..X block
-    // for the same reason). Fed to the legacy joined-lines parser, such a file
-    // hits the exact failure the line-structured branch exists to avoid -- each
-    // data line's trailing digits sliced off as the next line's address, the
-    // program scattered across memory. The marker gate still applies to every
-    // other extension, so a ".txt" in turbo syntax is recognised by its "T".
-    bool turboFile = pom1::lowerExtension(filename) == "tur";
-    std::istringstream lineStream(content);
-    std::string line;
-    while (std::getline(lineStream, line)) {
-        size_t start = line.find_first_not_of(" \t");
-        if (start == std::string::npos) continue;
-        char first = line[start];
-        if (first == '#' || first == ';') continue;
-        if (start + 1 < line.size() && first == '/' && line[start + 1] == '/') continue;
-        // Strip inline comments: truncate at first //, ; or #. All three are
-        // documented (CLAUDE.md) as inline-strippable; without the '#' branch a
-        // hex-looking inline comment (e.g. "0300: AB # BADC0DE") would tokenise
-        // "BADC0DE" as data and silently corrupt memory.
-        size_t commentPos = line.find("//");
-        if (commentPos != std::string::npos) line = line.substr(0, commentPos);
-        commentPos = line.find(';');
-        if (commentPos != std::string::npos) line = line.substr(0, commentPos);
-        commentPos = line.find('#');
-        if (commentPos != std::string::npos) line = line.substr(0, commentPos);
-        cleaned += line;
-
-        // Trim for the line-structured view; a lone "T" is TurboType's
-        // switch-to-turbo marker and the only thing that selects that parser.
-        const size_t b = line.find_first_not_of(" \t\r");
-        if (b == std::string::npos) continue;
-        const size_t e = line.find_last_not_of(" \t\r");
-        lines.push_back(line.substr(b, e - b + 1));
-        if (lines.back().size() == 1 && (lines.back()[0] == 'T' || lines.back()[0] == 't'))
-            turboFile = true;
+    // Apply. Hex dumps deliberately bypass the ROM write-protect: a WOZMON dump
+    // is the user typing at the Monitor, and several bundled programs load a
+    // high block into the BASIC/Monitor window on purpose.
+    for (const pom1::MemoryImageSpan& span : image.writes) {
+        unsigned int addr = span.start;
+        for (uint8_t byte : span.bytes) {
+            if (addr >= 0x10000) break;
+            mem[addr++] = byte;
+        }
     }
+    startAddress = image.startAddress;
+    if (bytesLoaded) *bytesLoaded = image.byteCount;
+    if (zones) *zones = image.zones();
+    // Hex dumps scatter writes across arbitrary pages; the precise set isn't
+    // worth tracking here, so fall back to "everything might have changed".
+    // Loading a dump is a user action (rare), not a hot path.
+    if (image.byteCount > 0) markAllPagesDirty();
 
-    unsigned int currentAddr = 0;
-    uint16_t runAddr = 0;
-    bool firstAddr = true;
-    bool hasRunAddr = false;
-    // 'X' = TurboType end-of-stream. Past it the only thing a .TUR may still
-    // carry is the "AAAAR" run line, so stray hex after it must NOT be written
-    // as data (see the X branch below).
-    bool endMarkerSeen = false;
-    int totalBytes = 0;
-    int oddDigitsDropped = 0;
-    size_t i = 0;
-
-    auto isHex = [](char c) { return std::isxdigit((unsigned char)c); };
-    auto hexVal = [](char c) -> int {
-        if (c >= '0' && c <= '9') return c - '0';
-        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-        return 0;
-    };
-
-    // Data-byte writer with zone tracking. Every byte written through this
-    // helper extends or starts a zone; address flips close the zone first.
-    // Shared by both parsers below.
-    auto writeByte = [&](uint8_t v) {
-        if (currentAddr >= 0x10000) return;
-        if (!zoneActive) {
-            zoneStart = static_cast<uint16_t>(currentAddr);
-            zoneActive = true;
+    for (const auto& d : image.diagnostics) {
+        switch (d.severity) {
+        case pom1::MemoryImageDiagnostic::Severity::Info:    pom1::log().info("Mem", d.message);  break;
+        case pom1::MemoryImageDiagnostic::Severity::Warning: pom1::log().warn("Mem", d.message);  break;
+        case pom1::MemoryImageDiagnostic::Severity::Error:   pom1::log().error("Mem", d.message); break;
         }
-        mem[currentAddr] = v;
-        zoneLastAddr = currentAddr;
-        currentAddr++;
-        totalBytes++;
-    };
-    // Address flip, shared likewise. Sequential address lines that pick up
-    // exactly where the previous one left off stay in the SAME zone — closing
-    // on every address line would shred chess.txt into one zone per 8-byte row.
-    auto setAddr = [&](unsigned int newAddr) {
-        if (zoneActive && newAddr != currentAddr) closeZone();
-        currentAddr = newAddr;
-        if (firstAddr) {
-            startAddress = static_cast<uint16_t>(currentAddr);
-            firstAddr = false;
-        }
-    };
-
-    // ----------------------------------------------------------------------
-    // Intel HEX (":LLAAAATT<data>CC") — a DIFFERENT container that is also
-    // published as ".hex". Detection is structural (see IntelHexFile.h), never
-    // extension-based, so an Intel HEX named ".txt" is read correctly and a
-    // WOZMON dump named ".hex" is untouched. Without this branch every digit of
-    // the record — count, address, type and checksum included — was written as
-    // data at whatever address happened to be current, silently.
-    //
-    // `looksLikeIntelHex` validates the first record only. Once it says yes, a
-    // failure further down is a BROKEN Intel HEX file, so it is reported rather
-    // than quietly retried through the WOZMON parser, which would resume
-    // writing garbage — the whole point of the branch.
-    // ----------------------------------------------------------------------
-    if (pom1::looksLikeIntelHex(content)) {
-        pom1::IntelHexImage ihx;
-        std::string ihxError;
-        if (!pom1::parseIntelHex(content, ihx, &ihxError)) {
-            pom1::log().error("Mem", "Intel HEX file " +
-                                         std::filesystem::path(filename).filename().string() +
-                                         " is malformed (" + ihxError + ")");
-            return 1;
-        }
-        for (const pom1::IntelHexRecord& rec : ihx.records) {
-            // 6502 = 16-bit bus. A record past $FFFF means the file targets
-            // something else entirely (the type 02/04 base records are an x86
-            // inheritance); wrapping it would scribble over page zero.
-            if (rec.addr + rec.data.size() > 0x10000) {
-                std::ostringstream oss;
-                oss << "Intel HEX file " << std::filesystem::path(filename).filename().string()
-                    << ": record at 0x" << std::hex << rec.addr
-                    << " lies outside the 6502's 64 KB address space";
-                pom1::log().error("Mem", oss.str());
-                return 1;
-            }
-            setAddr(rec.addr);
-            for (uint8_t b : rec.data) writeByte(b);
-        }
-        closeZone();
-        // A type 03/05 start record is the file's run address, the Intel HEX
-        // equivalent of WOZMON's trailing "AAAAR". Absent one, the first data
-        // address stands (already latched by the first setAddr).
-        if (ihx.hasStart && ihx.start <= 0xFFFF) startAddress = static_cast<uint16_t>(ihx.start);
-        if (bytesLoaded) *bytesLoaded = totalBytes;
-        if (totalBytes > 0) markAllPagesDirty();
-        {
-            std::ostringstream oss;
-            oss << "Intel HEX loaded: " << std::filesystem::path(filename).filename().string()
-                << " (" << std::dec << totalBytes << " bytes, "
-                << (ihx.hasStart ? "run" : "start") << " at 0x" << std::hex << startAddress << ")";
-            pom1::log().info("Mem", oss.str());
-        }
-        if (!ihx.sawEof) {
-            pom1::log().warn("Mem", "Intel HEX file " +
-                                        std::filesystem::path(filename).filename().string() +
-                                        " has no ':00000001FF' end-of-file record — loaded anyway, "
-                                        "but it may be truncated.");
-        }
-        return firstAddr ? 1 : 0;
     }
-
-    if (turboFile) {
-        // ------------------------------------------------------------------
-        // TurboType (.TUR) — LINE-STRUCTURED parse.
-        //
-        // The legacy parser below concatenates every line and then recovers
-        // boundaries heuristically ("a hex token before ':' is an address").
-        // That rule is exactly inverted in a turbo stream, where ':' OPENS a
-        // data line instead of closing an address:
-        //
-        //     0300                                  <- address, own line, no ':'
-        //     :D8A2FF9AA92A851A204604A97C8518A9     <- 16 bytes, ':' first
-        //     :05851920AD0320CB03D00EA9AF8518A9
-        //
-        // Concatenated, each 32-digit data run is followed by the next line's
-        // ':' — so the legacy rule split off its last four digits as an
-        // address and scattered the program across memory (the 15 Puzzle's
-        // $0300 block landed in 60+ zones at $18A9, $4159, $F460, ...).
-        //
-        // Keeping the lines apart makes every case unambiguous, and it also
-        // handles the autotyped WOZMON prologue without needing the merge
-        // hacks at all. Only ".tur" files and files carrying a lone "T" line
-        // take this path, so the ~100 bundled dumps (all ".txt") keep their
-        // exact legacy behaviour.
-        // ------------------------------------------------------------------
-        auto emitData = [&](const std::string& s, size_t from) {
-            std::string digits;
-            for (size_t k = from; k < s.size(); ++k)
-                if (isHex(s[k])) digits.push_back(s[k]);
-            if (digits.size() % 2 != 0) oddDigitsDropped++;
-            for (size_t j = 0; j + 1 < digits.size(); j += 2)
-                writeByte(static_cast<uint8_t>((hexVal(digits[j]) << 4) | hexVal(digits[j + 1])));
-        };
-
-        for (const std::string& s : lines) {
-            const char c0 = s[0];
-            // Bare markers: 'T' switches the SENDER to turbo mode, 'X' ends
-            // the stream. Neither carries an operand — the run address that
-            // follows 'X' is its own "AAAAR" line.
-            if (s.size() == 1 && (c0 == 'T' || c0 == 't')) continue;
-            if (s.size() == 1 && (c0 == 'X' || c0 == 'x')) { endMarkerSeen = true; continue; }
-            // ":data" — turbo block line, or a WOZMON continuation line.
-            if (c0 == ':') { if (!endMarkerSeen) emitData(s, 1); continue; }
-
-            size_t p = 0;
-            while (p < s.size() && isHex(s[p])) p++;
-            if (p == 0) continue;                       // not a line we understand
-            const unsigned int tok =
-                static_cast<unsigned int>(strtol(s.substr(0, p).c_str(), nullptr, 16));
-
-            if (p < s.size() && (s[p] == 'R' || s[p] == 'r')) {
-                runAddr = static_cast<uint16_t>(tok);   // "AAAAR" — last one wins
-                hasRunAddr = true;
-                continue;
-            }
-            if (p < s.size() && s[p] == ':') {          // WOZMON "AAAA: HH HH ..."
-                setAddr(tok);
-                if (!endMarkerSeen) emitData(s, p + 1);
-                continue;
-            }
-            if (p == s.size()) { setAddr(tok); continue; }  // bare address line
-        }
-        closeZone();
-        if (hasRunAddr) startAddress = runAddr;
-        if (bytesLoaded) *bytesLoaded = totalBytes;
-        if (totalBytes > 0) markAllPagesDirty();
-        {
-            std::ostringstream oss;
-            oss << "TurboType dump loaded: "
-                << std::filesystem::path(filename).filename().string()
-                << " (" << std::dec << totalBytes << " bytes, run at 0x"
-                << std::hex << startAddress << ")";
-            pom1::log().info("Mem", oss.str());
-        }
-        if (oddDigitsDropped > 0) {
-            std::ostringstream oss;
-            oss << "TurboType dump " << std::filesystem::path(filename).filename().string()
-                << ": " << std::dec << oddDigitsDropped
-                << " odd-length hex run(s) — trailing nibble(s) dropped.";
-            pom1::log().warn("Mem", oss.str());
-        }
-        return firstAddr && !hasRunAddr ? 1 : 0;
-    }
-
-    while (i < cleaned.size()) {
-        char c = cleaned[i];
-
-        // Sauter espaces
-        if (c == ' ' || c == '\t' || c == '\n' || c == '\r') { i++; continue; }
-
-        // 'T' = TurboType mode switch, on its own line between the autotyped
-        // WOZMON prologue and the first turbo block. A bare marker: skip it and
-        // let the "AAAA:" that follows parse as an address.
-        if ((c == 'T' || c == 't') && i + 1 < cleaned.size() && isHex(cleaned[i + 1])) {
-            i++; continue;
-        }
-
-        // 'X' = TurboType end-of-stream marker, likewise on its own line. It is
-        // a BARE marker — skip only the X itself.
-        //
-        // This used to also swallow the hex run behind it, which silently ate
-        // the run address of every real .TUR: the files end
-        //
-        //     X
-        //     015ER
-        //
-        // so "015E" was consumed as if it belonged to the X and the orphaned
-        // "R" fell through to the unknown-character branch. The load then
-        // reported the PREVIOUS R (the "0100R" that starts the serial receiver
-        // on real hardware) and POM1 jumped into the transfer loader, which
-        // sits waiting for a stream that direct injection never sends.
-        if ((c == 'X' || c == 'x') && i + 1 < cleaned.size() && isHex(cleaned[i + 1])) {
-            endMarkerSeen = true;
-            i++; continue;
-        }
-
-        // ':' continuation — les données hex suivent
-        if (c == ':') { i++; continue; }
-
-        // Séquence de chiffres hex
-        if (isHex(c)) {
-            // Collecter tous les hex digits consécutifs
-            size_t hexStart = i;
-            while (i < cleaned.size() && isHex(cleaned[i])) i++;
-            std::string hexStr = cleaned.substr(hexStart, i - hexStart);
-
-            // Vérifier ce qui suit : 'R' = run, ':' = adresse, sinon = données
-            // Sauter les espaces pour voir le prochain caractère significatif
-            size_t peek = i;
-            while (peek < cleaned.size() && (cleaned[peek] == ' ' || cleaned[peek] == '\t' || cleaned[peek] == '\r' || cleaned[peek] == '\n')) peek++;
-
-            // (writeByte / setAddr are the shared helpers defined above.)
-
-            if (i < cleaned.size() && (cleaned[i] == 'R' || cleaned[i] == 'r')) {
-                // Handle merged data+run: e.g. "FFE2B3R" = data FF, run E2B3
-                if (hexStr.size() > 4) {
-                    size_t dataLen = hexStr.size() - 4;
-                    if (dataLen % 2 != 0) oddDigitsDropped++;
-                    for (size_t j = 0; j + 1 < dataLen; j += 2) {
-                        uint8_t val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
-                        writeByte(val);
-                    }
-                    hexStr = hexStr.substr(dataLen);
-                }
-                runAddr = (uint16_t)strtol(hexStr.c_str(), nullptr, 16);
-                hasRunAddr = true;
-                i++; // skip the R
-                continue;
-            }
-
-            // A hex token before ':' is an ADDRESS only when it is ≥3 hex
-            // digits (real addresses in these dumps are 4 digits; 3 covers a
-            // rare "300:"; the merged data+address case ">4" is split below).
-            // A 1-2 digit token before ':' is a DATA byte followed by a
-            // group-separator colon — several bundled programs (mandelbrot-65,
-            // 2048, cat, cellular, 50th) format one contiguous line as
-            // "0280:4C 5F 03 2E 2E 2C 27 5E:3D 2B ..." with a ':' every 8th
-            // byte. Treating that trailing "5E" as address $005E used to
-            // scatter the whole program across zero page (zones=166) so it
-            // crashed to $0000 on the very first JMP. Chess/Connect4 etc. put
-            // ':' only after their 4-digit line address, so they are unaffected.
-            if (peek < cleaned.size() && cleaned[peek] == ':' && hexStr.size() >= 3) {
-                // Handle merged data+address: e.g. "ED0300:" = data ED, address 0300
-                if (hexStr.size() > 4) {
-                    size_t dataLen = hexStr.size() - 4;
-                    if (dataLen % 2 != 0) oddDigitsDropped++;
-                    for (size_t j = 0; j + 1 < dataLen; j += 2) {
-                        uint8_t val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
-                        writeByte(val);
-                    }
-                    hexStr = hexStr.substr(dataLen);
-                }
-                // Address line. setAddr keeps a sequential address line
-                // (e.g. "0288:" right after 8 bytes from "0280:") inside the
-                // SAME zone — closing on every address line would shred
-                // chess.txt into one zone per 8-byte row.
-                setAddr((unsigned int)strtol(hexStr.c_str(), nullptr, 16));
-                i = peek + 1; // skip the ':'
-                continue;
-            }
-
-            // Past the 'X' end-of-stream marker there is no more data — only a
-            // possible run line, and that took the 'R' branch above. Dropping
-            // the token here (rather than writing it) keeps a trailing
-            // address-shaped word from landing in RAM at currentAddr.
-            if (endMarkerSeen) continue;
-
-            // Data bytes — parse in pairs. A lone trailing nibble would
-            // otherwise be silently dropped, so track it for the summary
-            // warning below — masks real bugs in hand-edited dumps.
-            if (hexStr.size() % 2 != 0) oddDigitsDropped++;
-            for (size_t j = 0; j + 1 < hexStr.size(); j += 2) {
-                uint8_t val = (hexVal(hexStr[j]) << 4) | hexVal(hexStr[j + 1]);
-                writeByte(val);
-            }
-            continue;
-        }
-
-        // Caractère inconnu — sauter
-        i++;
-    }
-
-    // Close the final zone (the one currently being filled when the parse ran
-    // off the end of the file).
-    closeZone();
-
-    // Utiliser l'adresse de run si disponible, sinon la première adresse
-    if (hasRunAddr)
-        startAddress = runAddr;
-
-    if (bytesLoaded) *bytesLoaded = totalBytes;
-    // Hex dumps scatter writes across arbitrary pages via currentAddr; the
-    // precise range isn't tracked here, so fall back to "everything might
-    // have changed". Hex-dump loading is a user action (rare), not a hot path.
-    if (totalBytes > 0) markAllPagesDirty();
-    {
-        std::ostringstream oss;
-        oss << "Hex dump loaded: " << std::filesystem::path(filename).filename().string()
-            << " (" << std::dec << totalBytes << " bytes starting at 0x"
-            << std::hex << startAddress << ")";
-        pom1::log().info("Mem", oss.str());
-    }
-    if (oddDigitsDropped > 0) {
-        std::ostringstream oss;
-        oss << "Hex dump " << std::filesystem::path(filename).filename().string()
-            << ": " << std::dec << oddDigitsDropped
-            << " odd-length hex run(s) detected — trailing nibble(s) dropped. "
-            << "Check the source for a truncated byte.";
-        pom1::log().warn("Mem", oss.str());
-    }
-    return firstAddr && !hasRunAddr ? 1 : 0;
+    return 0;
 }
 
 uint8_t Memory::memRead(uint16_t address)

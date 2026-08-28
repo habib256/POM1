@@ -365,3 +365,122 @@ jobs:
           # over the same production triangle to increase scheduling diversity.
           POM1_CONCURRENCY_STRESS_MS: ${{ matrix.sanitize == 'thread' && '5000' || '350' }}
         run: ctest --test-dir build-san --output-on-failure
+
+  # ── Long fuzzing campaign, nightly ────────────────────────────────────────
+  # Every PR runs these four targets as DETERMINISTIC drivers (fixed seed,
+  # ~1 s total) — see tests/*_fuzz_test.cpp. This job builds the same checks
+  # behind LLVMFuzzerTestOneInput and lets libFuzzer drive them for real.
+  #
+  # It needs clang: Apple clang and g++ ship no libFuzzer, which is exactly why
+  # the deterministic driver is the DEFAULT rather than the fallback — a
+  # fuzz-only gate would silently not run for most contributors.
+  #
+  # A finding here fails the job and uploads the offending input as an
+  # artifact. That file is the deliverable: it becomes a regression case in the
+  # matching *_smoke test, the way every defect these targets have already
+  # found did.
+  fuzz:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        # libclang-rt-dev carries libFuzzer's runtime; clang alone is not enough.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake clang libclang-rt-dev \
+                                  libglfw3-dev libgl1-mesa-dev
+
+      - name: Fetch Dear ImGui (pin from IMGUI_VERSION)
+        run: tools/ensure_imgui.sh imgui
+
+      - name: Build fuzz targets
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          cmake -S . -B build-fuzz -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+                -DPOM1_FUZZERS=ON
+          cmake --build build-fuzz -j"$(nproc)" \
+                --target test_memory_image_fuzz test_pcm_file_fuzz \
+                         test_snapshot_fuzz test_d64_fuzz
+
+      # A corpus that survives between nights is what turns a fuzzer from a
+      # random sampler into something that accumulates reach. Restored
+      # best-effort: a cold cache just means this night starts from the seeds.
+      - name: Restore fuzz corpus
+        uses: actions/cache@v4
+        with:
+          path: fuzz-corpus
+          key: fuzz-corpus-${{ github.run_id }}
+          restore-keys: fuzz-corpus-
+
+      - name: Seed the corpus from real inputs
+        # Real files reach far more of each parser than random bytes do, and
+        # POM1 ships plenty: ~120 hex dumps, the cassette recordings, a disk
+        # image. Seeds are additive — the cache keeps whatever libFuzzer found.
+        run: |
+          set -euo pipefail
+          mkdir -p fuzz-corpus/memory_image fuzz-corpus/pcm \
+                   fuzz-corpus/snapshot fuzz-corpus/d64
+          # Flatten with a path-derived prefix: the same basename occurs in
+          # several software/ subfolders, and a plain copy would drop all but
+          # the first — silently seeding less than it appears to.
+          seed() {
+            dest="$1"; shift
+            find "$@" -print0 | while IFS= read -r -d '' f; do
+              cp -n "$f" "$dest/$(printf '%s' "$f" | md5sum | cut -c1-8)-$(basename "$f")"
+            done
+          }
+          seed fuzz-corpus/memory_image software -type f \
+               \( -name '*.txt' -o -name '*.hex' -o -name '*.apl' \
+                  -o -name '*.mon' -o -name '*.tur' \)
+          seed fuzz-corpus/pcm cassettes -type f \
+               \( -name '*.wav' -o -name '*.aiff' -o -name '*.aif' \)
+          seed fuzz-corpus/d64 disks -type f -name '*.d64'
+
+          # A real snapshot, so the snapshot corpus starts from a file POM1
+          # actually writes rather than a synthetic one. Not fatal if it fails
+          # — but say so, because a corpus that quietly shrank still "passes".
+          cmake --build build-fuzz -j"$(nproc)" --target pom1_imgui
+          ./build-fuzz/POM1 --headless --preset 12 --exit-after-cycles 100000 \
+                --snapshot-save fuzz-corpus/snapshot/live.snap \
+            || echo "::warning::could not produce a live snapshot seed"
+
+          for d in fuzz-corpus/*/; do
+            printf '%s: %s file(s)\n' "$d" "$(find "$d" -type f | wc -l)"
+          done
+
+      - name: Fuzz
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+        run: |
+          set -o pipefail
+          status=0
+          for t in memory_image:test_memory_image_fuzz \
+                   pcm:test_pcm_file_fuzz \
+                   snapshot:test_snapshot_fuzz \
+                   d64:test_d64_fuzz; do
+            dir="${t%%:*}"; bin="${t##*:}"
+            echo "::group::$bin"
+            # -max_total_time keeps the four campaigns inside the job budget;
+            # -max_len matches the biggest thing any of these parsers accepts.
+            ./build-fuzz/tests/"$bin" "fuzz-corpus/$dir" \
+                -max_total_time=900 -max_len=262144 -print_final_stats=1 \
+                -artifact_prefix="fuzz-corpus/$dir/crash-" || status=1
+            echo "::endgroup::"
+          done
+          exit $status
+
+      - name: Upload findings
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-findings
+          path: |
+            fuzz-corpus/*/crash-*
+            fuzz-corpus/*/leak-*
+            fuzz-corpus/*/timeout-*
+          if-no-files-found: ignore

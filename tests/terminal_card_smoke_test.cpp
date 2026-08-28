@@ -5,13 +5,13 @@
 // sniffer (7-bit vs 8-bit framing, uppercase folding), the key injector and the
 // one-shot control latches — need no socket.
 //
-// IMPORTANT: reset() calls startServer(), so it BINDS localhost:6502. This test
-// therefore never calls reset(): doing so would make it fight a POM1 instance
-// the developer has running, and would make two ctest jobs fight each other.
-// The constructor alone opens nothing, and its member initialisers are the same
-// firmware defaults reset() restores — so the defaults are still pinned here,
-// just without the side effect. (Discovered writing this test; the port bind
-// hiding inside reset() is worth knowing about.)
+// The listener follows the PLUG and nothing else, so a test can reset() the
+// card freely. It did not always: reset() opened the socket unconditionally, so
+// this test had to skip reset() altogether — "doing so would make it fight a
+// POM1 instance the developer has running, and would make two ctest jobs fight
+// each other" — and pinned the firmware defaults off the constructor's member
+// initialisers instead, leaving what reset() actually restores uncovered.
+// That workaround is gone, and §0 below now covers the real thing.
 //
 // Covered:
 //   - the documented power-on mode defaults (Ctrl-O / Ctrl-I / Ctrl-T);
@@ -37,18 +37,29 @@
 
 int main()
 {
-    // Constructed, never reset() — see the header comment: reset() binds :6502.
     TerminalCard card;
 
-    // ── Defaults, as documented in TerminalCard.h. Pinned because the whole
-    //    framing behaviour below hangs off them.
+    // ── §0 The socket follows the plug, never the reset.
+    //
+    //    An unplugged card must open NOTHING: the card is unplugged by default,
+    //    and a listener nobody asked for meant every POM1 process and every
+    //    test binary held localhost:6502 — a second core in the same process
+    //    warned "failed to bind port 6502 (already in use?)".
     {
         TerminalCard::Snapshot s;
         card.copySnapshot(s);
+        assert(!s.serverListening && "the constructor must not open a socket");
+        assert(!card.isEnabled());
+
+        card.reset();                      // ...and neither must a reset
+        card.copySnapshot(s);
+        assert(!s.serverListening && "reset() on an unplugged card must not listen");
+
+        // Defaults, as documented in TerminalCard.h — pinned through the real
+        // reset() path now, not off the constructor's member initialisers.
         assert(s.uppercaseOutgoing && "Ctrl-O uppercase-out defaults ON (Apple-1 convention)");
         assert(!s.uppercaseIncoming && "Ctrl-I uppercase-in defaults OFF");
         assert(!s.eightBitMode && "Ctrl-T 8-bit mode defaults OFF");
-        assert(!s.serverListening && "the constructor must not open a socket");
         assert(!s.clientConnected);
     }
 

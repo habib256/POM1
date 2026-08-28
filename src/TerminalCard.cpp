@@ -91,7 +91,20 @@ void TerminalCard::reset()
     resetPending.store(false);
     clearScreenPending.store(false);
 
-    startServer();
+    // Only listen when the card is actually plugged. See setEnabled().
+    if (enabled.load()) startServer();
+}
+
+void TerminalCard::setEnabled(bool on)
+{
+    std::lock_guard<decltype(cardMutex)> lock(cardMutex);
+    if (enabled.exchange(on) == on) return;
+    if (on) {
+        startServer();
+    } else {
+        disconnectClient();
+        stopServer();
+    }
 }
 
 void TerminalCard::setKeyInjector(KeyInjector injector)

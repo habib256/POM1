@@ -48,6 +48,12 @@ public:
     };
 
     bool mount(const std::string& path);
+    /// Mount from memory. The file path variant reads the bytes and calls this,
+    /// so both go through exactly the same acceptance rules — and so the whole
+    /// format is reachable from a test or a fuzzer without a disk image on
+    /// disk. `path` is remembered only so `save()` knows where to write back;
+    /// leave it empty for a scratch image, which then refuses to save.
+    bool mountBytes(const uint8_t* data, size_t size, const std::string& path = {});
     bool save() const;               // atomic write-temp-then-rename
     void unmount();
     bool isMounted() const { return !bytes_.empty(); }

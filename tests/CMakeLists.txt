@@ -121,6 +121,9 @@ endif()
 set(POM1_TEST_CORE_FILES
     ${CMAKE_SOURCE_DIR}/src/M6502.cpp
     ${CMAKE_SOURCE_DIR}/src/Memory.cpp
+    ${CMAKE_SOURCE_DIR}/src/MemoryImageLoader.cpp
+    ${CMAKE_SOURCE_DIR}/src/PcmFile.cpp
+    ${CMAKE_SOURCE_DIR}/src/ResourceLocator.cpp
     ${CMAKE_SOURCE_DIR}/src/MemorySnapshot.cpp
     ${CMAKE_SOURCE_DIR}/src/CardTopology.cpp
     ${CMAKE_SOURCE_DIR}/src/MachineCoordinator.cpp
@@ -1895,6 +1898,22 @@ if(Python3_FOUND)
     set_tests_properties(headless_preset_matrix PROPERTIES
                          TIMEOUT 300 SKIP_RETURN_CODE 77)
 
+    # ── bbs_autodial — software/NET auto-dial against a local fake BBS ───────
+    # Offline end to end: the shipped WOZMON dumps still load at $0280 and still
+    # carry a NUL-terminated ATDT string, then the same program — with only its
+    # dial target rewritten to a listener the harness owns on 127.0.0.1 — is run
+    # on a headless POM1 and must reach the ACIA at $B000, connect exactly once
+    # and display CONNECT. Guards the chain the user sees; the commit-with-
+    # nothing-staged decision that broke it lives in the UI and is pinned by
+    # staged_card_configuration_smoke instead.
+    add_test(NAME bbs_autodial
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/test_bbs_autodial.py"
+                     --pom1 "$<TARGET_FILE:pom1_imgui>"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(bbs_autodial PROPERTIES
+                         TIMEOUT 120 SKIP_RETURN_CODE 77)
+
     # ── size_report_smoke — tools/size_report.py + the DevBench archive link ──
     # Rebuilds the gen2c runtime archive from dev/bench/gen2c.json (pins the
     # spec: every listed source must exist and compile), links a text-only
@@ -2168,6 +2187,164 @@ add_executable(test_terminal_card
 target_include_directories(test_terminal_card PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME terminal_card_smoke COMMAND test_terminal_card)
 set_tests_properties(terminal_card_smoke PROPERTIES TIMEOUT 10)
+
+# The exit criterion of the host-services work, as an assertion: a core built
+# for a test touches nothing it was not given. Measured before the work, a bare
+# Memory took 205 ms, opened an audio device, bound localhost:6502 and opened a
+# 32 MB CF image — for every test binary in the suite.
+add_executable(test_hermetic_core
+    hermetic_core_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_hermetic_core PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_hermetic_core PRIVATE libresidfp_static)
+if(WIN32)
+    target_link_libraries(test_hermetic_core PRIVATE ws2_32)
+endif()
+add_test(NAME hermetic_core_smoke COMMAND test_hermetic_core)
+set_tests_properties(hermetic_core_smoke PROPERTIES TIMEOUT 30)
+
+# One search order for POM1's data. The class exists because every consumer
+# used to walk ../ on its own and they disagreed on how far to climb — so
+# running from build/tests/ found the disk images but not the ROMs, and the
+# built-in Woz Monitor took over with a WARN nobody reads.
+add_executable(test_resource_locator
+    resource_locator_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/ResourceLocator.cpp
+)
+target_include_directories(test_resource_locator PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME resource_locator_smoke COMMAND test_resource_locator)
+set_tests_properties(resource_locator_smoke PROPERTIES TIMEOUT 10)
+
+option(POM1_FUZZERS "Build the libFuzzer entry points (needs a clang with libFuzzer)" OFF)
+
+# Hostile input against the D64 disk-image reader. A .d64 arrives from
+# --iec-disk and from the IEC card's UI, and the format is LINKED: every
+# directory block and every file sector names the next one, with nothing
+# anywhere recording how long a chain is. That is the shape corruption exploits.
+# Found the two defects d64_parse_smoke now pins: cyclic chains walked by
+# counter rather than by cycle detection, and a BAM free count believed
+# verbatim.
+add_executable(test_d64_fuzz
+    d64_fuzz_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/D64Image.cpp
+)
+target_include_directories(test_d64_fuzz PRIVATE ${CMAKE_SOURCE_DIR}/src)
+if(POM1_FUZZERS)
+    target_compile_definitions(test_d64_fuzz PRIVATE POM1_LIBFUZZER)
+    target_compile_options(test_d64_fuzz PRIVATE -fsanitize=fuzzer,address)
+    target_link_options(test_d64_fuzz PRIVATE -fsanitize=fuzzer,address)
+else()
+    add_test(NAME d64_fuzz_smoke COMMAND test_d64_fuzz)
+    set_tests_properties(d64_fuzz_smoke PROPERTIES TIMEOUT 120)
+endif()
+
+# The snapshot pre-flight — the gate a machine state passes BEFORE any of it is
+# applied. Pure: bytes in, a verdict out, no Memory and no CPU in the binary.
+add_executable(test_snapshot_validate
+    snapshot_validate_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
+)
+target_include_directories(test_snapshot_validate PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME snapshot_validate_smoke COMMAND test_snapshot_validate)
+set_tests_properties(snapshot_validate_smoke PROPERTIES TIMEOUT 10)
+
+# Hostile input against that gate. Enumerates EVERY truncation of a realistic
+# snapshot byte by byte — the exact family that used to leave a half-restored
+# machine — on top of the usual mutation rounds.
+add_executable(test_snapshot_fuzz
+    snapshot_fuzz_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
+)
+target_include_directories(test_snapshot_fuzz PRIVATE ${CMAKE_SOURCE_DIR}/src)
+if(POM1_FUZZERS)
+    target_compile_definitions(test_snapshot_fuzz PRIVATE POM1_LIBFUZZER)
+    target_compile_options(test_snapshot_fuzz PRIVATE -fsanitize=fuzzer,address)
+    target_link_options(test_snapshot_fuzz PRIVATE -fsanitize=fuzzer,address)
+else()
+    add_test(NAME snapshot_fuzz_smoke COMMAND test_snapshot_fuzz)
+    set_tests_properties(snapshot_fuzz_smoke PROPERTIES TIMEOUT 120)
+endif()
+
+# The two cassette containers POM1 decodes itself (miniaudio covers only
+# MP3/FLAC/Vorbis). Pure: no audio device, no file, no log sink. The AIFF half
+# is POM1's own parser — AIFF is what Uncle Bernie's ACIace synthesiser emits —
+# and until now it was gated by exactly one end-to-end test.
+add_executable(test_pcm_file
+    pcm_file_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/PcmFile.cpp
+)
+target_include_directories(test_pcm_file PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME pcm_file_smoke COMMAND test_pcm_file)
+set_tests_properties(pcm_file_smoke PROPERTIES TIMEOUT 10)
+
+# Hostile input against those two parsers — the surface where POM1 reads a
+# BINARY file a user picked. Same dual shape as the memory-image fuzzer below:
+# deterministic driver by default, LLVMFuzzerTestOneInput under POM1_FUZZERS.
+# It found both of the defects the smoke test above now pins (§11 and §12).
+add_executable(test_pcm_file_fuzz
+    pcm_file_fuzz_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/PcmFile.cpp
+)
+target_include_directories(test_pcm_file_fuzz PRIVATE ${CMAKE_SOURCE_DIR}/src)
+if(POM1_FUZZERS)
+    target_compile_definitions(test_pcm_file_fuzz PRIVATE POM1_LIBFUZZER)
+    target_compile_options(test_pcm_file_fuzz PRIVATE -fsanitize=fuzzer,address)
+    target_link_options(test_pcm_file_fuzz PRIVATE -fsanitize=fuzzer,address)
+else()
+    add_test(NAME pcm_file_fuzz_smoke COMMAND test_pcm_file_fuzz)
+    set_tests_properties(pcm_file_fuzz_smoke PROPERTIES TIMEOUT 120)
+endif()
+
+# Hostile input against the memory-image loader. Two shapes from one source:
+#
+#   * the DEFAULT, always built: a deterministic driver (fixed seed) that
+#     replays a corpus of real dump shapes, mutates it, and holds every result
+#     to the loader's contract — 64 KB containment, byteCount agreeing with the
+#     spans, no writes on a rejected image, zones() matching, output bounded by
+#     input, and identical results on a re-parse. Cheap enough for every PR.
+#
+#   * with -DPOM1_FUZZERS=ON, the same checks behind LLVMFuzzerTestOneInput for
+#     the long ASan campaign. Needs a clang that ships libFuzzer — Apple clang
+#     does NOT, which is exactly why the deterministic driver above is the
+#     default rather than the fallback.
+add_executable(test_memory_image_fuzz
+    memory_image_fuzz_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/MemoryImageLoader.cpp
+)
+target_include_directories(test_memory_image_fuzz PRIVATE ${CMAKE_SOURCE_DIR}/src)
+if(POM1_FUZZERS)
+    target_compile_definitions(test_memory_image_fuzz PRIVATE POM1_LIBFUZZER)
+    target_compile_options(test_memory_image_fuzz PRIVATE -fsanitize=fuzzer,address)
+    target_link_options(test_memory_image_fuzz PRIVATE -fsanitize=fuzzer,address)
+else()
+    # No add_test in the libFuzzer configuration: the binary then expects a
+    # corpus directory and runs until stopped, which is not a PR gate.
+    add_test(NAME memory_image_fuzz_smoke COMMAND test_memory_image_fuzz)
+    set_tests_properties(memory_image_fuzz_smoke PROPERTIES TIMEOUT 120)
+endif()
+
+# The three memory-image dialects, as pure functions: bytes in, writes/zones/
+# run address/diagnostics out. No Memory, no file, no log sink — which is the
+# point. The dialects used to be reachable only through a whole emulated
+# machine, and the in-place loader could not validate before mutating.
+add_executable(test_memory_image_loader
+    memory_image_loader_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/MemoryImageLoader.cpp
+)
+target_include_directories(test_memory_image_loader PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME memory_image_loader_smoke COMMAND test_memory_image_loader)
+set_tests_properties(memory_image_loader_smoke PROPERTIES TIMEOUT 10)
+
+# The UI's card-configuration transaction. Pure value logic — no ImGui, no
+# GLFW, no Memory — which is the whole point: it is the decision half of the
+# GUI hardware rail, and the BBS auto-dial regression lived there.
+add_executable(test_staged_card_configuration
+    staged_card_configuration_smoke_test.cpp
+)
+target_include_directories(test_staged_card_configuration PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME staged_card_configuration_smoke COMMAND test_staged_card_configuration)
+set_tests_properties(staged_card_configuration_smoke PROPERTIES TIMEOUT 10)
 
 # P-LAB MODEM BBS — 65C51 ACIA register file + Hayes AT parser. No ATD is
 # issued, so no connection is attempted.

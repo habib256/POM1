@@ -433,43 +433,46 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // Compose plug intents. Cassette audio source is always
     // re-plugged — CassetteDevice exists independently of the ACI and
     // produces the audible tape output through the mixer.
-    stagedCardConfiguration.cards = presetCards;
-    stagedCardConfiguration.mode = fantasyPreset
+    // One reference for the whole composition: the first stage seeds the
+    // transaction, and a preset REPLACES the topology rather than amending it.
+    auto& req = stageCardConfiguration();
+    req.cards = presetCards;
+    req.mode = fantasyPreset
         ? pom1::TopologyMode::Fantasy : pom1::TopologyMode::Strict;
-    stagedCardConfiguration.jukeBoxJumper = cfg.jukeBox.jumper;
-    stagedCardConfiguration.jukeBoxChipMode = cfg.jukeBox.chipMode;
-    stagedCardConfiguration.codeTankJumper = cfg.codeTank.jumper;
-    stagedCardConfiguration.codeTankRomPath =
+    req.jukeBoxJumper = cfg.jukeBox.jumper;
+    req.jukeBoxChipMode = cfg.jukeBox.chipMode;
+    req.codeTankJumper = cfg.codeTank.jumper;
+    req.codeTankRomPath =
         (cfg.codeTank.romPath ? cfg.codeTank.romPath : std::string());
     using SystemRomProfile = pom1::CardConfigurationRequest::SystemRomProfile;
     if (cfg.basicType == BasicType::ApplesoftLite) {
-        stagedCardConfiguration.systemRomProfile =
+        req.systemRomProfile =
             cfg.hasCard(CardId::MicroSD) && !cfg.hasCard(CardId::Cffa1)
                 ? (fantasyPreset ? SystemRomProfile::ApplesoftSdFantasy
                                  : SystemRomProfile::ApplesoftSd)
                 : SystemRomProfile::ApplesoftCffa1;
     } else if (cfg.basicType == BasicType::Integer) {
-        stagedCardConfiguration.systemRomProfile = SystemRomProfile::IntegerBasic;
+        req.systemRomProfile = SystemRomProfile::IntegerBasic;
     } else {
-        stagedCardConfiguration.systemRomProfile = SystemRomProfile::MonitorOnly;
+        req.systemRomProfile = SystemRomProfile::MonitorOnly;
     }
-    stagedCardConfiguration.loadKrusader = cfg.krusader;
-    stagedCardConfiguration.loadCffa1Firmware = cfg.hasCard(CardId::Cffa1);
-    stagedCardConfiguration.coldReset = coldResetPreset;
-    stagedCardConfiguration.animateBoot = !isDevBench;
-    stagedCardConfiguration.activateCassetteAudio = true;
-    stagedCardConfiguration.presetRamKB = cfg.ramKB;
-    stagedCardConfiguration.siliconStrict = !fantasyPreset;
-    stagedCardConfiguration.outOfRangeStrict = !fantasyPreset;
-    stagedCardConfiguration.vramNoiseOnReset = !fantasyPreset;
-    stagedCardConfiguration.systemRamNoiseOnReset = !fantasyPreset;
-    stagedCardConfiguration.cpuDecimalBugNMOS = !fantasyPreset;
-    stagedCardConfiguration.dramRefresh = !fantasyPreset;
-    stagedCardConfiguration.gen2RandomPowerOn = !fantasyPreset;
+    req.loadKrusader = cfg.krusader;
+    req.loadCffa1Firmware = cfg.hasCard(CardId::Cffa1);
+    req.coldReset = coldResetPreset;
+    req.animateBoot = !isDevBench;
+    req.activateCassetteAudio = true;
+    req.presetRamKB = cfg.ramKB;
+    req.siliconStrict = !fantasyPreset;
+    req.outOfRangeStrict = !fantasyPreset;
+    req.vramNoiseOnReset = !fantasyPreset;
+    req.systemRamNoiseOnReset = !fantasyPreset;
+    req.cpuDecimalBugNMOS = !fantasyPreset;
+    req.dramRefresh = !fantasyPreset;
+    req.gen2RandomPowerOn = !fantasyPreset;
 #if !POM1_IS_WASM
     // Native builds retain the preset's Terminal Card intent.
 #else
-    stagedCardConfiguration.cards.remove(CardId::TerminalCard);
+    req.cards.remove(CardId::TerminalCard);
 #endif
     stagedCassetteAudioActive  = true;
     stagedPresetTapePath.clear();
@@ -922,10 +925,10 @@ void MainWindow_ImGui::renderProfileChooser()
 
 // Boot a CodeTank release cartridge straight from the chooser's Play column:
 // apply the TMS9918 (CodeTank) preset, swap the queued cartridge + jumper for
-// the picked game (the pendings ride the deferred plug rail, and setting them
-// AFTER applyBootConfig also wins over a --codetank-rom/-jumper CLI override,
-// like the audio branch does for its card), then auto-type 4000R once the
-// cold boot settles — the same UX as the CodeTank Library window's Run.
+// the picked game (staged AFTER applyBootConfig so the cart also wins over a
+// --codetank-rom/-jumper CLI override, like the audio branch does for its
+// card), then auto-type 4000R once the cold boot settles — the same UX as the
+// CodeTank Library window's Run.
 void MainWindow_ImGui::launchGameFromChooser(int game)
 {
     static const struct { const char* rom; CodeTank::Jumper jumper; } kChooserGames[] = {
@@ -939,11 +942,16 @@ void MainWindow_ImGui::launchGameFromChooser(int game)
     if (game < 0 || game >= kChooserGameCount) return;
 
     applyBootConfig(kPresetTMS9918Card);
-    stagedCardConfiguration.codeTankRomPath = kChooserGames[game].rom;
-    stagedCardConfiguration.codeTankJumper  = kChooserGames[game].jumper;
+    // applyBootConfig() already committed the preset's topology, so the cart
+    // override opens a second transaction on top of the live machine and is
+    // committed here. Amending without draining would leave it open until some
+    // unrelated load flushed it.
+    stageCardConfiguration().codeTankRomPath = kChooserGames[game].rom;
+    stageCardConfiguration().codeTankJumper  = kChooserGames[game].jumper;
     codeTankJumper         = kChooserGames[game].jumper;
-    // ~3 s: covers the deferred card plug (~0.2 s) + the power-on scenario,
-    // mirroring the CodeTank Library's kCodeTankColdBootSeconds.
+    applyPendingCardConfiguration();
+    // ~3 s: covers the power-on scenario, mirroring the CodeTank Library's
+    // kCodeTankColdBootSeconds.
     codeTankPendingWozRunAt = ImGui::GetTime() + 3.0;
 }
 
@@ -955,7 +963,8 @@ void MainWindow_ImGui::launchPaintEditorFromChooser(bool tms)
     if (tms) {
         applyBootConfig(kPresetTMS9918Card);
         tms9918Enabled = true;
-        stagedCardConfiguration.cards.add(CardId::Tms9918);
+        stageCardConfiguration().cards.add(CardId::Tms9918);
+        applyPendingCardConfiguration();
         showTMS9918 = true;
         showTMSPaintEditor = true;
     } else {
@@ -969,25 +978,24 @@ void MainWindow_ImGui::launchPaintEditorFromChooser(bool tms)
 
 // Open an audio editor straight from the chooser. Boot a plain Apple-1 with the
 // ACI (kPresetIntegerCassette) as the base machine, then raise the editor
-// window. Card plugs ride the deferred configuration rail (plugged by
-// the synchronous card transaction after the reset) like
-// launchPaintEditorFromChooser — a same-frame plug is the documented
-// silent-card-on-boot condition, and the deferred finalize would otherwise
-// honour a CLI --enable sid-se/jukebox override queued by applyBootConfig and
-// evict the SID the user just asked for.
+// window. The card plug is staged AFTER applyBootConfig and committed here,
+// like launchPaintEditorFromChooser — staging it before would let a CLI
+// --enable sid-se/jukebox override queued by applyBootConfig evict the SID
+// the user just asked for.
 void MainWindow_ImGui::launchAudioEditorFromChooser(bool sid)
 {
     applyBootConfig(kPresetIntegerCassette);
     if (sid) {
         sidEnabled = true;
-        stagedCardConfiguration.cards.add(CardId::Sid);
+        stageCardConfiguration().cards.add(CardId::Sid);
         // A1-SID evicts its bus rivals (A1-AUDIO SE shares $C800-$CFFF, the
         // Juke-Box latch sits at $CA00) — clear their pendings too so the
         // finalize pass can't plug one and evict the SID right back.
         sidSpecialEditionEnabled = false;
-        stagedCardConfiguration.cards.remove(CardId::SidSpecialEdition);
+        stageCardConfiguration().cards.remove(CardId::SidSpecialEdition);
         jukeBoxEnabled = false;
-        stagedCardConfiguration.cards.remove(CardId::JukeBox);
+        stageCardConfiguration().cards.remove(CardId::JukeBox);
+        applyPendingCardConfiguration();
         showSidTracker = true;
     } else {
         // kPresetIntegerCassette carries the ACI (cfg.cards queues the deferred
@@ -996,7 +1004,8 @@ void MainWindow_ImGui::launchAudioEditorFromChooser(bool sid)
         // (like the SID branch above) so the editor never falls back on its
         // render guard's same-frame emergency plug (silent-card-on-boot).
         aciEnabled = true;
-        stagedCardConfiguration.cards.add(CardId::Aci);
+        stageCardConfiguration().cards.add(CardId::Aci);
+        applyPendingCardConfiguration();
         showSfxEditor = true;
     }
 }
@@ -1019,14 +1028,18 @@ void MainWindow_ImGui::launchLanguageFromChooser(int benchLang, int benchMachine
     }
     showBench = true;
     codeBench_->prepareTargetWithStarter(target);
+    // Re-assert the CLI card overrides over the target's preset and commit them
+    // in the same breath, exactly as applyBootConfig() does. Leaving the
+    // transaction open would defer the overrides to whatever committed next.
     applyBootCliOverrides();
+    applyPendingCardConfiguration();
 }
 
 // GUI-free preset application for --headless. Mirrors the machine-config
 // essence of applyMachineConfig() — RAM size, strict modes, card plugs, BASIC
 // ROM, Krusader — but without ImGui (no ini/layout/window) and without the
-// 15-frame deferred plug (that only existed to dodge silent-card-on-boot for
-// audio; headless has no audio device, so cards plug immediately). Cascades
+// staged transaction: the request is built once, here, and committed once, so
+// the GUI's stage/commit rail has no headless equivalent. Cascades
 // (CodeTank→TMS9918, IEC→microSD) and mutex evictions are handled inside the
 // EmulationController setters; the preset config is already mutex-consistent.
 void MainWindow_ImGui::applyHeadlessConfig(EmulationController& emu, int presetIndex)

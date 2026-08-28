@@ -57,6 +57,19 @@ public:
 
     void reset() override;
 
+    /// Plug or unplug the card. The TCP listener follows this and nothing else.
+    ///
+    /// It used to be opened from reset(), unconditionally — so every POM1
+    /// process and every test binary bound localhost:6502 whether or not the
+    /// user had plugged the card (it is unplugged by default), a second core in
+    /// the same process warned "failed to bind port 6502 (already in use?)",
+    /// and terminal_card_smoke had to skip reset() altogether to avoid fighting
+    /// a running POM1 — leaving the firmware defaults it restores unpinned.
+    /// TelemetryPort next door has always opened its server only when enabled;
+    /// this brings the Terminal Card in line.
+    void setEnabled(bool enabled);
+    bool isEnabled() const { return enabled.load(); }
+
     // Called from Memory::memWrite when address == 0xD012
     // Receives the RAW value (before & 0x7F) so 8-bit mode works
     void onDisplayWrite(uint8_t rawValue);
@@ -70,6 +83,7 @@ public:
     void setKeyInjector(KeyInjector injector);
 
     // Thread-safe pending flags for actions that can't run inside advanceCycles
+    std::atomic<bool> enabled{false};
     std::atomic<bool> resetPending{false};
     std::atomic<bool> hardResetPending{false};
     std::atomic<bool> clearScreenPending{false};

@@ -27,6 +27,7 @@
 #include "Pom1SidHost.h"
 #include "Screen_ImGui.h"
 #include "FullscreenExpand.h"
+#include "StagedCardConfiguration.h"
 #include "Pom1CrtEffects.h"        // universal shader CRT post-process (opt-in)
 #include "GraphicsCard.h"
 #include "TMS9918.h"
@@ -885,8 +886,13 @@ private:
     // the matching sound card (ACI beeper or A1-SID) and raise its editor window.
     void launchAudioEditorFromChooser(bool sid);
     // Boot a CodeTank release cartridge from the chooser's Play column: TMS9918
-    // preset + picked cart/jumper on the deferred rail + auto-4000R.
+    // preset, then the picked cart/jumper as a second transaction + auto-4000R.
     void launchGameFromChooser(int game);
+    // Open (or amend) the pending card-configuration transaction and return the
+    // request to write into. EVERY write to stagedCardConfiguration must go
+    // through here — see pom1::StagedCardConfiguration for why. Seeds a fresh
+    // transaction from the live machine read back off EmulationController.
+    pom1::CardConfigurationRequest& stageCardConfiguration();
     void applyPendingCardConfiguration();
     void applyPendingLayout(const char* windowName);
     // Restore every window (and the main OS window) to the active preset's
@@ -1041,11 +1047,13 @@ private:
     int  activePresetIndex = -1;
 
     // One value object stages hardware intent while preset and CLI overrides
-    // are composed. It is applied synchronously before control returns to the
-    // CPU; no frame or wall-clock timer participates in hardware readiness.
-    // board options together prevents the GUI rail from reconstructing a
-    // second, partly inconsistent topology beside EmulationController.
-    pom1::CardConfigurationRequest stagedCardConfiguration;
+    // are composed, then commits it synchronously before control returns to the
+    // CPU — no frame or wall-clock timer participates in hardware readiness.
+    // Carrying cards and board options together keeps the GUI rail from
+    // reconstructing a second, partly inconsistent topology beside
+    // EmulationController. Open/commit rules, and why getting them wrong
+    // unplugs the machine, live on the type itself.
+    pom1::StagedCardConfiguration stagedCardConfiguration;
     bool composingBootConfiguration = false;
     bool stagedCassetteAudioActive = false;
     std::string stagedPresetTapePath;

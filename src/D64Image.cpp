@@ -1,5 +1,7 @@
 #include "D64Image.h"
 
+#include "FileBytes.h"
+
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -7,6 +9,44 @@
 #include <fstream>
 
 namespace pom1 {
+
+namespace {
+
+/// Tracks which sectors a link walk has already been through.
+///
+/// A D64 is a LINKED structure: every directory block and every file sector
+/// names the next one, and nothing anywhere says how long a chain is. So a
+/// corrupt image can point a chain at itself, and the only sound stop condition
+/// is "I have been here before" — a counter is a guess about how long an honest
+/// chain can be, and the guesses here were wrong in both directions. The file
+/// walk allowed 1000 hops on a disk that holds 683 sectors, so a self-linking
+/// sector yielded a 254 KB "file" out of a 174 KB image; the directory walk
+/// allowed 256 hops, which is fewer than the 683 blocks a pathological but
+/// LEGAL directory chain could occupy.
+///
+/// 683 bits. Cheaper than the counter it replaces, and exact.
+class VisitedSectors {
+public:
+    /// True the first time this sector is seen, false once it repeats.
+    bool visit(uint8_t track, uint8_t sector)
+    {
+        const size_t off = D64Image::sectorOffset(track, sector);
+        if (off == SIZE_MAX) return false;              // off the disk entirely
+        const size_t index = off / D64Image::kSectorBytes;
+        if (index >= kSectorCount) return false;
+        const size_t word = index >> 6;
+        const uint64_t bit = uint64_t(1) << (index & 63);
+        if (bits_[word] & bit) return false;
+        bits_[word] |= bit;
+        return true;
+    }
+
+private:
+    static constexpr size_t kSectorCount = 683;         // 35 tracks
+    uint64_t bits_[(kSectorCount + 63) / 64] = {};
+};
+
+} // namespace
 
 uint8_t D64Image::sectorsOnTrack(uint8_t track) {
     if (track >= 1 && track <= 17) return 21;
@@ -36,18 +76,27 @@ const uint8_t* D64Image::sectorPtr(uint8_t track, uint8_t sector) const {
     return &bytes_[off];
 }
 
-bool D64Image::mount(const std::string& path) {
-    std::ifstream f(path, std::ios::binary);
-    if (!f) return false;
-    f.seekg(0, std::ios::end);
-    auto sz = static_cast<size_t>(f.tellg());
-    if (sz != kImageSize && sz != kImageSizeWithErrors) return false;
-    f.seekg(0);
-    bytes_.assign(kImageSize, 0);
-    f.read(reinterpret_cast<char*>(bytes_.data()), kImageSize);
-    if (!f) { bytes_.clear(); return false; }
+bool D64Image::mountBytes(const uint8_t* data, size_t size, const std::string& path) {
+    // A D64 is exactly one of two sizes — 35 tracks, with or without the 683
+    // trailing error bytes. Nothing else is a 35-track image, so there is no
+    // "read what we can" case to get wrong. The error bytes themselves are
+    // dropped: POM1 emulates a healthy drive.
+    if (data == nullptr) return false;
+    if (size != kImageSize && size != kImageSizeWithErrors) return false;
+    bytes_.assign(data, data + kImageSize);
     path_ = path;
     return true;
+}
+
+bool D64Image::mount(const std::string& path) {
+    // Bounded read, then the memory path — one set of acceptance rules for a
+    // file and for a buffer. kImageSizeWithErrors is the largest thing that can
+    // possibly be accepted, so anything past it is refused before it is read.
+    std::vector<uint8_t> bytes;
+    std::string error;
+    if (!pom1::readFileBounded(path, kImageSizeWithErrors, "disk image", bytes, error))
+        return false;
+    return mountBytes(bytes.data(), bytes.size(), path);
 }
 
 bool D64Image::save() const {
@@ -149,8 +198,9 @@ void D64Image::freeSector(uint8_t track, uint8_t sector) {
 }
 
 void D64Image::freeChain(uint8_t track, uint8_t sector) {
-    int safety = 1000;
-    while (track != 0 && safety-- > 0) {
+    VisitedSectors seen;
+    while (track != 0) {
+        if (!seen.visit(track, sector)) break;   // cycle, or off the disk
         const uint8_t* sp = sectorPtr(track, sector);
         if (!sp) break;
         uint8_t nextT = sp[0];
@@ -212,7 +262,12 @@ int D64Image::blocksFree() const {
     int total = 0;
     for (uint8_t t = 1; t <= 35; ++t) {
         if (t == kDirTrack) continue;
-        total += bam[4 + (t - 1) * 4];
+        // Clamp to the geometry rather than believing the disk. The BAM's
+        // per-track free count is a raw byte from the image, so a corrupt one
+        // reports up to 255 free sectors on a track that physically holds 21 —
+        // an all-$FF disk listed "8670 BLOCKS FREE" on a 664-block disk.
+        const int free = bam[4 + (t - 1) * 4];
+        total += std::min(free, static_cast<int>(sectorsOnTrack(t)));
     }
     return total;
 }
@@ -254,8 +309,9 @@ std::vector<D64Image::DirEntry> D64Image::directory(std::string_view pattern) co
     if (bytes_.empty()) return out;
     uint8_t t = kDirTrack;
     uint8_t s = kFirstDirSector;
-    int safety = 256;
-    while (t != 0 && safety-- > 0) {
+    VisitedSectors seen;
+    while (t != 0) {
+        if (!seen.visit(t, s)) break;            // cycle, or off the disk
         const uint8_t* blk = sectorPtr(t, s);
         if (!blk) break;
         for (int i = 0; i < 8; ++i) {
@@ -286,8 +342,9 @@ D64Image::DirEntry* D64Image::findEntry(std::string_view name) {
     auto pp = reinterpret_cast<const uint8_t*>(name.data());
     uint8_t t = kDirTrack;
     uint8_t s = kFirstDirSector;
-    int safety = 256;
-    while (t != 0 && safety-- > 0) {
+    VisitedSectors seen;
+    while (t != 0) {
+        if (!seen.visit(t, s)) break;            // cycle, or off the disk
         uint8_t* blk = sectorPtr(t, s);
         if (!blk) break;
         for (int i = 0; i < 8; ++i) {
@@ -318,8 +375,9 @@ std::vector<uint8_t> D64Image::readFile(std::string_view name) const {
     // Walk dir, find first match (skip deleted).
     uint8_t t = kDirTrack, s = kFirstDirSector;
     uint8_t startT = 0, startS = 0;
-    int safety = 256;
-    while (t != 0 && safety-- > 0) {
+    VisitedSectors seen;
+    while (t != 0) {
+        if (!seen.visit(t, s)) break;            // cycle, or off the disk
         const uint8_t* blk = sectorPtr(t, s);
         if (!blk) break;
         for (int i = 0; i < 8; ++i) {
@@ -337,8 +395,9 @@ std::vector<uint8_t> D64Image::readFile(std::string_view name) const {
     return out;
 found:
     // Follow chain.
-    int chain = 1000;
-    while (startT != 0 && chain-- > 0) {
+    VisitedSectors chainSeen;
+    while (startT != 0) {
+        if (!chainSeen.visit(startT, startS)) break;   // cycle, or off the disk
         const uint8_t* sp = sectorPtr(startT, startS);
         if (!sp) break;
         uint8_t nextT = sp[0];
@@ -362,8 +421,9 @@ bool D64Image::appendDirEntry(const std::vector<uint8_t>& padName,
                                FileType type, uint8_t firstTrack, uint8_t firstSector,
                                uint16_t blocks) {
     uint8_t t = kDirTrack, s = kFirstDirSector;
-    int safety = 256;
-    while (safety-- > 0) {
+    VisitedSectors seen;
+    while (true) {
+        if (!seen.visit(t, s)) return false;     // cycle, or off the disk
         uint8_t* blk = sectorPtr(t, s);
         if (!blk) return false;
         for (int i = 0; i < 8; ++i) {

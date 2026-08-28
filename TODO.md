@@ -19,33 +19,20 @@ des cartes et le chemin audio temps réel sont stabilisés. La priorité est dé
 de séparer l’état émulé des services hôte sans réécriture du CPU, du bus, des
 renderers ou du format de snapshot.
 
-### Régression prioritaire
-
-- [ ] **Rétablir l’auto-connexion BBS depuis `software/NET`** `[S · critical]` — le chargement de `bbs.fozztexx.com.txt` ou `bbs.retrocampus.com.txt` branche/réinitialise encore le Wi-Fi Modem, mais ne lance plus le programme d’auto-dial à `$0280`. Identifier la rupture entre chargement, action différée et démarrage CPU ; rétablir le lancement automatique sans modifier le comportement manuel d’`ATmodem.txt`. Ajouter un test sans Internet avec connecteur factice qui épingle chargement à `$0280`, exécution, commande `ATDT` émise et tentative de connexion unique.
-
 Architecture cible : panneaux UI → commandes et vues immuables → façade applicative
 thread-safe → `MachineCoordinator` (`CpuRunner`, `CardTopology`, `StateManager`) →
 espace d’adressage, `PeripheralBus` et périphériques. Audio, fichiers, réseau et
 rendu sont injectés à la racine de l’application.
 
-### 1. Chargeurs purs et entrées hostiles (1–2 semaines)
+### 1. Services hôte injectés (1–2 semaines)
 
-- [ ] **Extraire `MemoryImageLoader` et les parseurs purs** `[M · critical]` — recevoir des octets et retourner écritures, zones, adresse d’exécution et diagnostics, sans accès à `Memory`, à l’UI, à l’audio ou au système de fichiers. Valider le résultat complet avant toute mutation de la machine. Couvrir d’abord WOZMON hex, Intel HEX, TurboType et snapshots, puis AIFF et D64.
-- [ ] **Durcir les contrats des formats** `[M · solid]` — tailles maximales, arithmétique de longueurs vérifiée, offsets d’erreur, CRC quand le format le permet et absence de modification partielle en cas d’échec.
-- [ ] **Fuzzer chaque parseur pur** `[M · solid]` — une cible libFuzzer par format, corpus issu de `software/`, `cassettes/`, `sdcard/` et des fixtures ; smoke borné par PR, campagne ASan longue la nuit ; chaque crash devient un test de régression.
-
-> Sortie : les entrées malformées ne crashent ni ne bloquent POM1 et ne modifient
-> jamais partiellement la machine ; les fuzzers tournent en CI.
-
-### 2. Services hôte injectés (1–2 semaines)
-
-- [ ] **Introduire `ResourceLocator`** `[M · solid]` — centraliser cwd, bundle, ROM, disques, cassettes et ressources web ; supprimer les sondes implicites du constructeur de `Memory`.
-- [ ] **Injecter audio, fichiers et réseau** `[M · critical]` — fournir `IAudioService`, `IFileSystemService` et des factories réseau depuis `main_imgui` ; les tests doivent construire CPU + mémoire sans matériel audio, socket ni fichiers implicites.
+- [ ] **Étendre `ResourceLocator` aux consommateurs restants** `[S · solid]` — `src/ResourceLocator.{h,cpp}` porte l'ordre de recherche unique et `Memory` le reçoit (sondes implicites du constructeur supprimées, `resource_locator_smoke`). Reste à y router les ~60 sondes `../` encore dispersées dans l'UI, le Bench et `GraphicsCard`/`Screen_ImGui`, et à couvrir les ressources web.
+- [ ] **Injecter le service audio** `[M · critical]` — le réseau et les fichiers sont faits : plus aucun socket n'est ouvert sans branchement de carte (`TerminalCard::setEnabled`), et les ressources passent par `ResourceLocator` (`hermetic_core_smoke` épingle les deux). Reste `AudioDevice`, toujours construit par `Memory` : fournir un `IAudioService` injecté depuis `main_imgui` avec un double en mémoire pour les tests. Mesure de référence : construction d'un cœur hermétique 133 ms, dont l'essentiel est cet objet.
 
 > Sortie : `Memory` ne crée plus d’`AudioDevice` et ne découvre aucune ressource
 > hôte ; un test hermétique construit le cœur avec des doubles en mémoire.
 
-### 3. Propriété des périphériques (2–4 semaines)
+### 2. Propriété des périphériques (2–4 semaines)
 
 - [ ] **Créer `PeripheralManager`** `[L · critical]` — transférer depuis `Memory` la propriété et le cycle de vie des cartes, les bindings `PeripheralBus`, les endpoints audio/réseau et l’exécution des `TransitionPlan`. Préserver `memRead()`, `memWrite()` et `PeripheralBus` comme interfaces stables pendant la migration.
 - [ ] **Abaisser le cliquet architectural à chaque extraction** `[S · solid]` — mettre à jour `architecture_baseline.json` uniquement vers le bas. Cibles de phase : `Memory` < 2 500 lignes et `Memory.h` inclus par moins de 25 unités de traduction.
@@ -53,7 +40,7 @@ rendu sont injectés à la racine de l’application.
 > Sortie : `Memory` ne porte plus que l’espace d’adressage, PIA et MMIO cœur ;
 > aucun cycle de vie de carte ne dépend d’elle.
 
-### 4. Vues et snapshots indépendants (1–2 semaines)
+### 3. Vues et snapshots indépendants (1–2 semaines)
 
 - [ ] **Extraire les DTO publiés** `[M · solid]` — définir `CpuView`, `MachineView`, `CardView` et les snapshots de cartes hors des classes concrètes ; conserver temporairement des alias de compatibilité.
 - [ ] **Libérer `EmulationSnapshot.h` des périphériques concrets** `[M · solid]` — retirer notamment les dépendances vers `JukeBox`, `CodeTank`, TMS9918, réseau et imprimante ; basculer les consommateurs d’enums vers `CardTypes.h`.
@@ -61,7 +48,7 @@ rendu sont injectés à la racine de l’application.
 > Sortie : `EmulationSnapshot.h` ne contient que des types de vue stables et son
 > fan-out n’entraîne plus la recompilation des implémentations de cartes.
 
-### 5. Façade applicative mince (2–3 semaines)
+### 4. Façade applicative mince (2–3 semaines)
 
 - [ ] **Extraire `CpuRunner`** `[L · critical]` — pacing, run, pause, step et slices, sans changer la sémantique headless/WASM.
 - [ ] **Extraire `StateManager`** `[L · critical]` — snapshots, sauvegarde, restauration et rewind ; la façade applicative conserve le verrouillage et la publication atomique.
@@ -73,7 +60,7 @@ rendu sont injectés à la racine de l’application.
 
 ## Ensuite — interface et industrialisation
 
-### 6. UI par panneaux (4–6 semaines, incrémental)
+### 5. UI par panneaux (4–6 semaines, incrémental)
 
 - [ ] **Faire du registre de fenêtres une fabrique d’`IPanel`** `[L · solid]` — chaque panneau possède visibilité, état transitoire, géométrie, modèle de vue et `render(AppContext&)` ; `MainWindow_ImGui` conserve menus, docking, layout et orchestration.
 - [ ] **Migrer un panneau par PR** `[L · solid]` — ordre : Silicon Strict et presets, panneaux de cartes, debug, dialogues fichier, puis éditeurs. Ajouter un test de logique par panneau migré.
@@ -81,7 +68,7 @@ rendu sont injectés à la racine de l’application.
 - [ ] **Unifier fenêtres, menus et raccourcis par identifiant stable** `[M · solid]` — ouvrir ensuite une palette de commandes dérivée du registre. Préserver l’interdiction des raccourcis Ctrl+lettre, réservés aux codes de contrôle Apple-1.
 - [ ] **Réduire le noyau `MainWindow_ImGui`** `[M · solid]` — cible : moins de 500 lignes de déclaration et moins de 5 000 lignes cumulées d’orchestration `MainWindow_*`.
 
-### 7. Qualité, sécurité et chaîne de livraison (1–2 semaines)
+### 6. Qualité, sécurité et chaîne de livraison (1–2 semaines)
 
 - [ ] **Mesurer la couverture par module** `[S · solid]` — publier couverture lignes/branches et définir des seuils sur les parseurs, la topologie, les snapshots et le cœur CPU plutôt qu’un pourcentage global trompeur.
 - [ ] **Ajouter une analyse statique incrémentale** `[M · solid]` — `clang-tidy` sur le code POM1 modifié, avec baseline initiale explicite ; ne pas analyser le code vendu.

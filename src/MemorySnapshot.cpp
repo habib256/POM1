@@ -34,6 +34,8 @@
 #include "Memory.h"
 #include "M6502.h"
 #include "SnapshotIO.h"
+#include "FileBytes.h"
+#include "Logger.h"
 
 #include "CassetteDevice.h"
 #include "TMS9918.h"
@@ -327,12 +329,50 @@ std::vector<uint8_t> Memory::saveSnapshotToBuffer(const M6502* cpu) const
 bool Memory::loadSnapshotFromBuffer(const std::vector<uint8_t>& buffer,
                                     std::string& error, M6502* cpu)
 {
+    // Decide from the bytes alone before ANY machine state moves. Applying a
+    // snapshot writes straight into the live machine section by section, so a
+    // file that went bad halfway used to leave a hybrid: the CPU section
+    // applied over RAM that was never replaced, handed back as a clean
+    // `false`. A truncated snapshot restored the program counter and nothing
+    // else, and a PC pointing into a program that is not in memory is a machine
+    // that will run garbage. Rewind replays these same blobs.
+    if (!pom1::validateSnapshot(buffer.data(), buffer.size(), error))
+        return false;
+
     pom1::SnapshotReader r(buffer);
     if (!r.good()) {
         error = r.error().empty() ? "snapshot read failed" : r.error();
         return false;
     }
-    return readSnapshotSections(r, error, cpu);
+
+    // The structural gate above cannot vouch for a CARD's payload — that
+    // grammar lives in the card's own deserialize, and several of them write
+    // fields before they can reject what follows. PR40Printer, for one, has
+    // restored its mode, FIFO and four counters by the time it validates the
+    // paper-roll line count; a forged count there left the printer half
+    // restored, on top of a CPU and RAM that WERE fully replaced, and handed
+    // the caller a clean `false`.
+    //
+    // So keep a copy of the live machine and put it back if the apply pass
+    // fails. Measured: serializing costs 16 us against the 452 us a restore
+    // already takes — 3.6 %, which buys all-or-nothing semantics against ANY
+    // failure, a card throwing included. The rewind seek path pays it too and
+    // does not notice.
+    const std::vector<uint8_t> rollback = saveSnapshotToBuffer(cpu);
+    if (readSnapshotSections(r, error, cpu)) return true;
+
+    // Put the machine back. This blob is one we produced a microsecond ago, so
+    // it is well-formed by construction — but say so loudly if it somehow is
+    // not, because that leaves the machine in the state this code exists to
+    // prevent and no other signal would reach anyone.
+    pom1::SnapshotReader back(rollback);
+    std::string rollbackError;
+    if (!back.good() || !readSnapshotSections(back, rollbackError, cpu)) {
+        pom1::log().error("Mem",
+            "snapshot rollback failed after a rejected load — the machine may be "
+            "inconsistent (" + rollbackError + ")");
+    }
+    return false;
 }
 
 void Memory::writeSnapshotSections(pom1::SnapshotWriter& w, const M6502* cpu) const
@@ -450,12 +490,14 @@ void Memory::writeSnapshotSections(pom1::SnapshotWriter& w, const M6502* cpu) co
 bool Memory::loadSnapshot(const std::string& path, std::string& error,
                           M6502* cpu)
 {
-    pom1::SnapshotReader r(path);
-    if (!r.good()) {
-        error = r.error().empty() ? "snapshot read failed" : r.error();
+    // Read to memory and share the buffer path, so a file and a rewind blob get
+    // the SAME pre-flight. Streaming straight from disk would skip it, and the
+    // file path is the one fed by File > Load snapshot and --load-snapshot —
+    // i.e. the one that sees files POM1 did not write.
+    std::vector<uint8_t> buffer;
+    if (!pom1::readFileBounded(path, pom1::kMaxSnapshotBytes, "snapshot", buffer, error))
         return false;
-    }
-    return readSnapshotSections(r, error, cpu);
+    return loadSnapshotFromBuffer(buffer, error, cpu);
 }
 
 bool Memory::readSnapshotSections(pom1::SnapshotReader& r, std::string& error, M6502* cpu)
@@ -493,19 +535,9 @@ bool Memory::readSnapshotSections(pom1::SnapshotReader& r, std::string& error, M
             // readBytes consume bytes belonging to the next section and load
             // garbage into RAM and the machine-state scalars while reporting
             // success. Mirror readString's remainingBytes guard.
-            constexpr uint32_t kMemSectionLenV5 =
-                0x10000u + 1 + 1 + 4 + 2 + 2 + 1 + 1; // RAM + scalars
-            constexpr uint32_t kMemSectionLen =
-                kMemSectionLenV5 + 4;                 // ... + PIA CRA/CRB/DDRA/DDRB (v6)
-            const bool memHasPia = (sectionLen == kMemSectionLen);
-            if (!memHasPia && sectionLen != kMemSectionLenV5) {
-                error = "corrupt snapshot: MEM section length "
-                      + std::to_string(sectionLen) + " (expected "
-                      + std::to_string(kMemSectionLen) + ", or "
-                      + std::to_string(kMemSectionLenV5) + " pre-v6)";
-                r.fail();
-                return false;
-            }
+            // validateSnapshotBuffer() has already rejected any other length,
+            // so this only has to pick the v6 layout from the pre-v6 one.
+            const bool memHasPia = (sectionLen == pom1::kMemSectionLen);
             r.readBytes(mem.data(), mem.size());
             lastKey            = static_cast<char>(r.readU8());
             keyReady           = r.readU8() != 0;

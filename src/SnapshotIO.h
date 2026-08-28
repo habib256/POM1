@@ -205,6 +205,69 @@ private:
     std::streamoff streamSize = 0;
 };
 
+/// Largest snapshot the loader will look at, in bytes.
+///
+/// A full machine serialises to ~117 KB today (64 KB RAM, 16 KB of TMS9918
+/// VRAM, the card sections and the screen grid); the cards that can grow —
+/// printer paper rolls, EEPROM buffers — do so slowly. 64 MB is far past
+/// anything POM1 writes and far below what hurts. Checked before the file is
+/// read, since reading it is the allocation the limit exists to prevent.
+inline constexpr std::size_t kMaxSnapshotBytes = 64u * 1024u * 1024u;
+
+/// What a structural pre-flight found: the version, and every section's name,
+/// payload offset and length — with no payload consumed and nothing applied.
+struct SnapshotOutline {
+    /// False when the bytes are not a structurally sound snapshot at all: bad
+    /// magic, unsupported version, or a section whose declared length runs off
+    /// the end (a truncated file, or a forged length).
+    bool ok = false;
+    std::uint32_t version = 0;
+
+    struct Section {
+        std::string name;
+        std::size_t payloadOffset = 0;   ///< index into the buffer handed in
+        std::uint32_t length = 0;
+    };
+    std::vector<Section> sections;
+
+    std::string error;
+
+    /// First section with this name, or nullptr. Section names are unique in
+    /// every snapshot POM1 writes.
+    const Section* find(std::string_view name) const;
+};
+
+/// MEM section payload: the 64 KB RAM image plus its trailing scalars, and
+/// since v6 the four PIA shadow registers (see the format notes at the top of
+/// this file). Named here rather than in Memory because the writer, the
+/// validator and the apply pass are three places that must agree on the same
+/// two numbers, or a perfectly valid snapshot is rejected as corrupt.
+inline constexpr std::uint32_t kMemSectionLenV5 =
+    0x10000u + 1 + 1 + 4 + 2 + 2 + 1 + 1;
+inline constexpr std::uint32_t kMemSectionLen = kMemSectionLenV5 + 4;
+
+/// Walk a snapshot's section table WITHOUT consuming any payload or touching
+/// any machine state. PURE: bytes in, a description out.
+///
+/// This exists so a restore can be all-or-nothing. Applying a snapshot writes
+/// straight into the live machine section by section, so a file that goes bad
+/// halfway used to leave a HYBRID: the CPU section already applied over RAM
+/// that was never replaced, reported to the caller as a clean failure. A
+/// program counter pointing into a program that is not in memory is a machine
+/// that will run garbage. Validate first, then apply.
+SnapshotOutline outlineSnapshot(const std::uint8_t* data, std::size_t size);
+
+/// Everything about a snapshot that can be decided from the bytes alone:
+/// the structural walk above, plus the per-section length rules the format
+/// itself fixes. PURE, and the gate a restore must pass before it mutates
+/// anything.
+///
+/// It cannot vouch for a card's payload — that stays with the card's own
+/// `deserialize` — but it does cover the whole hostile-input case: truncation
+/// and forged lengths, which is what a damaged file or a clipped rewind blob
+/// actually looks like.
+bool validateSnapshot(const std::uint8_t* data, std::size_t size, std::string& error);
+
 } // namespace pom1
 
 #endif // POM1_SNAPSHOT_IO_H
