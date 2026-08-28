@@ -33,6 +33,83 @@ SID/cassette sont SPSC, le retrait d’une source est une barrière de durée de
 la hiérarchie des verrous est vérifiée et le stress concurrent exerce ensemble
 émulation, snapshots/rendu et mixage sous TSan. `RealtimeDiagnostics` mesure les
 attentes, détentions, callbacks, underruns et débordements dans les builds de test.
+
+### Fixed — POM1 ouvrait un port TCP que personne n'avait demandé
+
+`TerminalCard::reset()` appelait `startServer()` sans condition, et
+`Memory::resetMemory()` réinitialise toutes les cartes qu'elles soient branchées
+ou non. Résultat : **tout** processus POM1 et **tout** binaire de test écoutait
+sur `localhost:6502` alors que la Terminal Card est débranchée par défaut.
+
+Mesuré : un `Memory` nu, audio désactivé, carte signalée `enabled? 0`, liait
+quand même le port — deux fois — et un second cœur dans le même processus
+échouait avec `failed to bind port 6502 (already in use?)`.
+
+Le coût était déjà visible dans l'arbre : `terminal_card_smoke` porte en
+en-tête « reset() calls startServer(), so it BINDS localhost:6502. This test
+therefore never calls reset() ». Quelqu'un avait remarqué le défaut et l'avait
+contourné **dans le test**, qui épinglait du coup les valeurs par défaut du
+firmware depuis les initialiseurs de membres plutôt que depuis le `reset()` qui
+les restaure réellement.
+
+`TelemetryPort`, juste à côté, n'ouvre son serveur que lorsqu'il est activé
+depuis toujours. `TerminalCard::setEnabled()` aligne la carte dessus,
+`Memory::setTerminalCardEnabled()` le pilote, et `reset()` ne réécoute que si la
+carte est branchée. `--terminal` fonctionne comme avant — les harnais telnet le
+passent tous. Le contournement a disparu du test, qui couvre maintenant le vrai
+chemin.
+
+### Added — `hermetic_core_smoke`, le critère de sortie sous forme d'assertion
+
+Un cœur construit pour un test ne touche que ce qu'on lui donne. Deux cœurs
+coexistent dans un même processus sans socket, `resetMemory()` n'en ouvre pas,
+une racine injectée qui contient une ROM est bien celle utilisée, et une racine
+vide se rabat sur le moniteur intégré **en le signalant**.
+
+Le test dit aussi explicitement ce qu'il ne prétend **pas** encore : `Memory`
+construit toujours un `AudioDevice`, simplement sans initialiser le matériel
+quand on le lui demande. Coût de construction : **133 ms contre 205 ms**, le
+reste étant précisément cet objet audio — c'est la moitié restante de l'item.
+
+### Fixed — les ressources étaient cherchées à des profondeurs différentes selon l'appelant
+
+Chaque consommateur réimplémentait le même parcours « essayer `x`, puis `../x`,
+puis `../../x` » — et ils n'étaient pas d'accord sur la hauteur à remonter.
+`Memory::loadROM()` montait d'**un** niveau, les sondes sdcard/disks/cfcard de
+**deux**, la sonde CodeTank de **trois**. Lancé depuis `build/tests/`, POM1
+trouvait donc les images disque mais pas les ROMs, puis substituait
+silencieusement son moniteur Woz intégré (`WARN: loaded from built-in
+fallback`) et continuait. Vérifié dans les deux sens : depuis `build/tests/`,
+les ROMs se chargent maintenant toutes.
+
+`pom1::ResourceLocator` porte un ordre unique : le répertoire courant et trois
+ancêtres, puis le répertoire de l'exécutable et les dispositions que les
+empaqueteurs mettent autour (`Resources/` d'un `.app` macOS, `share/POM1/` d'un
+AppImage), dédoublonnés. Un chemin **absolu** est rendu tel quel, jamais réécrit
+— `--iec-disk /tmp/x.d64` et les sélecteurs de fichiers passent par là.
+
+`defaultLocator()` rend **par valeur** et recalcule la moitié « répertoire
+courant » à chaque appel : ce répertoire est un état vivant
+(`pom1_macos_provision_user_data_dir()` fait un `chdir` au démarrage, les tests
+en font vers des bacs à sable), et le mettre en cache faisait dépendre la
+résolution du *moment* où le localisateur était touché pour la première fois.
+`rom_fallback_smoke` a attrapé exactement ça — il trouvait encore les vraies
+ROMs depuis son bac à sable. Seule la moitié dérivée de l'exécutable est mise en
+cache ; elle ne bouge pas.
+
+### Changed — `Memory` reçoit son localisateur de ressources
+
+`Memory` prend un `ResourceLocator` (par défaut, donc tous les appelants
+existants sont inchangés) et le **conserve** : `loadROM()` le consulte à chaque
+changement de preset, pas seulement à la construction. Les quatre sondes
+implicites du constructeur disparaissent.
+
+C'est aussi le seul moyen de dire « aucune ROM nulle part » : les ressources
+étant désormais cherchées à côté de l'exécutable, un `chdir` vers un répertoire
+vide ne suffit plus — le binaire de test vit lui-même dans l'arbre.
+`rom_fallback_smoke` exprime maintenant son intention avec
+`ResourceLocator::rootedAt(sandbox)`, ce qui est plus juste que ce qu'il faisait.
+
 ### Added — campagne de fuzzing nocturne en CI
 
 Les quatre cibles tournent déjà en pilote déterministe à chaque PR (~1 s). Le

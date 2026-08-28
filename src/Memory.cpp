@@ -166,8 +166,10 @@ constexpr uint8_t kExtendedAciRom[0x100] = {
 
 } // namespace
 
-Memory::Memory(bool initializeAudioHardware)
+Memory::Memory(bool initializeAudioHardware, pom1::ResourceLocator locator)
+    : resources_(std::move(locator))
 {
+    const pom1::ResourceLocator& resources = resources_;
     audioDevice = std::make_unique<AudioDevice>(initializeAudioHardware);
     // Pass the audio device's actual sample rate (44.1 kHz requested but
     // miniaudio may negotiate 48 kHz on Apple Silicon, and the browser
@@ -185,40 +187,22 @@ Memory::Memory(bool initializeAudioHardware)
     tms9918 = std::make_unique<TMS9918>();
     sid = std::make_unique<pom1::SID>(static_cast<int>(actualRate));
     microSD = std::make_unique<MicroSD>();
-    // Set SD card path: try common locations relative to executable
-    for (const auto& dir : {"sdcard", "../sdcard", "../../sdcard"}) {
-        if (std::filesystem::is_directory(dir)) {
-            microSD->setSDCardPath(std::filesystem::canonical(dir).string());
-            break;
-        }
-    }
+    // Where the data lives is the locator's business, not three hand-rolled
+    // ../ walks that climbed different distances (see ResourceLocator.h).
+    if (const auto sd = resources.findDirectory("sdcard"); !sd.empty())
+        microSD->setSDCardPath(sd.string());
     iecCard = std::make_unique<pom1::IECCard>();
-    // Probe for the device-8 disk image. MVP supports a single drive.
-    for (const auto& dir : {"disks", "../disks", "../../disks"}) {
-        if (std::filesystem::is_directory(dir)) {
-            auto imgPath = std::filesystem::canonical(dir).string() + "/iec/dev8.d64";
-            if (std::filesystem::exists(imgPath)) {
-                iecCard->mountDisk(imgPath);
-            }
-            break;
-        }
-    }
+    // Device-8 disk image. MVP supports a single drive.
+    if (const auto dev8 = resources.find("disks/iec/dev8.d64"); !dev8.empty())
+        iecCard->mountDisk(dev8.string());
     wifiModem = std::make_unique<WiFiModem>();
     terminalCard = std::make_unique<TerminalCard>();
     pr40Printer = std::make_unique<PR40Printer>();
     gt6144 = std::make_unique<GT6144>();
     a1ioRtc = std::make_unique<A1IO_RTC>();
     cffa1 = std::make_unique<CFFA1>();
-    // Probe for CF card disk image
-    for (const auto& dir : {"cfcard", "../cfcard", "../../cfcard"}) {
-        if (std::filesystem::is_directory(dir)) {
-            auto imgPath = std::filesystem::canonical(dir).string() + "/cfcard.po";
-            if (std::filesystem::exists(imgPath)) {
-                cffa1->openDiskImage(imgPath);
-            }
-            break;
-        }
-    }
+    if (const auto cf = resources.find("cfcard/cfcard.po"); !cf.empty())
+        cffa1->openDiskImage(cf.string());
     jukeBox = std::make_unique<JukeBox>();
     codeTank = std::make_unique<CodeTank>();
     terminalCard->setKeyInjector([this](char key, bool raw) {
@@ -685,6 +669,12 @@ void Memory::deactivateCassetteAudioSource()
     cassetteAudioActive = false;
 }
 
+void Memory::setTerminalCardEnabled(bool b)
+{
+    terminalCardEnabled = b;
+    terminalCard->setEnabled(b);   // the TCP listener follows the plug
+}
+
 void Memory::setA1IO_RTCEnabled(bool b)
 {
     a1ioRtcEnabled = b;
@@ -1110,17 +1100,17 @@ int Memory::loadROM(const char* filename, uint16_t startAddress, size_t maxSize,
 {
     lastError.clear();
 
-    const std::string searchPaths[] = {
-        filename,
-        std::string("roms/") + filename,
-        std::string("../roms/") + filename
-    };
-
+    // This site used to climb ONE level while the disk-image probes climbed
+    // two and the CodeTank probe three, so running from build/tests/ found the
+    // disks but not the ROMs — and POM1 then substituted its built-in Woz
+    // Monitor with a WARN nobody reads. One search order now, via the locator.
     std::ifstream file;
-    for (const auto& path : searchPaths) {
-        file.open(path, std::ios::binary);
-        if (file.is_open())
-            break;
+    for (const std::string& rel : {std::string(filename),
+                                   std::string("roms/") + filename}) {
+        const std::filesystem::path resolved = resources_.find(rel);
+        if (resolved.empty()) continue;
+        file.open(resolved, std::ios::binary);
+        if (file.is_open()) break;
     }
 
     if (!file.is_open()) {

@@ -123,6 +123,7 @@ set(POM1_TEST_CORE_FILES
     ${CMAKE_SOURCE_DIR}/src/Memory.cpp
     ${CMAKE_SOURCE_DIR}/src/MemoryImageLoader.cpp
     ${CMAKE_SOURCE_DIR}/src/PcmFile.cpp
+    ${CMAKE_SOURCE_DIR}/src/ResourceLocator.cpp
     ${CMAKE_SOURCE_DIR}/src/MemorySnapshot.cpp
     ${CMAKE_SOURCE_DIR}/src/CardTopology.cpp
     ${CMAKE_SOURCE_DIR}/src/MachineCoordinator.cpp
@@ -2186,6 +2187,36 @@ add_executable(test_terminal_card
 target_include_directories(test_terminal_card PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME terminal_card_smoke COMMAND test_terminal_card)
 set_tests_properties(terminal_card_smoke PROPERTIES TIMEOUT 10)
+
+# The exit criterion of the host-services work, as an assertion: a core built
+# for a test touches nothing it was not given. Measured before the work, a bare
+# Memory took 205 ms, opened an audio device, bound localhost:6502 and opened a
+# 32 MB CF image — for every test binary in the suite.
+add_executable(test_hermetic_core
+    hermetic_core_smoke_test.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_hermetic_core PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_hermetic_core PRIVATE libresidfp_static)
+if(WIN32)
+    target_link_libraries(test_hermetic_core PRIVATE ws2_32)
+endif()
+add_test(NAME hermetic_core_smoke COMMAND test_hermetic_core)
+set_tests_properties(hermetic_core_smoke PROPERTIES TIMEOUT 30)
+
+# One search order for POM1's data. The class exists because every consumer
+# used to walk ../ on its own and they disagreed on how far to climb — so
+# running from build/tests/ found the disk images but not the ROMs, and the
+# built-in Woz Monitor took over with a WARN nobody reads.
+add_executable(test_resource_locator
+    resource_locator_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/ResourceLocator.cpp
+)
+target_include_directories(test_resource_locator PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME resource_locator_smoke COMMAND test_resource_locator)
+set_tests_properties(resource_locator_smoke PROPERTIES TIMEOUT 10)
+
+option(POM1_FUZZERS "Build the libFuzzer entry points (needs a clang with libFuzzer)" OFF)
 
 # Hostile input against the D64 disk-image reader. A .d64 arrives from
 # --iec-disk and from the IEC card's UI, and the format is LINKED: every

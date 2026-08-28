@@ -331,6 +331,7 @@ set(SOURCES
     ${POM1_SRC_DIR}/Memory.cpp
     ${POM1_SRC_DIR}/MemoryImageLoader.cpp
     ${POM1_SRC_DIR}/PcmFile.cpp
+    ${POM1_SRC_DIR}/ResourceLocator.cpp
     ${POM1_SRC_DIR}/MemorySnapshot.cpp
     ${POM1_SRC_DIR}/MemoryViewer_ImGui.cpp
     ${POM1_SRC_DIR}/Pom1HgrPaintHost.cpp

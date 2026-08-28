@@ -19,6 +19,7 @@
 #ifndef MEMORY_H
 #define MEMORY_H
 
+#include "ResourceLocator.h"
 #include "CpuClock.h"
 #include "DisplayDevice.h"
 #include "PeripheralBus.h"
@@ -92,7 +93,17 @@ class Memory
 {
 public:
 
-    explicit Memory(bool initializeAudioHardware = true);
+    /// `locator` decides where roms/, sdcard/, disks/ and cfcard/ are looked
+    /// for — at construction AND for every later ROM load, since it is KEPT.
+    /// Defaulted, so every existing caller is unchanged. Passing
+    /// ResourceLocator::rootedAt(dir) is how a caller says "look ONLY here"
+    /// (rom_fallback_smoke needs exactly that; see its §2).
+    explicit Memory(bool initializeAudioHardware = true,
+                    pom1::ResourceLocator locator =
+                        pom1::ResourceLocator::defaultLocator());
+
+    /// Where this machine looks for its data. Set at construction.
+    const pom1::ResourceLocator& resources() const { return resources_; }
     // Out-of-line (defined in Memory.cpp) so the forward-declared unique_ptr
     // members (TMS9918 / WiFiModem / TerminalCard / TelemetryPort / A1IO_RTC /
     // PR40Printer) only need their full type at the single dtor definition
@@ -604,7 +615,7 @@ public:
     // P-LAB Apple-1 Terminal Card (bidirectional serial bridge)
     TerminalCard& getTerminalCard() { return *terminalCard; }
     const TerminalCard& getTerminalCard() const { return *terminalCard; }
-    void setTerminalCardEnabled(bool b) { terminalCardEnabled = b; }
+    void setTerminalCardEnabled(bool b);   // opens/closes the TCP listener
     bool isTerminalCardEnabled() const { return terminalCardEnabled; }
 
     // Telemetry side channel ($C440-$C443) — dev-only virtual test-harness port.
@@ -823,6 +834,10 @@ private :
         return false;
     }
     std::string lastError;
+
+    // Kept for the lifetime of the machine: loadROM() consults it on every
+    // preset switch, not just at construction.
+    pom1::ResourceLocator resources_;
 
     /// See romFallbacksUsed(). Appended by noteRomFallback(), deduplicated so a
     /// preset switch (which re-loads every ROM) cannot grow it without bound.

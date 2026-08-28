@@ -80,13 +80,21 @@ int main()
     }
 
     // -- 2. No roms/ anywhere: the built-in copy takes over, and says so ------
+    //
+    // Said with an injected ResourceLocator rather than a chdir. Resources are
+    // looked for next to the EXECUTABLE as well as under the working directory
+    // — which is how a packaged POM1 finds its data — and this test binary
+    // lives in build/tests/, two levels under the repo. So chdir'ing to a
+    // sandbox no longer means "no ROMs anywhere": the locator walked back up to
+    // the repo and found the real ones, and this assertion caught it.
+    // Rooting a locator at an empty directory says exactly what is meant.
     const fs::path sandbox = fs::temp_directory_path() / "pom1_rom_fallback_smoke";
     fs::remove_all(sandbox);
     fs::create_directories(sandbox);
     fs::current_path(sandbox);
 
     {
-        Memory mem;
+        Memory mem(true, pom1::ResourceLocator::rootedAt(sandbox));
         const int rc = mem.loadWozMonitor();
         assert(rc == 0 && "a missing Monitor file must NOT fail the load any more");
 
