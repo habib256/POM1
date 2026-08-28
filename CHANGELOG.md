@@ -33,6 +33,27 @@ SID/cassette sont SPSC, le retrait d’une source est une barrière de durée de
 la hiérarchie des verrous est vérifiée et le stress concurrent exerce ensemble
 émulation, snapshots/rendu et mixage sous TSan. `RealtimeDiagnostics` mesure les
 attentes, détentions, callbacks, underruns et débordements dans les builds de test.
+### Added — campagne de fuzzing nocturne en CI
+
+Les quatre cibles tournent déjà en pilote déterministe à chaque PR (~1 s). Le
+nouveau job `fuzz` de `ci.yml` reconstruit les mêmes vérifications derrière
+`LLVMFuzzerTestOneInput` avec clang — Apple clang et g++ ne fournissent pas
+libFuzzer, ce qui est précisément pourquoi le pilote déterministe est le défaut
+et non le repli — et laisse libFuzzer les piloter 15 minutes chacune.
+
+Le corpus est mis en cache d'une nuit à l'autre et amorcé depuis les fichiers
+livrés : les ~120 vidages hexadécimaux de `software/`, les enregistrements de
+`cassettes/`, un `.d64`, et un instantané produit par une exécution headless
+réelle. L'amorçage aplatit les chemins avec un préfixe dérivé du chemin, car le
+même nom de base existe dans plusieurs sous-dossiers de `software/` et une copie
+simple n'en gardait qu'un — un corpus silencieusement plus petit qu'il n'en a
+l'air. Vérifié à sec : 66 vidages sur 66 arrivent.
+
+Une trouvaille fait échouer le job et téléverse l'entrée fautive en artefact.
+C'est elle le livrable : elle devient un cas de régression dans le `*_smoke`
+correspondant, comme l'ont fait tous les défauts que ces cibles ont déjà
+trouvés.
+
 ### Fixed — une carte échouant en cours de désérialisation laissait la machine modifiée
 
 La porte structurelle ajoutée précédemment atteste la **forme** du fichier, pas
