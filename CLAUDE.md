@@ -1,5 +1,8 @@
 # CLAUDE.md
 
+New here? Read [`ARCHITECTURE.md`](ARCHITECTURE.md) first — the five concepts and the
+dependency rule, in one pass. This file is the exhaustive reference underneath it.
+
 Architecture / invariants / gotchas for the **emulator side** of POM1. User walkthrough → `README.md`; open work → `TODO.md`; history → `CHANGELOG.md` / `git log`. **Full doc map → [`doc/README.md`](doc/README.md)**.
 
 **Contents:** [Overview](#project-overview) · [Build](#build--run) · [Architecture](#architecture) · [Invariants](#invariants--gotchas) · [Memory map](#memory-map) · [Testing](#testing) · [Version bump](#version-string-locations)
