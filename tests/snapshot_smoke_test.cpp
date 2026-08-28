@@ -742,13 +742,70 @@ int main()
         std::filesystem::remove(imagePath, ecCf);
     }
 
+    // ── A card section that goes bad AFTER the card has started writing ──
+    //
+    // The structural pre-flight (pom1::validateSnapshot) vouches for the file's
+    // shape, but not for a CARD's payload — that grammar lives in the card's
+    // own deserialize, and several of them restore fields before they can
+    // reject what follows. PR40Printer has already written its mode, FIFO and
+    // four counters by the time it validates the paper-roll line count.
+    //
+    // Measured before the rollback existed: forging that count left the machine
+    // holding the SNAPSHOT's CPU and RAM (PC=$1234, $0300=$AA) while the caller
+    // was told the load had failed — and a half-restored printer on top.
+    {
+        Memory m;
+        M6502 c(&m);
+        m.initMemory();
+        m.setPR40Enabled(true);
+
+        // State A, captured.
+        m.memWrite(0x0300, 0xAA);
+        c.setProgramCounter(0x1234);
+        std::vector<uint8_t> snap = m.saveSnapshotToBuffer(&c);
+
+        // Forge the PR-40 paper-roll line count. Layout after the 8-byte
+        // section name + u32 length: mode(1) fifoLevel(1) fifo(40)
+        // counters(4x4) currentLine(u32 len + bytes) lineCount(u32).
+        size_t at = std::string::npos;
+        for (size_t i = 0; i + 8 < snap.size(); ++i)
+            if (std::memcmp(&snap[i], "PR-40", 5) == 0) { at = i; break; }
+        if (at == std::string::npos) {
+            std::fprintf(stderr, "PR-40 section missing from snapshot\n");
+            return 1;
+        }
+        const size_t lineLenAt = at + 8 + 4 + 1 + 1 + 40 + 16;
+        uint32_t lineLen = 0;
+        std::memcpy(&lineLen, &snap[lineLenAt], 4);
+        const uint32_t forged = 0x7FFFFFFF;
+        std::memcpy(&snap[lineLenAt + 4 + lineLen], &forged, 4);
+
+        // Move to state B, then attempt the corrupt load.
+        m.memWrite(0x0300, 0x55);
+        c.setProgramCounter(0xBEEF);
+
+        std::string loadErr;
+        if (m.loadSnapshotFromBuffer(snap, loadErr, &c)) {
+            std::fprintf(stderr, "a forged PR-40 line count was accepted\n");
+            return 1;
+        }
+        // The whole point: state B, entirely intact.
+        if (c.getProgramCounter() != 0xBEEF || m.memRead(0x0300) != 0x55) {
+            std::fprintf(stderr,
+                "rejected snapshot still mutated the machine: PC=$%04X "
+                "$0300=$%02X (expected $BEEF / $55)\n",
+                c.getProgramCounter(), m.memRead(0x0300));
+            return 1;
+        }
+    }
+
     std::error_code ec;
     std::filesystem::remove(path, ec);
     std::printf("snapshot round-trip OK (%zu RAM bytes, CPU regs, "
                 "TMS9918+SID+cassette+GT-6144+PR-40+CodeTank+CFFA1 "
                 "(incl. an in-flight multi-sector transfer) + "
                 "standalone Juke-Box + A1-IO/RTC + GEN2 HGR + "
-                "microSD/CodeTank preset-cross)\n",
+                "microSD/CodeTank preset-cross; rejected loads roll back)\n",
                 baseline.size());
     return 0;
 }

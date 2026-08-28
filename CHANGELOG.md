@@ -33,6 +33,29 @@ SID/cassette sont SPSC, le retrait d’une source est une barrière de durée de
 la hiérarchie des verrous est vérifiée et le stress concurrent exerce ensemble
 émulation, snapshots/rendu et mixage sous TSan. `RealtimeDiagnostics` mesure les
 attentes, détentions, callbacks, underruns et débordements dans les builds de test.
+### Fixed — une carte échouant en cours de désérialisation laissait la machine modifiée
+
+La porte structurelle ajoutée précédemment atteste la **forme** du fichier, pas
+la charge utile propre à chaque carte : cette grammaire vit dans le
+`deserialize` de la carte, et plusieurs d'entre elles restaurent des champs
+avant de pouvoir rejeter ce qui suit. `PR40Printer` a déjà écrit son mode, sa
+FIFO et quatre compteurs quand il valide le nombre de lignes du rouleau.
+
+Mesuré avant correction, en forgeant ce compteur : la machine se retrouvait avec
+le CPU **et** la RAM de l'instantané (`PC=$1234`, `$0300=$AA`) alors que
+l'appelant recevait un échec — plus une imprimante à moitié restaurée par-dessus.
+
+L'application est désormais encadrée d'un retour arrière : une copie de la
+machine vivante est conservée et remise en place si la restauration échoue.
+Mesures ayant motivé le choix plutôt qu'une refonte des quinze `deserialize` :
+sérialiser coûte **16 µs** contre les **452 µs** que prend déjà une
+restauration, soit 3,6 % — et cela couvre *toute* défaillance, y compris une
+exception levée par une carte. Le chemin de recherche du rewind le paie aussi et
+ne le voit pas.
+
+Après correction, même entrée forgée : `PC=$BEEF`, `$0300=$55` — l'état
+antérieur, intact.
+
 ### Fixed — les chaînes de secteurs D64 étaient parcourues au compteur, pas par détection de cycle
 
 Un D64 est une structure **chaînée** : chaque bloc de répertoire et chaque
@@ -63,6 +86,30 @@ passent exactement les mêmes règles d'acceptation — un D64 fait 35 pistes, a
 ou sans les 683 octets d'erreur finaux, et rien d'autre n'en est un. Le format
 devient au passage atteignable par un test ou un fuzzer sans disque sur disque,
 ce qui est ce qui a permis de trouver les deux défauts ci-dessus.
+
+### Fixed — une sauvegarde tronquée laissait la machine à moitié restaurée
+
+Appliquer un instantané écrit directement dans la machine vivante, section par
+section. Un fichier abîmé en cours de route laissait donc un **hybride** tout en
+renvoyant un échec propre. Mesuré plutôt que supposé : un instantané réel de
+116 933 octets tronqué à 200 octets renvoyait bien `false`, mais le compteur
+ordinal valait déjà `$1234` — la valeur de l'instantané — au-dessus d'une RAM
+jamais remplacée. Un PC qui pointe dans un programme absent de la mémoire, c'est
+une machine qui va exécuter n'importe quoi. Le rejeu du rewind passe par les
+mêmes blocs.
+
+`pom1::validateSnapshot()` (pur, dans `SnapshotIO`) tranche à partir des octets
+seuls avant que le moindre état ne bouge : magie, version, parcours des
+sections avec vérification de chaque longueur contre les octets **restants**,
+les deux longueurs légales de la section `MEM`, et le compteur d'événements de
+`GEN2VID` borné par la charge utile réellement présente — ce compteur pilote un
+`reserve()`. `Memory::loadSnapshot(chemin)` lit désormais le fichier et délègue
+au chemin par tampon, de sorte qu'un fichier et un bloc de rewind franchissent
+la **même** porte ; lire directement depuis le disque la contournait, et c'est le
+chemin fichier qui voit les fichiers que POM1 n'a pas écrits.
+
+La porte couvre tout le cas d'entrée hostile — troncature et longueurs forgées ;
+la charge utile propre à chaque carte reste du ressort de son `deserialize`.
 
 ### Changed — une seule lecture de fichier bornée pour tous les analyseurs
 

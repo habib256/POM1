@@ -2208,6 +2208,33 @@ else()
     set_tests_properties(d64_fuzz_smoke PROPERTIES TIMEOUT 120)
 endif()
 
+# The snapshot pre-flight — the gate a machine state passes BEFORE any of it is
+# applied. Pure: bytes in, a verdict out, no Memory and no CPU in the binary.
+add_executable(test_snapshot_validate
+    snapshot_validate_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
+)
+target_include_directories(test_snapshot_validate PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME snapshot_validate_smoke COMMAND test_snapshot_validate)
+set_tests_properties(snapshot_validate_smoke PROPERTIES TIMEOUT 10)
+
+# Hostile input against that gate. Enumerates EVERY truncation of a realistic
+# snapshot byte by byte — the exact family that used to leave a half-restored
+# machine — on top of the usual mutation rounds.
+add_executable(test_snapshot_fuzz
+    snapshot_fuzz_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotIO.cpp
+)
+target_include_directories(test_snapshot_fuzz PRIVATE ${CMAKE_SOURCE_DIR}/src)
+if(POM1_FUZZERS)
+    target_compile_definitions(test_snapshot_fuzz PRIVATE POM1_LIBFUZZER)
+    target_compile_options(test_snapshot_fuzz PRIVATE -fsanitize=fuzzer,address)
+    target_link_options(test_snapshot_fuzz PRIVATE -fsanitize=fuzzer,address)
+else()
+    add_test(NAME snapshot_fuzz_smoke COMMAND test_snapshot_fuzz)
+    set_tests_properties(snapshot_fuzz_smoke PROPERTIES TIMEOUT 120)
+endif()
+
 # The two cassette containers POM1 decodes itself (miniaudio covers only
 # MP3/FLAC/Vorbis). Pure: no audio device, no file, no log sink. The AIFF half
 # is POM1's own parser — AIFF is what Uncle Bernie's ACIace synthesiser emits —
