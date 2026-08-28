@@ -121,6 +121,8 @@ endif()
 set(POM1_TEST_CORE_FILES
     ${CMAKE_SOURCE_DIR}/src/M6502.cpp
     ${CMAKE_SOURCE_DIR}/src/Memory.cpp
+    ${CMAKE_SOURCE_DIR}/src/MemoryImageLoader.cpp
+    ${CMAKE_SOURCE_DIR}/src/PcmFile.cpp
     ${CMAKE_SOURCE_DIR}/src/MemorySnapshot.cpp
     ${CMAKE_SOURCE_DIR}/src/CardTopology.cpp
     ${CMAKE_SOURCE_DIR}/src/MachineCoordinator.cpp
@@ -2184,6 +2186,97 @@ add_executable(test_terminal_card
 target_include_directories(test_terminal_card PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME terminal_card_smoke COMMAND test_terminal_card)
 set_tests_properties(terminal_card_smoke PROPERTIES TIMEOUT 10)
+
+# Hostile input against the D64 disk-image reader. A .d64 arrives from
+# --iec-disk and from the IEC card's UI, and the format is LINKED: every
+# directory block and every file sector names the next one, with nothing
+# anywhere recording how long a chain is. That is the shape corruption exploits.
+# Found the two defects d64_parse_smoke now pins: cyclic chains walked by
+# counter rather than by cycle detection, and a BAM free count believed
+# verbatim.
+add_executable(test_d64_fuzz
+    d64_fuzz_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/D64Image.cpp
+)
+target_include_directories(test_d64_fuzz PRIVATE ${CMAKE_SOURCE_DIR}/src)
+if(POM1_FUZZERS)
+    target_compile_definitions(test_d64_fuzz PRIVATE POM1_LIBFUZZER)
+    target_compile_options(test_d64_fuzz PRIVATE -fsanitize=fuzzer,address)
+    target_link_options(test_d64_fuzz PRIVATE -fsanitize=fuzzer,address)
+else()
+    add_test(NAME d64_fuzz_smoke COMMAND test_d64_fuzz)
+    set_tests_properties(d64_fuzz_smoke PROPERTIES TIMEOUT 120)
+endif()
+
+# The two cassette containers POM1 decodes itself (miniaudio covers only
+# MP3/FLAC/Vorbis). Pure: no audio device, no file, no log sink. The AIFF half
+# is POM1's own parser — AIFF is what Uncle Bernie's ACIace synthesiser emits —
+# and until now it was gated by exactly one end-to-end test.
+add_executable(test_pcm_file
+    pcm_file_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/PcmFile.cpp
+)
+target_include_directories(test_pcm_file PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME pcm_file_smoke COMMAND test_pcm_file)
+set_tests_properties(pcm_file_smoke PROPERTIES TIMEOUT 10)
+
+# Hostile input against those two parsers — the surface where POM1 reads a
+# BINARY file a user picked. Same dual shape as the memory-image fuzzer below:
+# deterministic driver by default, LLVMFuzzerTestOneInput under POM1_FUZZERS.
+# It found both of the defects the smoke test above now pins (§11 and §12).
+add_executable(test_pcm_file_fuzz
+    pcm_file_fuzz_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/PcmFile.cpp
+)
+target_include_directories(test_pcm_file_fuzz PRIVATE ${CMAKE_SOURCE_DIR}/src)
+if(POM1_FUZZERS)
+    target_compile_definitions(test_pcm_file_fuzz PRIVATE POM1_LIBFUZZER)
+    target_compile_options(test_pcm_file_fuzz PRIVATE -fsanitize=fuzzer,address)
+    target_link_options(test_pcm_file_fuzz PRIVATE -fsanitize=fuzzer,address)
+else()
+    add_test(NAME pcm_file_fuzz_smoke COMMAND test_pcm_file_fuzz)
+    set_tests_properties(pcm_file_fuzz_smoke PROPERTIES TIMEOUT 120)
+endif()
+
+# Hostile input against the memory-image loader. Two shapes from one source:
+#
+#   * the DEFAULT, always built: a deterministic driver (fixed seed) that
+#     replays a corpus of real dump shapes, mutates it, and holds every result
+#     to the loader's contract — 64 KB containment, byteCount agreeing with the
+#     spans, no writes on a rejected image, zones() matching, output bounded by
+#     input, and identical results on a re-parse. Cheap enough for every PR.
+#
+#   * with -DPOM1_FUZZERS=ON, the same checks behind LLVMFuzzerTestOneInput for
+#     the long ASan campaign. Needs a clang that ships libFuzzer — Apple clang
+#     does NOT, which is exactly why the deterministic driver above is the
+#     default rather than the fallback.
+add_executable(test_memory_image_fuzz
+    memory_image_fuzz_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/MemoryImageLoader.cpp
+)
+target_include_directories(test_memory_image_fuzz PRIVATE ${CMAKE_SOURCE_DIR}/src)
+if(POM1_FUZZERS)
+    target_compile_definitions(test_memory_image_fuzz PRIVATE POM1_LIBFUZZER)
+    target_compile_options(test_memory_image_fuzz PRIVATE -fsanitize=fuzzer,address)
+    target_link_options(test_memory_image_fuzz PRIVATE -fsanitize=fuzzer,address)
+else()
+    # No add_test in the libFuzzer configuration: the binary then expects a
+    # corpus directory and runs until stopped, which is not a PR gate.
+    add_test(NAME memory_image_fuzz_smoke COMMAND test_memory_image_fuzz)
+    set_tests_properties(memory_image_fuzz_smoke PROPERTIES TIMEOUT 120)
+endif()
+
+# The three memory-image dialects, as pure functions: bytes in, writes/zones/
+# run address/diagnostics out. No Memory, no file, no log sink — which is the
+# point. The dialects used to be reachable only through a whole emulated
+# machine, and the in-place loader could not validate before mutating.
+add_executable(test_memory_image_loader
+    memory_image_loader_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/MemoryImageLoader.cpp
+)
+target_include_directories(test_memory_image_loader PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME memory_image_loader_smoke COMMAND test_memory_image_loader)
+set_tests_properties(memory_image_loader_smoke PROPERTIES TIMEOUT 10)
 
 # The UI's card-configuration transaction. Pure value logic — no ImGui, no
 # GLFW, no Memory — which is the whole point: it is the decision half of the

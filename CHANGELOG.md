@@ -33,6 +33,166 @@ SID/cassette sont SPSC, le retrait d’une source est une barrière de durée de
 la hiérarchie des verrous est vérifiée et le stress concurrent exerce ensemble
 émulation, snapshots/rendu et mixage sous TSan. `RealtimeDiagnostics` mesure les
 attentes, détentions, callbacks, underruns et débordements dans les builds de test.
+### Fixed — les chaînes de secteurs D64 étaient parcourues au compteur, pas par détection de cycle
+
+Un D64 est une structure **chaînée** : chaque bloc de répertoire et chaque
+secteur de fichier nomme le suivant, et rien nulle part n'enregistre la longueur
+d'une chaîne — on l'apprend en suivant les liens. Une image corrompue peut donc
+faire pointer une chaîne sur elle-même, et la seule condition d'arrêt saine est
+« je suis déjà passé ici ».
+
+Les compteurs qui en tenaient lieu étaient des suppositions, fausses dans les
+deux sens : le parcours de fichier autorisait 1000 sauts sur un disque de 683
+secteurs, si bien qu'un secteur pointant sur lui-même produisait un « fichier »
+de 254 Ko à partir d'une image de 174 Ko ; le parcours de répertoire n'en
+autorisait que 256, soit moins que les 683 blocs qu'une chaîne de répertoire
+pathologique mais **légale** pourrait occuper. `VisitedSectors` (683 bits) les
+remplace tous les cinq : moins cher que le compteur, et exact.
+
+Trouvé en fuzzant. Dans la même passe : les compteurs de blocs libres du BAM
+sont désormais bornés par la géométrie au lieu d'être crus sur parole — un
+disque tout à `$FF` annonçait « 8670 BLOCKS FREE » sur un disque qui en compte
+664. Un secteur ne peut pas avoir plus de blocs libres qu'il n'en contient.
+Cosmétique (la valeur alimente le pied de liste du répertoire), mais faux.
+
+### Changed — le D64 se monte depuis la mémoire
+
+`D64Image::mountBytes()` accepte les octets ; `mount(chemin)` lit via
+`pom1::readFileBounded()` et délègue, de sorte qu'un fichier et un tampon
+passent exactement les mêmes règles d'acceptation — un D64 fait 35 pistes, avec
+ou sans les 683 octets d'erreur finaux, et rien d'autre n'en est un. Le format
+devient au passage atteignable par un test ou un fuzzer sans disque sur disque,
+ce qui est ce qui a permis de trouver les deux défauts ci-dessus.
+
+### Changed — une seule lecture de fichier bornée pour tous les analyseurs
+
+`pom1::readFileBounded()` (`FileBytes.h`) remplace trois copies du même préambule
+« vérifier la taille puis avaler le fichier ». L'ordre est tout l'intérêt :
+avaler le fichier **est** l'allocation que la limite existe pour empêcher, donc
+une borne vérifiée après la lecture a déjà perdu. Images mémoire, conteneurs
+cassette et instantanés passent tous par là, ce qui rend la règle impossible à
+oublier sur un quatrième site.
+
+### Fixed — deux défauts des conteneurs cassette, trouvés en les fuzzant
+
+**Une fréquence d'échantillonnage sans borne supérieure.** L'analyseur AIFF a
+toujours été borné par son décodeur de flottant 80 bits ; l'analyseur WAV ne
+bornait rien. Un fichier pouvait déclarer quatre milliards de hertz et être
+accepté. La borne basse comptait davantage : les durées valent
+`deltaSamples × CPU_HZ ÷ fréquence` puis sont réduites en `uint32`, et à 1 Hz un
+intervalle de 5000 échantillons atteint déjà 5,1e9 — une conversion qu'UBSan
+qualifie de « outside the range of representable values of type
+`unsigned int` », c'est-à-dire un comportement indéfini, pas un débordement
+défini. Les deux analyseurs bornent maintenant la fréquence à une fenêtre
+plausible, et `pcmToDurations()` sature dans le domaine des doubles avant de
+réduire — les fichiers décodés par miniaudio passent aussi par là.
+
+**NaN et infini traversaient jusqu'au décodeur d'impulsions.** Un conteneur
+flottant transporte n'importe quel motif binaire, et rien en aval n'y était
+préparé : le décodeur compare chaque échantillon à un seuil, et toute
+comparaison avec un NaN est fausse. Un WAV flottant corrompu se lisait donc
+comme une ligne plate et ressortait en « no detectable cassette signal », ce qui
+n'apprend rien à l'utilisateur sur le vrai problème. Les échantillons non finis
+deviennent du silence, sont comptés et signalés.
+
+### Changed — les conteneurs cassette WAV et AIFF deviennent des fonctions pures
+
+`CassetteDevice` lisait le fichier, l'analysait, le mixait et rangeait le
+résultat d'un seul tenant. Aucun des deux analyseurs ne pouvait donc être testé
+ni fuzzé sans périphérique audio, et celui de l'AIFF — écrit par POM1 puisque
+miniaudio n'a pas de moteur AIFF, et que l'AIFF est ce qu'émet le synthétiseur
+`ACIace` d'Uncle Bernie — n'était gardé que par un seul test de bout en bout.
+
+`src/PcmFile.{h,cpp}` reçoit des octets et rend du flottant mono, une fréquence
+et un diagnostic. `CassetteDevice::loadPcmTape()` est le corps partagé
+taille-lecture-analyse-décodage derrière `loadWavTape` et `loadAiffTape`. Rien de
+partiel ne s'échappe : un refus ne porte aucun échantillon, et une largeur non
+supportée est refusée **avant** de décoder la moindre trame — l'ancienne version
+la découvrait depuis l'intérieur de la boucle, après avoir déjà mixé et rangé
+toutes les trames précédentes.
+
+**Bornes.** `kMaxPcmFileBytes` (256 Mo) est vérifiée avant la lecture du fichier.
+`kMaxPcmFrames` n'est pas nouvelle : c'est la limite de trente minutes que
+`loadMiniaudioTape()` applique depuis toujours, dont le commentaire dit qu'elle
+« prevents accidental 2-hour podcast loads from chewing memory ». Les deux
+analyseurs écrits à la main n'avaient **aucune limite**, donc le cas exact que
+décrit ce commentaire était refusé en `.mp3` et accepté en `.wav`. La troncature
+est signalée, jamais silencieuse.
+
+`pcm_file_smoke` (douze sections) et `pcm_file_fuzz_smoke` couvrent l'ensemble ;
+une campagne de 200 000 entrées sous ASan+UBSan est propre.
+
+### Fixed — une adresse trop large ne s'interprète plus différemment selon l'OS
+
+Trouvé en durcissant les chargeurs, pas en les fuzzant. Les analyseurs
+convertissaient les jetons hexadécimaux avec `strtol`, dont le type `long` fait
+64 bits sur macOS et Linux mais 32 bits sur Windows : un jeton trop large
+saturait différemment sur chacun. Une ligne d'adresse TurboType `100000000` se
+tronquait en `$0000` sur les hôtes 64 bits — les octets suivants partaient donc
+en **page zéro** — pendant que l'hôte 32 bits plafonnait ailleurs et les
+ignorait. Même fichier, deux machines, deux résultats, dont aucun n'était
+l'intention du fichier.
+
+Les adresses passent désormais par une accumulation vérifiée. L'analyseur
+structuré en lignes n'a aucune règle de jeton fusionné sur laquelle se rabattre :
+une adresse qu'il ne peut pas représenter est une ligne malformée, ignorée et
+signalée. L'analyseur joint conserve sa lecture documentée du même jeton
+(données fusionnées + adresse). Le comportement est identique sur toutes les
+plateformes.
+
+### Added — durcissement et fuzzing des chargeurs d'image mémoire
+
+`kMaxMemoryImageBytes` (8 Mo) borne l'entrée : `Memory::loadHexDump()` vérifie la
+**taille du fichier avant de le lire**, `parseMemoryImage()` revérifie pour tout
+autre appelant, et les deux partagent `memoryImageTooLargeMessage()` pour ne pas
+raconter deux histoires différentes de la même limite. Calibrage : le plus gros
+programme livré fait ~100 Ko, une image couvrant les 64 Ko en WOZMON quelques
+centaines de Ko. Les avertissements de quartet impair indiquent maintenant
+l'**adresse** de la première occurrence, pas seulement un décompte.
+
+`memory_image_fuzz_smoke` prend deux formes issues d'un seul fichier. Par défaut,
+un pilote **déterministe** (graine fixe, donc un échec se reproduit à l'octet
+près) rejoue un corpus de formes réelles, le mute vers la ponctuation qui pilote
+l'analyseur, et soumet **chaque** résultat au contrat de l'en-tête : confinement
+aux 64 Ko, `byteCount` cohérent avec les plages, aucune écriture sur une image
+rejetée, `zones()` en accord plage par plage, sortie bornée par l'entrée, et
+résultat identique à la seconde analyse. Avec `-DPOM1_FUZZERS=ON`, les mêmes
+vérifications passent derrière `LLVMFuzzerTestOneInput` pour la campagne ASan
+longue. Le pilote déterministe est le défaut et non le repli : Apple clang ne
+fournit pas libFuzzer, donc une porte uniquement libFuzzer ne s'exécuterait
+simplement pas sur macOS.
+
+Une campagne de 60 000 entrées sous ASan+UBSan n'a révélé aucune faute mémoire.
+
+### Changed — les chargeurs d'image mémoire deviennent des fonctions pures
+
+`Memory::loadHexDump()` entrelaçait analyse, écritures dans `mem[]` et appels à
+`pom1::log()`. Les trois dialectes vivent désormais dans
+`src/MemoryImageLoader.{h,cpp}` : `pom1::parseMemoryImage(contenu, nom)` reçoit
+des octets et un nom — jamais ouvert, il ne sert qu'au libellé des diagnostics
+et à la seule règle d'extension dont les formats aient besoin, `.tur` — et rend
+un `MemoryImage` complet : écritures en plages contiguës, adresse d'exécution,
+nombre d'octets et diagnostics typés. Ni `Memory`, ni système de fichiers, ni
+journal. `Memory::loadHexDump()` se réduit à analyser, décider, appliquer.
+
+Le comportement de chaque dialecte est conservé à l'octet près — WOZMON hex,
+Intel HEX et TurboType, y compris les pièges que chaque branche existe pour
+éviter (fusion des zones, jeton de 1-2 chiffres avant `:` traité comme donnée,
+jetons fusionnés données+adresse et données+run, marqueur `X` nu, détection
+d'Intel HEX par la forme). Les 120 fichiers livrés sous `software/` sont tous du
+hex WOZ 6502 ; aucun n'est de l'Intel HEX.
+
+**Plus aucune mutation partielle.** L'ancien chargeur écrivait chaque
+enregistrement Intel HEX en RAM au fur et à mesure et ne découvrait qu'ensuite
+celui qui dépassait les 64 Ko du 6502 — les précédents étaient déjà en mémoire.
+De même, un fichier n'établissant aucune adresse déversait ses octets errants en
+page zéro avant de renvoyer une erreur. Une image rejetée ne porte désormais
+aucune écriture.
+
+`memory_image_loader_smoke` couvre les dix points sans machine émulée ni
+fichier ; le cliquet architectural descend en conséquence (`memory_lines`
+4247 → 3892, `sources_outside_test_devices` 87 → 86).
+
 ### Fixed — l'auto-connexion BBS depuis `software/NET` composait dans le vide
 
 Charger `software/NET/bbs.fozztexx.com.txt` branchait bien le Wi-Fi Modem et
