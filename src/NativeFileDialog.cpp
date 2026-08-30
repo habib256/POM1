@@ -21,9 +21,30 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <string>
+#include <utility>
 #include <vector>
+
+namespace pom1 {
+namespace {
+// Host event-loop pump — see NativeFileDialog::setWaitPump. Lives up here
+// rather than in the shared tail section because the Linux backend below is
+// its only consumer and is compiled before it. Touched from the render thread
+// only (install at startup, call while a picker child runs).
+std::function<void()>& waitPumpFn()
+{
+    static std::function<void()> fn;
+    return fn;
+}
+} // namespace
+
+void NativeFileDialog::setWaitPump(std::function<void()> pump)
+{
+    waitPumpFn() = std::move(pump);
+}
+} // namespace pom1
 
 #if POM1_IS_WASM
 // ── WASM: no native picker available, every call returns false. ─────────────
@@ -214,11 +235,15 @@ bool NativeFileDialog::saveFile(GLFWwindow* parent,
 // time dependency for what amounts to two CLI calls. The first
 // isAvailable() call probes $PATH and caches "zenity", "kdialog", or "none".
 
+#include <cerrno>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <thread>
 #include <unistd.h>
+#include <poll.h>
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <string>
@@ -299,18 +324,51 @@ std::string runChildCapture(const std::vector<std::string>& argv)
     }
 
     close(fds[1]);
+
+    // The picker is a separate process and this wait runs on POM1's render
+    // thread, so a plain blocking read()+waitpid() parks the GLFW event loop
+    // for the whole time the dialog is up. Nothing then answers the
+    // compositor's xdg_shell ping and GNOME declares POM1 "not responding"
+    // over a window that is simply waiting for the user to pick a file. So
+    // poll instead of blocking, and hand the host a tick in between (see
+    // setWaitPump). With no pump installed the poll timeout is infinite and
+    // the behaviour is exactly the old blocking wait.
+    auto& pump = waitPumpFn();
+    const int pollTimeoutMs = pump ? 8 : -1;
+
     std::string out;
     char buf[1024];
-    while (out.size() < 64 * 1024) {
-        ssize_t n = read(fds[0], buf, sizeof(buf));
-        if (n <= 0) break;
-        out.append(buf, buf + n);
+    bool eof = false;
+    while (!eof && out.size() < 64 * 1024) {
+        struct pollfd pfd{};
+        pfd.fd = fds[0];
+        pfd.events = POLLIN;
+        int pr = poll(&pfd, 1, pollTimeoutMs);
+        if (pr < 0) {
+            if (errno == EINTR) continue;
+            eof = true;                 // poll is broken: stop reading
+        } else if (pr > 0) {
+            ssize_t n = read(fds[0], buf, sizeof(buf));
+            if (n > 0)                 out.append(buf, buf + n);
+            else if (n == 0)           eof = true;   // child closed stdout
+            else if (errno != EINTR)   eof = true;
+        }
+        if (pump) pump();
     }
     close(fds[0]);
 
+    // stdout is closed but the child may not have reaped yet; keep pumping
+    // across that gap too rather than reintroducing the stall we just removed.
     int status = 0;
-    waitpid(pid, &status, 0);
-    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return {};
+    bool exited = false;
+    for (;;) {
+        pid_t r = waitpid(pid, &status, pump ? WNOHANG : 0);
+        if (r == pid)  { exited = true; break; }
+        if (r < 0)     { if (errno == EINTR) continue; break; }
+        pump();                          // r == 0: still running (WNOHANG)
+        std::this_thread::sleep_for(std::chrono::milliseconds(4));
+    }
+    if (!exited || !WIFEXITED(status) || WEXITSTATUS(status) != 0) return {};
     while (!out.empty() && (out.back() == '\n' || out.back() == '\r'))
         out.pop_back();
     return out;

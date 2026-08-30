@@ -11,6 +11,7 @@
 #ifndef POM1_NATIVE_FILE_DIALOG_H
 #define POM1_NATIVE_FILE_DIALOG_H
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -72,6 +73,21 @@ public:
                          const std::string& defaultName,
                          const std::vector<FileFilter>& filters,
                          std::string& outPath);
+
+    /// Host event-loop pump, installed once by main_imgui.cpp.
+    ///
+    /// The Linux backend forks a zenity/kdialog child and waits for it, and
+    /// that wait runs on the render thread — so without a pump NOTHING
+    /// services the window-system connection for as long as the picker is up.
+    /// The compositor's xdg_shell ping goes unanswered and GNOME puts up
+    /// "POM1 is not responding" over a window that is merely waiting for the
+    /// user to choose a file. Called every few milliseconds while the child
+    /// runs; it must ONLY drain the window system's queue — never render, and
+    /// never re-enter POM1 state, because it fires from INSIDE an ImGui frame
+    /// (the callers are menu handlers). Optional: unset, the wait simply
+    /// blocks as before. No-op in practice on Windows and macOS, whose native
+    /// dialogs run their own modal loop and keep the window alive themselves.
+    static void setWaitPump(std::function<void()> pump);
 
     /// Convenience used by the portable paint/bench editors via their host
     /// seams: pick a file with ONE filter expressed as a human description plus

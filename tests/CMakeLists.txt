@@ -2346,6 +2346,22 @@ target_include_directories(test_staged_card_configuration PRIVATE ${CMAKE_SOURCE
 add_test(NAME staged_card_configuration_smoke COMMAND test_staged_card_configuration)
 set_tests_properties(staged_card_configuration_smoke PROPERTIES TIMEOUT 10)
 
+# The Linux native file picker's WAIT. POM1 forks zenity/kdialog from the
+# render thread, so a blocking wait froze the window for the whole life of the
+# dialog and GNOME reported "POM1 is not responding". Pins that the wait pumps
+# the host throughout, still round-trips the child's answer, still reports a
+# cancel as false, and still works with no pump installed. Linux-only: the
+# Win32/Cocoa backends run their own modal loop and never fork.
+if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+    add_executable(test_native_file_dialog
+        native_file_dialog_smoke_test.cpp
+        ${CMAKE_SOURCE_DIR}/src/NativeFileDialog.cpp
+    )
+    target_include_directories(test_native_file_dialog PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME native_file_dialog_smoke COMMAND test_native_file_dialog)
+    set_tests_properties(native_file_dialog_smoke PROPERTIES TIMEOUT 30)
+endif()
+
 # P-LAB MODEM BBS — 65C51 ACIA register file + Hayes AT parser. No ATD is
 # issued, so no connection is attempted.
 add_executable(test_wifi_modem
