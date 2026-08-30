@@ -18,6 +18,7 @@
 #include "PomRenderer.h"
 #include "CliDispatcher.h"
 #include "X11ErrorGuard.h"
+#include "NativeFileDialog.h"
 #include "MainWindow_ImGui.h"
 #include "MachinePresets.h"
 #include "IconsFontAwesome6.h"
@@ -428,13 +429,27 @@ static void pom1_report_window_creation_failure(const char* requestDesc)
 static std::atomic<double> g_lastActivityTime{0.0};
 static void pom1_note_activity() { g_lastActivityTime.store(glfwGetTime(), std::memory_order_relaxed); }
 
+// True only while NativeFileDialog's wait pump (below) is inside
+// glfwPollEvents. That pump exists so a forked zenity/kdialog picker doesn't
+// leave the compositor unanswered, but it necessarily runs from INSIDE an
+// ImGui frame — the callers are menu handlers — which breaks the "callbacks
+// run outside the frame" assumption the POM1 half of the key/char/drop
+// handlers below is written against (handleGlfwKey dispatches shortcuts, and a
+// shortcut re-entering applyMachineConfig/hardReset underneath a live Load
+// Memory is not a state anything here is prepared for). ImGui's own handlers
+// still run: they only queue events, which the next NewFrame consumes as
+// usual. Dropping POM1-side input for the duration is also simply correct —
+// the picker owns the focus, those keystrokes are not for the Apple-1.
+// Render-thread only, hence a plain bool.
+static bool g_inNativeDialogPump = false;
+
 static void glfw_char_callback(GLFWwindow* window, unsigned int codepoint)
 {
     pom1_note_activity();
     ImGui_ImplGlfw_CharCallback(window, codepoint);
 
     auto* mw = static_cast<MainWindow_ImGui*>(glfwGetWindowUserPointer(window));
-    if (mw) {
+    if (mw && !g_inNativeDialogPump) {
         mw->handleGlfwChar(codepoint);
     }
 }
@@ -445,7 +460,7 @@ static void glfw_key_callback(GLFWwindow* window, int key, int scancode, int act
     ImGui_ImplGlfw_KeyCallback(window, key, scancode, action, mods);
 
     // PRESS + REPEAT : le handler n’exécute les raccourcis sur REPEAT que pour F7 (step).
-    if (action == GLFW_PRESS || action == GLFW_REPEAT) {
+    if ((action == GLFW_PRESS || action == GLFW_REPEAT) && !g_inNativeDialogPump) {
         auto* mw = static_cast<MainWindow_ImGui*>(glfwGetWindowUserPointer(window));
         if (mw) {
             mw->handleGlfwKey(key, scancode, action, mods);
@@ -493,7 +508,7 @@ static void glfw_drop_callback(GLFWwindow* w, int count, const char** paths)
 {
     pom1_note_activity();
     auto* mw = static_cast<MainWindow_ImGui*>(glfwGetWindowUserPointer(w));
-    if (mw) mw->queueDroppedFiles(paths, count);
+    if (mw && !g_inNativeDialogPump) mw->queueDroppedFiles(paths, count);
 }
 #endif // !POM1_IS_WASM
 
@@ -1392,6 +1407,16 @@ int main(int argc, char* argv[])
     // and hands over a File object, not a path the native loaders could open).
     glfwSetDropCallback(window, glfw_drop_callback);
 #endif
+
+    // Keep the window answering the compositor while a forked native file
+    // picker is up. Without this the render thread sits in waitpid() for the
+    // whole life of the zenity/kdialog child and GNOME flags POM1 as "not
+    // responding" — see NativeFileDialog::setWaitPump.
+    pom1::NativeFileDialog::setWaitPump([]() {
+        g_inNativeDialogPump = true;
+        glfwPollEvents();
+        g_inNativeDialogPump = false;
+    });
 
     // Main loop
 #if POM1_IS_WASM
