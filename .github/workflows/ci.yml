@@ -95,8 +95,17 @@ jobs:
           done
           echo "OK: GLES 3.0 TUs compile"
 
-      - name: Run ctest (Klaus, smoke tests, graphics regression)
-        run: ctest --test-dir build --output-on-failure
+      # Split into the two lanes declared in tests/CMakeLists.txt rather than
+      # one `ctest` run: every declared test carries exactly one of the two
+      # labels, so the split costs nothing and a red step names WHICH product
+      # broke. The emulator lane runs first because it is the release gate: it
+      # must also be green on a machine with no cc65, which is why every
+      # cc65-dependent test skips (77) rather than failing.
+      - name: Run ctest, emulator lane (release gate)
+        run: ctest --test-dir build --output-on-failure -L emulator
+
+      - name: Run ctest, devtools lane (editors, DevBench, BASIC compilers)
+        run: ctest --test-dir build --output-on-failure -L devtools
 
       - name: Rebuild CodeTank cartridges (byte-identical gate)
         run: make -C dev/codetank

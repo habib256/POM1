@@ -287,9 +287,29 @@ $FF00-$FFFF  Woz Monitor ROM + vectors ($FFFA-$FFFF)
 
 ```bash
 ctest                       # full suite (~5–30 s wall time; Klaus + TMS9918 tests dominate)
+ctest -L emulator           # the release gate — green with no cc65 and no editors
+ctest -L devtools           # editors, DevBench/cc65 pipeline, BASIC compilers
 ctest --output-on-failure
 ctest -R klaus -V
 ```
+
+**Two lanes, and every declared test carries exactly one of them** (`LABELS`,
+assigned at the bottom of `tests/CMakeLists.txt` from the `POM1_DEVTOOLS_TESTS`
+list). `emulator` (90 tests) is what an emulator release must pass, and it is
+green on a machine with **no cc65** — the toolchain-dependent tests in it
+(`lib_micro_tests`) skip with 77 rather than fail. `devtools` (28) is the
+development environment's own lane: the editors, the DevBench/cc65 pipeline,
+the BASIC compilers and their 6502 runtime. The rule for the list is
+**subject**, not name: a test is `devtools` when it compiles a source from the
+devtools set that `tools/check_architecture.py` guards, or drives cc65 —
+`bench_basic_inject_smoke`, `bench_logo_inject_smoke`, `applesoft_*`,
+`codetank_claudio_gate`, `lib_micro_tests` and the `dev/` assembly lints all
+assert *emulator* behaviour and stay in the gate despite their names. **Absent
+from the list means `emulator`**, deliberately: an unlabelled devtools test
+lands in the release gate and turns it red on a cc65-less machine, where the
+other default would drop a test out of the gate in silence. `ci.yml`'s Linux
+job runs the two lanes as two steps — the same 118 tests, at no extra cost,
+with a red step that names which product broke.
 
 Load-bearing pins worth knowing:
 
@@ -346,6 +366,27 @@ sources outside `pom1_test_devices`. The checked-in
 lower a ceiling when a refactor improves it; never raise one merely to make CI
 green. A deliberate new dependency requires an architectural review and an
 explicit `allowed_reverse_dependencies` entry.
+
+Two ratchets sit alongside it, both grandfathering what exists today rather
+than describing a target:
+
+- **The devtools boundary** — `DEVTOOLS_DIRS` / `DEVTOOLS_STEMS` name the
+  development environment (`src/{bench,hgrpaint,hgrsprite,tmspaint,tmssprite,sfxbeep,sidtrack}/`,
+  the `Pom1*Host` files, the BASIC compilers, `DbgFile`, `BenchDebugSession`),
+  and every include of one of their headers from outside that set is an edge in
+  `allowed_devtools_dependencies`. There are **17**, in four files, all
+  `MainWindow_*` — that is what makes the `-DPOM1_DEVTOOLS=OFF` work bounded,
+  and the ratchet is what keeps it bounded while it waits. A new edge fails; so
+  does an edge left in the baseline after its last call site is gone, so the
+  list can only shrink.
+- **Frozen facades** — `memory_public_methods` (188) and
+  `controller_public_methods` (201) count declarations at class scope in
+  `Memory.h` / `EmulationController.h`. The count, not the line total, is the
+  property that matters: a facade shrinks by losing methods, and the old
+  line-based ceilings say nothing about how much a caller can ask of the
+  object. `Memory` is **frozen** (TODO.md chantier 2) — no new public method,
+  no new `Memory.h` include — and `EmulationController`'s per-card passthroughs
+  come off one at a time as their last caller goes (chantier 4).
 
 New invariant tests follow `tests/peripheral_bus_smoke_test.cpp` — `<cassert>` + `add_test` suffices; GTest/Catch2 only once multi-threaded tests land.
 

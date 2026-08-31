@@ -32,30 +32,36 @@ pur, sans valeur utilisateur, sur un cœur actuellement stable.
 Architecture pour les humains : [`ARCHITECTURE.md`](ARCHITECTURE.md). Invariants
 et pièges : [`CLAUDE.md`](CLAUDE.md).
 
-### 1. Isoler l'environnement de développement (2–3 semaines)
+### 1. Isoler l'environnement de développement (1–2 semaines restantes)
 
 Une régression dans un éditeur graphique bloque aujourd'hui une release
 d'émulateur, et la matrice de portage (Linux / macOS Metal+GL / Windows / WASM /
 Pi GLES / borne PGO) est payée sur 100 % du code. Objectif : pouvoir bâtir,
 tester et publier l'émulateur **sans** les 18 300 lignes d'outillage.
 
-- [ ] **Mettre l'outillage derrière une option CMake** `[M · critical]` — regrouper `src/bench/`, `src/hgrpaint/`, `src/hgrsprite/`, `src/tmspaint/`, `src/tmssprite/`, `src/sfxbeep/`, `src/sidtrack/`, `src/Pom1BenchHost.cpp`, `src/Pom1HgrPaintHost.cpp`, `src/Pom1TmsPaintHost.cpp` et les compilateurs BASIC derrière `POM1_DEVTOOLS` (ON par défaut). Portée mesurée : 76 références réparties sur 6 fichiers seulement (`src/MainWindow_ImGui.h` en concentre 32, `src/MainWindow_ImGui.cpp` 17) — c'est borné. Critère : `-DPOM1_DEVTOOLS=OFF` compile, démarre et passe `ctest`.
-- [ ] **Séparer la voie de test** `[S · solid]` — étiqueter les tests (`LABELS emulator` / `devtools`) dans `tests/CMakeLists.txt` ; `ctest -L emulator` doit être vert sans cc65 ni éditeur, et devient la porte de release de l'émulateur.
-- [ ] **Épingler la frontière** `[S · solid]` — aucun fichier hors outillage ne doit inclure un en-tête d'éditeur ou de bench ; ajouter la règle à `tools/check_architecture.py` à côté de l'interdiction ImGui/MainWindow existante.
-- [ ] **Décider ensuite du packaging** `[S · solid]` — une fois la frontière tenue, trancher explicitement : release unique avec outillage, ou build « émulateur seul » pour la borne et le WASM. Ne pas trancher avant d'avoir la mesure de taille et de temps de build des deux.
+La frontière et la voie de test sont livrées (`CHANGELOG.md`) : `ctest -L
+emulator` est vert sans cc65, et `architecture_check` interdit toute nouvelle
+inclusion d'un en-tête d'outillage hors outillage. Reste l'option elle-même.
+
+- [ ] **Mettre l'outillage derrière une option CMake** `[M · critical]` — regrouper `src/bench/`, `src/hgrpaint/`, `src/hgrsprite/`, `src/tmspaint/`, `src/tmssprite/`, `src/sfxbeep/`, `src/sidtrack/`, `src/Pom1BenchHost.cpp`, `src/Pom1HgrPaintHost.cpp`, `src/Pom1TmsPaintHost.cpp` et les compilateurs BASIC derrière `POM1_DEVTOOLS` (ON par défaut). Portée mesurée et désormais épinglée : **17 inclusions** d'en-têtes d'outillage depuis 4 fichiers, tous `MainWindow_*` (`allowed_devtools_dependencies` dans `tools/architecture_baseline.json`) — c'est borné, et le cliquet empêche que ça reparte. Critère : `-DPOM1_DEVTOOLS=OFF` compile, démarre et passe `ctest -L emulator`.
+- [ ] **Décider ensuite du packaging** `[S · solid]` — une fois l'option en place, trancher explicitement : release unique avec outillage, ou build « émulateur seul » pour la borne et le WASM. Ne pas trancher avant d'avoir la mesure de taille et de temps de build des deux.
 
 > Sortie : `-DPOM1_DEVTOOLS=OFF` produit un émulateur complet, testé et
-> publiable ; l'outillage a sa propre voie de test.
+> publiable ; `ctest -L emulator` le prouve.
 
-### 2. Services hôte injectés, puis geler `Memory` (1–2 semaines)
+### 2. Services hôte injectés (1–2 semaines)
 
 - [ ] **Injecter le service audio** `[M · critical]` — le réseau et les fichiers sont faits : plus aucun socket n'est ouvert sans branchement de carte (`TerminalCard::setEnabled`), et les ressources passent par `ResourceLocator` (`hermetic_core_smoke` épingle les deux). Reste `AudioDevice`, toujours construit par `Memory` : fournir un `IAudioService` injecté depuis `src/main_imgui.cpp` avec un double en mémoire pour les tests. Mesure de référence : construction d'un cœur hermétique 133 ms, dont l'essentiel est cet objet.
 - [ ] **Étendre `ResourceLocator` aux consommateurs restants** `[S · solid]` — `src/ResourceLocator.h` porte l'ordre de recherche unique et `Memory` le reçoit (`resource_locator_smoke`). Reste à y router les ~60 sondes `../` encore dispersées dans l'UI, le Bench et `GraphicsCard`/`Screen_ImGui`, et à couvrir les ressources web.
-- [ ] **Geler `Memory` au lieu de le démembrer** `[S · solid]` — `PeripheralManager` est écarté ; la contrainte devient un cliquet strictement décroissant. Règle : aucune nouvelle méthode publique sur `Memory` (~190 aujourd'hui), aucun nouvel inclus de `Memory.h` (59 unités de traduction), et toute extraction abaisse les plafonds de `tools/architecture_baseline.json`. Ajouter le compte de méthodes publiques aux métriques mesurées par `tools/check_architecture.py`, qui ne mesure aujourd'hui que des lignes et du fan-out.
+
+Le gel de `Memory` est livré et devient une règle permanente, plus un chantier :
+`architecture_check` mesure `memory_public_methods` (188) et
+`controller_public_methods` (201) et refuse toute croissance — aucune nouvelle
+méthode publique, aucun nouvel inclus de `Memory.h` (59 unités de traduction),
+et toute extraction abaisse les plafonds.
 
 > Sortie : `Memory` ne crée plus d'`AudioDevice` et ne découvre aucune ressource
-> hôte ; un test hermétique construit le cœur avec des doubles en mémoire ; la
-> taille de `Memory` ne peut plus croître.
+> hôte ; un test hermétique construit le cœur avec des doubles en mémoire.
 
 ### 3. Sortir les décisions de l'UI (3–4 semaines, incrémental)
 
