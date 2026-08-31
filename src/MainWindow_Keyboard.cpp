@@ -67,9 +67,11 @@ void MainWindow_ImGui::handleGlfwChar(unsigned int codepoint)
     // UI keyboard-navigation mode (F10): ImGui owns every key; nothing
     // reaches the Apple-1 until the user toggles back.
     if (uiNavMode_) return;
+#if POM1_DEVTOOLS
     // The SID Tracker plays notes off the PC keyboard while focused — don't also
     // send those keys to the Apple-1.
     if (sidTrackerEditor && sidTrackerEditor->wantsKeyboard()) return;
+#endif
     if (isRepeat && !keyboardAutorepeat) return;
     if (codepoint >= 32 && codepoint <= 126) {
         emulation->queueKey((char)codepoint);
@@ -119,9 +121,11 @@ void MainWindow_ImGui::handleGlfwKey(int key, int scancode, int action, int mods
     // REPEAT events.
     if (ImGui::GetIO().WantTextInput) return;
     if (uiNavMode_) return;   // F10 mode: keys navigate the UI, not the Apple-1
+#if POM1_DEVTOOLS
     // Same guard as handleGlfwChar: while the SID Tracker owns the keyboard,
     // don't also forward Enter/Backspace/Escape to the Apple-1.
     if (sidTrackerEditor && sidTrackerEditor->wantsKeyboard()) return;
+#endif
     const bool fire = (action == GLFW_PRESS) || (action == GLFW_REPEAT && keyboardAutorepeat);
     if (!fire) return;
 

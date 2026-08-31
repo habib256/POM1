@@ -65,6 +65,10 @@ build-audit
 # Secondary configure of the GLES 3.0 tier (cmake -DPOM1_GLES=ON), as used by
 # the "Compile the GLES 3.0 tier" CI step and by local Raspberry Pi checks.
 build-gles
+# Emulator-only configure (cmake -DPOM1_DEVTOOLS=OFF): the tree used to check
+# that the app builds, starts and passes `ctest -L emulator` without the
+# in-app development environment.
+build-nodev
 build-wasm/*
 !build-wasm/shell.html
 !build-wasm/POM1.html

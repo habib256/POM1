@@ -331,6 +331,12 @@ target_include_directories(test_symbols PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME symbols_smoke COMMAND test_symbols)
 set_tests_properties(symbols_smoke PROPERTIES TIMEOUT 5)
 
+# ── Development-environment tests (POM1_DEVTOOLS) ───────────────────────────
+# Not declared at all in an emulator-only build: -DPOM1_DEVTOOLS=OFF leaves
+# these sources out of POM1 itself, so building them here would defeat the
+# point. `ctest -L emulator` is unaffected either way — the lanes and this
+# guard partition the same set, from the two ends.
+if(POM1_DEVTOOLS)
 # -- HGR paint editor model ---------------------------------------------------
 # Pure bit-plotting logic of the HGR Paint editor (column-parity snapping,
 # per-byte shared high-bit palette behaviour, addressing). No GL/ImGui.
@@ -411,6 +417,8 @@ add_test(NAME bench_debug_session_smoke COMMAND test_bench_debug_session)
 set_tests_properties(bench_debug_session_smoke PROPERTIES TIMEOUT 5)
 
 # -- GEN2 release video scanner / floating bus --------------------------------
+endif()  # POM1_DEVTOOLS
+
 # Self-contained: Gen2VideoScanner has no dependency on Memory, peripherals, or
 # libresidfp. Pins the MAME scanner_address oracle for known (cycle, mode)
 # tuples — HGR page1/2 bases, mixed bottom-4-rows text fallback, the text
@@ -713,6 +721,12 @@ set_tests_properties(applesoft_tms9918_smoke PROPERTIES TIMEOUT 120)
 # launcher, no keyboard injection), loads it into RAM and runs it on BOTH the
 # TMS9918 (CodeTank ROM, VRAM inspected) and the GEN2 HGR card (page-2 RAM),
 # asserting the floating-point 3D plot fills the framebuffer. Skips (77) if a ROM
+# ── Development-environment tests (POM1_DEVTOOLS) ───────────────────────────
+# Not declared at all in an emulator-only build: -DPOM1_DEVTOOLS=OFF leaves
+# these sources out of POM1 itself, so building them here would defeat the
+# point. `ctest -L emulator` is unaffected either way — the lanes and this
+# guard partition the same set, from the two ends.
+if(POM1_DEVTOOLS)
 # or the source sketch is absent.
 add_executable(test_basic_compiler
     basic_compiler_smoke_test.cpp
@@ -1052,6 +1066,8 @@ endif()   # NOT WIN32 — end of the POSIX-only native-compiler test block
 
 # -- SID audio production smoke test ------------------------------------------
 # Needs the full Memory+peripheral core to exercise the PeripheralBus path.
+endif()  # POM1_DEVTOOLS
+
 add_executable(test_sid_audio
     sid_audio_smoke_test.cpp
     ${POM1_TEST_CORE_SOURCES}
@@ -1253,6 +1269,12 @@ set_tests_properties(codetank_smoke PROPERTIES TIMEOUT 5)
 # Pins the pure VRAM-plotting logic of the TMS9918 Paint editor (tmspaint::
 # helpers) cross-checked against the real TMS9918 per-line renderers: it installs
 # the model's canonical Graphics II / Multicolor registers + name table, plots a
+# ── Development-environment tests (POM1_DEVTOOLS) ───────────────────────────
+# Not declared at all in an emulator-only build: -DPOM1_DEVTOOLS=OFF leaves
+# these sources out of POM1 itself, so building them here would defeat the
+# point. `ctest -L emulator` is unaffected either way — the lanes and this
+# guard partition the same set, from the two ends.
+if(POM1_DEVTOOLS)
 # colour, renders the 16 KB VRAM through TMS9918::renderToBuffer, and asserts the
 # displayed pixel == kPalette[colour]. Also pins the 2-colours-per-cell clash
 # rule and colorAt() round-trips. No GL/ImGui/emulator dependency.
@@ -1397,6 +1419,8 @@ set_tests_properties(tms_convert_smoke PROPERTIES TIMEOUT 15)
 # and 6 (5S overflow + index in low 5 bits) — none were set before this
 # test landed. Includes the "color=0 sprite still collides" rule and the
 # sticky-until-readControl behaviour.
+endif()  # POM1_DEVTOOLS
+
 add_executable(test_tms9918_sprite_status
     tms9918_sprite_status_test.cpp
     ${CMAKE_SOURCE_DIR}/src/TMS9918.cpp
@@ -1972,6 +1996,9 @@ if(Python3_FOUND)
                          TIMEOUT 120 SKIP_RETURN_CODE 77)
 
     # ── size_report_smoke — tools/size_report.py + the DevBench archive link ──
+    # Devtools: its subject is the DevBench link model, so an emulator-only
+    # build does not declare it (see the POM1_DEVTOOLS blocks above).
+    if(POM1_DEVTOOLS)
     # Rebuilds the gen2c runtime archive from dev/bench/gen2c.json (pins the
     # spec: every listed source must exist and compile), links a text-only
     # program against it with a verbose map, then asserts dead-strip (unused
@@ -1984,6 +2011,7 @@ if(Python3_FOUND)
              WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(size_report_smoke PROPERTIES
                          TIMEOUT 120 SKIP_RETURN_CODE 77)
+    endif()  # POM1_DEVTOOLS
 endif()
 
 

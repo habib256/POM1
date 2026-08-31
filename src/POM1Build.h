@@ -26,3 +26,22 @@
 #else
 #define POM1_GL_ES 0
 #endif
+
+/* Environnement de développement intégré (éditeurs HGR/TMS/SFX/SID, DevBench,
+ * compilateurs BASIC) : ~18 300 lignes qui partagent le processus, le build et
+ * la matrice de portage de l'émulateur sans en faire partie.
+ *
+ * `cmake -DPOM1_DEVTOOLS=OFF` définit POM1_BUILD_NO_DEVTOOLS et retire ces
+ * sources de la cible ; le peu de code qui les référence — 4 fichiers, tous
+ * `MainWindow_*` — est gardé par ce macro. L'émulateur reste complet : seules
+ * les fenêtres d'outillage et leurs entrées de menu disparaissent.
+ *
+ * La frontière est épinglée par `tools/check_architecture.py`
+ * (`allowed_devtools_dependencies`), qui compte les arêtes dans le TEXTE des
+ * sources — donc indépendamment de ce macro : une nouvelle inclusion échoue
+ * même écrite dans un `#if POM1_DEVTOOLS`. */
+#if defined(POM1_BUILD_NO_DEVTOOLS)
+#define POM1_DEVTOOLS 0
+#else
+#define POM1_DEVTOOLS 1
+#endif

@@ -480,7 +480,9 @@ void MainWindow_ImGui::renderMenuBar()
             // (WASM): no cc65 toolchain in the browser, so the Bench is restricted
             // to the Wozmon-hex target (editor + Upload + Serial Monitor) — see
             // Pom1BenchHost, whose targets() is Woz-hex-only under POM1_IS_WASM.
+#if POM1_DEVTOOLS
             ImGui::MenuItem("POM1 Bench (sketch editor)...", nullptr, &showBench);
+#endif
             ImGui::MenuItem("Telemetry Side Channel...", nullptr, &showTelemetry);
             ImGui::Separator();
             // --- TMS9918 group: VDP inspector + paint + sprite editors ---------
@@ -496,6 +498,7 @@ void MainWindow_ImGui::renderMenuBar()
                     setStatusMessage("TMS9918 plugged for VDP Inspector", 2.0f);
                 }
             }
+#if POM1_DEVTOOLS
             // TMS9918 paint editor — draws live into the P-LAB Graphic Card VRAM
             // (Graphics II bitmap / Multicolor). Opening it plugs the TMS9918 so
             // there is a live card to paint into (the render loop also guards this).
@@ -574,6 +577,7 @@ void MainWindow_ImGui::renderMenuBar()
                 }
             }
             ImGui::Separator();
+#endif  // POM1_DEVTOOLS
             // Strict-mode toggle, drop-diagnostics dump and counter reset all
             // moved into the Silicon Strict Inspector window — single home for
             // the whole silicon-fidelity surface.

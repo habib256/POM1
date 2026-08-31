@@ -155,6 +155,16 @@ message(STATUS "POM1: graphics backend = ${POM1_RENDERER}")
 # path needs is skipped). WASM is GLES already — WebGL 2.0 IS GLES 3.0 — and
 # turns POM1_GL_ES on by itself, without this option.
 option(POM1_GLES "Target OpenGL ES 3.0 instead of desktop GL 3.2 (Raspberry Pi & co)" OFF)
+
+# The in-app development environment — HGR/TMS paint + sprite editors, the
+# beeper SFX editor, the SID tracker, the DevBench and the BASIC compilers —
+# is a second product sharing this process: ~18 300 lines built, ported and
+# released today on the emulator's schedule. OFF drops them from the target;
+# the emulator itself is complete either way, only the tooling windows and
+# their menu entries go. See src/POM1Build.h for the macro, and
+# tools/check_architecture.py for the source-level boundary that keeps the
+# reference sites down to four MainWindow_* files.
+option(POM1_DEVTOOLS "Build the in-app development environment (editors, DevBench, BASIC compilers)" ON)
 if(POM1_GLES)
     if(EMSCRIPTEN)
         message(FATAL_ERROR
@@ -308,9 +318,6 @@ set(POM1_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(SOURCES
     ${POM1_SRC_DIR}/A1IO_RTC.cpp
     ${POM1_SRC_DIR}/AudioDevice.cpp
-    ${POM1_SRC_DIR}/BasicTokeniserApplesoft.cpp
-    ${POM1_SRC_DIR}/BasicTokeniserInteger.cpp
-    ${POM1_SRC_DIR}/BasicCompilerApplesoft.cpp
     ${POM1_SRC_DIR}/LogoProgramLoader.cpp
     ${POM1_SRC_DIR}/X11ErrorGuard.cpp
     ${POM1_SRC_DIR}/CassetteDevice.cpp
@@ -334,10 +341,6 @@ set(SOURCES
     ${POM1_SRC_DIR}/ResourceLocator.cpp
     ${POM1_SRC_DIR}/MemorySnapshot.cpp
     ${POM1_SRC_DIR}/MemoryViewer_ImGui.cpp
-    ${POM1_SRC_DIR}/Pom1HgrPaintHost.cpp
-    ${POM1_SRC_DIR}/Pom1TmsPaintHost.cpp
-    ${POM1_SRC_DIR}/Pom1SfxHost.cpp
-    ${POM1_SRC_DIR}/Pom1SidHost.cpp
     ${POM1_SRC_DIR}/Screen_ImGui.cpp
     ${POM1_SRC_DIR}/SID.cpp
     ${POM1_SRC_DIR}/TMS9918.cpp
@@ -385,6 +388,22 @@ set(SOURCES
     ${POM1_SRC_DIR}/CrtEffectStack.cpp
     ${POM1_SRC_DIR}/Pom1CrtEffects.cpp
     ${POM1_SRC_DIR}/Logger.cpp
+)
+
+# ── The development environment, behind POM1_DEVTOOLS ────────────────────────
+# Editors, DevBench and the BASIC compilers, in one list so an emulator-only
+# build is a list that is never appended. ImGuiColorTextEdit belongs here too:
+# bench/CodeBench.cpp is its only consumer, so OFF drops the vendored editor
+# with the rest. The few sites that reference all this are guarded by
+# POM1_DEVTOOLS (src/POM1Build.h) and counted by tools/check_architecture.py.
+set(POM1_DEVTOOLS_SOURCES
+    ${POM1_SRC_DIR}/BasicTokeniserApplesoft.cpp
+    ${POM1_SRC_DIR}/BasicTokeniserInteger.cpp
+    ${POM1_SRC_DIR}/BasicCompilerApplesoft.cpp
+    ${POM1_SRC_DIR}/Pom1HgrPaintHost.cpp
+    ${POM1_SRC_DIR}/Pom1TmsPaintHost.cpp
+    ${POM1_SRC_DIR}/Pom1SfxHost.cpp
+    ${POM1_SRC_DIR}/Pom1SidHost.cpp
     ${POM1_SRC_DIR}/third_party/ImGuiColorTextEdit/TextEditor.cpp
     ${POM1_SRC_DIR}/Pom1BenchHost.cpp
     ${POM1_SRC_DIR}/Pom1BenchTargets.cpp
@@ -422,11 +441,28 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/sidtrack/SidTrackerEditor.cpp
 )
 
+# Include directories the devtools sources need. Kept out of the target when
+# POM1_DEVTOOLS=OFF on purpose: a stray editor include then fails to compile
+# instead of quietly pulling the tooling back in.
+set(POM1_DEVTOOLS_INCLUDE_DIRS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bench
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmssprite
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrsprite
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/sfxbeep
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/sidtrack
+)
+
+if(POM1_DEVTOOLS)
+    list(APPEND SOURCES ${POM1_DEVTOOLS_SOURCES})
+else()
+    message(STATUS "POM1: development environment OFF (-DPOM1_DEVTOOLS=OFF)")
+endif()
+
 set(HEADERS
     ${POM1_SRC_DIR}/A1IO_RTC.h
     ${POM1_SRC_DIR}/AudioDevice.h
-    ${POM1_SRC_DIR}/BasicTokeniserApplesoft.h
-    ${POM1_SRC_DIR}/BasicCompilerApplesoft.h
     ${POM1_SRC_DIR}/CassetteDevice.h
     ${POM1_SRC_DIR}/CassetteDeck_ImGui.h
     ${POM1_SRC_DIR}/CliDispatcher.h
@@ -437,24 +473,6 @@ set(HEADERS
     ${POM1_SRC_DIR}/M6502.h
     ${POM1_SRC_DIR}/Memory.h
     ${POM1_SRC_DIR}/MemoryViewer_ImGui.h
-    ${POM1_SRC_DIR}/Pom1HgrPaintHost.h
-    ${POM1_SRC_DIR}/Pom1TmsPaintHost.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint/TmsPaintModel.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint/ITmsPaintHost.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint/TmsPaintEditor.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint/TmsConvert.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmssprite/TmsSpriteModel.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmssprite/TmsSpriteEditor.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmssprite/TmsSpriteAsmExport.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrsprite/HgrSpriteBlit.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrsprite/HgrSpriteEditor.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrsprite/HgrSpriteAsmExport.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/HgrPaintEditor.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/HgrFont.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/HgrPaintModel.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/IHgrPaintHost.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/Cam16.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/HgrConvert.h
     ${POM1_SRC_DIR}/MicroSD.h
     ${POM1_SRC_DIR}/JukeBox.h
     ${POM1_SRC_DIR}/CodeTank.h
@@ -481,6 +499,34 @@ set(HEADERS
     ${POM1_SRC_DIR}/PomRenderer_Internal.h
     ${POM1_SRC_DIR}/Logger.h
 )
+
+# Headers for IDE listing only; same split as the sources above.
+set(POM1_DEVTOOLS_HEADERS
+    ${POM1_SRC_DIR}/BasicTokeniserApplesoft.h
+    ${POM1_SRC_DIR}/BasicCompilerApplesoft.h
+    ${POM1_SRC_DIR}/Pom1HgrPaintHost.h
+    ${POM1_SRC_DIR}/Pom1TmsPaintHost.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint/TmsPaintModel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint/ITmsPaintHost.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint/TmsPaintEditor.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint/TmsConvert.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmssprite/TmsSpriteModel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmssprite/TmsSpriteEditor.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmssprite/TmsSpriteAsmExport.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrsprite/HgrSpriteBlit.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrsprite/HgrSpriteEditor.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrsprite/HgrSpriteAsmExport.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/HgrPaintEditor.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/HgrFont.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/HgrPaintModel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/IHgrPaintHost.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/Cam16.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint/HgrConvert.h
+)
+
+if(POM1_DEVTOOLS)
+    list(APPEND HEADERS ${POM1_DEVTOOLS_HEADERS})
+endif()
 
 # Platform-native icon resources — baked into the target so POM1.exe / POM1.app
 # carry the icon without any external install step. Native build only; WASM
@@ -578,14 +624,15 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
     ${POM1_SRC_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/bench
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrpaint
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmspaint
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/tmssprite
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/hgrsprite
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/sfxbeep
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/sidtrack
 )
+if(POM1_DEVTOOLS)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${POM1_DEVTOOLS_INCLUDE_DIRS})
+else()
+    # POM1_BUILD_NO_DEVTOOLS flips POM1Build.h's POM1_DEVTOOLS to 0. Paired with
+    # the include directories left out above, an editor include that escapes its
+    # #if fails to compile rather than dragging the tooling back in.
+    target_compile_definitions(${PROJECT_NAME} PRIVATE POM1_BUILD_NO_DEVTOOLS)
+endif()
 
 # Vendored single-header libraries, marked SYSTEM so the warning flags below
 # don't report on code POM1 does not own — a vendored header "fixed" in place
@@ -685,14 +732,10 @@ target_link_libraries(pom1_ui INTERFACE pom1_app)
 target_include_directories(pom1_ui INTERFACE
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
-    ${POM1_SRC_DIR}/bench
-    ${POM1_SRC_DIR}/hgrpaint
-    ${POM1_SRC_DIR}/tmspaint
-    ${POM1_SRC_DIR}/tmssprite
-    ${POM1_SRC_DIR}/hgrsprite
-    ${POM1_SRC_DIR}/sfxbeep
-    ${POM1_SRC_DIR}/sidtrack
 )
+if(POM1_DEVTOOLS)
+    target_include_directories(pom1_ui INTERFACE ${POM1_DEVTOOLS_INCLUDE_DIRS})
+endif()
 
 set(POM1_OWN_SOURCES
     ${SOURCES}
@@ -1147,8 +1190,10 @@ else()
     # basicc — standalone Applesoft "BASIC compiler" host tool. Pure (only
     # BasicTokeniserApplesoft.cpp), so it builds without GL/ImGui. Emits a Wozmon-hex image
     # (tokenized program + launcher) loadable by POM1. See doc/BASIC_COMPILER.md.
+    # It compiles the same two BASIC sources as the in-app DevBench, so it
+    # follows POM1_DEVTOOLS: an emulator-only build ships no compiler at all.
     option(POM1_BUILD_BASICC "Build the basicc Applesoft->image compiler tool" ON)
-    if(POM1_BUILD_BASICC)
+    if(POM1_BUILD_BASICC AND POM1_DEVTOOLS)
         add_executable(basicc
             ${CMAKE_CURRENT_SOURCE_DIR}/tools/basicc.cpp
             ${POM1_SRC_DIR}/BasicTokeniserApplesoft.cpp

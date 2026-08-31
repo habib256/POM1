@@ -15,6 +15,11 @@
 #include "CodeTank.h"
 #include "JukeBox.h"
 #include "MemoryViewer_ImGui.h"
+#if POM1_DEVTOOLS
+// The in-app development environment (-DPOM1_DEVTOOLS=OFF drops all of it).
+// These are the only editor headers the emulator side ever names; the include
+// directories themselves are off the target in an OFF build, so a new one does
+// not compile. tools/check_architecture.py counts them either way.
 #include "HgrPaintEditor.h"        // hgrpaint/ (portable editor) on the include path
 #include "HgrSpriteEditor.h"       // hgrsprite/ (portable sprite editor) on the include path
 #include "Pom1HgrPaintHost.h"
@@ -25,6 +30,7 @@
 #include "Pom1SfxHost.h"
 #include "SidTrackerEditor.h"      // sidtrack/ (portable SID tracker) on the include path
 #include "Pom1SidHost.h"
+#endif
 #include "Screen_ImGui.h"
 #include "FullscreenExpand.h"
 #include "StagedCardConfiguration.h"
@@ -36,14 +42,18 @@
 #include "CliDispatcher.h"
 #include "SID.h"
 
+#if POM1_DEVTOOLS
 class Pom1BenchHost;                 // POM1 host for the portable bench editor
 namespace bench { class CodeBench; } // bench/CodeBench.h
+#endif
 struct ImGuiSettingsHandler;         // imgui_internal.h — custom .ini section handler
 namespace pom1 { struct Texture; }   // PomRenderer.h — opaque texture handle
 
 class MainWindow_ImGui
 {
+#if POM1_DEVTOOLS
     friend class Pom1BenchHost;   // bench host reaches presets + card-enable flags
+#endif
 public:
     MainWindow_ImGui();
     ~MainWindow_ImGui();
@@ -62,10 +72,12 @@ public:
     // Free GL resources owned by sub-widgets (the HGR Paint editor's textures)
     // while the context is still current — call before ImGui/GLFW teardown.
     void releaseGLResources() {
+#if POM1_DEVTOOLS
         if (hgrPaintEditor) hgrPaintEditor->releaseGL();
         if (hgrSpriteEditor) hgrSpriteEditor->releaseGL();
         if (tmsPaintEditor) tmsPaintEditor->releaseGL();
         if (tmsSpriteEditor) tmsSpriteEditor->releaseGL();
+#endif
         // The MainWindow-owned textures (board/about photos, card framebuffers)
         // and the Screen glyph atlas are otherwise deleted by ~MainWindow_ImGui /
         // ~Screen_ImGui, which run at main()'s return — i.e. AFTER glfwTerminate(),
@@ -294,6 +306,7 @@ private:
     // draws through it. Persisted under ini/ui.settings (crt_* keys).
     pom1::Pom1CrtEffects crtEffects;
     std::unique_ptr<MemoryViewer_ImGui> memoryViewer;
+#if POM1_DEVTOOLS
     // Portable HGR Paint editor (hgrpaint/) + its POM1 host. Host is declared
     // first so it outlives the editor that holds a raw pointer to it.
     std::unique_ptr<Pom1HgrPaintHost> hgrPaintHost;
@@ -311,6 +324,7 @@ private:
     std::unique_ptr<sfxbeep::SfxEditor> sfxEditor;
     std::unique_ptr<Pom1SidHost> sidHost;
     std::unique_ptr<sidtrack::SidTrackerEditor> sidTrackerEditor;
+#endif
     EmulationSnapshot uiSnapshot;
     
     // Window reference for keyboard callbacks
@@ -323,6 +337,7 @@ private:
 
     // Interface state
     bool showMemoryViewer = false;
+#if POM1_DEVTOOLS
     bool showHGRPaintEditor = false;
     bool showHGRSpriteEditor = false;
     bool showTMSPaintEditor = false;
@@ -330,6 +345,7 @@ private:
     bool showSfxEditor = false;         // Beeper SFX editor (ACI 1-bit)
     bool sfxEditorWasOpen_ = false;     // rising-edge guard: eject stream tape once on open
     bool showSidTracker = false;        // SID tracker
+#endif
     bool showDebugger = false;
     bool showRewindTimeline = false;   // State-rewind timeline / scrub panel
     bool showAbout = false;
@@ -521,6 +537,7 @@ private:
     // "POM1 Bench" — the portable bench/CodeBench editor driven by a
     // Pom1BenchHost (cc65 toolchain, presets, CodeTank/loadBinary deploy). Both
     // are created lazily on first open. See bench/IBenchHost.h.
+#if POM1_DEVTOOLS
     bool showBench = false;
     // Suppresses the DevBench-preset auto-load (open Bench + load asm starter)
     // when applyMachineConfig is being driven BY the Bench's own target picker.
@@ -530,6 +547,7 @@ private:
     bool suppressDevBenchAutoload = false;
     std::unique_ptr<Pom1BenchHost>     benchHost_;
     std::unique_ptr<bench::CodeBench>  codeBench_;
+#endif
     bool pr40Enabled = false;
     bool showPR40 = false;
     bool a1ioRtcEnabled = false;
@@ -788,8 +806,10 @@ private:
     void renderWiFiModemWindow();
     void renderTerminalCardWindow();
     void renderTelemetryWindow();
+#if POM1_DEVTOOLS
     void renderBenchWindow();   // thin delegator → codeBench_->render()
     void ensureBench();         // lazy-create benchHost_ + codeBench_
+#endif
     void renderA1IO_RTCWindow();
     void renderJukeBoxWindow();
     void renderCodeTankLibraryWindow();
@@ -878,6 +898,7 @@ private:
     // the matching graphics card and drop its starter demo into the Bench editor.
     // benchLang / benchMachine are the DevBench New-dialog axes (resolved via
     // Pom1BenchHost::targetFor so a kP1Targets[] reorder can't desync this).
+#if POM1_DEVTOOLS
     void launchLanguageFromChooser(int benchLang, int benchMachine);
     // Open a pixel-art editor straight from the chooser: plug the matching
     // graphics machine (GEN2 HGR or TMS9918) and raise its Paint editor window.
@@ -885,6 +906,7 @@ private:
     // Open an audio editor straight from the chooser: boot a plain Apple-1, plug
     // the matching sound card (ACI beeper or A1-SID) and raise its editor window.
     void launchAudioEditorFromChooser(bool sid);
+#endif
     // Boot a CodeTank release cartridge from the chooser's Play column: TMS9918
     // preset, then the picked cart/jumper as a second transaction + auto-4000R.
     void launchGameFromChooser(int game);

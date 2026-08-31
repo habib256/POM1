@@ -90,6 +90,13 @@ sudo apt install libgles2-mesa-dev libegl1-mesa-dev
 cmake -S . -B build -DPOM1_GLES=ON && cmake --build build -j$(nproc)
 ```
 
+To build the **emulator alone**, without the in-app development environment (paint/sprite editors, SFX editor, SID tracker, DevBench, BASIC compilers), add `-DPOM1_DEVTOOLS=OFF` — 31 % smaller binary, and a paint-editor regression can no longer hold up an emulator release:
+
+```bash
+cmake -S . -B build -DPOM1_DEVTOOLS=OFF && cmake --build build -j$(nproc)
+ctest --test-dir build -L emulator      # the emulator's release gate
+```
+
 On the Pi, `packaging/raspberrypi/build_native_pi.sh` does that *and* compiles for the actual core (`-mcpu=cortex-a72/-a76`), sizes `-j` to the RAM and offers a two-pass profile-guided build (`--pgo`, worth 10-20 %). `packaging/raspberrypi/install.sh` adds the **arcade-cabinet mode**: power on → POM1 fullscreen on a bare X server, no desktop — see [`packaging/raspberrypi/README.md`](packaging/raspberrypi/README.md).
 
 #### 🪟 Windows
