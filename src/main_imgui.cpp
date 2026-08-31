@@ -768,7 +768,13 @@ static int runHeadless(pom1::CliPlan& plan)
     pom1::log().info("POM1", "headless mode — no window (Ctrl-C / SIGTERM to exit)");
 
     HeadlessDisplayCapture display;
-    EmulationController emu(&display);
+    // The audio device is built HERE and handed down, so the core it drives
+    // does not construct a host service of its own. Declared before `emu` so
+    // it outlives the sources registered on it (Memory unregisters them in its
+    // destructor, but the declaration order says the same thing statically).
+    AudioDevice audio(/*initializeHardware=*/true,
+                      plan.audioLatencyMs ? *plan.audioLatencyMs : 0);
+    EmulationController emu(&display, /*initializeAudioHardware=*/true, &audio);
 
     // Machine config: apply the preset (RAM + cards + BASIC ROM) immediately —
     // no GUI deferred plug — then explicit --enable/--disable overrides, then
@@ -988,11 +994,10 @@ int main(int argc, char* argv[])
     if (!parsedPlan) return 1;
     pom1::CliPlan plan = std::move(*parsedPlan);
 
-    // --audio-latency: must land BEFORE any AudioDevice exists (Memory owns it,
-    // and Memory is built by the EmulationController inside runHeadless() /
-    // MainWindow_ImGui below).
-    if (plan.audioLatencyMs)
-        AudioDevice::setPreferredLatencyMs(*plan.audioLatencyMs);
+    // --audio-latency is applied where the device is constructed: runHeadless()
+    // below, or main()'s own AudioDevice further down. It used to be a static
+    // set here because Memory built the device deep inside the controller and
+    // there was no other way to reach it.
 
 #if !POM1_IS_WASM
     // Headless: no window, no GL — go straight to the emulator driver. Must run
@@ -1327,8 +1332,13 @@ int main(int argc, char* argv[])
 #endif
     rendererOwned->initImGuiBackend(glsl_version);
 
-    // Create main application
-    MainWindow_ImGui mainWindow;
+    // Create main application. The audio device is owned HERE, above the
+    // window, for two reasons: the core no longer builds host services, and it
+    // must outlive the machine whose cassette/SID are registered on it (~Memory
+    // unregisters them, so this is belt and braces).
+    AudioDevice audioDevice(/*initializeHardware=*/true,
+                            plan.audioLatencyMs ? *plan.audioLatencyMs : 0);
+    MainWindow_ImGui mainWindow(&audioDevice);
     // Before anything renders: the first render() frame loads ini/ui.settings
     // and applies the theme, which bakes zoom × DPI into the style.
     mainWindow.setUiDpiScale(bootContentScale);

@@ -46,6 +46,7 @@
 class Pom1BenchHost;                 // POM1 host for the portable bench editor
 namespace bench { class CodeBench; } // bench/CodeBench.h
 #endif
+namespace pom1 { class IAudioService; }  // AudioService.h — the audio seam
 struct ImGuiSettingsHandler;         // imgui_internal.h — custom .ini section handler
 namespace pom1 { struct Texture; }   // PomRenderer.h — opaque texture handle
 
@@ -55,7 +56,11 @@ class MainWindow_ImGui
     friend class Pom1BenchHost;   // bench host reaches presets + card-enable flags
 #endif
 public:
-    MainWindow_ImGui();
+    /// `audio` is the machine's audio seam, owned by main(). Passing it is how
+    /// the shipped app keeps its core from constructing a host service; with
+    /// nothing passed the EmulationController's Memory owns a device of its own
+    /// (the path the tests take).
+    explicit MainWindow_ImGui(pom1::IAudioService* audio = nullptr);
     ~MainWindow_ImGui();
 
     void render();
@@ -298,6 +303,10 @@ private:
     // been destroyed. Same discipline as `Memory.h`'s AudioDevice-after-its-
     // AudioSources rule, for the same reason. Do not reorder these two.
     std::unique_ptr<Screen_ImGui> screen;
+    // Audio seam handed in by main() (nullptr = the controller's Memory builds
+    // its own device). Stored because the controller is created in the ctor
+    // body, after the member initialiser list has run.
+    pom1::IAudioService* injectedAudio_ = nullptr;
     std::unique_ptr<EmulationController> emulation;
 
     // Universal shader CRT post-process (opt-in). Master ON/OFF + shared knob

@@ -94,7 +94,8 @@ int main()
     fs::current_path(sandbox);
 
     {
-        Memory mem(true, pom1::ResourceLocator::rootedAt(sandbox));
+        Memory mem(/*initializeAudioHardware=*/false,
+                   pom1::ResourceLocator::rootedAt(sandbox));
         const int rc = mem.loadWozMonitor();
         assert(rc == 0 && "a missing Monitor file must NOT fail the load any more");
 

@@ -45,7 +45,15 @@ de binaire (−31 %), **27 s → 20 s** de build.
 
 ### 2. Services hôte injectés (1–2 semaines)
 
-- [ ] **Injecter le service audio** `[M · critical]` — le réseau et les fichiers sont faits : plus aucun socket n'est ouvert sans branchement de carte (`TerminalCard::setEnabled`), et les ressources passent par `ResourceLocator` (`hermetic_core_smoke` épingle les deux). Reste `AudioDevice`, toujours construit par `Memory` : fournir un `IAudioService` injecté depuis `src/main_imgui.cpp` avec un double en mémoire pour les tests. Mesure de référence : construction d'un cœur hermétique 133 ms, dont l'essentiel est cet objet.
+L'injection du service audio est livrée (`CHANGELOG.md`). Au passage, la mesure
+qui la justifiait était mal attribuée : dans un binaire de test,
+`AudioDevice(false)` coûte **0,07 ms**, et les ~150 ms d'un cœur hermétique sont
+la **première construction de `pom1::SID`** (tables de filtre libresidfp ;
+0,46 ms pour chaque SID suivant dans le même processus). Le gain réel de
+l'injection est ailleurs et il est mesuré : plus aucun test n'ouvre le
+périphérique audio de l'hôte.
+
+- [ ] **Amortir la première construction de `pom1::SID`** `[S · nice]` — ~150 ms par processus de test (tables de filtre libresidfp), payés par chaque binaire qui construit un `Memory`. Piste : ne construire la puce qu'au premier branchement de la carte plutôt que dans le constructeur de `Memory`. À mesurer avant : combien de binaires de la suite branchent réellement le SID.
 - [ ] **Étendre `ResourceLocator` aux consommateurs restants** `[S · solid]` — `src/ResourceLocator.h` porte l'ordre de recherche unique et `Memory` le reçoit (`resource_locator_smoke`). Reste à y router les ~60 sondes `../` encore dispersées dans l'UI, le Bench et `GraphicsCard`/`Screen_ImGui`, et à couvrir les ressources web.
 
 Le gel de `Memory` est livré et devient une règle permanente, plus un chantier :
@@ -54,8 +62,9 @@ Le gel de `Memory` est livré et devient une règle permanente, plus un chantier
 méthode publique, aucun nouvel inclus de `Memory.h` (59 unités de traduction),
 et toute extraction abaisse les plafonds.
 
-> Sortie : `Memory` ne crée plus d'`AudioDevice` et ne découvre aucune ressource
-> hôte ; un test hermétique construit le cœur avec des doubles en mémoire.
+> Sortie atteinte pour l'audio : `Memory` ne crée plus d'`AudioDevice` dans
+> l'application livrée, et `hermetic_core_smoke` §4 construit le cœur sur un
+> double en mémoire. Reste la découverte de ressources hôtes hors du cœur.
 
 ### 3. Sortir les décisions de l'UI (3–4 semaines, incrémental)
 

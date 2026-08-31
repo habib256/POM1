@@ -62,10 +62,12 @@ constexpr double kTelemetryStallTimeoutSec = 5.0;
 } // namespace
 
 EmulationController::EmulationController(DisplayDevice* screenWidget,
-                                         bool initializeAudioHardware)
+                                         bool initializeAudioHardware,
+                                         pom1::IAudioService* audio)
     : screen(screenWidget)
 {
-    memory = std::make_unique<Memory>(initializeAudioHardware);
+    memory = std::make_unique<Memory>(initializeAudioHardware,
+                                      pom1::ResourceLocator::defaultLocator(), audio);
     cpu = std::make_unique<M6502>(memory.get());
 
     memory->setDisplayDevice(screen);
@@ -103,14 +105,14 @@ void EmulationController::copySnapshot(EmulationSnapshot& out) const
 
 void EmulationController::mixAudio(float* output, int frameCount)
 {
-    memory->getAudioDevice().mixSources(output, frameCount);
+    memory->audioService().mixSources(output, frameCount);
 }
 
 pom1::RealtimeDiagnostics EmulationController::getRealtimeDiagnostics() const
 {
     pom1::RealtimeDiagnostics diagnostics;
     stateMutex.copyRealtimeDiagnostics(diagnostics);
-    memory->getAudioDevice().copyRealtimeDiagnostics(diagnostics);
+    memory->audioService().copyRealtimeDiagnostics(diagnostics);
     memory->getSID().copyRealtimeDiagnostics(diagnostics);
     memory->getCassetteDevice().copyRealtimeDiagnostics(diagnostics);
     return diagnostics;

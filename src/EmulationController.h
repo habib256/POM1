@@ -55,6 +55,8 @@
 /// and yields when true, so the UI can make progress on stateMutex-heavy
 /// frames. Acts like std::mutex otherwise: BasicLockable, usable with
 /// std::lock_guard<PriorityMutex>.
+namespace pom1 { class IAudioService; }   // AudioService.h — the audio seam
+
 class PriorityMutex {
 public:
     void lock() {
@@ -119,8 +121,15 @@ private:
 class EmulationController
 {
 public:
+    /// `audio` is the machine's audio seam: main_imgui.cpp owns the real
+    /// AudioDevice and passes it here, so the shipped app's Memory never builds
+    /// one. With nothing injected Memory owns a device built from
+    /// `initializeAudioHardware`, which defaults to FALSE like Memory's — both
+    /// frontends pass it explicitly, so only a test takes the default, and the
+    /// suite used to open a real OS sound device 161 times.
     explicit EmulationController(DisplayDevice* screen,
-                                 bool initializeAudioHardware = true);
+                                 bool initializeAudioHardware = false,
+                                 pom1::IAudioService* audio = nullptr);
     ~EmulationController();
 
     void copySnapshot(EmulationSnapshot& out) const;

@@ -66,6 +66,7 @@
 // The rule for anything added later: a card belongs in this list, not in an
 // #include. A TU that needs a card's definition includes that card's header.
 class AudioDevice;
+namespace pom1 { class IAudioService; }
 class CassetteDevice;
 class CFFA1;
 class CodeTank;
@@ -98,9 +99,16 @@ public:
     /// Defaulted, so every existing caller is unchanged. Passing
     /// ResourceLocator::rootedAt(dir) is how a caller says "look ONLY here"
     /// (rom_fallback_smoke needs exactly that; see its §2).
-    explicit Memory(bool initializeAudioHardware = true,
+    ///
+    /// `audio` is the machine's audio seam — see AudioService.h for why the
+    /// core is handed one instead of building it. With nothing injected Memory
+    /// owns an AudioDevice, and `initializeAudioHardware` says whether that
+    /// device opens the OS output; it defaults to FALSE so a bare `Memory mem;`
+    /// (50 test files) is silent and hermetic. The frontends pass `true`.
+    explicit Memory(bool initializeAudioHardware = false,
                     pom1::ResourceLocator locator =
-                        pom1::ResourceLocator::defaultLocator());
+                        pom1::ResourceLocator::defaultLocator(),
+                    pom1::IAudioService* audio = nullptr);
 
     /// Where this machine looks for its data. Set at construction.
     const pom1::ResourceLocator& resources() const { return resources_; }
@@ -647,8 +655,8 @@ public:
     void setGT6144Enabled(bool b);
     bool isGT6144Enabled() const { return gt6144Enabled; }
 
-    // Central audio device (mixes CassetteDevice + SID)
-    AudioDevice& getAudioDevice() { return *audioDevice; }
+    // The machine's audio seam (mixes CassetteDevice + SID). Never null.
+    pom1::IAudioService& audioService() { return *audio; }
 
     /// Snapshot of the currently attached expansion topology. Caller must
     /// provide external synchronization when Memory is owned by the controller.
@@ -852,17 +860,22 @@ private :
     bool cassetteAudioActive = false;
     std::unique_ptr<TMS9918> tms9918;
     bool tms9918Enabled = false;
-    // NOTE on destruction order: AudioDevice must outlive every AudioSource
-    // it may be draining (CassetteDevice, SID). C++ destroys members in
-    // reverse declaration order, so sources must be declared BEFORE
-    // audioDevice to be destroyed AFTER it. CassetteDevice (declared above)
+    // NOTE on destruction order: the audio service must outlive every
+    // AudioSource it may be draining (CassetteDevice, SID). C++ destroys
+    // members in reverse declaration order, so sources must be declared BEFORE
+    // `ownedAudio` to be destroyed AFTER it. CassetteDevice (declared above)
     // already satisfies this; `sid` must be declared here — NOT after
-    // `audioDevice` — or a UAF window opens between ~sid and
-    // ~audioDevice (which is what stops the miniaudio callback).
+    // `ownedAudio` — or a UAF window opens between ~sid and the destructor
+    // that stops the miniaudio callback. That covers the service Memory OWNS;
+    // an INJECTED one outlives Memory, which is why ~Memory unregisters its
+    // sources explicitly (see Memory.cpp).
     std::unique_ptr<pom1::SID> sid;
     bool sidEnabled = false;
     bool sidSpecialEditionEnabled = false;
-    std::unique_ptr<AudioDevice> audioDevice;
+    // `audio` is what the machine talks to and is never null. `ownedAudio`
+    // holds it only when nothing was injected.
+    pom1::IAudioService* audio = nullptr;
+    std::unique_ptr<pom1::IAudioService> ownedAudio;
     std::unique_ptr<MicroSD> microSD;
     bool microSDEnabled = false;
     std::unique_ptr<pom1::IECCard> iecCard;

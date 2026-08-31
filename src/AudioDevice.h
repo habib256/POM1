@@ -26,36 +26,29 @@
 #include <memory>
 #include <mutex>
 #include <vector>
+#include "AudioService.h"        // AudioSource + the pom1::IAudioService seam
 #include "RealtimeDiagnostics.h"
 
 #if !POM1_IS_WASM
 struct ma_device;
 #endif
 
-/// Interface for audio sources that can be mixed by AudioDevice.
-class AudioSource
-{
-public:
-    virtual ~AudioSource() = default;
-    /// Fill output buffer with frameCount mono float32 samples.
-    /// Called from the audio callback thread — must be fast and thread-safe.
-    virtual void fillAudioBuffer(float* output, int frameCount) = 0;
-};
-
 /// Central audio device that owns the hardware output (miniaudio on desktop,
-/// Web Audio on WASM) and mixes registered AudioSource instances.
-class AudioDevice
+/// Web Audio on WASM) and mixes registered AudioSource instances. The one
+/// implementation of pom1::IAudioService that talks to real hardware — whoever
+/// builds the machine constructs it and hands it over; the core never does.
+class AudioDevice final : public pom1::IAudioService
 {
 public:
     static constexpr uint32_t kSampleRate = 44100;
 
-    explicit AudioDevice(bool initializeHardware = true);
-    ~AudioDevice();
+    explicit AudioDevice(bool initializeHardware = true, int preferredLatencyMs = 0);
+    ~AudioDevice() override;
 
-    void addSource(AudioSource* source);
-    void removeSource(AudioSource* source);
+    void addSource(AudioSource* source) override;
+    void removeSource(AudioSource* source) override;
 
-    bool isAvailable() const { return audioAvailable; }
+    bool isAvailable() const override { return audioAvailable; }
 
     /// Returns the actual sample rate negotiated with the OS audio device
     /// (miniaudio may pick a different native rate than `kSampleRate` if
@@ -64,14 +57,15 @@ public:
     /// generate cycle-synchronous audio (SID) must use this rate so their
     /// production matches what the OS consumes — otherwise music tempo
     /// drifts by the rate ratio. WASM always returns kSampleRate.
-    uint32_t getActualSampleRate() const { return actualSampleRate; }
+    uint32_t getActualSampleRate() const override { return actualSampleRate; }
 
     /// Called from the audio callback — mixes all sources into output.
-    void mixSources(float* output, int frameCount);
-    void copyRealtimeDiagnostics(pom1::RealtimeDiagnostics& out) const;
+    void mixSources(float* output, int frameCount) override;
+    void copyRealtimeDiagnostics(pom1::RealtimeDiagnostics& out) const override;
 
-    /// Size the output buffer for `ms` milliseconds of cushion instead of the
-    /// ~17 ms default (256 frames × 3 periods at 44.1 kHz).
+    /// `preferredLatencyMs` sizes the output buffer for that many milliseconds
+    /// of cushion instead of the ~17 ms default (256 frames × 3 periods at
+    /// 44.1 kHz).
     ///
     /// The default is deliberately tight — on a desktop it keeps key clicks and
     /// SID notes in step with the picture. It is *too* tight on a machine that
@@ -81,11 +75,12 @@ public:
     /// trades imperceptible extra delay for silence between the drop-outs.
     /// (Ported from NeoST's `--audio-latency`, same lesson on the same box.)
     ///
-    /// Must be called BEFORE the device is constructed (Memory owns it) — i.e.
-    /// from main(), right after the CLI is parsed. Clamped to [20, 250] ms;
-    /// 0 restores the built-in default. No effect on WASM, where the browser
-    /// owns the buffer size.
-    static void setPreferredLatencyMs(int ms);
+    /// It is a constructor argument because the device is now built by whoever
+    /// owns it (main_imgui.cpp, right after the CLI is parsed) rather than deep
+    /// inside Memory. It used to be a static set before construction — a global
+    /// whose only purpose was to reach across that gap. Clamped to [20, 250] ms;
+    /// 0 keeps the built-in default. No effect on WASM, where the browser owns
+    /// the buffer size.
 
 private:
     bool initAudio();
@@ -113,6 +108,7 @@ private:
     std::vector<float> tmpBuf;
     bool audioAvailable = false;
     uint32_t actualSampleRate = kSampleRate;
+    int preferredLatencyMs_ = 0;   // 0 = miniaudio's default cushion
 #if POM1_REALTIME_DIAGNOSTICS
     std::atomic<uint64_t> callbackCount{0};
     std::atomic<uint64_t> maxCallbackNs{0};

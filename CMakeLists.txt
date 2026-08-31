@@ -463,6 +463,7 @@ endif()
 set(HEADERS
     ${POM1_SRC_DIR}/A1IO_RTC.h
     ${POM1_SRC_DIR}/AudioDevice.h
+    ${POM1_SRC_DIR}/AudioService.h
     ${POM1_SRC_DIR}/CassetteDevice.h
     ${POM1_SRC_DIR}/CassetteDeck_ImGui.h
     ${POM1_SRC_DIR}/CliDispatcher.h
