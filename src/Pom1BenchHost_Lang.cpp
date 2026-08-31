@@ -187,8 +187,8 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
         if (tms) {
             mw_->codeTankJumper = CodeTank::Jumper::Upper16;   // Applesoft lives in the upper bank
             emu->setCodeTankJumper(mw_->codeTankJumper);
-            if (!mw_->tms9918Enabled)  { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setCardEnabled(pom1::CardId::Tms9918, true); }
-            if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCardEnabled(pom1::CardId::CodeTank, true); }
+            if (!mw_->cardPlugged(pom1::CardId::Tms9918)) { mw_->showTMS9918 = true; mw_->setCardPlugged(pom1::CardId::Tms9918, true); }
+            if (!mw_->cardPlugged(pom1::CardId::CodeTank)) mw_->setCardPlugged(pom1::CardId::CodeTank, true);
             emu->hardReset(/*animateBoot=*/false);
         } else {
             emu->hardReset(/*animateBoot=*/false);
@@ -518,8 +518,8 @@ bench::BuildResult Pom1BenchHost::injectLogo(int target, const std::string& src,
     if (tms) {
         mw_->codeTankJumper = CodeTank::Jumper::Lower16;   // LOGO lives in the LOWER bank
         emu->setCodeTankJumper(mw_->codeTankJumper);
-        if (!mw_->tms9918Enabled)  { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setCardEnabled(pom1::CardId::Tms9918, true); }
-        if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCardEnabled(pom1::CardId::CodeTank, true); }
+        if (!mw_->cardPlugged(pom1::CardId::Tms9918)) { mw_->showTMS9918 = true; mw_->setCardPlugged(pom1::CardId::Tms9918, true); }
+        if (!mw_->cardPlugged(pom1::CardId::CodeTank)) mw_->setCardPlugged(pom1::CardId::CodeTank, true);
         emu->hardReset(/*animateBoot=*/false);
     } else {
         mw_->showGraphicsCard = true;

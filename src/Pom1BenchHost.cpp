@@ -813,9 +813,9 @@ int Pom1BenchHost::targetForPath(const std::string& path) const
         // never switches the user's profile (see onTargetSelected). Path-tagged files
         // (under /gen2, /tms9918, …) still pin their own card.
         if (sourcePathLooksApplesoftSketch(p)) {
-            if (mw_ && mw_->graphicsCardEnabled) return 9;    // Applesoft GEN2 ($9800)
-            if (mw_ && mw_->tms9918Enabled)      return 11;   // Applesoft TMS9918 ($4000)
-            if (mw_ && mw_->microSDEnabled)      return 8;    // Applesoft Lite + microSD
+            if (mw_ && mw_->cardPlugged(pom1::CardId::Gen2)) return 9;    // Applesoft GEN2 ($9800)
+            if (mw_ && mw_->cardPlugged(pom1::CardId::Tms9918)) return 11; // Applesoft TMS9918 ($4000)
+            if (mw_ && mw_->cardPlugged(pom1::CardId::MicroSD)) return 8;  // Applesoft Lite + microSD
             return 10;                                        // Applesoft Lite (Apple-1, $E000)
         }
         const bool tmspath  = p.find("/tms9918") != std::string::npos ||
@@ -841,7 +841,7 @@ int Pom1BenchHost::targetForPath(const std::string& path) const
                               p.find("/tool_logo") != std::string::npos;
         if (gen2path) return 15;
         if (tmspath)  return 14;
-        if (mw_ && mw_->graphicsCardEnabled) return 15;   // LOGO GEN2 ($6000)
+        if (mw_ && mw_->cardPlugged(pom1::CardId::Gen2)) return 15;   // LOGO GEN2 ($6000)
         return 14;                                        // LOGO TMS9918 ($4000)
     }
 
@@ -866,7 +866,7 @@ int Pom1BenchHost::targetForPath(const std::string& path) const
     // sourcePathLooksPortable wins over the tms/gen2 path hints below.
     int machine;
     if (sourcePathLooksPortable(p))
-        machine = (mw_ && mw_->graphicsCardEnabled) ? 2 : 1;   // GEN2 if live, else TMS
+        machine = (mw_ && mw_->cardPlugged(pom1::CardId::Gen2)) ? 2 : 1;   // GEN2 if live, else TMS
     else
         machine = tms ? 1 : gen2 ? 2 : 0;                      // default = Apple-1
     return (cMode ? 3 : 0) + machine;                  // kP1Targets language-major order
@@ -876,7 +876,6 @@ void Pom1BenchHost::enableSketchSidecarCards(EmulationController* emu)
 {
     if (!mw_ || !emu) return;
     if (sourcePathLooksGT6144(activeSourcePath_)) {
-        mw_->gt6144Enabled = true;
         mw_->showGT6144 = true;
         emu->setCardEnabled(pom1::CardId::Gt6144, true);
     }
@@ -944,9 +943,9 @@ void Pom1BenchHost::applyTargetPreset(int target, bool force)
     if (!force && (sourcePathLooksPortable(activeSourcePath_)        ||
                    sourcePathLooksApplesoftSketch(activeSourcePath_) ||
                    sourcePathLooksIntegerSketch(activeSourcePath_))) {
-        const bool haveCard = (t.preset == md::kPresetGen2Bench)    ? mw_->graphicsCardEnabled
-                            : (t.preset == md::kPresetTMS9918Bench) ? mw_->tms9918Enabled
-                            : (t.preset == md::kPresetMicroSD)      ? mw_->microSDEnabled
+        const bool haveCard = (t.preset == md::kPresetGen2Bench)    ? mw_->cardPlugged(pom1::CardId::Gen2)
+                            : (t.preset == md::kPresetTMS9918Bench) ? mw_->cardPlugged(pom1::CardId::Tms9918)
+                            : (t.preset == md::kPresetMicroSD)      ? mw_->cardPlugged(pom1::CardId::MicroSD)
                             : true;
         if (haveCard) return;
     }
@@ -2031,8 +2030,8 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
         mw_->codeTankJumper = upper ? CodeTank::Jumper::Upper16
                                     : CodeTank::Jumper::Lower16;
         emu->setCodeTankJumper(mw_->codeTankJumper);
-        if (!mw_->tms9918Enabled) { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setCardEnabled(pom1::CardId::Tms9918, true); }
-        if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCardEnabled(pom1::CardId::CodeTank, true); }
+        if (!mw_->cardPlugged(pom1::CardId::Tms9918)) { mw_->showTMS9918 = true; mw_->setCardPlugged(pom1::CardId::Tms9918, true); }
+        if (!mw_->cardPlugged(pom1::CardId::CodeTank)) mw_->setCardPlugged(pom1::CardId::CodeTank, true);
         emu->hardReset(/*animateBoot=*/false); // DevBench: no ~3 s power-on scenario
         // After the reset (which cleared any CPU breakpoint) and BEFORE the
         // deferred 4000R types — the ideal re-arm window: the program has not
@@ -2164,8 +2163,8 @@ bench::BuildResult Pom1BenchHost::pollBuild()
         mw_->codeTankJumper = upper ? CodeTank::Jumper::Upper16
                                     : CodeTank::Jumper::Lower16;
         emu->setCodeTankJumper(mw_->codeTankJumper);
-        if (!mw_->tms9918Enabled) { mw_->tms9918Enabled = true; mw_->showTMS9918 = true; emu->setCardEnabled(pom1::CardId::Tms9918, true); }
-        if (!mw_->codeTankEnabled) { mw_->codeTankEnabled = true; emu->setCardEnabled(pom1::CardId::CodeTank, true); }
+        if (!mw_->cardPlugged(pom1::CardId::Tms9918)) { mw_->showTMS9918 = true; mw_->setCardPlugged(pom1::CardId::Tms9918, true); }
+        if (!mw_->cardPlugged(pom1::CardId::CodeTank)) mw_->setCardPlugged(pom1::CardId::CodeTank, true);
         emu->hardReset(/*animateBoot=*/false); // DevBench: no ~3 s power-on scenario
         mw_->codeTankPendingWozRunAt = ImGui::GetTime() + 1.0;
         emu->copySnapshot(mw_->uiSnapshot);

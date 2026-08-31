@@ -93,20 +93,20 @@ pom1::FileFilter hexDumpFilter()
 // in performMemoryLoad(): loading from software/Graphic HGR/ enables GEN2, so
 // with GEN2 the sole content card we default the picker back into Graphic HGR/.
 // microSD is intentionally excluded (its content lives on the SD filesystem, not
-// under software/); CodeTank implies tms9918Enabled so it maps to Graphic TMS9918.
+// under software/); CodeTank implies the TMS9918 host, so it maps to Graphic TMS9918.
 std::string MainWindow_ImGui::memoryContextSubdir() const
 {
-    struct { bool on; const char* dir; } cards[] = {
-        { graphicsCardEnabled, "Graphic HGR" },
-        { tms9918Enabled,      "Graphic TMS9918" },
-        { sidEnabled,          "SOUND SID" },
-        { wifiModemEnabled,    "NET" },
-        { a1ioRtcEnabled,      "a1io_rtc" },
-        { gt6144Enabled,       "Graphic gt-6144" },
+    struct { pom1::CardId card; const char* dir; } cards[] = {
+        { pom1::CardId::Gen2,      "Graphic HGR" },
+        { pom1::CardId::Tms9918,   "Graphic TMS9918" },
+        { pom1::CardId::Sid,       "SOUND SID" },
+        { pom1::CardId::WifiModem, "NET" },
+        { pom1::CardId::A1IoRtc,   "a1io_rtc" },
+        { pom1::CardId::Gt6144,    "Graphic gt-6144" },
     };
     const char* found = nullptr;
     for (const auto& c : cards) {
-        if (c.on) {
+        if (cardPlugged(c.card)) {
             if (found) return std::string();   // ≥2 content cards → ambiguous
             found = c.dir;
         }
@@ -241,17 +241,13 @@ void MainWindow_ImGui::processDroppedFiles()
         }
     } else if (ext == "d64") {
         // The 1541 lives on the IEC daughterboard, which rides on microSD's
-        // spare VIA pins — Memory cascade-plugs microSD, so mirror both flags
-        // here exactly as the Hardware menu does, or the IEC window renders an
-        // unplugged card and a later toggle mis-cascades.
-        if (!iecCardEnabled) {
-            iecCardEnabled = true;
-            emulation->setCardEnabled(pom1::CardId::Iec, true);
-            microSDEnabled = true;
-            cffa1Enabled = false;
-            jukeBoxEnabled = false;
-            if (codeTankEnabled) {
-                codeTankEnabled = false;
+        // spare VIA pins. Plugging it cascade-plugs microSD and evicts what
+        // that displaces (CFFA1, Juke-Box, the CodeTank window) — all of it in
+        // CardTopology, none of it repeated here any more. Only the windows,
+        // which are the UI's own state, still need a word.
+        if (!cardPlugged(pom1::CardId::Iec)) {
+            setCardPlugged(pom1::CardId::Iec, true);
+            if (!cardPlugged(pom1::CardId::CodeTank)) {
                 showCodeTankLibrary = false;
                 codeTankPendingWozRunAt = 0.0;
             }
@@ -295,40 +291,33 @@ std::vector<std::string> MainWindow_ImGui::evictStorageCards()
     // executes once, in clean RAM — evicting AFTER a shadowed first load and
     // reloading corrupts programs that relocate their own code at runtime
     // (Buzzard Bait copies its engine to $8000 and installs a $9900 shim).
-    if (microSDEnabled) {
-        microSDEnabled = false;
-        emulation->setCardEnabled(pom1::CardId::MicroSD, false);
-        // Memory::setMicroSDEnabled(false) cascade-drops the IEC daughterboard
-        // (it rides on microSD's VIA). Mirror that on the UI side or the IEC
-        // Disk window keeps rendering a phantom drive and a later microSD
-        // re-toggle mis-cascades. Matches MainWindow_Menu.cpp's microSD path.
-        iecCardEnabled = false;
+    if (cardPlugged(pom1::CardId::MicroSD)) {
+        // Unplugging microSD cascade-drops the IEC daughterboard that rides on
+        // its VIA — the machine does that, and setCardPlugged re-reads it, so
+        // only the IEC window (UI state) is closed here.
+        setCardPlugged(pom1::CardId::MicroSD, false);
         showIECCard = false;
         evicted.push_back("microSD");
     }
-    if (cffa1Enabled) {
-        cffa1Enabled = false;
-        emulation->setCardEnabled(pom1::CardId::Cffa1, false);
+    if (cardPlugged(pom1::CardId::Cffa1)) {
+        setCardPlugged(pom1::CardId::Cffa1, false);
         evicted.push_back("CFFA1");
     }
-    if (codeTankEnabled) {
-        codeTankEnabled = false;
+    if (cardPlugged(pom1::CardId::CodeTank)) {
         showCodeTankLibrary = false;
         // Disarm any pending cold-boot WOZ autorun, else it fires a 4000R
         // against a bus where CodeTank ROM is no longer mapped, disturbing the
         // just-loaded program. Every other CodeTank-disable site clears this.
         codeTankPendingWozRunAt = 0.0;
-        emulation->setCardEnabled(pom1::CardId::CodeTank, false);
+        setCardPlugged(pom1::CardId::CodeTank, false);
         evicted.push_back("CodeTank");
     }
-    if (jukeBoxEnabled) {
-        jukeBoxEnabled = false;
+    if (cardPlugged(pom1::CardId::JukeBox)) {
         showJukeBox = false;
-        emulation->setCardEnabled(pom1::CardId::JukeBox, false);
+        setCardPlugged(pom1::CardId::JukeBox, false);
         evicted.push_back("Juke-Box");
     }
-    if (a1ioRtcEnabled) {
-        a1ioRtcEnabled = false;
+    if (cardPlugged(pom1::CardId::A1IoRtc)) {
         showA1IO_RTC = false;
         emulation->setCardEnabled(pom1::CardId::A1IoRtc, false);
         evicted.push_back("A1-IO/RTC");
@@ -363,8 +352,7 @@ bool MainWindow_ImGui::performMemoryLoad(const std::string& path,
     // Graphic HGR / GT-6144 branches). Reported in the final status line.
     std::vector<std::string> evicted;
     if (pathHas("/Graphic HGR/", "\\Graphic HGR\\")) {
-        if (!graphicsCardEnabled) {
-            graphicsCardEnabled = true;
+        if (!cardPlugged(pom1::CardId::Gen2)) {
             emulation->setHgrFramebufferAttached(true);
         }
         showGraphicsCard = true;
@@ -374,40 +362,33 @@ bool MainWindow_ImGui::performMemoryLoad(const std::string& path,
         // card). No-op on the single-card GEN2 presets.
         evicted = evictStorageCards();
     } else if (pathHas("/SOUND SID/", "\\SOUND SID\\")) {
-        if (!sidEnabled) {
-            sidEnabled = true;
-            emulation->setCardEnabled(pom1::CardId::Sid, true);
-            // Mirror the menu mutex: plugging A1-SID evicts A1-AUDIO SE
-            // (same MOS chip) and Juke-Box ($CA00 latch sits inside the
-            // SID window). See MainWindow_Menu.cpp:326.
-            sidSpecialEditionEnabled = false;
-            jukeBoxEnabled = false;
+        if (!cardPlugged(pom1::CardId::Sid)) {
+            // Plugging A1-SID evicts A1-AUDIO SE (same MOS chip) and the
+            // Juke-Box ($CA00 latch sits inside the SID window). The bus does
+            // that; the UI reads it back rather than repeating the rule.
+            setCardPlugged(pom1::CardId::Sid, true);
             setStatusMessage("P-LAB A1-SID plugged", 2.0f);
         }
     } else if (pathHas("/Graphic TMS9918/", "\\Graphic TMS9918\\") ||
                pathHas("/Apple-1_TMS_CC65/", "\\Apple-1_TMS_CC65\\")) {
-        if (!tms9918Enabled) {
-            tms9918Enabled = true;
-            emulation->setCardEnabled(pom1::CardId::Tms9918, true);
+        if (!cardPlugged(pom1::CardId::Tms9918)) {
+            setCardPlugged(pom1::CardId::Tms9918, true);
             setStatusMessage("P-LAB TMS9918 plugged", 2.0f);
         }
         showTMS9918 = true;
     } else if (pathHas("/sdcard/", "\\sdcard\\")) {
-        if (!microSDEnabled) {
-            microSDEnabled = true;
-            emulation->setCardEnabled(pom1::CardId::MicroSD, true);
-            if (codeTankEnabled) {
-                // Memory evicts CodeTank ($6000-$7FFF Applesoft Lite
-                // overlap); mirror UI. The TMS9918 host stays plugged.
-                codeTankEnabled = false;
+        if (!cardPlugged(pom1::CardId::MicroSD)) {
+            // Memory evicts CodeTank ($6000-$7FFF Applesoft Lite overlap); the
+            // TMS9918 host stays plugged. Only its window is the UI's business.
+            setCardPlugged(pom1::CardId::MicroSD, true);
+            if (!cardPlugged(pom1::CardId::CodeTank)) {
                 showCodeTankLibrary = false;
                 codeTankPendingWozRunAt = 0.0;
             }
             setStatusMessage("P-LAB microSD Card plugged", 2.0f);
         }
     } else if (pathHas("/NET/", "\\NET\\")) {
-        if (!wifiModemEnabled) {
-            wifiModemEnabled = true;
+        if (!cardPlugged(pom1::CardId::WifiModem)) {
             emulation->setCardEnabled(pom1::CardId::WifiModem, true);
             setStatusMessage("P-LAB Wi-Fi Modem plugged", 2.0f);
         } else {
@@ -418,15 +399,13 @@ bool MainWindow_ImGui::performMemoryLoad(const std::string& path,
         }
         showWiFiModem = true;
     } else if (pathHas("/a1io_rtc/", "\\a1io_rtc\\")) {
-        if (!a1ioRtcEnabled) {
-            a1ioRtcEnabled = true;
+        if (!cardPlugged(pom1::CardId::A1IoRtc)) {
             emulation->setCardEnabled(pom1::CardId::A1IoRtc, true);
             setStatusMessage("P-LAB I/O Board & RTC plugged", 2.0f);
         }
         showA1IO_RTC = true;
     } else if (pathHas("/Graphic gt-6144/", "\\Graphic gt-6144\\")) {
-        if (!gt6144Enabled) {
-            gt6144Enabled = true;
+        if (!cardPlugged(pom1::CardId::Gt6144)) {
             emulation->setCardEnabled(pom1::CardId::Gt6144, true);
             setStatusMessage("SWTPC GT-6144 plugged (64x96 framebuffer at $D00A)", 3.0f);
         }
@@ -840,10 +819,10 @@ void MainWindow_ImGui::renderLoadTapeDialog()
             if (isAci) {
                 ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.25f, 1.0f),
                     "Next load: PROGRAM TAPE (pulse). Needs ACI plugged to play.");
-            } else if (isAudio && aciEnabled) {
+            } else if (isAudio && cardPlugged(pom1::CardId::Aci)) {
                 ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.25f, 1.0f),
                     "Next load: PROGRAM TAPE — ACI decodes pulses from audio (30-min cap).");
-            } else if (isAudio && !aciEnabled) {
+            } else if (isAudio && !cardPlugged(pom1::CardId::Aci)) {
                 ImGui::TextColored(ImVec4(0.45f, 0.85f, 0.95f, 1.0f),
                     "Next load: AUDIO STREAM — raw playback through the deck speaker.");
             } else if (!sel.empty()) {

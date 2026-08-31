@@ -449,24 +449,22 @@ void MainWindow_ImGui::renderMemoryConfigDialog()
         // evictStorageCards().
         if (ImGui::Button("Load EhBASIC 2.22  [$5000-$7FFF, in RAM]")) {
             std::vector<std::string> evicted;
-            if (microSDEnabled) {
-                microSDEnabled = false;
-                emulation->setCardEnabled(pom1::CardId::MicroSD, false);
-                iecCardEnabled = false;    // rides on microSD's VIA — mirror the cascade
+            if (cardPlugged(pom1::CardId::MicroSD)) {
+                // Unplugging microSD cascade-drops the IEC add-on riding on
+                // its VIA; only that card's window is the UI's to close.
+                setCardPlugged(pom1::CardId::MicroSD, false);
                 showIECCard = false;
                 evicted.push_back("microSD");
             }
-            if (codeTankEnabled) {
-                codeTankEnabled = false;
+            if (cardPlugged(pom1::CardId::CodeTank)) {
                 showCodeTankLibrary = false;
                 codeTankPendingWozRunAt = 0.0;
                 emulation->setCardEnabled(pom1::CardId::CodeTank, false);
                 evicted.push_back("CodeTank");
             }
-            if (jukeBoxEnabled) {
-                jukeBoxEnabled = false;
+            if (cardPlugged(pom1::CardId::JukeBox)) {
                 showJukeBox = false;
-                emulation->setCardEnabled(pom1::CardId::JukeBox, false);
+                setCardPlugged(pom1::CardId::JukeBox, false);
                 evicted.push_back("Juke-Box");
             }
 

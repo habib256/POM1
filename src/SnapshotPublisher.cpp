@@ -108,6 +108,9 @@ void SnapshotPublisher::publish(Memory& mem, const M6502& cpu, bool cpuRunning)
     snapshot.cassetteLoadedTapePath            = cassette.getLoadedTapePath();
     snapshot.cassetteLoadInfo                  = cassette.getLoadInfo();
 
+    // One value for "what is plugged", published beside the per-card bools the
+    // peripheral sub-snapshots hang off. The UI reads THIS.
+    snapshot.cards = mem.enabledCards();
     snapshot.sidEnabled     = mem.isSIDEnabled();
     snapshot.sidSpecialEditionEnabled = mem.isSIDSpecialEditionEnabled();
     snapshot.sidChipModel   = mem.getSID().getChipModel();

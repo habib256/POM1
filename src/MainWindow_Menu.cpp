@@ -36,27 +36,20 @@ void MainWindow_ImGui::renderMenuBar()
 {
         auto plugJukeBoxFromUi = [&]() {
             jukeBoxChipMode = JukeBox::ChipMode::Flash;
-            cffa1Enabled = false;
-            microSDEnabled = false;
-            // setJukeBoxEnabled(true) → setMicroSDEnabled(false) → setIECCardEnabled(false)
-            // on the bus; mirror the IEC UI flag or its window keeps rendering an
-            // unplugged card (renderIECCardWindow gates on iecCardEnabled).
-            iecCardEnabled = false;
-            wifiModemEnabled = false;
-            sidEnabled = false;
-            codeTankEnabled = false;
+            // The Juke-Box ROM window swallows CFFA1, microSD (and with it the
+            // IEC add-on) and the A1-SID latch; the bus evicts them. CodeTank
+            // is unplugged explicitly because its $4000-$7FFF half is not one
+            // of those bus evictions.
             emulation->setCardEnabled(pom1::CardId::CodeTank, false);
             evictMemoryMapRegionsForJukeBox();
             emulation->setJukeBoxChipMode(jukeBoxChipMode);
             emulation->setJukeBoxJumper(jukeBoxJumper);
-            emulation->setCardEnabled(pom1::CardId::JukeBox, true);
-            jukeBoxEnabled = true;
+            setCardPlugged(pom1::CardId::JukeBox, true);
             showJukeBox = true;
             setStatusMessage("P-LAB Juke-Box plugged - type BD00R for Program Manager", 3.0f);
         };
         auto unplugJukeBoxFromUi = [&]() {
-            emulation->setCardEnabled(pom1::CardId::JukeBox, false);
-            jukeBoxEnabled = false;
+            setCardPlugged(pom1::CardId::JukeBox, false);
             setStatusMessage("P-LAB Juke-Box unplugged", 2.0f);
         };
         auto plugCodeTankFromUi = [&]() {
@@ -67,25 +60,17 @@ void MainWindow_ImGui::renderMenuBar()
             // Lite EEPROM window $6000-$7FFF sits inside CodeTank's) — Memory
             // does the bus side, mirror the UI flags (incl. the IEC add-on
             // that cascades off microSD).
-            jukeBoxEnabled = false;
             emulation->setCardEnabled(pom1::CardId::JukeBox, false);
-            microSDEnabled = false;
-            iecCardEnabled = false;
-            if (!tms9918Enabled) {
-                tms9918Enabled = true;
-                showTMS9918 = true;
-                emulation->setCardEnabled(pom1::CardId::Tms9918, true);
-                sidSpecialEditionEnabled = false; // TMS9918 evicts SE
-            }
+            if (!cardPlugged(pom1::CardId::Tms9918)) showTMS9918 = true;
             emulation->setCodeTankJumper(codeTankJumper);
-            emulation->setCardEnabled(pom1::CardId::CodeTank, true);
-            codeTankEnabled = true;
+            // Cascade-plugs the TMS9918 host and evicts microSD (+ its IEC
+            // add-on) and A1-AUDIO SE — all of it on the bus, read back here.
+            setCardPlugged(pom1::CardId::CodeTank, true);
             showCodeTankLibrary = true;
             setStatusMessage("P-LAB CodeTank plugged on TMS9918 host: $4000-$7FFF", 3.0f);
         };
         auto unplugCodeTankFromUi = [&]() {
-            emulation->setCardEnabled(pom1::CardId::CodeTank, false);
-            codeTankEnabled = false;
+            setCardPlugged(pom1::CardId::CodeTank, false);
             showCodeTankLibrary = false;
             codeTankPendingWozRunAt = 0.0;
             setStatusMessage("P-LAB CodeTank unplugged", 2.0f);
@@ -405,17 +390,14 @@ void MainWindow_ImGui::renderMenuBar()
             // other); the register list reflects the active version's base.
             if (ImGui::BeginMenu("A1-SID version & addresses")) {
                 ImGui::TextDisabled("Card version (I/O window)");
-                if (ImGui::MenuItem("A1-SID  -  $C800-$CFFF", nullptr, sidEnabled)) {
-                    sidEnabled = true;
-                    sidSpecialEditionEnabled = false;
-                    emulation->setCardEnabled(pom1::CardId::Sid, true);
+                if (ImGui::MenuItem("A1-SID  -  $C800-$CFFF", nullptr,
+                                    cardPlugged(pom1::CardId::Sid))) {
+                    setCardPlugged(pom1::CardId::Sid, true);   // evicts the SE
                     setStatusMessage("P-LAB A1-SID selected: $C800-$CFFF", 2.5f);
                 }
                 if (ImGui::MenuItem("A1-AUDIO Special Edition  -  $CC00-$CC1F",
-                                    nullptr, sidSpecialEditionEnabled)) {
-                    sidSpecialEditionEnabled = true;
-                    sidEnabled = false;
-                    emulation->setCardEnabled(pom1::CardId::SidSpecialEdition, true);
+                                    nullptr, cardPlugged(pom1::CardId::SidSpecialEdition))) {
+                    setCardPlugged(pom1::CardId::SidSpecialEdition, true);  // evicts A1-SID
                     setStatusMessage("P-LAB A1-AUDIO SE selected: $CC00-$CC1F", 2.5f);
                 }
                 ImGui::Separator();
@@ -431,8 +413,9 @@ void MainWindow_ImGui::renderMenuBar()
                     "FILTER FC LO","FILTER FC HI","RES/FILT",    "MODE/VOL",
                     "POT X (ro)",  "POT Y (ro)",  "OSC3/RND (ro)","ENV3 (ro)",
                 };
-                const unsigned base = sidSpecialEditionEnabled ? 0xCC00u : 0xC800u;
-                ImGui::TextDisabled(sidSpecialEditionEnabled
+                const bool sidSe = cardPlugged(pom1::CardId::SidSpecialEdition);
+                const unsigned base = sidSe ? 0xCC00u : 0xC800u;
+                ImGui::TextDisabled(sidSe
                     ? "A1-AUDIO SE registers (base $CC00, addr & $1F)"
                     : "A1-SID registers (base $C800, addr & $1F)");
                 for (int i = 0; i < 29; ++i)
@@ -490,11 +473,9 @@ void MainWindow_ImGui::renderMenuBar()
             // when the TMS9918 is plugged) — a dev-side VDP inspector. Opening it
             // plugs the TMS9918 so there is a live VDP to inspect.
             if (ImGui::MenuItem("TMS9918 VDP Inspector...", nullptr, &showTMS9918Inspector)) {
-                if (showTMS9918Inspector && !tms9918Enabled) {
-                    tms9918Enabled = true;
+                if (showTMS9918Inspector && !cardPlugged(pom1::CardId::Tms9918)) {
                     showTMS9918 = true;
-                    emulation->setCardEnabled(pom1::CardId::Tms9918, true);
-                    sidSpecialEditionEnabled = false;   // TMS9918 evicts A1-AUDIO SE
+                    setCardPlugged(pom1::CardId::Tms9918, true);  // evicts A1-AUDIO SE
                     setStatusMessage("TMS9918 plugged for VDP Inspector", 2.0f);
                 }
             }
@@ -503,11 +484,9 @@ void MainWindow_ImGui::renderMenuBar()
             // (Graphics II bitmap / Multicolor). Opening it plugs the TMS9918 so
             // there is a live card to paint into (the render loop also guards this).
             if (ImGui::MenuItem("TMS9918 Paint Editor...", nullptr, &showTMSPaintEditor)) {
-                if (showTMSPaintEditor && !tms9918Enabled) {
-                    tms9918Enabled = true;
+                if (showTMSPaintEditor && !cardPlugged(pom1::CardId::Tms9918)) {
                     showTMS9918 = true;
-                    emulation->setCardEnabled(pom1::CardId::Tms9918, true);
-                    sidSpecialEditionEnabled = false;   // TMS9918 evicts A1-AUDIO SE
+                    setCardPlugged(pom1::CardId::Tms9918, true);  // evicts A1-AUDIO SE
                     setStatusMessage("TMS9918 card plugged for TMS9918 Paint Editor", 2.0f);
                 }
             }
@@ -515,11 +494,9 @@ void MainWindow_ImGui::renderMenuBar()
             // into the P-LAB Graphic Card VRAM and places the sprite live via the
             // SAT. Opening it plugs the TMS9918 (the render loop also guards this).
             if (ImGui::MenuItem("TMS9918 Sprite Editor...", nullptr, &showTMSSpriteEditor)) {
-                if (showTMSSpriteEditor && !tms9918Enabled) {
-                    tms9918Enabled = true;
+                if (showTMSSpriteEditor && !cardPlugged(pom1::CardId::Tms9918)) {
                     showTMS9918 = true;
-                    emulation->setCardEnabled(pom1::CardId::Tms9918, true);
-                    sidSpecialEditionEnabled = false;   // TMS9918 evicts A1-AUDIO SE
+                    setCardPlugged(pom1::CardId::Tms9918, true);  // evicts A1-AUDIO SE
                     setStatusMessage("TMS9918 card plugged for TMS9918 Sprite Editor", 2.0f);
                 }
             }
@@ -532,10 +509,9 @@ void MainWindow_ImGui::renderMenuBar()
             if (ImGui::MenuItem("HGR Paint Editor...", nullptr, &showHGRPaintEditor)) {
                 if (showHGRPaintEditor) {
                     showBench = false;   // HGR Painter and POM1 Bench are mutually exclusive
-                    if (!graphicsCardEnabled) {
-                        graphicsCardEnabled = true;
+                    if (!cardPlugged(pom1::CardId::Gen2)) {
                         showGraphicsCard = true;
-                        emulation->setHgrFramebufferAttached(true);
+                        plugGen2(true);
                         setStatusMessage("GEN2 HGR card plugged for HGR Paint Editor", 2.0f);
                     }
                 }
@@ -544,10 +520,9 @@ void MainWindow_ImGui::renderMenuBar()
             // has no hardware sprites), previews it over the live page and stamps
             // the raw bytes. Opening it plugs the GEN2 card (render loop also guards).
             if (ImGui::MenuItem("HGR Sprite Editor...", nullptr, &showHGRSpriteEditor)) {
-                if (showHGRSpriteEditor && !graphicsCardEnabled) {
-                    graphicsCardEnabled = true;
+                if (showHGRSpriteEditor && !cardPlugged(pom1::CardId::Gen2)) {
                     showGraphicsCard = true;
-                    emulation->setHgrFramebufferAttached(true);
+                    plugGen2(true);
                     setStatusMessage("GEN2 HGR card plugged for HGR Sprite Editor", 2.0f);
                 }
             }
@@ -556,8 +531,7 @@ void MainWindow_ImGui::renderMenuBar()
             // Beeper SFX editor — draws + auditions a 1-bit sound effect through
             // the ACI speaker ($C030). Opening it plugs the ACI (render loop guards).
             if (ImGui::MenuItem("Beeper SFX Editor...", nullptr, &showSfxEditor)) {
-                if (showSfxEditor && !aciEnabled) {
-                    aciEnabled = true;
+                if (showSfxEditor && !cardPlugged(pom1::CardId::Aci)) {
                     emulation->setCardEnabled(pom1::CardId::Aci, true);
                     setStatusMessage("ACI plugged for Beeper SFX Editor", 2.0f);
                 }
@@ -565,14 +539,10 @@ void MainWindow_ImGui::renderMenuBar()
             // SID tracker — pattern grid + ADSR/filter instrument, auditioned on
             // the live A1-SID chip. Opening it plugs the A1-SID (render loop guards).
             if (ImGui::MenuItem("SID Tracker...", nullptr, &showSidTracker)) {
-                if (showSidTracker && !sidEnabled) {
-                    sidEnabled = true;
-                    sidSpecialEditionEnabled = false;
-                    // setSIDEnabled also evicts the Juke-Box on the bus
-                    // ($CA00 sits inside the SID window) — mirror the flag
-                    // like the Hardware-menu A1-SID item does.
-                    jukeBoxEnabled = false;
-                    emulation->setCardEnabled(pom1::CardId::Sid, true);
+                if (showSidTracker && !cardPlugged(pom1::CardId::Sid)) {
+                    // Plugging A1-SID also evicts the Juke-Box on the bus
+                    // ($CA00 sits inside the SID window).
+                    setCardPlugged(pom1::CardId::Sid, true);
                     setStatusMessage("A1-SID plugged for SID Tracker", 2.0f);
                 }
             }
@@ -607,23 +577,22 @@ void MainWindow_ImGui::renderMenuBar()
             ImGui::MenuItem("Apple-1 ASCII Keyboard", nullptr, &showKeyboardPhoto);
             ImGui::Separator();
             // --- 1976: original-era expansions ------------------------------
-            if (ImGui::MenuItem("Woz ACI Cassette Interface (1976)", nullptr, &aciEnabled)) {
-                emulation->setCardEnabled(pom1::CardId::Aci, aciEnabled);
+            bool aci = cardPlugged(pom1::CardId::Aci);
+            if (ImGui::MenuItem("Woz ACI Cassette Interface (1976)", nullptr, &aci)) {
                 // The extended page ships plugged wherever the ACI is, so a
                 // manual plug brings it along; a manual unplug takes it away
-                // (Memory cascades that half itself — mirror it here so the
-                // checkmark doesn't lie until next frame). Unticking the page
-                // alone still leaves a stock Woz ACI.
-                extendedAciEnabled = aciEnabled;
-                emulation->setCardEnabled(pom1::CardId::ExtendedAci, aciEnabled);
-                setStatusMessage(aciEnabled ? "Woz ACI plugged" : "Woz ACI unplugged", 2.0f);
+                // (Memory cascades that half itself). Unticking the page alone
+                // still leaves a stock Woz ACI.
+                emulation->setCardEnabled(pom1::CardId::Aci, aci);
+                setCardPlugged(pom1::CardId::ExtendedAci, aci);
+                setStatusMessage(aci ? "Woz ACI plugged" : "Woz ACI unplugged", 2.0f);
             }
+            bool extendedAci = cardPlugged(pom1::CardId::ExtendedAci);
             if (ImGui::MenuItem("  \xe2\x94\x94 Uncle Bernie's Extended ACI ($C500)",
-                                nullptr, &extendedAciEnabled)) {
-                emulation->setCardEnabled(pom1::CardId::ExtendedAci, extendedAciEnabled);
-                // Cascade-plug, mirroring Memory::setExtendedACIEnabled.
-                if (extendedAciEnabled) aciEnabled = true;
-                setStatusMessage(extendedAciEnabled
+                                nullptr, &extendedAci)) {
+                // Daughter page of the ACI: plugging it cascade-plugs the host.
+                setCardPlugged(pom1::CardId::ExtendedAci, extendedAci);
+                setStatusMessage(extendedAci
                     ? "Extended ACI plugged - C500R then RX RX to load an extended tape"
                     : "Extended ACI unplugged", 4.0f);
             }
@@ -639,10 +608,11 @@ void MainWindow_ImGui::renderMenuBar()
                     "Always type four hex digits per address.\n\n"
                     "No new I/O - same $C000 flip-flop and $C081 comparator.\n"
                     "Requires the Woz ACI (cascade-plugged).");
-            if (ImGui::MenuItem("SWTPC GT-6144 Graphic Terminal (1976)", nullptr, &gt6144Enabled)) {
-                emulation->setCardEnabled(pom1::CardId::Gt6144, gt6144Enabled);
-                if (gt6144Enabled) showGT6144 = true;
-                setStatusMessage(gt6144Enabled
+            bool gt6144 = cardPlugged(pom1::CardId::Gt6144);
+            if (ImGui::MenuItem("SWTPC GT-6144 Graphic Terminal (1976)", nullptr, &gt6144)) {
+                emulation->setCardEnabled(pom1::CardId::Gt6144, gt6144);
+                if (gt6144) showGT6144 = true;
+                setStatusMessage(gt6144
                     ? "SWTPC GT-6144 plugged (64x96 framebuffer at $D00A)"
                     : "SWTPC GT-6144 unplugged", 3.0f);
             }
@@ -651,10 +621,13 @@ void MainWindow_ImGui::renderMenuBar()
                                   "First commercial Apple-1 graphics card: write-only 64x96\n"
                                   "monochrome framebuffer on 6x Intel 2102 SRAM, I/O at $D00A.\n"
                                   "Power-on contents are visible SRAM bistable noise.");
-            if (ImGui::MenuItem("SWTPC PR-40 Printer (Jobs 1976)", nullptr, &pr40Enabled)) {
-                emulation->setCardEnabled(pom1::CardId::Pr40, pr40Enabled);
-                if (pr40Enabled) showPR40 = true;
-                setStatusMessage(pr40Enabled
+            // The checkbox reads the machine (plus whatever is staged) and
+            // writes a command — it does not carry the state itself.
+            bool pr40 = cardPlugged(pom1::CardId::Pr40);
+            if (ImGui::MenuItem("SWTPC PR-40 Printer (Jobs 1976)", nullptr, &pr40)) {
+                emulation->setCardEnabled(pom1::CardId::Pr40, pr40);
+                if (pr40) showPR40 = true;
+                setStatusMessage(pr40
                     ? "SWTPC PR-40 plugged (Jobs' $D012 sniff, DPDT to PB7)"
                     : "SWTPC PR-40 unplugged", 3.0f);
             }
@@ -666,10 +639,11 @@ void MainWindow_ImGui::renderMenuBar()
 
             ImGui::Separator();
             // --- Community hardware (non-P-LAB) ----------------------------
-            if (ImGui::MenuItem("Uncle Bernie's GEN2 HGR Graphic Card", nullptr, &graphicsCardEnabled)) {
-                if (!gateStrictPlug(pom1::CardId::Gen2, graphicsCardEnabled)) {
-                    if (graphicsCardEnabled) showGraphicsCard = true;
-                    emulation->setHgrFramebufferAttached(graphicsCardEnabled);
+            bool gen2 = cardPlugged(pom1::CardId::Gen2);
+            if (ImGui::MenuItem("Uncle Bernie's GEN2 HGR Graphic Card", nullptr, &gen2)) {
+                if (!gateStrictPlug(pom1::CardId::Gen2, gen2)) {
+                    if (gen2) showGraphicsCard = true;
+                    plugGen2(gen2);
                 }
             }
             showHardwareTooltip(
@@ -677,17 +651,12 @@ void MainWindow_ImGui::renderMenuBar()
                 "Framebuffer: $2000-$3FFF.\n\n"
                 "Hardware conflict: P-LAB I/O Board & RTC also decodes $2000-$200F.\n"
                 "A real Apple-1 bus has no arbitration, so use one of these cards at a time.");
-            if (ImGui::MenuItem("CFFA1 CompactFlash Card", nullptr, &cffa1Enabled)) {
-                emulation->setCardEnabled(pom1::CardId::Cffa1, cffa1Enabled);
-                if (cffa1Enabled) {
-                    microSDEnabled = false; // sync UI
-                    jukeBoxEnabled = false;
-                    // setCFFA1Enabled → setMicroSDEnabled(false) → setIECCardEnabled(false)
-                    // on the bus; mirror the IEC UI flag or its window keeps rendering
-                    // an unplugged card (renderIECCardWindow gates on iecCardEnabled).
-                    iecCardEnabled = false;
-                }
-            }
+            // Plugging CFFA1 evicts microSD and the Juke-Box, and microSD's
+            // fall cascade-drops the IEC daughterboard. All of that is the
+            // bus's ruling, read back rather than restated here.
+            bool cffa1 = cardPlugged(pom1::CardId::Cffa1);
+            if (ImGui::MenuItem("CFFA1 CompactFlash Card", nullptr, &cffa1))
+                setCardPlugged(pom1::CardId::Cffa1, cffa1);
             showHardwareTooltip(
                 "CFFA1 CompactFlash Card\n"
                 "ROM/register window: $9000-$AFFF.\n\n"
@@ -696,8 +665,9 @@ void MainWindow_ImGui::renderMenuBar()
 
             ImGui::Separator();
             // --- P-LAB family ----------------------------------------------
-            if (ImGui::MenuItem("P-LAB Apple-1 Juke-Box", nullptr, jukeBoxEnabled)) {
-                if (jukeBoxEnabled) unplugJukeBoxFromUi();
+            if (ImGui::MenuItem("P-LAB Apple-1 Juke-Box", nullptr,
+                                cardPlugged(pom1::CardId::JukeBox))) {
+                if (cardPlugged(pom1::CardId::JukeBox)) unplugJukeBoxFromUi();
                 else plugJukeBoxFromUi();
             }
             showHardwareTooltip(
@@ -706,20 +676,16 @@ void MainWindow_ImGui::renderMenuBar()
                 "Program Manager at $BD00: type BD00R from the Woz Monitor.\n\n"
                 "Plugging it unplugs CodeTank, CFFA1, microSD, Wi-Fi Modem, and A1-SID.\n"
                 "A1-AUDIO SE can coexist: it lives at $CC00-$CC1F, outside $CA00.");
-            if (ImGui::MenuItem("P-LAB microSD Storage Card", nullptr, &microSDEnabled)) {
-                emulation->setCardEnabled(pom1::CardId::MicroSD, microSDEnabled);
-                if (microSDEnabled) {
-                    cffa1Enabled = false; // sync UI
-                    jukeBoxEnabled = false;
-                    if (codeTankEnabled) {
-                        // Memory evicts CodeTank ($6000-$7FFF Applesoft Lite
-                        // overlap); mirror UI. The TMS9918 host stays plugged.
-                        codeTankEnabled = false;
-                        showCodeTankLibrary = false;
-                        codeTankPendingWozRunAt = 0.0;
-                    }
-                } else {
-                    iecCardEnabled = false; // cascade
+            bool microSD = cardPlugged(pom1::CardId::MicroSD);
+            if (ImGui::MenuItem("P-LAB microSD Storage Card", nullptr, &microSD)) {
+                // Evicts CFFA1 and the Juke-Box, and takes the CodeTank
+                // daughterboard with it ($6000-$7FFF Applesoft Lite overlap);
+                // unplugging cascade-drops the IEC add-on. The windows those
+                // cards own are the only thing left for the UI to close.
+                setCardPlugged(pom1::CardId::MicroSD, microSD);
+                if (!cardPlugged(pom1::CardId::CodeTank)) {
+                    showCodeTankLibrary = false;
+                    codeTankPendingWozRunAt = 0.0;
                 }
             }
             showHardwareTooltip(
@@ -729,13 +695,11 @@ void MainWindow_ImGui::renderMenuBar()
                 "Plugging it unplugs CFFA1, Juke-Box, and the CodeTank\n"
                 "daughterboard, because their ROM windows overlap.");
             {
-                bool gateOk = microSDEnabled;
-                ImGui::BeginDisabled(!gateOk);
+                bool iec = cardPlugged(pom1::CardId::Iec);
+                ImGui::BeginDisabled(!cardPlugged(pom1::CardId::MicroSD));
                 if (ImGui::MenuItem("P-LAB IEC Add-on (microSD daughterboard)",
-                                    nullptr, &iecCardEnabled)) {
-                    emulation->setCardEnabled(pom1::CardId::Iec, iecCardEnabled);
-                    if (iecCardEnabled) microSDEnabled = true; // cascade-on
-                }
+                                    nullptr, &iec))
+                    setCardPlugged(pom1::CardId::Iec, iec);   // cascade-plugs microSD
                 ImGui::EndDisabled();
                 showHardwareTooltip(
                     "P-LAB IEC daughterboard for the microSD Storage Card.\n"
@@ -747,37 +711,29 @@ void MainWindow_ImGui::renderMenuBar()
                     "@CMD/@ERR for DOS commands and the error channel.\n\n"
                     "Requires microSD plugged.");
             }
-            if (ImGui::MenuItem("P-LAB A1-SID Sound Card (SID @ $C800)", nullptr, &sidEnabled)) {
-                if (!gateStrictPlug(pom1::CardId::Sid, sidEnabled)) {
-                    emulation->setCardEnabled(pom1::CardId::Sid, sidEnabled);
-                    // Prototype and SE share the same MOS chip — plugging one
-                    // auto-unplugs the other on the backend; mirror that here.
-                    if (sidEnabled) {
-                        sidSpecialEditionEnabled = false;
-                        jukeBoxEnabled = false;
-                    }
-                }
+            // Prototype and SE share the same MOS chip, and the Juke-Box latch
+            // sits inside the SID window: plugging one unplugs the others, on
+            // the bus, which is where that rule lives.
+            bool sid = cardPlugged(pom1::CardId::Sid);
+            if (ImGui::MenuItem("P-LAB A1-SID Sound Card (SID @ $C800)", nullptr, &sid)) {
+                if (!gateStrictPlug(pom1::CardId::Sid, sid))
+                    setCardPlugged(pom1::CardId::Sid, sid);
             }
             showHardwareTooltip(
                 "P-LAB A1-SID Sound Card\n"
                 "SID registers: $C800-$CFFF.\n\n"
                 "Plugging it unplugs A1-AUDIO SE (same SID chip) and Juke-Box\n"
                 "($CA00 bank latch sits inside the SID window).");
-            if (ImGui::MenuItem("A1-AUDIO Special Edition (SID @ $CC00)", nullptr, &sidSpecialEditionEnabled)) {
-                if (!gateStrictPlug(pom1::CardId::SidSpecialEdition, sidSpecialEditionEnabled)) {
-                    emulation->setCardEnabled(pom1::CardId::SidSpecialEdition, sidSpecialEditionEnabled);
-                    if (sidSpecialEditionEnabled) {
-                        // Mutually exclusive with the prototype SID and with TMS9918.
-                        sidEnabled = false;
-                        tms9918Enabled = false;
-                        if (codeTankEnabled) {
-                            // setSIDSpecialEditionEnabled → setTMS9918Enabled(false)
-                            // cascade-unplugs CodeTank (its daughterboard); mirror
-                            // the UI flags like the TMS9918 toggle path does.
-                            codeTankEnabled = false;
-                            showCodeTankLibrary = false;
-                            codeTankPendingWozRunAt = 0.0;
-                        }
+            bool sidSpecial = cardPlugged(pom1::CardId::SidSpecialEdition);
+            if (ImGui::MenuItem("A1-AUDIO Special Edition (SID @ $CC00)", nullptr, &sidSpecial)) {
+                if (!gateStrictPlug(pom1::CardId::SidSpecialEdition, sidSpecial)) {
+                    // Mutually exclusive with the prototype SID and with the
+                    // TMS9918, whose fall takes the CodeTank daughterboard with
+                    // it. The bus rules; only the windows are ours.
+                    setCardPlugged(pom1::CardId::SidSpecialEdition, sidSpecial);
+                    if (sidSpecial && !cardPlugged(pom1::CardId::CodeTank)) {
+                        showCodeTankLibrary = false;
+                        codeTankPendingWozRunAt = 0.0;
                     }
                 }
             }
@@ -786,16 +742,14 @@ void MainWindow_ImGui::renderMenuBar()
                 "SID registers: $CC00-$CC1F.\n\n"
                 "Plugging it unplugs A1-SID (same SID chip) and TMS9918\n"
                 "($CC00/$CC01 overlap). Juke-Box can coexist.");
-            if (ImGui::MenuItem("P-LAB Graphic Card (TMS9918)", nullptr, &tms9918Enabled)) {
-                if (!gateStrictPlug(pom1::CardId::Tms9918, tms9918Enabled)) {
-                    emulation->setCardEnabled(pom1::CardId::Tms9918, tms9918Enabled);
-                    if (tms9918Enabled) {
+            bool tms9918 = cardPlugged(pom1::CardId::Tms9918);
+            if (ImGui::MenuItem("P-LAB Graphic Card (TMS9918)", nullptr, &tms9918)) {
+                if (!gateStrictPlug(pom1::CardId::Tms9918, tms9918)) {
+                    setCardPlugged(pom1::CardId::Tms9918, tms9918);
+                    if (tms9918) {
                         showTMS9918 = true;
-                        sidSpecialEditionEnabled = false; // mutually exclusive
-                    } else if (codeTankEnabled) {
-                        // CodeTank is a daughterboard of the TMS9918 — Memory's
-                        // setTMS9918Enabled cascade-disabled it; mirror in UI flags.
-                        codeTankEnabled = false;
+                    } else if (!cardPlugged(pom1::CardId::CodeTank)) {
+                        // CodeTank rides on this host and fell with it.
                         showCodeTankLibrary = false;
                         codeTankPendingWozRunAt = 0.0;
                         setStatusMessage("P-LAB CodeTank unplugged with TMS9918 host", 2.0f);
@@ -809,8 +763,8 @@ void MainWindow_ImGui::renderMenuBar()
                 "the $CC00 control/data window. Unplugging it cascade-unplugs\n"
                 "the CodeTank daughterboard.");
             if (ImGui::MenuItem("P-LAB CodeTank ROM (TMS9918 daughterboard)",
-                                nullptr, codeTankEnabled)) {
-                if (codeTankEnabled) unplugCodeTankFromUi();
+                                nullptr, cardPlugged(pom1::CardId::CodeTank))) {
+                if (cardPlugged(pom1::CardId::CodeTank)) unplugCodeTankFromUi();
                 else plugCodeTankFromUi();
             }
             showHardwareTooltip(
@@ -822,10 +776,11 @@ void MainWindow_ImGui::renderMenuBar()
                 "the Juke-Box, and the microSD — its Applesoft Lite window at\n"
                 "$6000-$7FFF sits inside the CodeTank ROM). Unplugging the\n"
                 "TMS9918 cascade-unplugs CodeTank.");
-            if (ImGui::MenuItem("P-LAB I/O Board & RTC", nullptr, &a1ioRtcEnabled)) {
-                if (!gateStrictPlug(pom1::CardId::A1IoRtc, a1ioRtcEnabled)) {
-                    emulation->setCardEnabled(pom1::CardId::A1IoRtc, a1ioRtcEnabled);
-                    if (a1ioRtcEnabled) showA1IO_RTC = true;
+            bool a1ioRtc = cardPlugged(pom1::CardId::A1IoRtc);
+            if (ImGui::MenuItem("P-LAB I/O Board & RTC", nullptr, &a1ioRtc)) {
+                if (!gateStrictPlug(pom1::CardId::A1IoRtc, a1ioRtc)) {
+                    emulation->setCardEnabled(pom1::CardId::A1IoRtc, a1ioRtc);
+                    if (a1ioRtc) showA1IO_RTC = true;
                 }
             }
             showHardwareTooltip(
@@ -834,17 +789,16 @@ void MainWindow_ImGui::renderMenuBar()
                 "Hardware conflict: Uncle Bernie's GEN2 HGR uses $2000-$3FFF.\n"
                 "A real Apple-1 bus has no arbitration, so use one of these cards at a time.");
 #if !POM1_IS_WASM
-            if (ImGui::MenuItem("P-LAB Terminal Card", nullptr, &terminalCardEnabled)) {
-                emulation->setCardEnabled(pom1::CardId::TerminalCard, terminalCardEnabled);
-                if (terminalCardEnabled) showTerminalCard = true;
+            bool terminal = cardPlugged(pom1::CardId::TerminalCard);
+            if (ImGui::MenuItem("P-LAB Terminal Card", nullptr, &terminal)) {
+                emulation->setCardEnabled(pom1::CardId::TerminalCard, terminal);
+                if (terminal) showTerminalCard = true;
             }
 #endif
-            if (ImGui::MenuItem("P-LAB MODEM BBS WIFI", nullptr, &wifiModemEnabled)) {
-                emulation->setCardEnabled(pom1::CardId::WifiModem, wifiModemEnabled);
-                if (wifiModemEnabled) {
-                    showWiFiModem = true;
-                    jukeBoxEnabled = false;
-                }
+            bool wifi = cardPlugged(pom1::CardId::WifiModem);
+            if (ImGui::MenuItem("P-LAB MODEM BBS WIFI", nullptr, &wifi)) {
+                emulation->setCardEnabled(pom1::CardId::WifiModem, wifi);
+                if (wifi) showWiFiModem = true;
             }
             showHardwareTooltip(
                 "P-LAB MODEM BBS WIFI\n"
@@ -903,7 +857,8 @@ void MainWindow_ImGui::renderMenuBar()
                     // unplugged still toggles (the flag is the user's intent and
                     // is remembered), it simply will not draw until the card is
                     // plugged. Greying it out silently would look like a bug.
-                    const bool gated = d.gate && !(this->*(d.gate));
+                    const bool gated = d.gate != pom1::CardId::Invalid &&
+                                       !cardPlugged(d.gate);
                     if (gated) ImGui::BeginDisabled();
                     ImGui::MenuItem(d.title, nullptr, &(this->*(d.show)));
                     if (gated) {
@@ -1053,54 +1008,35 @@ void MainWindow_ImGui::renderToolbar()
         ImVec2 btnSize = uiPx(ImVec2(28, 24));
         auto plugJukeBoxFromToolbar = [&]() {
             jukeBoxChipMode = JukeBox::ChipMode::Flash;
-            cffa1Enabled = false;
-            microSDEnabled = false;
-            // setJukeBoxEnabled(true) → setMicroSDEnabled(false) → setIECCardEnabled(false)
-            // on the bus; mirror the IEC UI flag or its window keeps rendering an
-            // unplugged card (renderIECCardWindow gates on iecCardEnabled).
-            iecCardEnabled = false;
-            wifiModemEnabled = false;
-            sidEnabled = false;
-            codeTankEnabled = false;
+            // The Juke-Box ROM window swallows CFFA1, microSD (and with it the
+            // IEC add-on) and the A1-SID latch; the bus evicts them. CodeTank
+            // is unplugged explicitly because its $4000-$7FFF half is not one
+            // of those bus evictions.
             emulation->setCardEnabled(pom1::CardId::CodeTank, false);
             evictMemoryMapRegionsForJukeBox();
             emulation->setJukeBoxChipMode(jukeBoxChipMode);
             emulation->setJukeBoxJumper(jukeBoxJumper);
-            emulation->setCardEnabled(pom1::CardId::JukeBox, true);
-            jukeBoxEnabled = true;
+            setCardPlugged(pom1::CardId::JukeBox, true);
             showJukeBox = true;
             setStatusMessage("P-LAB Juke-Box plugged - type BD00R for Program Manager", 3.0f);
         };
         auto unplugJukeBoxFromToolbar = [&]() {
-            emulation->setCardEnabled(pom1::CardId::JukeBox, false);
-            jukeBoxEnabled = false;
+            setCardPlugged(pom1::CardId::JukeBox, false);
             setStatusMessage("P-LAB Juke-Box unplugged", 2.0f);
         };
         auto plugCodeTankFromToolbar = [&]() {
-            jukeBoxEnabled = false;
             emulation->setCardEnabled(pom1::CardId::JukeBox, false);
-            // Memory's setCodeTankEnabled evicts the microSD ($6000-$7FFF
-            // Applesoft Lite overlap) and cascade-drops the IEC add-on —
-            // mirror the UI flags.
-            microSDEnabled = false;
-            iecCardEnabled = false;
-            // CodeTank is a daughterboard of the TMS9918 Graphic Card — auto-
-            // plug the host so UI flags match what Memory just did.
-            if (!tms9918Enabled) {
-                tms9918Enabled = true;
-                showTMS9918 = true;
-                emulation->setCardEnabled(pom1::CardId::Tms9918, true);
-                sidSpecialEditionEnabled = false;
-            }
+            if (!cardPlugged(pom1::CardId::Tms9918)) showTMS9918 = true;
             emulation->setCodeTankJumper(codeTankJumper);
-            emulation->setCardEnabled(pom1::CardId::CodeTank, true);
-            codeTankEnabled = true;
+            // Daughterboard of the TMS9918 Graphic Card: plugging it cascade-
+            // plugs the host and evicts microSD ($6000-$7FFF Applesoft Lite
+            // overlap, taking the IEC add-on with it) plus A1-AUDIO SE.
+            setCardPlugged(pom1::CardId::CodeTank, true);
             showCodeTankLibrary = true;
             setStatusMessage("P-LAB CodeTank plugged on TMS9918 host: $4000-$7FFF", 3.0f);
         };
         auto unplugCodeTankFromToolbar = [&]() {
-            emulation->setCardEnabled(pom1::CardId::CodeTank, false);
-            codeTankEnabled = false;
+            setCardPlugged(pom1::CardId::CodeTank, false);
             showCodeTankLibrary = false;
             codeTankPendingWozRunAt = 0.0;
             setStatusMessage("P-LAB CodeTank unplugged", 2.0f);
@@ -1124,9 +1060,10 @@ void MainWindow_ImGui::renderToolbar()
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
-            codeTankEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+            cardPlugged(pom1::CardId::CodeTank) ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f)
+                                                : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
         if (ImGui::Button("##codeTankToolbar", btnSize)) {
-            if (codeTankEnabled) unplugCodeTankFromToolbar();
+            if (cardPlugged(pom1::CardId::CodeTank)) unplugCodeTankFromToolbar();
             else plugCodeTankFromToolbar();
         }
         drawToolbarTankIcon(ImGui::GetWindowDrawList(),
@@ -1142,29 +1079,17 @@ void MainWindow_ImGui::renderToolbar()
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
-            microSDEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+            cardPlugged(pom1::CardId::MicroSD) ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f)
+                                               : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
         if (ImGui::Button(ICON_FA_SD_CARD, btnSize)) {
-            microSDEnabled = !microSDEnabled;
-            emulation->setCardEnabled(pom1::CardId::MicroSD, microSDEnabled);
-            if (microSDEnabled) {
-                cffa1Enabled = false; // mutual exclusion
-                jukeBoxEnabled = false;
-                if (codeTankEnabled) {
-                    // Memory evicts CodeTank ($6000-$7FFF Applesoft Lite
-                    // overlap); mirror UI. The TMS9918 host stays plugged.
-                    codeTankEnabled = false;
-                    showCodeTankLibrary = false;
-                    codeTankPendingWozRunAt = 0.0;
-                }
-            } else {
-                // setMicroSDEnabled(false) → setIECCardEnabled(false) on the bus;
-                // mirror the IEC UI flag or its window keeps rendering an unplugged
-                // card (renderIECCardWindow gates on iecCardEnabled). Matches the
-                // Hardware-menu microSD path.
-                iecCardEnabled = false;
+            const bool want = !cardPlugged(pom1::CardId::MicroSD);
+            setCardPlugged(pom1::CardId::MicroSD, want);
+            if (!cardPlugged(pom1::CardId::CodeTank)) {
+                showCodeTankLibrary = false;
+                codeTankPendingWozRunAt = 0.0;
             }
-            setStatusMessage(microSDEnabled ? "P-LAB microSD Card plugged - type 8000R"
-                                            : "P-LAB microSD Card unplugged", 2.0f);
+            setStatusMessage(want ? "P-LAB microSD Card plugged - type 8000R"
+                                  : "P-LAB microSD Card unplugged", 2.0f);
         }
         ImGui::PopStyleColor();
         showHardwareTooltip(
@@ -1176,20 +1101,13 @@ void MainWindow_ImGui::renderToolbar()
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
-            cffa1Enabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+            cardPlugged(pom1::CardId::Cffa1) ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f)
+                                             : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
         if (ImGui::Button(ICON_FA_HARD_DRIVE, btnSize)) {
-            cffa1Enabled = !cffa1Enabled;
-            emulation->setCardEnabled(pom1::CardId::Cffa1, cffa1Enabled);
-            if (cffa1Enabled) {
-                microSDEnabled = false; // mutual exclusion
-                jukeBoxEnabled = false;
-                // setCFFA1Enabled → setMicroSDEnabled(false) → setIECCardEnabled(false)
-                // on the bus; mirror the IEC UI flag or its window keeps rendering
-                // an unplugged card. Matches the Hardware-menu CFFA1 path.
-                iecCardEnabled = false;
-            }
-            setStatusMessage(cffa1Enabled ? "CFFA1 CompactFlash plugged - type 9006R"
-                                          : "CFFA1 CompactFlash unplugged", 2.0f);
+            const bool want = !cardPlugged(pom1::CardId::Cffa1);
+            setCardPlugged(pom1::CardId::Cffa1, want);
+            setStatusMessage(want ? "CFFA1 CompactFlash plugged - type 9006R"
+                                  : "CFFA1 CompactFlash unplugged", 2.0f);
         }
         ImGui::PopStyleColor();
         showHardwareTooltip(
@@ -1199,9 +1117,10 @@ void MainWindow_ImGui::renderToolbar()
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
-            jukeBoxEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+            cardPlugged(pom1::CardId::JukeBox) ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f)
+                                               : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
         if (ImGui::Button("##jukeBoxToolbar", btnSize)) {
-            if (jukeBoxEnabled) unplugJukeBoxFromToolbar();
+            if (cardPlugged(pom1::CardId::JukeBox)) unplugJukeBoxFromToolbar();
             else plugJukeBoxFromToolbar();
         }
         drawToolbarDipChipIcon(ImGui::GetWindowDrawList(),
@@ -1215,36 +1134,33 @@ void MainWindow_ImGui::renderToolbar()
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
-            aciEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+            cardPlugged(pom1::CardId::Aci) ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f)
+                                           : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
         if (ImGui::Button("##cassetteToolbar", btnSize)) {
-            aciEnabled = !aciEnabled;
-            emulation->setCardEnabled(pom1::CardId::Aci, aciEnabled);
-            extendedAciEnabled = aciEnabled;   // ships plugged with the ACI
-            emulation->setCardEnabled(pom1::CardId::ExtendedAci, aciEnabled);
-            setStatusMessage(aciEnabled ? "Woz ACI plugged" : "Woz ACI unplugged", 2.0f);
+            const bool want = !cardPlugged(pom1::CardId::Aci);
+            emulation->setCardEnabled(pom1::CardId::Aci, want);
+            setCardPlugged(pom1::CardId::ExtendedAci, want);   // ships with the ACI
+            setStatusMessage(want ? "Woz ACI plugged" : "Woz ACI unplugged", 2.0f);
         }
         drawToolbarCassetteIcon(ImGui::GetWindowDrawList(),
                                 ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(aciEnabled ? "Woz ACI Cassette Interface (click to unplug)"
+            ImGui::SetTooltip(cardPlugged(pom1::CardId::Aci)
+                                  ? "Woz ACI Cassette Interface (click to unplug)"
                                          : "Plug Woz ACI Cassette Interface");
         }
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
-            sidEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+            cardPlugged(pom1::CardId::Sid) ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f)
+                                           : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
         if (ImGui::Button(ICON_FA_VOLUME_HIGH, btnSize)) {
-            sidEnabled = !sidEnabled;
-            // Honour the silicon-strict Parmigiani gate like the Hardware menu —
-            // gateStrictPlug reverts sidEnabled and refuses on a bus conflict.
-            if (!gateStrictPlug(pom1::CardId::Sid, sidEnabled)) {
-                emulation->setCardEnabled(pom1::CardId::Sid, sidEnabled);
-                if (sidEnabled) {
-                    sidSpecialEditionEnabled = false;
-                    jukeBoxEnabled = false;
-                }
-                setStatusMessage(sidEnabled ? "P-LAB A1-SID plugged" : "P-LAB A1-SID unplugged", 2.0f);
+            // Honour the silicon-strict Parmigiani gate like the Hardware menu.
+            bool want = !cardPlugged(pom1::CardId::Sid);
+            if (!gateStrictPlug(pom1::CardId::Sid, want)) {
+                setCardPlugged(pom1::CardId::Sid, want);
+                setStatusMessage(want ? "P-LAB A1-SID plugged" : "P-LAB A1-SID unplugged", 2.0f);
             }
         }
         ImGui::PopStyleColor();
@@ -1254,30 +1170,28 @@ void MainWindow_ImGui::renderToolbar()
             "Click toggles the card. Plugging it unplugs A1-AUDIO SE and Juke-Box.");
 
         ImGui::SameLine();
-        if (tms9918Enabled && showTMS9918)
+        const bool tms9918Plugged = cardPlugged(pom1::CardId::Tms9918);
+        if (tms9918Plugged && showTMS9918)
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.4f, 0.8f, 1.0f));
-        else if (!tms9918Enabled)
+        else if (!tms9918Plugged)
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
         else
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
         if (ImGui::Button(ICON_FA_TV, btnSize)) {
-            if (!tms9918Enabled) {
-                tms9918Enabled = true;
-                if (!gateStrictPlug(pom1::CardId::Tms9918, tms9918Enabled)) {
+            if (!tms9918Plugged) {
+                bool want = true;
+                if (!gateStrictPlug(pom1::CardId::Tms9918, want)) {
                     showTMS9918 = true;
-                    emulation->setCardEnabled(pom1::CardId::Tms9918, true);
-                    sidSpecialEditionEnabled = false;
+                    setCardPlugged(pom1::CardId::Tms9918, true);
                     setStatusMessage("P-LAB TMS9918 plugged", 2.0f);
                 }
             } else {
                 showTMS9918 = !showTMS9918;
                 if (!showTMS9918) {
-                    tms9918Enabled = false;
-                    emulation->setCardEnabled(pom1::CardId::Tms9918, false);
-                    if (codeTankEnabled) {
-                        // CodeTank rides on the TMS9918 host — Memory just
-                        // cascade-disabled it, mirror in UI flags.
-                        codeTankEnabled = false;
+                    const bool hadCodeTank = cardPlugged(pom1::CardId::CodeTank);
+                    setCardPlugged(pom1::CardId::Tms9918, false);
+                    if (hadCodeTank) {
+                        // CodeTank rides on this host and fell with it.
                         showCodeTankLibrary = false;
                         codeTankPendingWozRunAt = 0.0;
                         setStatusMessage("P-LAB TMS9918 + CodeTank daughterboard unplugged", 2.0f);
@@ -1295,17 +1209,18 @@ void MainWindow_ImGui::renderToolbar()
             "Unplugging it also unplugs the CodeTank daughterboard.");
 
         ImGui::SameLine();
-        if (graphicsCardEnabled && showGraphicsCard)
+        const bool gen2Plugged = cardPlugged(pom1::CardId::Gen2);
+        if (gen2Plugged && showGraphicsCard)
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.4f, 0.8f, 1.0f));
-        else if (!graphicsCardEnabled)
+        else if (!gen2Plugged)
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
         else
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
         if (ImGui::Button("##hgrToolbar", btnSize)) {
-            if (!graphicsCardEnabled) {
-                graphicsCardEnabled = true;
-                if (!gateStrictPlug(pom1::CardId::Gen2, graphicsCardEnabled)) {
-                    emulation->setHgrFramebufferAttached(true);
+            if (!gen2Plugged) {
+                bool want = true;
+                if (!gateStrictPlug(pom1::CardId::Gen2, want)) {
+                    plugGen2(true);
                     showGraphicsCard = true;
                     // Plug only — load a demo via File > Open from "software/Graphic HGR/"
                     // (the folder auto-plugs GEN2 too).
@@ -1314,8 +1229,7 @@ void MainWindow_ImGui::renderToolbar()
             } else {
                 showGraphicsCard = !showGraphicsCard;
                 if (!showGraphicsCard) {
-                    graphicsCardEnabled = false;
-                    emulation->setHgrFramebufferAttached(false);
+                    plugGen2(false);
                     setStatusMessage("GEN2 unplugged", 2.0f);
                 }
             }
@@ -1331,22 +1245,21 @@ void MainWindow_ImGui::renderToolbar()
 
         // --- SWTPC GT-6144 Graphic Terminal (1976) ---
         ImGui::SameLine();
-        if (gt6144Enabled && showGT6144)
+        const bool gt6144Plugged = cardPlugged(pom1::CardId::Gt6144);
+        if (gt6144Plugged && showGT6144)
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.4f, 0.8f, 1.0f));
-        else if (!gt6144Enabled)
+        else if (!gt6144Plugged)
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
         else
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
         if (ImGui::Button(ICON_FA_TABLE_CELLS, btnSize)) {
-            if (!gt6144Enabled) {
-                gt6144Enabled = true;
+            if (!gt6144Plugged) {
                 showGT6144 = true;
                 emulation->setCardEnabled(pom1::CardId::Gt6144, true);
                 setStatusMessage("SWTPC GT-6144 plugged (64x96 framebuffer at $D00A)", 3.0f);
             } else {
                 showGT6144 = !showGT6144;
                 if (!showGT6144) {
-                    gt6144Enabled = false;
                     emulation->setCardEnabled(pom1::CardId::Gt6144, false);
                     setStatusMessage("SWTPC GT-6144 unplugged", 2.0f);
                 }
@@ -1354,18 +1267,19 @@ void MainWindow_ImGui::renderToolbar()
         }
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(gt6144Enabled ? "SWTPC GT-6144 Graphic Terminal (click to unplug)"
+            ImGui::SetTooltip(gt6144Plugged ? "SWTPC GT-6144 Graphic Terminal (click to unplug)"
                                             : "Plug SWTPC GT-6144 Graphic Terminal (1976)");
         }
 
         // --- P-LAB I/O Board & RTC ---
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
-            a1ioRtcEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+            cardPlugged(pom1::CardId::A1IoRtc) ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f)
+                                              : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
         if (ImGui::Button(ICON_FA_CLOCK, btnSize)) {
-            if (!a1ioRtcEnabled) {
-                a1ioRtcEnabled = true;
-                if (!gateStrictPlug(pom1::CardId::A1IoRtc, a1ioRtcEnabled)) {
+            if (!cardPlugged(pom1::CardId::A1IoRtc)) {
+                bool want = true;
+                if (!gateStrictPlug(pom1::CardId::A1IoRtc, want)) {
                     showA1IO_RTC = true;
                     emulation->setCardEnabled(pom1::CardId::A1IoRtc, true);
                     setStatusMessage("P-LAB I/O Board & RTC plugged at $2000", 3.0f);
@@ -1373,7 +1287,6 @@ void MainWindow_ImGui::renderToolbar()
             } else {
                 showA1IO_RTC = !showA1IO_RTC;
                 if (!showA1IO_RTC) {
-                    a1ioRtcEnabled = false;
                     emulation->setCardEnabled(pom1::CardId::A1IoRtc, false);
                     setStatusMessage("P-LAB I/O Board & RTC unplugged", 2.0f);
                 }
@@ -1390,17 +1303,16 @@ void MainWindow_ImGui::renderToolbar()
         // --- P-LAB Terminal Card ---
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
-            terminalCardEnabled ? ImVec4(0.2f, 0.6f, 0.4f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+            cardPlugged(pom1::CardId::TerminalCard) ? ImVec4(0.2f, 0.6f, 0.4f, 1.0f)
+                                                    : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
         if (ImGui::Button(ICON_FA_TERMINAL, btnSize)) {
-            if (!terminalCardEnabled) {
-                terminalCardEnabled = true;
+            if (!cardPlugged(pom1::CardId::TerminalCard)) {
                 showTerminalCard = true;
                 emulation->setCardEnabled(pom1::CardId::TerminalCard, true);
                 setStatusMessage("P-LAB Terminal Card plugged (telnet localhost 6502)", 3.0f);
             } else {
                 showTerminalCard = !showTerminalCard;
                 if (!showTerminalCard) {
-                    terminalCardEnabled = false;
                     emulation->setCardEnabled(pom1::CardId::TerminalCard, false);
                     setStatusMessage("P-LAB Terminal Card unplugged", 2.0f);
                 }
@@ -1408,25 +1320,23 @@ void MainWindow_ImGui::renderToolbar()
         }
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(terminalCardEnabled ? "P-LAB Terminal Card (click to unplug)"
+            ImGui::SetTooltip(cardPlugged(pom1::CardId::TerminalCard) ? "P-LAB Terminal Card (click to unplug)"
                                                   : "Plug P-LAB Terminal Card");
         }
 #endif
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button,
-            wifiModemEnabled ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+            cardPlugged(pom1::CardId::WifiModem) ? ImVec4(0.2f, 0.4f, 0.8f, 1.0f)
+                                                : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
         if (ImGui::Button("##bbsModemToolbar", btnSize)) {
-            if (!wifiModemEnabled) {
-                wifiModemEnabled = true;
+            if (!cardPlugged(pom1::CardId::WifiModem)) {
                 showWiFiModem = true;
-                emulation->setCardEnabled(pom1::CardId::WifiModem, true);
-                jukeBoxEnabled = false;
+                setCardPlugged(pom1::CardId::WifiModem, true);
                 setStatusMessage("P-LAB Wi-Fi Modem plugged", 2.0f);
             } else {
                 showWiFiModem = !showWiFiModem;
                 if (!showWiFiModem) {
-                    wifiModemEnabled = false;
                     emulation->setCardEnabled(pom1::CardId::WifiModem, false);
                     setStatusMessage("P-LAB Wi-Fi Modem unplugged", 2.0f);
                 }
@@ -1443,22 +1353,21 @@ void MainWindow_ImGui::renderToolbar()
 
         // --- SWTPC PR-40 Printer (Jobs 1976) ---
         ImGui::SameLine();
-        if (pr40Enabled && showPR40)
+        const bool pr40Plugged = cardPlugged(pom1::CardId::Pr40);
+        if (pr40Plugged && showPR40)
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.4f, 0.8f, 1.0f));
-        else if (!pr40Enabled)
+        else if (!pr40Plugged)
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
         else
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
         if (ImGui::Button(ICON_FA_PRINT, btnSize)) {
-            if (!pr40Enabled) {
-                pr40Enabled = true;
+            if (!pr40Plugged) {
                 showPR40 = true;
                 emulation->setCardEnabled(pom1::CardId::Pr40, true);
                 setStatusMessage("SWTPC PR-40 plugged (Jobs' $D012 sniff, DPDT to PB7)", 3.0f);
             } else {
                 showPR40 = !showPR40;
                 if (!showPR40) {
-                    pr40Enabled = false;
                     emulation->setCardEnabled(pom1::CardId::Pr40, false);
                     setStatusMessage("SWTPC PR-40 unplugged", 2.0f);
                 }
@@ -1466,7 +1375,7 @@ void MainWindow_ImGui::renderToolbar()
         }
         ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(pr40Enabled ? "SWTPC PR-40 Printer (click to unplug)"
+            ImGui::SetTooltip(pr40Plugged ? "SWTPC PR-40 Printer (click to unplug)"
                                           : "Plug SWTPC PR-40 Printer (Jobs 1976)");
         }
 

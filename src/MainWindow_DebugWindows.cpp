@@ -476,7 +476,7 @@ std::vector<MainWindow_ImGui::MemRegion> MainWindow_ImGui::buildMemoryRegions()
         // motherboard RAM (the Integer-BASIC bank — spec Q9, "54 KB total").
         // Show that high bank as RAM instead of folding it into one big
         // Unmapped block; it matches the functional memory ($E000 is never OOR).
-        if (graphicsCardEnabled && ramTop <= 0xE000) {
+        if (cardPlugged(pom1::CardId::Gen2) && ramTop <= 0xE000) {
             regions.push_back({ ramTop, 0xDFFF, unmapColor, "Unmapped" });
             regions.push_back({ 0xE000, 0xEFFF, ramColor,   "User RAM" });
             regions.push_back({ 0xF000, 0xFFFF, unmapColor, "Unmapped" });
@@ -491,7 +491,7 @@ std::vector<MainWindow_ImGui::MemRegion> MainWindow_ImGui::buildMemoryRegions()
     regions.push_back({ 0x0200, 0x027F, IM_COL32(  0, 200, 255, 255), "Keyboard Buffer" });
 
     // --- Layer 2: hardware cards / I/O / ROMs ---
-    if (graphicsCardEnabled) {
+    if (cardPlugged(pom1::CardId::Gen2)) {
         // GEN2 release card: RAM-backed TEXT/LORES + HIRES pages (both banks),
         // displayed via the $C254/$C255 page soft switch (Apple II layout).
         regions.push_back({ 0x0400, 0x07FF, IM_COL32(150, 180, 255, 255), "GEN2 TEXT Page 1" });
@@ -499,32 +499,32 @@ std::vector<MainWindow_ImGui::MemRegion> MainWindow_ImGui::buildMemoryRegions()
         regions.push_back({ 0x2000, 0x3FFF, IM_COL32(  0, 255, 200, 255), "GEN2 HGR Page 1"  });
         regions.push_back({ 0x4000, 0x5FFF, IM_COL32(  0, 190, 150, 255), "GEN2 HGR Page 2"  });
     }
-    if (a1ioRtcEnabled)
+    if (cardPlugged(pom1::CardId::A1IoRtc))
         regions.push_back({ 0x2000, 0x200F, IM_COL32(255, 150, 50, 255), "IO_RTC VIA I/O" });
-    if (microSDEnabled)
+    if (cardPlugged(pom1::CardId::MicroSD))
         regions.push_back({ 0x8000, 0x9FFF, IM_COL32(255, 200, 80, 255), "SD CARD OS ROM" });
-    if (microSDEnabled)
+    if (cardPlugged(pom1::CardId::MicroSD))
         regions.push_back({ 0xA000, 0xA00F, IM_COL32(255, 150, 50, 255), "VIA 65C22 I/O" });
-    if (cffa1Enabled) {
+    if (cardPlugged(pom1::CardId::Cffa1)) {
         regions.push_back({ 0x9000, 0xAFDF, IM_COL32(255, 200, 80, 255), "CFFA1 ROM" });
         regions.push_back({ 0xAFE0, 0xAFFF, IM_COL32(255, 150, 50, 255), "CF Card I/O" });
     }
-    if (wifiModemEnabled)
+    if (cardPlugged(pom1::CardId::WifiModem))
         regions.push_back({ 0xB000, 0xB003, IM_COL32(0, 200, 200, 255), "ACIA 65C51 I/O" });
 
-    if (aciEnabled) {
+    if (cardPlugged(pom1::CardId::Aci)) {
         regions.push_back({ 0xC000, 0xC0FF, IM_COL32(255, 140, 80, 255), "ACI I/O" });
         regions.push_back({ 0xC100, 0xC1FF, IM_COL32(255, 190, 80, 255), "ACI ROM" });
     }
-    if (extendedAciEnabled) {
+    if (cardPlugged(pom1::CardId::ExtendedAci)) {
         regions.push_back({ 0xC500, 0xC5FF, IM_COL32(255, 215, 120, 255),
                             "Extended ACI ROM" });
     }
-    if (sidEnabled)
+    if (cardPlugged(pom1::CardId::Sid))
         regions.push_back({ 0xC800, 0xCFFF, IM_COL32(200, 100, 255, 255), "A1-SID I/O" });
-    if (sidSpecialEditionEnabled)
+    if (cardPlugged(pom1::CardId::SidSpecialEdition))
         regions.push_back({ 0xCC00, 0xCC1F, IM_COL32(200, 100, 255, 255), "A1-AUDIO Special Edition I/O" });
-    if (tms9918Enabled)
+    if (cardPlugged(pom1::CardId::Tms9918))
         regions.push_back({ 0xCC00, 0xCC01, IM_COL32(100, 200, 255, 255), "TMS9918 I/O" });
 
     regions.push_back({ 0xD000, 0xD0FF, IM_COL32(255, 80, 80, 255), "I/O (KBD/DSP)" });
@@ -542,7 +542,7 @@ std::vector<MainWindow_ImGui::MemRegion> MainWindow_ImGui::buildMemoryRegions()
     static char jbProgramsLabel[80];
     static char jbPatLabel[64];
     static char jbPmLabel[64];
-    if (uiSnapshot.codeTankEnabled) {
+    if (cardPlugged(pom1::CardId::CodeTank)) {
         const ImU32 ctRom = IM_COL32(120, 80, 180, 255);
         snprintf(jbProgramsLabel, sizeof(jbProgramsLabel),
                  "CodeTank ROM %s 16 kB",
@@ -550,7 +550,7 @@ std::vector<MainWindow_ImGui::MemRegion> MainWindow_ImGui::buildMemoryRegions()
                  ? "upper" : "lower");
         regions.push_back({ 0x4000, 0x7FFF, ctRom, jbProgramsLabel });
     }
-    if (jukeBoxEnabled) {
+    if (cardPlugged(pom1::CardId::JukeBox)) {
         const ImU32 jbRomPrograms = IM_COL32(120,  80, 180, 255);
         const ImU32 jbRomPat      = IM_COL32(180, 130, 220, 255);
         const ImU32 jbProgMgr     = IM_COL32(230, 180, 255, 255);
@@ -777,7 +777,7 @@ void MainWindow_ImGui::renderMemoryMapGridWindow()
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
         ImGui::Text("I/O registers (PIA 6821):");
-        if (aciEnabled) {
+        if (cardPlugged(pom1::CardId::Aci)) {
             ImGui::Spacing();
             ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  Apple Cassette Interface");
             ImGui::BulletText("$C000  OUT  - Tape output toggle");
@@ -790,13 +790,13 @@ void MainWindow_ImGui::renderMemoryMapGridWindow()
         ImGui::BulletText("$D012  DSP   - Display output");
         ImGui::TextColored(ImVec4(0.55f, 0.55f, 0.55f, 1.0f),
             "  Aliases: $D0Fx = $D01x");
-        if (tms9918Enabled) {
+        if (cardPlugged(pom1::CardId::Tms9918)) {
             ImGui::Spacing();
             ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  P-LAB TMS9918 VDP");
             ImGui::BulletText("$CC00  DATA - VRAM data port");
             ImGui::BulletText("$CC01  CTRL - Control/status");
         }
-        if (microSDEnabled) {
+        if (cardPlugged(pom1::CardId::MicroSD)) {
             ImGui::Spacing();
             ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  P-LAB microSD Storage Card (65C22 VIA)");
             ImGui::BulletText("$A000  PORTB - Control (bit0: CPU_STROBE, bit7: MCU_STROBE)");
@@ -806,7 +806,7 @@ void MainWindow_ImGui::renderMemoryMapGridWindow()
             ImGui::BulletText("$A00D  IFR   - Interrupt Flags");
             ImGui::BulletText("$8000-$9FFF  SD CARD OS ROM (8KB EEPROM)");
         }
-        if (sidEnabled) {
+        if (cardPlugged(pom1::CardId::Sid)) {
             ImGui::Spacing();
             ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  P-LAB A1-SID Sound Card");
             ImGui::BulletText("$C800-$C806  Voice 1 (freq, PW, ctrl, ADSR)");
@@ -815,7 +815,7 @@ void MainWindow_ImGui::renderMemoryMapGridWindow()
             ImGui::BulletText("$C815-$C818  Filter (cutoff, res, mode/vol)");
             ImGui::BulletText("$C819-$C81C  Read-only (POT, OSC3, ENV3)");
         }
-        if (sidSpecialEditionEnabled) {
+        if (cardPlugged(pom1::CardId::SidSpecialEdition)) {
             ImGui::Spacing();
             ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  P-LAB A1-AUDIO Special Edition");
             ImGui::BulletText("$CC00-$CC06  Voice 1 (freq, PW, ctrl, ADSR)");
@@ -824,7 +824,7 @@ void MainWindow_ImGui::renderMemoryMapGridWindow()
             ImGui::BulletText("$CC15-$CC18  Filter (cutoff, res, mode/vol)");
             ImGui::BulletText("$CC19-$CC1C  Read-only (POT, OSC3, ENV3)");
         }
-        if (wifiModemEnabled) {
+        if (cardPlugged(pom1::CardId::WifiModem)) {
             ImGui::Spacing();
             ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  P-LAB Wi-Fi Modem (65C51 ACIA)");
             ImGui::BulletText("$B000  DATA   - Serial data I/O");
@@ -832,14 +832,14 @@ void MainWindow_ImGui::renderMemoryMapGridWindow()
             ImGui::BulletText("$B002  CMD    - Command (DTR, echo, RTS)");
             ImGui::BulletText("$B003  CTRL   - Control (baud, word len)");
         }
-        if (terminalCardEnabled) {
+        if (cardPlugged(pom1::CardId::TerminalCard)) {
             ImGui::Spacing();
             ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  P-LAB Terminal Card (passive)");
             ImGui::BulletText("Eavesdrops $D012 display writes");
             ImGui::BulletText("Injects keys via $D010/$D011");
             ImGui::BulletText("TCP server on localhost:6502");
         }
-        if (a1ioRtcEnabled) {
+        if (cardPlugged(pom1::CardId::A1IoRtc)) {
             ImGui::Spacing();
             ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f), "  P-LAB I/O Board & RTC (65C22 VIA)");
             ImGui::BulletText("$2000  PORTB - Data bus (ATMEGA)");
@@ -848,7 +848,7 @@ void MainWindow_ImGui::renderMemoryMapGridWindow()
             ImGui::BulletText("$200B  ACR   - Aux Control Register");
             ImGui::BulletText("Regs 0-5: RTC  6: Temp  10-17: ADC  20-23: DIN");
         }
-        if (uiSnapshot.codeTankEnabled) {
+        if (cardPlugged(pom1::CardId::CodeTank)) {
             const auto& ct = uiSnapshot.codeTank;
             ImGui::Spacing();
             ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f),
@@ -857,7 +857,7 @@ void MainWindow_ImGui::renderMemoryMapGridWindow()
                 ct.jumper == CodeTank::Jumper::Upper16 ? "upper" : "lower");
             ImGui::BulletText("       No $CA00 latch; selection is the board jumper");
         }
-        if (jukeBoxEnabled) {
+        if (cardPlugged(pom1::CardId::JukeBox)) {
             const auto& jb = uiSnapshot.jukeBox;
             ImGui::Spacing();
             ImGui::TextColored(ImVec4(0.7f, 0.85f, 1.0f, 1.0f),
@@ -1313,13 +1313,13 @@ void MainWindow_ImGui::renderMemoryBarWindow()
             else
                 ImGui::TextDisabled("$%04X-$%04X (%u B)", regionStart, regionEnd, (unsigned)sz);
             // CodeTank/JukeBox bank info
-            if (uiSnapshot.codeTankEnabled
+            if (cardPlugged(pom1::CardId::CodeTank)
                 && hoverAddr >= 0x4000 && hoverAddr <= 0x7FFF) {
                 ImGui::Separator();
                 ImGui::Text("CodeTank %s 16 kB half",
                             uiSnapshot.codeTank.jumper == CodeTank::Jumper::Upper16
                             ? "upper" : "lower");
-            } else if (jukeBoxEnabled) {
+            } else if (cardPlugged(pom1::CardId::JukeBox)) {
                 const auto& jb = uiSnapshot.jukeBox;
                 int romStart = (jb.jumper == JukeBox::Jumper::RAM16_ROM32) ? 0x4000 : 0x8000;
                 if (static_cast<int>(hoverAddr) >= romStart && hoverAddr <= 0xBFFF) {

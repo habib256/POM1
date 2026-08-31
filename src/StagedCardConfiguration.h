@@ -66,6 +66,26 @@ public:
     /// such as the Juke-Box memory-map eviction).
     const CardConfigurationRequest& request() const { return request_; }
 
+    /// The topology the UI must DISPLAY, given what the machine last published.
+    ///
+    /// Third rule, and the reason the UI kept sixteen mirror booleans: a
+    /// checkbox has to tick the moment the user clicks it, but a staged plug
+    /// does not reach the machine until the transaction commits, so the
+    /// published set alone would show the box un-ticking again for a frame or
+    /// twenty. The mirrors answered that by holding a second copy of the
+    /// topology — and a second copy is a thing that can disagree, which is the
+    /// family the BBS auto-dial regression belongs to. This says the same thing
+    /// without a copy: while a transaction is open the staged target IS what
+    /// the user asked for, and outside one the machine is the only truth.
+    ///
+    /// `request_.cards` is absolute (see above), so it needs no merging with
+    /// `published` — that is exactly what makes this a selection rather than a
+    /// reconciliation.
+    CardSet effectiveCards(const CardSet& published) const
+    {
+        return pending_ ? request_.cards : published;
+    }
+
     /// Close the transaction: neutral defaults, nothing staged.
     ///
     /// `mode` deliberately SURVIVES. It is not part of the seed — the machine

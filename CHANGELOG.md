@@ -10,6 +10,43 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — l'UI ne garde plus de copie de la topologie matérielle
+
+Seize `bool xEnabled` de `MainWindow` doublaient l'état des cartes de la
+machine, écrits à chaque bascule, chaque preset, chaque option CLI et chaque
+cascade — les commentaires se nommaient eux-mêmes : « mirror UI », « sync UI »,
+« mutual exclusion ». Une seconde copie est une chose qui peut diverger, et
+c'est la famille dont venait la régression d'auto-dial BBS. Ils ont disparu.
+
+Trois membres les remplacent :
+
+- **`currentCards()`** — la cible mise en scène tant qu'une transaction de
+  cartes est ouverte, le `CardSet` publié par la machine sinon. La décision
+  elle-même est pure et épinglée : `pom1::StagedCardConfiguration::effectiveCards`,
+  §7 de `staged_card_configuration_smoke`. C'est ce que les miroirs servaient
+  vraiment à faire : une case doit se cocher à l'instant du clic, alors qu'un
+  branchement mis en scène n'atteint la machine qu'au commit.
+- **`cardPlugged(CardId)`** pour demander, **`setCardPlugged(CardId, bool)`**
+  pour ordonner. La seconde émet la commande **puis relit l'instantané**, si
+  bien que la suite de la frame voit les cascades déclenchées (évictions
+  Parmigiani, cartes filles) au lieu de la copie d'avant. Une copie
+  d'instantané par clic utilisateur, contre une règle qui vit déjà dans
+  `CardTopology`. `plugGen2()` fait la même chose pour la GEN2, qui se branche
+  par son framebuffer.
+- **`EmulationSnapshot::cards`** publie la topologie comme une seule valeur.
+
+Effets de bord notables : `wouldCreateConflict`, `listParmigianiConflicts` et
+`resolveParmigianiConflicts` ne reconstruisent plus un `CardSet` à la main
+depuis dix miroirs (trois copies des mêmes dix lignes) ; le `gate` du registre
+de fenêtres nomme un `CardId` au lieu d'un `bool MainWindow_ImGui::*` ; et
+`gateStrictPlug` prend son drapeau **par valeur** — il n'y a plus de miroir à
+remettre en place, donc refuser est toute la réponse.
+
+Mesure : **472 références aux seize miroirs → 0** (218 appels de
+`cardPlugged`/`setCardPlugged`/`currentCards`), 15 fichiers, plus de lignes
+supprimées qu'ajoutées. 118/118 tests avec l'outillage, 90/90 sans, zéro
+avertissement, `--headless` et la GUI vérifiés sur bascule de preset.
+
 ### Changed — l'audio est un service qu'on donne au cœur, plus un qu'il fabrique
 
 `Memory` construisait son `AudioDevice` dans son constructeur : tout cœur, y

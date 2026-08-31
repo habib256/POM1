@@ -228,12 +228,15 @@ public:
         // a bare member call cannot carry. Those blocks stay where they are; the
         // row still exists so persistence and the menu keep covering it.
         void (MainWindow_ImGui::*render)() = nullptr;
-        // Card-enable flag that must ALSO be true for the window to draw. This is
-        // the `if (jukeBoxEnabled && showJukeBox)` half of the old dispatch: the
+        // Card that must ALSO be plugged for the window to draw. This is the
+        // `if (Juke-Box plugged && showJukeBox)` half of the old dispatch: the
         // show* flag is the user's intent, the gate is whether the card is
         // plugged. Keeping them separate is deliberate — closing the panel must
-        // not unplug the card, and unplugging must not forget the panel was open.
-        bool MainWindow_ImGui::*gate = nullptr;
+        // not unplug the card, and unplugging must not forget the panel was
+        // open. `CardId::Invalid` = ungated. It names the CARD rather than a
+        // mirror boolean so the answer comes from currentCards(), which is the
+        // machine plus whatever the user has staged, and from nowhere else.
+        pom1::CardId gate = pom1::CardId::Invalid;
         // Desktop-only (the old `#if !POM1_IS_WASM` around the call site).
         bool desktopOnly = false;
         // Factory dock home. Default Float = stays floating, which is what the
@@ -390,11 +393,6 @@ private:
     bool showMemoryConfig = false;
     bool showLoadDialog = false;
     bool showLoadTapeDialog = false;
-    bool aciEnabled = true;   // Woz ACI cassette interface plugged (default on)
-    // Uncle Bernie's extended $C500 PROM page. POM1 ships it plugged
-    // wherever the ACI is, so it tracks aciEnabled's default; the two
-    // historical 1976 presets opt out via MachineConfig::extendedAci.
-    bool extendedAciEnabled = true;
     bool showCassetteDeck = false;     // Realistic procedural cassette deck
     bool showMemoryMapGrid = false;
     bool showMemoryBar = false;
@@ -412,7 +410,6 @@ private:
     bool showLoadSnapshotDialog = false;
     bool showSaveSnapshotDialog = false;
     bool showGraphicsCard = false;
-    bool graphicsCardEnabled = false;
     // All texture handles are opaque pom1::Texture* — owned by the renderer
     // (PomRenderer.h). Created lazily by the matching renderXxx / ensureXxx
     // method, destroyed in releaseGLResources(). nullptr = not yet allocated.
@@ -496,7 +493,6 @@ private:
     bool showHappyWozPhoto = false;
     bool showPlabTms9918Photo = false;
     bool showTMS9918 = false;
-    bool tms9918Enabled = false;
     pom1::Texture* tms9918Texture = nullptr;
     // Last framebuffer actually uploaded to tms9918Texture (288×216 incl. the
     // R7 border bands). Upload dirty-gate: the snapshot FB is memcmp'd against
@@ -505,7 +501,6 @@ private:
     std::array<uint32_t, TMS9918::kFullWidth * TMS9918::kFullHeight> tms9918PixelBuf{};
     bool tms9918FbUploaded = false;   // force the very first upload (zeroed buf can match)
     bool showGT6144 = false;
-    bool gt6144Enabled = false;
     pom1::Texture* gt6144Texture = nullptr;
     std::array<uint32_t, GT6144::kWidth * GT6144::kHeight> gt6144PixelBuf{};
     // Same dirty-gate for the GT-6144: last uploaded copy + first-upload latch.
@@ -519,14 +514,7 @@ private:
     // detection so a resuming animation restores full rate within one tick.
     double lastCardFbChangeTime = 0.0;
     bool showIECCard = false;
-    bool iecCardEnabled = false;
-    bool sidEnabled = false;
-    bool sidSpecialEditionEnabled = false;
-    bool microSDEnabled = true;
-    bool cffa1Enabled = false;
-    bool wifiModemEnabled = false;
     bool showWiFiModem = false;
-    bool terminalCardEnabled = !POM1_IS_WASM;
     bool showTerminalCard = !POM1_IS_WASM;
     bool showTelemetry = false;           // dev telemetry side channel status window
     // Serial Monitor (telemetry) UI state — Phase A of the "POM1 Bench" (Arduino-
@@ -557,15 +545,11 @@ private:
     std::unique_ptr<Pom1BenchHost>     benchHost_;
     std::unique_ptr<bench::CodeBench>  codeBench_;
 #endif
-    bool pr40Enabled = false;
     bool showPR40 = false;
-    bool a1ioRtcEnabled = false;
     bool showA1IO_RTC = false;
-    bool jukeBoxEnabled = false;
     bool showJukeBox = false;
     JukeBox::Jumper jukeBoxJumper = JukeBox::Jumper::RAM16_ROM32;
     JukeBox::ChipMode jukeBoxChipMode = JukeBox::ChipMode::Flash;
-    bool codeTankEnabled = false;
     bool showCodeTankLibrary = false;
     /// ImGui::GetTime() deadline to queue 4000R after CodeTank library insert + hardReset; 0 = none.
     double codeTankPendingWozRunAt = 0.0;
@@ -924,6 +908,35 @@ private:
     // through here — see pom1::StagedCardConfiguration for why. Seeds a fresh
     // transaction from the live machine read back off EmulationController.
     pom1::CardConfigurationRequest& stageCardConfiguration();
+
+    /// The topology the UI DISPLAYS: the staged target while a transaction is
+    /// open, the machine's published set otherwise. Every "is this card
+    /// plugged?" the UI asks must come through here rather than through a
+    /// member of its own — the mirror booleans this replaces were a second
+    /// copy of the machine's state, and a second copy is a thing that can
+    /// disagree. The decision itself is pure and pinned
+    /// (pom1::StagedCardConfiguration::effectiveCards, §7 of its smoke test).
+    pom1::CardSet currentCards() const
+    {
+        return stagedCardConfiguration.effectiveCards(uiSnapshot.cards);
+    }
+    bool cardPlugged(pom1::CardId card) const { return currentCards().contains(card); }
+
+    /// Plug or unplug a card NOW (the immediate path, as opposed to staging it
+    /// into a transaction), then re-read the machine so the rest of this frame
+    /// sees what the command actually did.
+    ///
+    /// That second half is what lets the mirror booleans go. A plug cascades —
+    /// Parmigiani evictions, daughterboards — and the UI used to keep up by
+    /// hand-writing the mirrors of every card the machine was about to evict
+    /// ("mirror UI", "sync UI", "mutual exclusion"), which is a second copy of
+    /// a rule that already lives in CardTopology. Asking the machine again
+    /// costs one snapshot copy per user click and cannot disagree with it.
+    void setCardPlugged(pom1::CardId card, bool plugged);
+
+    /// Same for the GEN2 HGR card, which attaches through its framebuffer
+    /// rather than through the generic card path.
+    void plugGen2(bool attached);
     void applyPendingCardConfiguration();
     void applyPendingLayout(const char* windowName);
     // Restore every window (and the main OS window) to the active preset's
@@ -976,12 +989,12 @@ private:
     // new conflict against the currently
     // plugged cards. Used to gate MenuItem / toolbar toggles in strict mode.
     bool wouldCreateConflict(pom1::CardId card) const;
-    // Inline gate for MenuItem / toolbar handlers. When the user just flipped
-    // `uiFlag` to true but silicon-strict mode forbids the resulting card
-    // combo (per wouldCreateConflict), revert the flag and emit a status
-    // message. Returns true when the toggle was REFUSED so the caller can
-    // skip the emulation->set...Enabled() call and any side effects.
-    bool gateStrictPlug(pom1::CardId card, bool& uiFlag);
+    // Inline gate for MenuItem / toolbar handlers. When the user asks for a
+    // plug that silicon-strict mode forbids (per wouldCreateConflict), emit a
+    // status message and answer true — REFUSED — so the caller skips the
+    // command and its side effects. Nothing is reverted: the caller's flag is
+    // a local read from currentCards(), and the machine was never told.
+    bool gateStrictPlug(pom1::CardId card, bool requested);
 
     void setStatusMessage(const std::string& message, float duration = 3.0f);
     void updateStatus(float deltaTime);

@@ -178,6 +178,50 @@ int main()
         assert(target.contains(CardId::WifiModem)); // seed still there
     }
 
+    // -----------------------------------------------------------------
+    // §7 effectiveCards() — what the UI displays. The decision that lets the
+    //    sixteen mirror booleans go: while a transaction is open the staged
+    //    target is what the user asked for; outside one, the machine's
+    //    published set is the only truth. A second copy of the topology is
+    //    what could disagree, and disagreeing copies are the family the BBS
+    //    auto-dial regression came from.
+    // -----------------------------------------------------------------
+    {
+        CardSet published;
+        published.add(CardId::Aci);
+        published.add(CardId::MicroSD);
+
+        StagedCardConfiguration staged;
+        // Nothing staged: the machine answers, verbatim.
+        assert(staged.effectiveCards(published).contains(CardId::Aci));
+        assert(staged.effectiveCards(published).contains(CardId::MicroSD));
+        assert(!staged.effectiveCards(published).contains(CardId::Sid));
+
+        // Staged plug: visible immediately, though the machine has not moved.
+        MachineTopologySeed live;
+        live.cards = published;
+        staged.stage(live).cards.add(CardId::Sid);
+        assert(staged.effectiveCards(published).contains(CardId::Sid) &&
+               "a card the user just asked for must show as plugged before the "
+               "transaction commits — that is what the mirrors were for");
+        assert(staged.effectiveCards(published).contains(CardId::Aci) &&
+               "the seed means an amend adds to the machine, it does not replace it");
+
+        // Staged UNPLUG: equally visible, and the published set must not win.
+        staged.stage(live).cards.remove(CardId::MicroSD);
+        assert(!staged.effectiveCards(published).contains(CardId::MicroSD));
+
+        // Committed (cleared): the machine is the truth again, whatever it says.
+        staged.clear();
+        assert(staged.effectiveCards(published).contains(CardId::MicroSD) &&
+               "after the commit the UI must follow the machine, not a memory "
+               "of what was asked — a refused or evicted card shows as it IS");
+        assert(!staged.effectiveCards(published).contains(CardId::Sid));
+
+        // The empty machine is a legal published value, not "no information".
+        assert(staged.effectiveCards(CardSet{}).empty());
+    }
+
     std::printf("staged_card_configuration_smoke: OK\n");
     return 0;
 }
