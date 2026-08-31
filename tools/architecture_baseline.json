@@ -1,9 +1,30 @@
 {
   "allowed_reverse_dependencies": [],
+  "allowed_devtools_dependencies": [
+    "MainWindow_HardwareWindows.cpp -> CodeBench.h",
+    "MainWindow_HardwareWindows.cpp -> Pom1BenchHost.h",
+    "MainWindow_ImGui.cpp -> CodeBench.h",
+    "MainWindow_ImGui.cpp -> Pom1BenchHost.h",
+    "MainWindow_ImGui.h -> HgrPaintEditor.h",
+    "MainWindow_ImGui.h -> HgrSpriteEditor.h",
+    "MainWindow_ImGui.h -> Pom1HgrPaintHost.h",
+    "MainWindow_ImGui.h -> Pom1SfxHost.h",
+    "MainWindow_ImGui.h -> Pom1SidHost.h",
+    "MainWindow_ImGui.h -> Pom1TmsPaintHost.h",
+    "MainWindow_ImGui.h -> SfxEditor.h",
+    "MainWindow_ImGui.h -> SidTrackerEditor.h",
+    "MainWindow_ImGui.h -> TmsPaintEditor.h",
+    "MainWindow_ImGui.h -> TmsSpriteEditor.h",
+    "MainWindow_Presets.cpp -> CodeBench.h",
+    "MainWindow_Presets.cpp -> Pom1BenchHost.h",
+    "MainWindow_Presets.cpp -> ProcessUtil.h"
+  ],
   "metric_ceilings": {
     "controller_lines": 3079,
+    "controller_public_methods": 201,
     "mainwindow_lines": 17378,
     "memory_lines": 3934,
+    "memory_public_methods": 188,
     "sources_outside_test_devices": 86
   },
   "header_fanout_ceilings": {

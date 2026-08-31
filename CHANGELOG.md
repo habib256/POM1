@@ -10,6 +10,45 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — deux voies de test, et deux cliquets qui tiennent la frontière
+
+`ctest -L emulator` (90 tests) est la porte de release de l'émulateur et est
+**verte sans cc65** ; `ctest -L devtools` (28) est la voie de l'environnement de
+développement — éditeurs, chaîne DevBench/cc65, compilateurs BASIC et leur
+runtime 6502. Chaque test déclaré porte exactement une des deux étiquettes,
+assignées en fin de `tests/CMakeLists.txt` à partir de la liste
+`POM1_DEVTOOLS_TESTS`. Le classement se fait sur le **sujet**, pas sur le nom :
+`bench_basic_inject_smoke`, `bench_logo_inject_smoke`, `applesoft_*`,
+`codetank_claudio_gate`, `lib_micro_tests` et les lints assembleur de `dev/`
+vérifient le comportement de l'émulateur et restent dans la porte. Absent de la
+liste vaut `emulator`, dans ce sens précis : un test d'outillage non étiqueté
+atterrit dans la porte de release et la fait rougir sur une machine sans cc65 —
+le défaut inverse l'aurait fait disparaître en silence. Le job Linux de `ci.yml`
+exécute les deux voies en deux étapes : mêmes 118 tests, coût identique, et une
+étape rouge nomme le produit cassé.
+
+`tools/check_architecture.py` gagne deux cliquets, qui figent l'existant plutôt
+que de décrire une cible :
+
+- **La frontière de l'outillage** — toute inclusion d'un en-tête de
+  `src/{bench,hgrpaint,hgrsprite,tmspaint,tmssprite,sfxbeep,sidtrack}/`, des
+  fichiers `Pom1*Host`, des compilateurs BASIC, de `DbgFile` ou de
+  `BenchDebugSession` depuis un fichier hors outillage est une arête de
+  `allowed_devtools_dependencies`. Il y en a **17**, dans 4 fichiers, tous
+  `MainWindow_*` : c'est ce qui rend le passage à `-DPOM1_DEVTOOLS=OFF` borné,
+  et le cliquet est ce qui le maintient borné en attendant. Une arête nouvelle
+  échoue ; une arête restée dans la base après la disparition de son dernier
+  appelant aussi — la liste ne peut que décroître.
+- **Les façades gelées** — `memory_public_methods` (188) et
+  `controller_public_methods` (201) comptent les déclarations publiques au
+  niveau de la classe. C'est le compte, pas le total de lignes, qui dit ce
+  qu'un appelant peut demander à l'objet : une façade rétrécit en perdant des
+  méthodes. `Memory` est gelé ; les passthroughs par carte d'`EmulationController`
+  partent un par un avec leur dernier appelant.
+
+Les trois cases correspondantes quittent `TODO.md` (chantiers 1 et 2).
+
+
 ### Changed — consolidation architecturale, phases 0 à 3
 
 La première moitié de la consolidation est livrée et quitte `TODO.md`. Le build

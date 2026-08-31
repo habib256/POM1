@@ -174,6 +174,63 @@ function(pom1_add_smoke_test TARGET SOURCE TEST_NAME)
     set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${SMOKE_TIMEOUT})
 endfunction()
 
+# ── Test lanes: `emulator` and `devtools` ────────────────────────────────────
+# `ctest -L emulator` is the emulator's release gate. It must be green on a
+# machine with no cc65 toolchain, and — once TODO.md chantier 1 lands — on a
+# tree configured with -DPOM1_DEVTOOLS=OFF. `ctest -L devtools` is the
+# development environment's own lane: the editors, the DevBench/cc65 pipeline,
+# the BASIC compilers and their 6502 runtime.
+#
+# The list below IS the lane assignment — data, reviewable line by line like
+# kMachinePresets[]. The rule: a test is `devtools` when its SUBJECT is the
+# tooling, i.e. it compiles a source from the devtools set that
+# tools/check_architecture.py guards (src/{bench,hgrpaint,hgrsprite,tmspaint,
+# tmssprite,sfxbeep,sidtrack}/, the Pom1*Host files, the BASIC compilers, the
+# .dbg reader), or it drives the cc65 pipeline. Tests that merely RUN shipped
+# software on the emulated machine stay in the emulator lane even when their
+# name starts with bench_ — applesoft_gen2_smoke, bench_basic_inject_smoke,
+# bench_logo_inject_smoke, codetank_claudio_gate, lib_micro_tests and the dev/
+# assembly lints all assert emulator behaviour, not tooling behaviour.
+#
+# Anything NOT listed is labelled `emulator`, and that default is the safe
+# direction: an unlabelled devtools test lands in the release gate and turns it
+# red on a cc65-less machine, which is visible. Defaulting the other way would
+# let a test drop out of the gate in silence.
+set(POM1_DEVTOOLS_TESTS
+    # BASIC compilers and tokenisers (src/Basic{Compiler,Tokeniser}*.cpp)
+    basic_compiler_smoke
+    basic_compiler_tokenize
+    basic_native_bench
+    basic_native_codegen
+    basic_native_run
+    basic_tokenise_integer
+    basic_float_runtime               # dev/lib/basicrt, the native compiler's runtime
+    bench_basic_native_smoke
+    bench_basic_native_lores_smoke
+    bench_basic_native_lores_tms_smoke
+    bench_basic_tokenize_smoke
+    bench_basic_tokenize_integer_smoke
+    # DevBench: cc65 pipeline, source-level debugging, process plumbing
+    bench_cc65_smoke
+    bench_debug_protocol_smoke
+    bench_debug_session_smoke
+    dbgfile_smoke
+    process_util_smoke
+    size_report_smoke                 # tools/size_report.py + the archive link model
+    # Graphics and audio editors (src/hgrpaint, hgrsprite, tmspaint, tmssprite,
+    # sfxbeep, sidtrack)
+    hgr_convert_smoke
+    hgr_inflate_x2_smoke
+    hgr_paint_plot_smoke
+    hgr_sprite_blit_smoke
+    sfx_asm_export_smoke
+    sid_song_asm_export_smoke
+    sprite_asm_export_smoke
+    tms_convert_smoke
+    tms_paint_plot_smoke
+    tms_sprite_plot_smoke
+)
+
 add_executable(test_klaus_6502
     klaus_6502_functional_test.cpp
     ${POM1_TEST_CORE_SOURCES}
@@ -2482,4 +2539,35 @@ if(POM1_SANITIZE)
         endif()
     endforeach()
     message(STATUS "POM1: test timeouts scaled x30 for the sanitizer build")
+endif()
+
+# ── Applying the lanes ───────────────────────────────────────────────────────
+# Run last: DIRECTORY property TESTS only holds what has been declared so far.
+# A name listed above but not declared in this configuration is NOT an error —
+# the cc65 tests live inside if(NOT WIN32) and size_report_smoke inside
+# if(Python3_FOUND) — so it is reported rather than fatal. A typo shows up in
+# that same report, and shows up again as an emulator lane that needs cc65.
+get_property(pom1_declared_lane_tests DIRECTORY PROPERTY TESTS)
+set(pom1_lane_missing "")
+foreach(pom1_lane_t IN LISTS POM1_DEVTOOLS_TESTS)
+    if(NOT pom1_lane_t IN_LIST pom1_declared_lane_tests)
+        list(APPEND pom1_lane_missing ${pom1_lane_t})
+    endif()
+endforeach()
+set(pom1_lane_emulator 0)
+set(pom1_lane_devtools 0)
+foreach(pom1_lane_t IN LISTS pom1_declared_lane_tests)
+    if(pom1_lane_t IN_LIST POM1_DEVTOOLS_TESTS)
+        set_property(TEST ${pom1_lane_t} APPEND PROPERTY LABELS devtools)
+        math(EXPR pom1_lane_devtools "${pom1_lane_devtools} + 1")
+    else()
+        set_property(TEST ${pom1_lane_t} APPEND PROPERTY LABELS emulator)
+        math(EXPR pom1_lane_emulator "${pom1_lane_emulator} + 1")
+    endif()
+endforeach()
+message(STATUS
+    "POM1: test lanes — ${pom1_lane_emulator} emulator, ${pom1_lane_devtools} devtools")
+if(pom1_lane_missing)
+    message(STATUS
+        "POM1: devtools tests not declared in this configuration: ${pom1_lane_missing}")
 endif()
