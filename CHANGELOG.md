@@ -10,6 +10,43 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — l'environnement de développement est optionnel (`-DPOM1_DEVTOOLS=OFF`)
+
+Les éditeurs HGR/TMS (paint + sprites), l'éditeur SFX bipeur, le tracker SID, la
+DevBench et les compilateurs BASIC sont un **second produit** qui partageait le
+processus, le build et la matrice de portage de l'émulateur : ~18 300 lignes
+payées sur Linux / macOS Metal+GL / Windows / WASM / Pi GLES / borne PGO, et une
+régression dans un éditeur graphique bloquait une release d'émulateur. L'option
+`POM1_DEVTOOLS` (ON par défaut — rien ne change sans le demander) les retire de
+la cible. L'émulateur reste complet : seules les fenêtres d'outillage et leurs
+entrées de menu disparaissent, plus les colonnes *Create* / *Develop* du sélecteur
+de profils et sa rangée Studio, qui redevient un sélecteur à deux colonnes.
+
+Mesure macOS/Metal, arbre neuf, `-j8`, tests désactivés : **149 → 104** unités de
+traduction, **4,13 Mo → 2,86 Mo** de binaire (−31 %), **27 s → 20 s** de build.
+`-DPOM1_DEVTOOLS=OFF` compile **sans un seul avertissement**, démarre, tourne en
+`--headless`, et passe `ctest -L emulator` à 90/90 ; la configuration par défaut
+reste à 118/118.
+
+Ce qui rend l'opération petite, c'est la discipline déjà en place : les éditeurs
+étaient des modules portables derrière leurs seams hôtes (`IHgrPaintHost`,
+`ITmsPaintHost`, `IBenchHost`), donc l'émulateur ne les nomme qu'en **4 fichiers
+`MainWindow_*`**. C'est une récolte, pas un refactor. Détails :
+
+- `POM1_DEVTOOLS_SOURCES` dans `CMakeLists.txt` porte la liste — ImGuiColorTextEdit
+  en fait partie, `bench/CodeBench.cpp` étant son seul consommateur.
+- Le macro est `POM1_DEVTOOLS` (`src/POM1Build.h`), CMake définissant
+  `POM1_BUILD_NO_DEVTOOLS` — même forme que `POM1_BUILD_GLES` → `POM1_GL_ES`.
+- **Les répertoires d'inclusion sortent aussi de la cible** : une inclusion
+  d'éditeur qui échapperait à son `#if` ne compile pas, au lieu de rappeler
+  silencieusement 87 fichiers.
+- `tests/CMakeLists.txt` ne **déclare** pas les 28 tests d'outillage dans un build
+  OFF — les deux bouts de la même partition que la voie `ctest -L emulator`.
+- Une arête de la frontière disparaît au passage : `ini_defaults/` se résout
+  désormais via `pom1::executableDirectory()` (`ResourceLocator.h`) au lieu de
+  `bench::executableDir()`, ce que le cliquet a exigé en refusant l'arête devenue
+  périmée. 17 → **16**.
+
 ### Added — deux voies de test, et deux cliquets qui tiennent la frontière
 
 `ctest -L emulator` (90 tests) est la porte de release de l'émulateur et est

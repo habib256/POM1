@@ -1,7 +1,9 @@
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
+#if POM1_DEVTOOLS
 #include "Pom1BenchHost.h"   // complete types for std::unique_ptr members (dtor)
 #include "CodeBench.h"
+#endif
 #include "CliDispatcher.h"
 #include "PomRenderer.h"
 #include "WiFiModem.h"
@@ -108,6 +110,7 @@ void MainWindow_ImGui::createPom1()
     memoryViewer->setWriteCallback([this](uint16_t address, uint8_t value) {
         emulation->writeMemory(address, value);
     });
+#if POM1_DEVTOOLS
     // Portable HGR Paint editor (hgrpaint/) driven by its POM1 host: pokes →
     // EmulationController, canvas render → GEN2 GraphicsCard, files → controller +
     // stb_image_write. See hgrpaint/IHgrPaintHost.h.
@@ -127,6 +130,7 @@ void MainWindow_ImGui::createPom1()
     sfxEditor = std::make_unique<sfxbeep::SfxEditor>(sfxHost.get());
     sidHost = std::make_unique<Pom1SidHost>(emulation.get(), &window);
     sidTrackerEditor = std::make_unique<sidtrack::SidTrackerEditor>(sidHost.get());
+#endif
     // Republie cpuRunning=true (le constructeur publie une fois avant runRequested.store(true)).
     emulation->startCpu();
     emulation->copySnapshot(uiSnapshot);
@@ -850,6 +854,7 @@ void MainWindow_ImGui::render()
     // Dialogues
     // The eight simple photo windows are table-driven (see photoWindowDefs()).
     renderSimplePhotoWindows();
+#if POM1_DEVTOOLS
     if (showHGRPaintEditor) {
         // Opening the editor implies you want the GEN2 HGR card live so strokes
         // appear on screen — auto-enable it, mirroring the file-dialog behaviour.
@@ -954,6 +959,7 @@ void MainWindow_ImGui::render()
         emulation->setSidLivePreview(false);       // closed: stop clocking the SID
         sidTrackerEditor->onWindowHidden();        // closed: release the keyboard grab
     }
+#endif  // POM1_DEVTOOLS
     // DevBench inspector: always available (reads the value snapshot, not the
     // live card) so it can be opened even when the TMS9918 is unplugged.
 

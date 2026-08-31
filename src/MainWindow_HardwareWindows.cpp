@@ -18,8 +18,10 @@
 
 #include "imgui.h"
 #include "IconsFontAwesome6.h"
+#if POM1_DEVTOOLS
 #include "Pom1BenchHost.h"  // POM1 host for the portable bench/CodeBench editor
 #include "CodeBench.h"      // bench/ portable editor window
+#endif
 // Hardware framebuffer textures (HGR / TMS9918 / GT6144) used to drive GL
 // directly; they now go through PomRenderer so the same code path lights up
 // either OpenGL or Metal (Phase 2). No direct GL headers needed here.
@@ -1089,6 +1091,7 @@ void MainWindow_ImGui::renderTelemetryWindow()
     ImGui::End();
 }
 
+#if POM1_DEVTOOLS
 // The POM1 Bench editor is the portable bench/CodeBench, driven by a
 // Pom1BenchHost (cc65 toolchain, presets, CodeTank/loadBinary deploy, telemetry
 // Serial Monitor). See bench/IBenchHost.h. Host + bench are created lazily —
@@ -1106,6 +1109,7 @@ void MainWindow_ImGui::renderBenchWindow()
     ensureBench();
     codeBench_->render("POM1 Bench", &showBench);
 }
+#endif  // POM1_DEVTOOLS
 
 void MainWindow_ImGui::renderPR40Window()
 {

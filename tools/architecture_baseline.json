@@ -16,8 +16,7 @@
     "MainWindow_ImGui.h -> TmsPaintEditor.h",
     "MainWindow_ImGui.h -> TmsSpriteEditor.h",
     "MainWindow_Presets.cpp -> CodeBench.h",
-    "MainWindow_Presets.cpp -> Pom1BenchHost.h",
-    "MainWindow_Presets.cpp -> ProcessUtil.h"
+    "MainWindow_Presets.cpp -> Pom1BenchHost.h"
   ],
   "metric_ceilings": {
     "controller_lines": 3079,

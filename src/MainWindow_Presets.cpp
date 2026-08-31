@@ -13,9 +13,11 @@
 #include "MacNativeFullscreen.h"
 #include "WindowGeometry.h"  // macOS fullscreen space is invisible to GLFW
 #include "Logger.h"
+#include "ResourceLocator.h"  // pom1::executableDirectory() for exe-relative ini_defaults/
+#if POM1_DEVTOOLS
 #include "CodeBench.h"   // codeBench_->loadStarterForTargetIfClean() in DevBench presets
 #include "Pom1BenchHost.h" // benchHost_->targetFor / selectTargetExplicit for the chooser's language launch
-#include "ProcessUtil.h" // bench::executableDir() for exe-relative ini_defaults/
+#endif
 #include "NativeFileDialog.h" // `native_dialogs` preference lives in ini/ui.settings
 #include "CardTopology.h"
 
@@ -578,6 +580,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // being driven BY the Bench's own target picker (otherwise picking a C
     // target — which also maps to preset 0/1/2 — would wipe the C sketch back
     // to asm); see Pom1BenchHost::onTargetSelected.
+#if POM1_DEVTOOLS
     if (presetIndex >= 0 && presetIndex <= 2 && !suppressDevBenchAutoload) {
         ensureBench();
         showBench = true;
@@ -588,6 +591,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
                              "user's code (use New in the Bench to reset).");
         }
     }
+#endif
 
     if (!composingBootConfiguration)
         applyPendingCardConfiguration();
@@ -637,10 +641,12 @@ void MainWindow_ImGui::renderProfileChooser()
     // A chooser button carries an action: apply a machine preset, or launch a
     // graphical language (a DevBench BASIC/LOGO target). -1 fields = "not this".
     int chosenPreset      = -1;
+#if POM1_DEVTOOLS
     int chosenLang        = -1;   // DevBench language axis (2=BASIC, 3=LOGO)
     int chosenMachine     = -1;   // DevBench machine axis (see kP1Machines[])
     int chosenPaint       = -1;   // 0 = HGR Painter, 1 = TMS9918 Painter
     int chosenAudio       = -1;   // 0 = Beeper SFX, 1 = SID Tracker
+#endif
     int chosenGame        = -1;   // kChooserGames[] index (CodeTank cartridges)
     // A profile row: accent-coloured button (width w) + a dim wrapped description.
     // onClick writes the chosen action; the caller runs it after ImGui::End().
@@ -665,11 +671,13 @@ void MainWindow_ImGui::renderProfileChooser()
         actionButton(label, desc, base, hov, act, w, h,
                      [&, preset]() { chosenPreset = preset; });
     };
+#if POM1_DEVTOOLS
     auto langButton = [&](const char* label, const char* desc, int lang, int machine,
                           ImU32 base, ImU32 hov, ImU32 act, float w, float h) {
         actionButton(label, desc, base, hov, act, w, h,
                      [&, lang, machine]() { chosenLang = lang; chosenMachine = machine; });
     };
+#endif
     auto columnHeader = [&](const char* txt) {
         ImGui::TextColored(ImVec4(0.55f, 0.60f, 0.70f, 1.0f), "%s", txt);
         ImGui::Dummy(ImVec2(0.0f, 4.0f));
@@ -745,10 +753,17 @@ void MainWindow_ImGui::renderProfileChooser()
     // (Pom1BenchHost.h), pinned to kP1Machines[] by a static_assert.
     const ImU32 gB = IM_COL32(140, 45, 45, 255), gH = IM_COL32(180, 62, 62, 255),  gA = IM_COL32(110, 34, 34, 255);
     const ImU32 mB = IM_COL32(28, 68, 92, 255),  mH = IM_COL32(42, 96, 126, 255), mA = IM_COL32(20, 52, 74, 255);
+#if POM1_DEVTOOLS
     const ImU32 vB = IM_COL32(74, 46, 96, 255),  vH = IM_COL32(102, 64, 132, 255), vA = IM_COL32(56, 34, 74, 255);
     const ImU32 dB = IM_COL32(34, 74, 46, 255),  dH = IM_COL32(48, 100, 64, 255),  dA = IM_COL32(26, 56, 36, 255);
+    // Create and Develop are the development environment; without it the
+    // chooser is Play + Machines, and the two remaining columns stretch.
+    const int chooserColumns = 4;
+#else
+    const int chooserColumns = 2;
+#endif
     if (indent > 0.0f) ImGui::SetCursorPosX(indent);
-    if (ImGui::BeginTable("##profilecols", 4, ImGuiTableFlags_SizingStretchSame, ImVec2(colW, 0.0f))) {
+    if (ImGui::BeginTable("##profilecols", chooserColumns, ImGuiTableFlags_SizingStretchSame, ImVec2(colW, 0.0f))) {
         ImGui::TableNextRow();
 
         // Column 1 — the CodeTank release cartridges (red accent). One click =
@@ -789,6 +804,7 @@ void MainWindow_ImGui::renderProfileChooser()
                      "and three built-in games.",
                      kPresetTMS9918Card, mB, mH, mA, mw, 46.0f);
 
+#if POM1_DEVTOOLS
         // Column 3 — graphical languages (violet accent). Each boots the
         // interpreter live on its card and opens the Bench with a matching
         // demo. Compact form: one dim label per language + two half-width
@@ -843,10 +859,12 @@ void MainWindow_ImGui::renderProfileChooser()
                      "DevBench targeting the P-LAB TMS9918 card via the CodeTank "
                      "cartridge (cc65 assembly or C).",
                      kPresetTMS9918Bench, dB, dH, dA, dw, 46.0f);
+#endif  // POM1_DEVTOOLS
 
         ImGui::EndTable();
     }
 
+#if POM1_DEVTOOLS
     // Media tools: direct access to the Paint editors (HGR / TMS9918) and the
     // audio editors (Beeper SFX / SID Tracker) on ONE centred row. Each plugs its
     // matching card and opens the editor — mirroring the Tools-menu actions. Paint
@@ -880,6 +898,7 @@ void MainWindow_ImGui::renderProfileChooser()
         if (ImGui::Button(ICON_FA_MUSIC "  SID Tracker", ImVec2(ebW, ebH))) chosenAudio = 1;
         ImGui::PopStyleColor(3);
     }
+#endif  // POM1_DEVTOOLS
 
     // (The chooser no longer carries an "always start with this profile" box:
     // POM1 boots straight into Fantasy by default, and the startup preference
@@ -899,8 +918,10 @@ void MainWindow_ImGui::renderProfileChooser()
 
     // Enter with nothing else picked = boot the flagship default (POM1 FANTASY),
     // exactly like clicking the big amber button — a one-keystroke "just start".
-    if (chosenPreset < 0 && chosenLang < 0 && chosenPaint < 0 && chosenAudio < 0 &&
-        chosenGame < 0 &&
+    if (chosenPreset < 0 && chosenGame < 0 &&
+#if POM1_DEVTOOLS
+        chosenLang < 0 && chosenPaint < 0 && chosenAudio < 0 &&
+#endif
         (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)))
         chosenPreset = pom1::presetIndex(kDefaultPresetId);
 
@@ -908,6 +929,7 @@ void MainWindow_ImGui::renderProfileChooser()
     if (chosenPreset >= 0) {
         applyBootConfig(chosenPreset);
         showProfileChooser = false;
+#if POM1_DEVTOOLS
     } else if (chosenLang >= 0) {
         launchLanguageFromChooser(chosenLang, chosenMachine);
         showProfileChooser = false;
@@ -917,6 +939,7 @@ void MainWindow_ImGui::renderProfileChooser()
     } else if (chosenAudio >= 0) {
         launchAudioEditorFromChooser(/*sid=*/chosenAudio == 1);
         showProfileChooser = false;
+#endif
     } else if (chosenGame >= 0) {
         launchGameFromChooser(chosenGame);
         showProfileChooser = false;
@@ -955,6 +978,7 @@ void MainWindow_ImGui::launchGameFromChooser(int game)
     codeTankPendingWozRunAt = ImGui::GetTime() + 3.0;
 }
 
+#if POM1_DEVTOOLS
 // Open a pixel-art editor straight from the chooser. Plug the matching graphics
 // machine (its Paint editor needs a live card to draw into) and raise the editor
 // window — mirroring the Tools-menu actions that plug the card on open.
@@ -1034,6 +1058,7 @@ void MainWindow_ImGui::launchLanguageFromChooser(int benchLang, int benchMachine
     applyBootCliOverrides();
     applyPendingCardConfiguration();
 }
+#endif  // POM1_DEVTOOLS
 
 // GUI-free preset application for --headless. Mirrors the machine-config
 // essence of applyMachineConfig() — RAM size, strict modes, card plugs, BASIC
@@ -1160,13 +1185,16 @@ std::string findIniDefaultsFile(const char* basename)
         if (fs::is_regular_file(p, ec))
             return p;
     }
-    const std::string exeDir = bench::executableDir();
+    // pom1::executableDirectory() rather than bench::executableDir(): the two
+    // are deliberate copies of each other (see ResourceLocator.h), and this one
+    // is the emulator's, so an ini_defaults/ lookup does not depend on the
+    // development environment being compiled in.
+    const fs::path exeDir = pom1::executableDirectory();
     if (!exeDir.empty()) {
-        const fs::path e(exeDir);
         const fs::path cands[] = {
-            e / "ini_defaults" / basename,
-            e.parent_path() / "Resources" / "ini_defaults" / basename,
-            e.parent_path() / "share" / "POM1" / "ini_defaults" / basename,
+            exeDir / "ini_defaults" / basename,
+            exeDir.parent_path() / "Resources" / "ini_defaults" / basename,
+            exeDir.parent_path() / "share" / "POM1" / "ini_defaults" / basename,
         };
         for (const fs::path& c : cands)
             if (fs::is_regular_file(c, ec))
@@ -1461,7 +1489,9 @@ MainWindow_ImGui::windowRegistry()
     static const std::vector<WindowDescriptor> kReg = {
         // key                    title                                        show flag                    kind            persist
         // ── Tools ───────────────────────────────────────────────────────────────────────────────────────────────────────────
+#if POM1_DEVTOOLS
         { "Bench",                "POM1 Bench",                                &MW::showBench,              K::Tool,        true  , &MW::renderBenchWindow, nullptr, false, DockSlot::Workspace },
+#endif
         { "Telemetry",            "Telemetry Side Channel",                    &MW::showTelemetry,          K::Tool,        true  , &MW::renderTelemetryWindow, nullptr, false, DockSlot::Bottom },
         { "TMS9918Inspector",     "TMS9918 VDP Inspector",                     &MW::showTMS9918Inspector,   K::Tool,        true  , &MW::renderTMS9918InspectorWindow, nullptr, false, DockSlot::Right },
         { "SiliconStrict",        "Silicon Strict Inspector",                  &MW::showSiliconStrictWindow,K::Tool,        true  , &MW::renderSiliconStrictWindow, nullptr, false, DockSlot::Right },
@@ -1474,12 +1504,14 @@ MainWindow_ImGui::windowRegistry()
         // ── Peripheral / card panels ──────────────────────────────────────────────────────────────────────────────────────────
         { "CassetteDeck",         "Apple-1 Cassette Deck",                     &MW::showCassetteDeck,       K::Peripheral,  true  , &MW::renderCassetteDeckWindow, nullptr, false, DockSlot::Workspace },
         { "GraphicsCard",         "Uncle Bernie's GEN2 HGR Graphic Card",      &MW::showGraphicsCard,       K::Peripheral,  true  , &MW::renderGraphicsCardWindow, &MW::graphicsCardEnabled, false, DockSlot::Workspace },
+#if POM1_DEVTOOLS
         { "HGRPaintEditor",       "HGR Paint Editor",                          &MW::showHGRPaintEditor,     K::Tool,        true, nullptr, nullptr, false, DockSlot::Workspace },
         { "HGRSpriteEditor",      "HGR Sprite Editor",                         &MW::showHGRSpriteEditor,    K::Tool,        true, nullptr, nullptr, false, DockSlot::Workspace },
         { "TMSPaintEditor",       "TMS9918 Paint Editor",                      &MW::showTMSPaintEditor,     K::Tool,        true, nullptr, nullptr, false, DockSlot::Workspace },
         { "TMSSpriteEditor",      "TMS9918 Sprite Editor",                     &MW::showTMSSpriteEditor,    K::Tool,        true, nullptr, nullptr, false, DockSlot::Workspace },
         { "SfxEditor",            "Beeper SFX Editor",                         &MW::showSfxEditor,          K::Tool,        true, nullptr, nullptr, false, DockSlot::Workspace },
         { "SidTracker",           "SID Tracker",                               &MW::showSidTracker,         K::Tool,        true, nullptr, nullptr, false, DockSlot::Workspace },
+#endif
         { "TMS9918",              "P-LAB Graphic Card (TMS9918)",              &MW::showTMS9918,            K::Peripheral,  true  , &MW::renderTMS9918Window, &MW::tms9918Enabled, false, DockSlot::Workspace },
         { "GT6144",               "SWTPC GT-6144 Graphic Terminal",            &MW::showGT6144,             K::Peripheral,  true  , &MW::renderGT6144Window, &MW::gt6144Enabled, false, DockSlot::Workspace },
         { "IECCard",              "IEC Disk",                                  &MW::showIECCard,            K::Peripheral,  true  , &MW::renderIECCardWindow, &MW::iecCardEnabled, false, DockSlot::Bottom },

@@ -32,22 +32,16 @@ pur, sans valeur utilisateur, sur un cœur actuellement stable.
 Architecture pour les humains : [`ARCHITECTURE.md`](ARCHITECTURE.md). Invariants
 et pièges : [`CLAUDE.md`](CLAUDE.md).
 
-### 1. Isoler l'environnement de développement (1–2 semaines restantes)
+### 1. Isoler l'environnement de développement (une décision restante)
 
-Une régression dans un éditeur graphique bloque aujourd'hui une release
-d'émulateur, et la matrice de portage (Linux / macOS Metal+GL / Windows / WASM /
-Pi GLES / borne PGO) est payée sur 100 % du code. Objectif : pouvoir bâtir,
-tester et publier l'émulateur **sans** les 18 300 lignes d'outillage.
+L'isolation est livrée (`CHANGELOG.md`) : `-DPOM1_DEVTOOLS=OFF` produit un
+émulateur complet, sans avertissement, qui démarre et passe `ctest -L emulator`
+(90/90) ; la frontière tient à 16 arêtes dans 4 fichiers `MainWindow_*` et
+`architecture_check` refuse la 17ᵉ. Mesure macOS/Metal, arbre neuf, `-j8`,
+tests désactivés : **149 → 104** unités de traduction, **4,13 Mo → 2,86 Mo**
+de binaire (−31 %), **27 s → 20 s** de build.
 
-La frontière et la voie de test sont livrées (`CHANGELOG.md`) : `ctest -L
-emulator` est vert sans cc65, et `architecture_check` interdit toute nouvelle
-inclusion d'un en-tête d'outillage hors outillage. Reste l'option elle-même.
-
-- [ ] **Mettre l'outillage derrière une option CMake** `[M · critical]` — regrouper `src/bench/`, `src/hgrpaint/`, `src/hgrsprite/`, `src/tmspaint/`, `src/tmssprite/`, `src/sfxbeep/`, `src/sidtrack/`, `src/Pom1BenchHost.cpp`, `src/Pom1HgrPaintHost.cpp`, `src/Pom1TmsPaintHost.cpp` et les compilateurs BASIC derrière `POM1_DEVTOOLS` (ON par défaut). Portée mesurée et désormais épinglée : **17 inclusions** d'en-têtes d'outillage depuis 4 fichiers, tous `MainWindow_*` (`allowed_devtools_dependencies` dans `tools/architecture_baseline.json`) — c'est borné, et le cliquet empêche que ça reparte. Critère : `-DPOM1_DEVTOOLS=OFF` compile, démarre et passe `ctest -L emulator`.
-- [ ] **Décider ensuite du packaging** `[S · solid]` — une fois l'option en place, trancher explicitement : release unique avec outillage, ou build « émulateur seul » pour la borne et le WASM. Ne pas trancher avant d'avoir la mesure de taille et de temps de build des deux.
-
-> Sortie : `-DPOM1_DEVTOOLS=OFF` produit un émulateur complet, testé et
-> publiable ; `ctest -L emulator` le prouve.
+- [ ] **Décider du packaging** `[S · solid]` — la mesure ci-dessus est là, il reste à trancher : release unique avec outillage (statu quo), ou build « émulateur seul » pour la borne et le WASM. Deux points à traiter avec la décision : les jobs de `release.yml` embarquent cc65 inconditionnellement, et le préchargement WASM de `dev/` + `sketchs/` (~310 Ko) n'est utile qu'à la DevBench — les deux ne coûtent rien tant que `POM1_DEVTOOLS=ON` reste le défaut de release.
 
 ### 2. Services hôte injectés (1–2 semaines)
 
