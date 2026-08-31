@@ -10,6 +10,52 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — l'audio est un service qu'on donne au cœur, plus un qu'il fabrique
+
+`Memory` construisait son `AudioDevice` dans son constructeur : tout cœur, y
+compris celui d'un test unitaire, allait chercher la carte son de l'hôte en se
+levant. `src/AudioService.h` porte désormais le seam — `pom1::IAudioService`,
+six méthodes, exactement ce que le cœur et le contrôleur utilisent — et
+`main_imgui.cpp` possède l'`AudioDevice` (GUI **et** headless) puis le passe par
+`MainWindow_ImGui` → `EmulationController` → `Memory`, qui n'en garde qu'un
+pointeur. Même forme que `ResourceLocator` (où sont les fichiers ?) et
+`DisplayDevice` (où vont les caractères ?) : la décision appartient à qui
+construit la machine, pas à la machine.
+
+Trois conséquences, chacune étant le vrai contenu d'une moitié du changement :
+
+- `--audio-latency` devient un argument de constructeur au lieu du statique
+  `AudioDevice::setPreferredLatencyMs`, dont la seule raison d'être était de
+  franchir l'écart entre `main()` et un périphérique construit quatre couches
+  plus bas. Un global de moins.
+- `initializeAudioHardware` passe par défaut à **false**, sur `Memory` comme sur
+  `EmulationController` : `Memory mem;` est écrit dans **50 fichiers de test**,
+  et chacun ouvrait un vrai périphérique audio (~21 ms, ~100 ms pour le premier
+  d'un processus, plus les erreurs miniaudio sur une machine CI sans son) pour
+  des tests qui n'écoutent rien. Compté sur la ligne que miniaudio journalise
+  elle-même, sur une suite complète : **161 ouvertures → 0**. Les deux frontends
+  passent `true` explicitement, donc rien d'audible ne change — `--audio-latency
+  120` journalise toujours `output cushion 120 ms (1764 frames x 3 periods)`.
+- `~Memory` désenregistre ses sources (`removeSource` est une barrière de durée
+  de vie). Un service injecté survit à la machine, donc l'ordre de déclaration
+  des membres n'est plus la seule chose entre le mixeur et un `CassetteDevice`
+  détruit.
+
+`pom1::NullAudioService` est le double en mémoire — pas de mixeur, pas de
+scratch, pas de thread — et n'est **pas** `AudioDevice(false)`, qui mixe encore
+et reste ce dont les tests audio ont besoin. `hermetic_core_smoke` gagne une §4
+qui construit un cœur dessus, le voit enregistrer sa cassette à l'activation
+(pas à la construction — le magnéto a son rail à lui) et rendre ses sources à la
+destruction.
+
+**La mesure qui justifiait ce chantier était mal attribuée, et c'est corrigé
+dans `TODO.md`.** Les ~133 ms d'un cœur hermétique n'étaient pas
+l'`AudioDevice` : dans un binaire de test, `AudioDevice(false)` coûte
+**0,07 ms**, et le coût réel est la **première construction de `pom1::SID`**
+(tables de filtre libresidfp, ~150 ms ; 0,46 ms pour chaque SID suivant du même
+processus). Un nouvel item `[S]` le note. Le gain de l'injection est ailleurs, et
+il est mesuré, pas déduit.
+
 ### Added — l'environnement de développement est optionnel (`-DPOM1_DEVTOOLS=OFF`)
 
 Les éditeurs HGR/TMS (paint + sprites), l'éditeur SFX bipeur, le tracker SID, la

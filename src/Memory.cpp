@@ -166,19 +166,25 @@ constexpr uint8_t kExtendedAciRom[0x100] = {
 
 } // namespace
 
-Memory::Memory(bool initializeAudioHardware, pom1::ResourceLocator locator)
+Memory::Memory(bool initializeAudioHardware, pom1::ResourceLocator locator,
+               pom1::IAudioService* injectedAudio)
     : resources_(std::move(locator))
 {
     const pom1::ResourceLocator& resources = resources_;
-    audioDevice = std::make_unique<AudioDevice>(initializeAudioHardware);
+    if (injectedAudio) {
+        audio = injectedAudio;
+    } else {
+        ownedAudio = std::make_unique<AudioDevice>(initializeAudioHardware);
+        audio = ownedAudio.get();
+    }
     // Pass the audio device's actual sample rate (44.1 kHz requested but
     // miniaudio may negotiate 48 kHz on Apple Silicon, and the browser
     // AudioContext may also force a different rate on WASM) so both
     // cassette and SID produce samples at the rate the OS will consume
     // them — otherwise their tempo drifts by the rate ratio.
-    const uint32_t actualRate = audioDevice->getActualSampleRate();
+    const uint32_t actualRate = audio->getActualSampleRate();
     cassetteDevice = std::make_unique<CassetteDevice>();
-    cassetteDevice->setAudioAvailable(audioDevice->isAvailable());
+    cassetteDevice->setAudioAvailable(audio->isAvailable());
     cassetteDevice->setAudioOutputSampleRate(actualRate);
     cassetteDevice->setAciActive(aciEnabled);
     // NOTE: no addSource here. The cassette is registered on the mixer
@@ -453,7 +459,19 @@ Memory::Memory(bool initializeAudioHardware, pom1::ResourceLocator locator)
 // Defined here (not defaulted in the header) so the forward-declared unique_ptr
 // peripheral members get their complete type from this TU's includes. See
 // Memory.h ~Memory().
-Memory::~Memory() = default;
+Memory::~Memory()
+{
+    // An injected service outlives this machine and keeps mixing, so hand back
+    // every source before the members that own them are destroyed;
+    // removeSource returns only once no callback is still reading it.
+    // Unconditional, not mirroring the enable flags: unregistering a source
+    // that was never added is a no-op, and a card can be detached while its
+    // audio source stays registered (the cassette's independent rail).
+    if (audio) {
+        if (cassetteDevice) audio->removeSource(cassetteDevice.get());
+        if (sid) audio->removeSource(sid.get());
+    }
+}
 
 uint8_t Memory::gen2SoftSwitchRead(uint16_t address)
 {
@@ -658,14 +676,14 @@ void Memory::setExtendedACIEnabled(bool b)
 void Memory::activateCassetteAudioSource()
 {
     if (cassetteAudioActive) return;
-    audioDevice->addSource(cassetteDevice.get());
+    audio->addSource(cassetteDevice.get());
     cassetteAudioActive = true;
 }
 
 void Memory::deactivateCassetteAudioSource()
 {
     if (!cassetteAudioActive) return;
-    audioDevice->removeSource(cassetteDevice.get());
+    audio->removeSource(cassetteDevice.get());
     cassetteAudioActive = false;
 }
 
@@ -1712,7 +1730,7 @@ void Memory::setSIDEnabled(bool b)
         // Attach the audio sink BEFORE the emulation starts producing samples
         // (sidEnabled gates advanceCycles). Otherwise the first slice pushes
         // into an undrained ring and the audio callback plays catch-up.
-        audioDevice->addSource(sid.get());
+        audio->addSource(sid.get());
         sidEnabled = true;
         bus.setEnabled(sidBusHandle, true);
     } else {
@@ -1722,7 +1740,7 @@ void Memory::setSIDEnabled(bool b)
         // drains).
         sidEnabled = false;
         bus.setEnabled(sidBusHandle, false);
-        audioDevice->removeSource(sid.get());
+        audio->removeSource(sid.get());
         sid->reset();
     }
 }
@@ -1734,13 +1752,13 @@ void Memory::setSIDSpecialEditionEnabled(bool b)
     if (b) {
         // SE at $CC00-$CC1F is disjoint from the Juke-Box bank latch
         // ($CA00) so the two can coexist — no eviction needed.
-        audioDevice->addSource(sid.get());
+        audio->addSource(sid.get());
         sidSpecialEditionEnabled = true;
         bus.setEnabled(sidSEBusHandle, true);
     } else {
         sidSpecialEditionEnabled = false;
         bus.setEnabled(sidSEBusHandle, false);
-        audioDevice->removeSource(sid.get());
+        audio->removeSource(sid.get());
         sid->reset();
     }
 }

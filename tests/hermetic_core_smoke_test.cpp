@@ -18,9 +18,11 @@
 //     port 6502 (already in use?)", and terminal_card_smoke had to skip
 //     reset() entirely to avoid fighting a running POM1.
 //
-// What this test does NOT yet claim: `Memory` still CONSTRUCTS an AudioDevice
-// (with the hardware left uninitialised when asked). Making the audio service
-// injectable is the remaining half of the item — see TODO.md.
+//   * audio was a host service the core built for itself. `Memory` now takes
+//     a `pom1::IAudioService` (AudioService.h) and only falls back to owning
+//     an `AudioDevice` when nothing is injected — with the OS output OFF by
+//     default, which is what a bare `Memory mem;` in 50 test files gets.
+//     §4 builds a core on the in-memory double and watches it register.
 
 #include "TMS9918.h"      // IWYU pragma: keep — Memory's unique_ptr members
 #include "WiFiModem.h"    // IWYU pragma: keep
@@ -29,6 +31,8 @@
 #include "PR40Printer.h"  // IWYU pragma: keep
 #include "Memory.h"
 #include "M6502.h"
+#include "AudioService.h"
+#include "CassetteDevice.h"
 #include "ResourceLocator.h"
 
 #include <cassert>
@@ -124,6 +128,38 @@ int main()
                "a root that has the file must not trigger the built-in fallback");
         assert(mem.getMemoryPointer()[0xFF00] == 0x42 &&
                "the ROM must come from the injected root");
+    }
+
+    // ── §4 The audio service is given, not built ────────────────────────────
+    //
+    // The core registers its cassette on whatever service it was handed, and
+    // hands it back before the source dies — the part that matters when the
+    // service outlives the machine, which is exactly the shipped arrangement
+    // (main_imgui.cpp owns the AudioDevice above the window).
+    //
+    // A NullAudioService is not "AudioDevice with the hardware off" — that one
+    // still mixes and is what the audio tests use. This double has no mixer, no
+    // scratch buffer and no threads, so a core built on it demonstrably brings
+    // no audio machinery up with it.
+    {
+        pom1::NullAudioService audio;
+        assert(audio.sourceCount() == 0);
+        {
+            Memory mem(/*initializeAudioHardware=*/false,
+                       pom1::ResourceLocator::rootedAt(sandbox / "empty"), &audio);
+            assert(&mem.audioService() == &audio &&
+                   "the injected service must be the one the machine talks to");
+            assert(!mem.audioService().isAvailable());
+
+            const AudioSource* cassette = &mem.getCassetteDevice();
+            assert(!audio.hasSource(cassette) &&
+                   "the cassette rides its own activation rail, not construction");
+            mem.activateCassetteAudioSource();
+            assert(audio.hasSource(cassette) && audio.sourceCount() == 1);
+        }
+        assert(audio.sourceCount() == 0 &&
+               "~Memory must unregister every source it added: an injected "
+               "service outlives the machine and would keep a dangling pointer");
     }
 
     fs::remove_all(sandbox);

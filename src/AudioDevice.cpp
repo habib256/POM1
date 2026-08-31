@@ -237,20 +237,13 @@ void AudioDevice::audioDataCallback(ma_device* pDevice, void* pOutput,
 
 // ─── Init / Shutdown ────────────────────────────────────────────────────────
 
-// Requested output cushion in ms, or 0 for the built-in default. Set once from
-// main() before Memory constructs the device (see setPreferredLatencyMs).
-static int g_preferredLatencyMs = 0;
-
-void AudioDevice::setPreferredLatencyMs(int ms)
+AudioDevice::AudioDevice(bool initializeHardware, int preferredLatencyMs)
 {
-    if (ms <= 0) { g_preferredLatencyMs = 0; return; }
-    if (ms < 20)  ms = 20;
-    if (ms > 250) ms = 250;
-    g_preferredLatencyMs = ms;
-}
-
-AudioDevice::AudioDevice(bool initializeHardware)
-{
+    if (preferredLatencyMs > 0) {
+        if (preferredLatencyMs < 20)  preferredLatencyMs = 20;
+        if (preferredLatencyMs > 250) preferredLatencyMs = 250;
+        preferredLatencyMs_ = preferredLatencyMs;
+    }
     // Size the mixing scratch before the device exists, so the very first
     // callback finds it ready. See kMixScratchFrames in the header.
     tmpBuf.resize(static_cast<size_t>(kMixScratchFrames));
@@ -326,16 +319,16 @@ bool AudioDevice::initAudio()
     config.periodSizeInFrames = 256;
     config.periods = 3;
     config.performanceProfile = ma_performance_profile_low_latency;
-    if (g_preferredLatencyMs > 0) {
+    if (preferredLatencyMs_ > 0) {
         // Keep 3 periods and stretch each one: miniaudio wakes the callback
         // once per period, so fewer/larger wake-ups is exactly what a loaded
         // Pi needs. The total cushion is periodSizeInFrames × periods.
-        uint32_t frames = (kSampleRate * static_cast<uint32_t>(g_preferredLatencyMs))
+        uint32_t frames = (kSampleRate * static_cast<uint32_t>(preferredLatencyMs_))
                           / (1000u * config.periods);
         if (frames < 64) frames = 64;
         config.periodSizeInFrames = frames;
         pom1::log().info("Audio",
-            "output cushion " + std::to_string(g_preferredLatencyMs) + " ms (" +
+            "output cushion " + std::to_string(preferredLatencyMs_) + " ms (" +
             std::to_string(frames) + " frames x " + std::to_string(config.periods) +
             " periods)");
     }

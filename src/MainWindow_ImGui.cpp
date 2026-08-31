@@ -48,7 +48,8 @@ using namespace pom1::mainwindow::detail;
 // Single source of truth: keyboard shortcuts with display labels
 // Entries with action=nullptr are handled specially in handleGlfwKey
 
-MainWindow_ImGui::MainWindow_ImGui()
+MainWindow_ImGui::MainWindow_ImGui(pom1::IAudioService* audio)
+    : injectedAudio_(audio)
 {
     createPom1();
     // Default ROMs (overridden on first frame by the default preset)
@@ -105,7 +106,8 @@ void MainWindow_ImGui::createPom1()
     pom1::log().info("POM1", "Welcome to POM1 - Apple I Emulator");
     screen = std::make_unique<Screen_ImGui>();
     screen->setCrtEffects(&crtEffects);   // opt-in shader CRT (inert until enabled)
-    emulation = std::make_unique<EmulationController>(screen.get());
+    emulation = std::make_unique<EmulationController>(screen.get(), /*initializeAudioHardware=*/true,
+                                                     injectedAudio_);
     memoryViewer = std::make_unique<MemoryViewer_ImGui>();
     memoryViewer->setWriteCallback([this](uint16_t address, uint8_t value) {
         emulation->writeMemory(address, value);
