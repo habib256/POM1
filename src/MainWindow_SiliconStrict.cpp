@@ -64,17 +64,7 @@ std::string_view cardLabel(pom1::CardId id)
 
 std::vector<std::string> MainWindow_ImGui::listParmigianiConflicts() const
 {
-    pom1::CardSet active;
-    if (graphicsCardEnabled) active.add(pom1::CardId::Gen2);
-    if (a1ioRtcEnabled) active.add(pom1::CardId::A1IoRtc);
-    if (sidEnabled) active.add(pom1::CardId::Sid);
-    if (sidSpecialEditionEnabled) active.add(pom1::CardId::SidSpecialEdition);
-    if (tms9918Enabled) active.add(pom1::CardId::Tms9918);
-    if (jukeBoxEnabled) active.add(pom1::CardId::JukeBox);
-    if (cffa1Enabled) active.add(pom1::CardId::Cffa1);
-    if (microSDEnabled) active.add(pom1::CardId::MicroSD);
-    if (wifiModemEnabled) active.add(pom1::CardId::WifiModem);
-    if (codeTankEnabled) active.add(pom1::CardId::CodeTank);
+    const pom1::CardSet active = currentCards();
 
     std::vector<std::string> out;
     const pom1::ConflictList conflicts =
@@ -93,35 +83,18 @@ std::vector<std::string> MainWindow_ImGui::listParmigianiConflicts() const
 
 std::string MainWindow_ImGui::resolveParmigianiConflicts()
 {
-    pom1::CardSet active;
-    if (graphicsCardEnabled) active.add(pom1::CardId::Gen2);
-    if (a1ioRtcEnabled) active.add(pom1::CardId::A1IoRtc);
-    if (sidEnabled) active.add(pom1::CardId::Sid);
-    if (sidSpecialEditionEnabled) active.add(pom1::CardId::SidSpecialEdition);
-    if (tms9918Enabled) active.add(pom1::CardId::Tms9918);
-    if (jukeBoxEnabled) active.add(pom1::CardId::JukeBox);
-    if (cffa1Enabled) active.add(pom1::CardId::Cffa1);
-    if (microSDEnabled) active.add(pom1::CardId::MicroSD);
-    if (wifiModemEnabled) active.add(pom1::CardId::WifiModem);
-    if (codeTankEnabled) active.add(pom1::CardId::CodeTank);
+    const pom1::CardSet active = currentCards();
     const pom1::CardSet evicted =
         pom1::resolveTopology(active, pom1::TopologyMode::Strict).evicted;
     if (evicted.empty()) return {};
 
-    if (evicted.contains(pom1::CardId::JukeBox)) {
-        jukeBoxEnabled = false;
+    if (evicted.contains(pom1::CardId::JukeBox))
         emulation->setCardEnabled(pom1::CardId::JukeBox, false);
-    }
-    if (evicted.contains(pom1::CardId::SidSpecialEdition)) {
-        sidSpecialEditionEnabled = false;
+    if (evicted.contains(pom1::CardId::SidSpecialEdition))
         emulation->setCardEnabled(pom1::CardId::SidSpecialEdition, false);
-    }
-    if (evicted.contains(pom1::CardId::Sid)) {
-        sidEnabled = false;
+    if (evicted.contains(pom1::CardId::Sid))
         emulation->setCardEnabled(pom1::CardId::Sid, false);
-    }
     if (evicted.contains(pom1::CardId::A1IoRtc)) {
-        a1ioRtcEnabled = false;
         emulation->setCardEnabled(pom1::CardId::A1IoRtc, false);
         showA1IO_RTC = false;
     }
@@ -137,12 +110,14 @@ std::string MainWindow_ImGui::resolveParmigianiConflicts()
     return msg;
 }
 
-bool MainWindow_ImGui::gateStrictPlug(pom1::CardId card, bool& uiFlag)
+bool MainWindow_ImGui::gateStrictPlug(pom1::CardId card, bool requested)
 {
     if (!siliconStrictModeEnabled) return false;
-    if (!uiFlag) return false;            // user unplugged — always fine
+    if (!requested) return false;         // user unplugged — always fine
     if (!wouldCreateConflict(card)) return false;
-    uiFlag = false;                       // revert the UI flip
+    // Nothing to revert any more: the caller's `requested` is a local, and the
+    // machine has not been told to do anything, so refusing IS the whole
+    // answer. It used to take the UI's mirror by reference and flip it back.
     std::string msg = "[STRICT] ";
     msg += cardLabel(card);
     msg += " refused — multiplexing forbidden. Unplug the conflicting card first.";
@@ -152,17 +127,10 @@ bool MainWindow_ImGui::gateStrictPlug(pom1::CardId card, bool& uiFlag)
 
 bool MainWindow_ImGui::wouldCreateConflict(pom1::CardId card) const
 {
-    pom1::CardSet active;
-    if (graphicsCardEnabled) active.add(pom1::CardId::Gen2);
-    if (a1ioRtcEnabled) active.add(pom1::CardId::A1IoRtc);
-    if (sidEnabled) active.add(pom1::CardId::Sid);
-    if (sidSpecialEditionEnabled) active.add(pom1::CardId::SidSpecialEdition);
-    if (tms9918Enabled) active.add(pom1::CardId::Tms9918);
-    if (jukeBoxEnabled) active.add(pom1::CardId::JukeBox);
-    if (cffa1Enabled) active.add(pom1::CardId::Cffa1);
-    if (microSDEnabled) active.add(pom1::CardId::MicroSD);
-    if (wifiModemEnabled) active.add(pom1::CardId::WifiModem);
-    if (codeTankEnabled) active.add(pom1::CardId::CodeTank);
+    // Was a hand-rebuild of the same set from ten mirror booleans — an
+    // eleventh card, or one mirror left un-updated, and Parmigiani's rule was
+    // being checked against a machine that did not exist.
+    pom1::CardSet active = currentCards();
     active.remove(card); // UI has already flipped the candidate flag to true.
     return pom1::wouldCreateConflict(active, card, pom1::TopologyMode::Strict);
 }
@@ -634,7 +602,7 @@ void MainWindow_ImGui::renderSiliconStrictWindow()
         }
 
         // ---- Live state readout ------------------------------------------
-        if (graphicsCardEnabled) {
+        if (cardPlugged(pom1::CardId::Gen2)) {
             ImGui::SeparatorText("Live state");
             const auto& ds = emulation->getGen2DisplayState();
             ImGui::Text("Latch     : %s · %s · %s · %s",
@@ -721,7 +689,7 @@ void MainWindow_ImGui::renderSiliconStrictWindow()
     // -------- 5. Juke-Box EEPROM 28c256 -----------------------------------
     if (ImGui::CollapsingHeader("Juke-Box EEPROM (28c256)",
                                 ImGuiTreeNodeFlags_DefaultOpen)) {
-        if (!jukeBoxEnabled) {
+        if (!cardPlugged(pom1::CardId::JukeBox)) {
             ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f),
                 "(Juke-Box card unplugged — plug it from Hardware menu)");
         } else {

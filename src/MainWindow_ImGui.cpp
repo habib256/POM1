@@ -184,6 +184,18 @@ void MainWindow_ImGui::destroyPom1()
 
 // Open (or amend) the pending card-configuration transaction. See the header
 // for why every write to stagedCardConfiguration has to come through here.
+void MainWindow_ImGui::setCardPlugged(pom1::CardId card, bool plugged)
+{
+    emulation->setCardEnabled(card, plugged);
+    emulation->copySnapshot(uiSnapshot);
+}
+
+void MainWindow_ImGui::plugGen2(bool attached)
+{
+    emulation->setHgrFramebufferAttached(attached);
+    emulation->copySnapshot(uiSnapshot);
+}
+
 pom1::CardConfigurationRequest& MainWindow_ImGui::stageCardConfiguration()
 {
     // Board options ride the seed too: planConfiguration() re-configures every
@@ -305,11 +317,9 @@ void MainWindow_ImGui::applyBootCliOverrides()
     };
     // The P-LAB Terminal Card stays UNPLUGGED at startup regardless of the
     if (terminalCardOverride) {
-        terminalCardEnabled = true;
         queueCard(pom1::CardId::TerminalCard, true);
         emulation->setCardEnabled(pom1::CardId::TerminalCard, true);
     } else {
-        terminalCardEnabled = false;
         queueCard(pom1::CardId::TerminalCard, false);
         showTerminalCard = false;
         emulation->setCardEnabled(pom1::CardId::TerminalCard, false);
@@ -329,48 +339,46 @@ void MainWindow_ImGui::applyBootCliOverrides()
     for (const auto& o : cardOverrides) {
         switch (o.card) {
             case pom1::CliCard::Aci:
-                aciEnabled = o.enable; queueCard(pom1::CardId::Aci, o.enable);
+                queueCard(pom1::CardId::Aci, o.enable);
                 // The extended page ships plugged wherever the ACI is, and
                 // Memory cascades it off with the card. Overrides are applied
                 // in command-line order, so a later `--disable xaci` still
                 // wins and leaves a stock Woz ACI.
-                extendedAciEnabled = o.enable;
                 queueCard(pom1::CardId::ExtendedAci, o.enable);
                 break;
             case pom1::CliCard::Sid:
-                sidEnabled = o.enable; queueCard(pom1::CardId::Sid, o.enable);
-                if (o.enable) { sidSpecialEditionEnabled = false; queueCard(pom1::CardId::SidSpecialEdition, false); }
+                queueCard(pom1::CardId::Sid, o.enable);
+                if (o.enable) queueCard(pom1::CardId::SidSpecialEdition, false);
                 break;
             case pom1::CliCard::SidSE:
-                sidSpecialEditionEnabled = o.enable; queueCard(pom1::CardId::SidSpecialEdition, o.enable);
-                if (o.enable) { sidEnabled = false; queueCard(pom1::CardId::Sid, false);
-                                tms9918Enabled = false; queueCard(pom1::CardId::Tms9918, false);
+                queueCard(pom1::CardId::SidSpecialEdition, o.enable);
+                if (o.enable) { queueCard(pom1::CardId::Sid, false);
+                                queueCard(pom1::CardId::Tms9918, false);
                                 // SID-SE unplugs TMS9918, which yanks its CodeTank
                                 // daughterboard — mirror the Tms9918-disable case
                                 // below and the Hardware-menu SID-SE path.
-                                codeTankEnabled = false; queueCard(pom1::CardId::CodeTank, false); }
+                                queueCard(pom1::CardId::CodeTank, false); }
                 break;
             case pom1::CliCard::MicroSD:
-                microSDEnabled = o.enable; queueCard(pom1::CardId::MicroSD, o.enable);
+                queueCard(pom1::CardId::MicroSD, o.enable);
                 // microSD ($6000-$7FFF Applesoft Lite EEPROM) is mutually
                 // exclusive with the CodeTank ROM window — mirror Memory.
-                if (o.enable) { codeTankEnabled = false; queueCard(pom1::CardId::CodeTank, false); }
+                if (o.enable) { queueCard(pom1::CardId::CodeTank, false); }
                 break;
             case pom1::CliCard::Tms9918:
-                tms9918Enabled = o.enable; queueCard(pom1::CardId::Tms9918, o.enable);
-                if (o.enable) { sidSpecialEditionEnabled = false; queueCard(pom1::CardId::SidSpecialEdition, false); }
+                queueCard(pom1::CardId::Tms9918, o.enable);
+                if (o.enable) queueCard(pom1::CardId::SidSpecialEdition, false);
                 // CodeTank is a daughterboard of the TMS9918 — yanking the
                 // host yanks the daughterboard with it.
-                if (!o.enable) { codeTankEnabled = false; queueCard(pom1::CardId::CodeTank, false); }
+                if (!o.enable) { queueCard(pom1::CardId::CodeTank, false); }
                 break;
             case pom1::CliCard::A1IoRtc:
-                a1ioRtcEnabled = o.enable; queueCard(pom1::CardId::A1IoRtc, o.enable); break;
+                queueCard(pom1::CardId::A1IoRtc, o.enable); break;
             case pom1::CliCard::Hgr:
-                graphicsCardEnabled = o.enable;
-                emulation->setHgrFramebufferAttached(graphicsCardEnabled);
+                emulation->setHgrFramebufferAttached(o.enable);
                 break;   // passive; no pending flag
             case pom1::CliCard::Cffa1:
-                cffa1Enabled = o.enable; queueCard(pom1::CardId::Cffa1, o.enable); break;
+                queueCard(pom1::CardId::Cffa1, o.enable); break;
             case pom1::CliCard::Krusader: {
                 // Krusader is a ROM image, not a peripheral. Loading it
                 // is supported (reloadKrusader); unloading would require
@@ -388,52 +396,52 @@ void MainWindow_ImGui::applyBootCliOverrides()
                 break;
             }
             case pom1::CliCard::WifiModem:
-                wifiModemEnabled = o.enable; queueCard(pom1::CardId::WifiModem, o.enable); break;
+                queueCard(pom1::CardId::WifiModem, o.enable); break;
             case pom1::CliCard::TerminalCard:
 #if !POM1_IS_WASM
-                terminalCardEnabled = o.enable; queueCard(pom1::CardId::TerminalCard, o.enable);
+                queueCard(pom1::CardId::TerminalCard, o.enable);
                 if (!o.enable) emulation->setCardEnabled(pom1::CardId::TerminalCard, false);
 #endif
                 break;
             case pom1::CliCard::JukeBox:
-                jukeBoxEnabled = o.enable; queueCard(pom1::CardId::JukeBox, o.enable);
-                if (o.enable) { codeTankEnabled = false; queueCard(pom1::CardId::CodeTank, false); }
+                queueCard(pom1::CardId::JukeBox, o.enable);
+                if (o.enable) { queueCard(pom1::CardId::CodeTank, false); }
                 break;
             case pom1::CliCard::CodeTank:
-                codeTankEnabled = o.enable; queueCard(pom1::CardId::CodeTank, o.enable);
+                queueCard(pom1::CardId::CodeTank, o.enable);
                 if (o.enable) {
-                    jukeBoxEnabled = false; queueCard(pom1::CardId::JukeBox, false);
+                    queueCard(pom1::CardId::JukeBox, false);
                     // microSD's Applesoft Lite EEPROM ($6000-$7FFF) sits
-                    // inside the CodeTank window — evict it (and the IEC
-                    // add-on riding on its VIA), mirroring Memory.
-                    microSDEnabled = false; queueCard(pom1::CardId::MicroSD, false);
-                    iecCardEnabled = false; queueCard(pom1::CardId::Iec, false);
+                    // inside the CodeTank window — evict it, and the IEC
+                    // add-on riding on its VIA with it.
+                    queueCard(pom1::CardId::MicroSD, false);
+                    queueCard(pom1::CardId::Iec, false);
                     // CodeTank is a daughterboard of the TMS9918 — schedule
                     // the host so the configuration transaction plugs it first
                     // (TMS9918 is finalized before CodeTank in that order).
-                    tms9918Enabled = true; queueCard(pom1::CardId::Tms9918, true);
-                    sidSpecialEditionEnabled = false; queueCard(pom1::CardId::SidSpecialEdition, false);
+                    queueCard(pom1::CardId::Tms9918, true);
+                    queueCard(pom1::CardId::SidSpecialEdition, false);
                 }
                 break;
             case pom1::CliCard::Pr40:
-                pr40Enabled = o.enable; queueCard(pom1::CardId::Pr40, o.enable);
+                queueCard(pom1::CardId::Pr40, o.enable);
                 if (!o.enable) emulation->setCardEnabled(pom1::CardId::Pr40, false);
                 break;
             case pom1::CliCard::GT6144:
-                gt6144Enabled = o.enable; queueCard(pom1::CardId::Gt6144, o.enable);
+                queueCard(pom1::CardId::Gt6144, o.enable);
                 if (!o.enable) emulation->setCardEnabled(pom1::CardId::Gt6144, false);
                 break;
             case pom1::CliCard::ExtendedAci:
-                extendedAciEnabled = o.enable; queueCard(pom1::CardId::ExtendedAci, o.enable);
+                queueCard(pom1::CardId::ExtendedAci, o.enable);
                 // Daughterboard rule: the extended page rides the ACI's PROM
                 // socket, so --enable xaci implies --enable aci.
-                if (o.enable) { aciEnabled = true; queueCard(pom1::CardId::Aci, true); }
+                if (o.enable) queueCard(pom1::CardId::Aci, true);
                 else emulation->setCardEnabled(pom1::CardId::ExtendedAci, false);
                 break;
             case pom1::CliCard::IEC:
-                iecCardEnabled = o.enable; queueCard(pom1::CardId::Iec, o.enable);
+                queueCard(pom1::CardId::Iec, o.enable);
                 if (o.enable) {
-                    microSDEnabled = true; queueCard(pom1::CardId::MicroSD, true);
+                    queueCard(pom1::CardId::MicroSD, true);
                 }
                 break;
         }
@@ -549,7 +557,7 @@ bool MainWindow_ImGui::osWindowIsFullscreen() const
 // One loop replacing 51 hand-written `if (showX) renderX();` lines. The three
 // conditions it applies are exactly what those lines said, now as data:
 //
-//   gate        — the card must be plugged (`jukeBoxEnabled && showJukeBox`).
+//   gate        — the card must be plugged (Juke-Box plugged && showJukeBox).
 //                 Separate from `show` on purpose: closing a panel must not
 //                 unplug its card, and unplugging must not forget the panel
 //                 was open, so the two flags cannot be merged.
@@ -572,7 +580,8 @@ void MainWindow_ImGui::renderRegisteredWindows()
 #if POM1_IS_WASM
         if (d.desktopOnly) continue;
 #endif
-        if (d.gate && !(this->*(d.gate))) continue;    // card unplugged
+        if (d.gate != pom1::CardId::Invalid && !cardPlugged(d.gate))
+            continue;                                  // card unplugged
         if (!(this->*(d.show))) continue;              // user closed it
         (this->*(d.render))();
     }
@@ -670,16 +679,17 @@ void MainWindow_ImGui::render()
                                           uiSnapshot.xRegister,
                                           uiSnapshot.yRegister,
                                           uiSnapshot.statusRegister);
-        memoryViewer->setGraphicsCardEnabled(graphicsCardEnabled);
-        memoryViewer->setTMS9918Enabled(tms9918Enabled);
-        memoryViewer->setSIDEnabled(sidEnabled);
-        memoryViewer->setMicroSDEnabled(microSDEnabled);
-        memoryViewer->setWiFiModemEnabled(wifiModemEnabled);
-        memoryViewer->setTerminalCardEnabled(terminalCardEnabled);
-        memoryViewer->setACIEnabled(aciEnabled);
-        memoryViewer->setExtendedACIEnabled(extendedAciEnabled);
-        memoryViewer->setJukeBoxEnabled(jukeBoxEnabled);
-        if (jukeBoxEnabled) {
+        memoryViewer->setGraphicsCardEnabled(cardPlugged(pom1::CardId::Gen2));
+        memoryViewer->setTMS9918Enabled(cardPlugged(pom1::CardId::Tms9918));
+        memoryViewer->setSIDEnabled(cardPlugged(pom1::CardId::Sid));
+        memoryViewer->setMicroSDEnabled(cardPlugged(pom1::CardId::MicroSD));
+        memoryViewer->setWiFiModemEnabled(cardPlugged(pom1::CardId::WifiModem));
+        memoryViewer->setTerminalCardEnabled(cardPlugged(pom1::CardId::TerminalCard));
+        memoryViewer->setACIEnabled(cardPlugged(pom1::CardId::Aci));
+        memoryViewer->setExtendedACIEnabled(cardPlugged(pom1::CardId::ExtendedAci));
+        const bool jukeBoxPlugged = cardPlugged(pom1::CardId::JukeBox);
+        memoryViewer->setJukeBoxEnabled(jukeBoxPlugged);
+        if (jukeBoxPlugged) {
             memoryViewer->setJukeBoxState(
                 uiSnapshot.jukeBox.currentPage,
                 uiSnapshot.jukeBox.currentSubPage,
@@ -687,7 +697,7 @@ void MainWindow_ImGui::render()
                 uiSnapshot.jukeBox.jumper,
                 uiSnapshot.jukeBox.chipMode);
         }
-        memoryViewer->setCodeTankEnabled(codeTankEnabled);
+        memoryViewer->setCodeTankEnabled(cardPlugged(pom1::CardId::CodeTank));
         memoryViewer->setCodeTankJumper(uiSnapshot.codeTank.jumper);
     }
     if (showMemoryViewer) {
@@ -860,9 +870,9 @@ void MainWindow_ImGui::render()
     if (showHGRPaintEditor) {
         // Opening the editor implies you want the GEN2 HGR card live so strokes
         // appear on screen — auto-enable it, mirroring the file-dialog behaviour.
-        if (!graphicsCardEnabled) {
-            graphicsCardEnabled = true;
+        if (!cardPlugged(pom1::CardId::Gen2)) {
             emulation->setHgrFramebufferAttached(true);
+            emulation->copySnapshot(uiSnapshot);
             showGraphicsCard = true;
         }
         const float w = GraphicsCard::kHiresWidth * 3.0f + 40.0f;
@@ -876,9 +886,9 @@ void MainWindow_ImGui::render()
     if (showHGRSpriteEditor) {
         // Opening the sprite editor implies you want the GEN2 HGR card live so the
         // Stamp/preview target a real page — auto-enable it (menu also does this).
-        if (!graphicsCardEnabled) {
-            graphicsCardEnabled = true;
+        if (!cardPlugged(pom1::CardId::Gen2)) {
             emulation->setHgrFramebufferAttached(true);
+            emulation->copySnapshot(uiSnapshot);
             showGraphicsCard = true;
         }
         ImGui::SetNextWindowSize(ImVec2(760, 560), ImGuiCond_FirstUseEver);
@@ -890,11 +900,9 @@ void MainWindow_ImGui::render()
     if (showTMSPaintEditor) {
         // Opening the editor implies you want the TMS9918 card live so strokes
         // appear on screen — auto-plug it, mirroring the HGR Paint behaviour.
-        if (!tms9918Enabled) {
-            tms9918Enabled = true;
+        if (!cardPlugged(pom1::CardId::Tms9918)) {
             showTMS9918 = true;
-            emulation->setCardEnabled(pom1::CardId::Tms9918, true);
-            sidSpecialEditionEnabled = false;   // TMS9918 evicts A1-AUDIO SE
+            setCardPlugged(pom1::CardId::Tms9918, true);   // evicts A1-AUDIO SE
         }
         const float w = TMS9918::kScreenWidth * 3.0f + 200.0f;
         const float h = TMS9918::kScreenHeight * 3.0f + 200.0f;
@@ -907,11 +915,9 @@ void MainWindow_ImGui::render()
     if (showTMSSpriteEditor) {
         // Opening the sprite editor implies you want the TMS9918 card live so the
         // sprite you draw appears on screen — auto-plug it (menu also does this).
-        if (!tms9918Enabled) {
-            tms9918Enabled = true;
+        if (!cardPlugged(pom1::CardId::Tms9918)) {
             showTMS9918 = true;
-            emulation->setCardEnabled(pom1::CardId::Tms9918, true);
-            sidSpecialEditionEnabled = false;   // TMS9918 evicts A1-AUDIO SE
+            setCardPlugged(pom1::CardId::Tms9918, true);   // evicts A1-AUDIO SE
         }
         ImGui::SetNextWindowSize(ImVec2(760, 560), ImGuiCond_FirstUseEver);
         applyPendingLayout("TMS9918 Sprite Editor");
@@ -922,9 +928,9 @@ void MainWindow_ImGui::render()
     if (showSfxEditor) {
         // The beeper previews through the ACI speaker — make sure it's plugged.
         // The extended page rides along, as everywhere else the ACI is plugged.
-        if (!aciEnabled) {
-            aciEnabled = true; emulation->setCardEnabled(pom1::CardId::Aci, true);
-            extendedAciEnabled = true; emulation->setCardEnabled(pom1::CardId::ExtendedAci, true);
+        if (!cardPlugged(pom1::CardId::Aci)) {
+            emulation->setCardEnabled(pom1::CardId::Aci, true);
+            setCardPlugged(pom1::CardId::ExtendedAci, true);   // cascade-plugs the ACI
         }
         // On open, eject any mp3/ogg audio-stream tape: a stream tape owns the
         // audio callback, so the 1-bit pulse preview would be silent while it
@@ -944,7 +950,7 @@ void MainWindow_ImGui::render()
     }
     if (showSidTracker) {
         // The tracker previews by poking the live SID chip — plug the A1-SID card.
-        if (!sidEnabled) { sidEnabled = true; emulation->setCardEnabled(pom1::CardId::Sid, true); }
+        if (!cardPlugged(pom1::CardId::Sid)) setCardPlugged(pom1::CardId::Sid, true);
         // Keep the SID clocked even when the CPU is stopped, so preview notes are
         // audible while paused (cleared on the closed/collapsed branches below).
         emulation->setSidLivePreview(true);
@@ -1020,7 +1026,6 @@ void MainWindow_ImGui::hardReset()
     loadedRoms.clear();
     loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
     loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
-    microSDEnabled = true;
     // A hard reset is a power-cycle of the Apple-1: it must NOT auto-connect the
     // P-LAB Terminal Card (which opens a TCP listener on :6502). The card keeps
     // whatever state the user left it in — like the cassette deck above, and

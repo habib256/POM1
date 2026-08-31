@@ -66,7 +66,7 @@ et toute extraction abaisse les plafonds.
 > l'application livrée, et `hermetic_core_smoke` §4 construit le cœur sur un
 > double en mémoire. Reste la découverte de ressources hôtes hors du cœur.
 
-### 3. Sortir les décisions de l'UI (3–4 semaines, incrémental)
+### 3. Sortir les décisions de l'UI (2–3 semaines restantes, incrémental)
 
 17 100 lignes de `MainWindow_*` sans test direct, et c'est là que vivaient les
 défauts connus (backspace destructif, six défauts du plein écran, auto-dial BBS
@@ -75,7 +75,11 @@ perdu). La méthode a déjà fait ses preuves — `src/Apple1KeyMap.h`,
 quelques centaines de lignes. **Viser les ~2 000 lignes qui portent des
 décisions, pas les 17 000 qui dessinent.**
 
-- [ ] **Supprimer le miroir matériel de l'UI** `[M · critical]` — l'état des cartes provient exclusivement de la vue publiée (`CardSet`) ; l'UI ne garde que les champs en cours d'édition et les erreurs de validation. C'est la duplication qui a rendu possible la régression d'auto-dial.
+Le miroir matériel est supprimé (`CHANGELOG.md`) : les seize `bool xEnabled` de
+`MainWindow` n'existent plus, l'état des cartes vient de `currentCards()` —
+transaction en cours si elle est ouverte, `CardSet` publié sinon — et les
+commandes passent par `setCardPlugged()`. Reste, pour ce chantier :
+
 - [ ] **Extraire les décisions de layout et de plein écran** `[M · solid]` — la règle d'attente sur `DisplaySize`, l'arbitrage plein écran natif macOS, la persistance `.size` et le choix « quelle géométrie s'applique » sont des fonctions pures ; les six défauts d'août 2026 y vivaient et aucun n'était épinglable sur place.
 - [ ] **Extraire les décisions de presets et de topologie** `[M · solid]` — quel preset, quelles cartes, quel ROM, quelles fenêtres ouvertes : `src/MachinePresets.h` et `src/CardTopology.h` portent déjà les données et la politique ; l'UI ne doit plus contenir que la composition.
 - [ ] **Unifier fenêtres, menus et raccourcis par identifiant stable** `[M · solid]` — un registre unique alimentant menus, raccourcis et persistance, puis une palette de commandes qui en dérive. Préserver l'interdiction des raccourcis Ctrl+lettre, réservés aux codes de contrôle Apple-1 (`shortcuts_sync`).

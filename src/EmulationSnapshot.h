@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "CardTypes.h"        // pom1::CardSet — the attached topology
 #include "Gen2VideoScanner.h"
 #include "M6502.h"
 #include "SID.h"
@@ -62,6 +63,11 @@ struct EmulationSnapshot
     std::string cassetteLoadedTapePath;
     std::string cassetteLoadInfo;
     TMS9918::Snapshot tms9918;
+    // The attached topology, as ONE value. The per-card bools below predate it
+    // and stay because peripherals hang their own sub-snapshot off them; this
+    // is what the UI reads to know what is plugged (see
+    // StagedCardConfiguration::effectiveCards).
+    pom1::CardSet cards;
     bool sidEnabled = false;
     bool sidSpecialEditionEnabled = false;
     pom1::SID::ChipModel sidChipModel = pom1::SID::ChipModel::MOS6581;

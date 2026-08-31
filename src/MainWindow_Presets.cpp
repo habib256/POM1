@@ -340,39 +340,29 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     gen2RandomScannerPhaseEnabled = !fantasyPreset;
     gen2RandomDramNoiseEnabled    = !fantasyPreset;
 
-    // UI flags reflect the preset's target state immediately (the menu
-    // checkmarks and toolbar chips are driven by these). The actual
-    // peripheral transaction is composed below and committed before this
-    // method returns.
-    aciEnabled               = presetCards.contains(CardId::Aci);
-    extendedAciEnabled       = presetCards.contains(CardId::ExtendedAci);
-    graphicsCardEnabled      = presetCards.contains(CardId::Gen2);
+    // The transaction opens HERE, with the topology, because that is what the
+    // rest of this function reads back through currentCards(): a preset
+    // REPLACES the machine rather than amending it, and the staged set is what
+    // the menus and toolbar chips show until the commit lands. The sixteen
+    // mirror booleans that used to sit here said the same thing a second time.
+    auto& req = stageCardConfiguration();
+    req.cards = presetCards;
+    req.mode = fantasyPreset
+        ? pom1::TopologyMode::Fantasy : pom1::TopologyMode::Strict;
+
     showGraphicsCard         = false;
-    microSDEnabled           = presetCards.contains(CardId::MicroSD);
-    cffa1Enabled             = presetCards.contains(CardId::Cffa1);
-    sidEnabled               = presetCards.contains(CardId::Sid);
-    sidSpecialEditionEnabled = presetCards.contains(CardId::SidSpecialEdition);
-    tms9918Enabled           = presetCards.contains(CardId::Tms9918);
     showTMS9918              = false;
-    a1ioRtcEnabled           = presetCards.contains(CardId::A1IoRtc);
     showA1IO_RTC             = false;
-    wifiModemEnabled         = presetCards.contains(CardId::WifiModem);
     showWiFiModem            = false;
-    jukeBoxEnabled           = presetCards.contains(CardId::JukeBox);
     jukeBoxJumper            = cfg.jukeBox.jumper;
     jukeBoxChipMode          = cfg.jukeBox.chipMode;
     showJukeBox              = false;
-    codeTankEnabled          = presetCards.contains(CardId::CodeTank);
     codeTankJumper           = cfg.codeTank.jumper;
 #if !POM1_IS_WASM
-    terminalCardEnabled      = presetCards.contains(CardId::TerminalCard);
     showTerminalCard         = false;
 #endif
-    pr40Enabled              = presetCards.contains(CardId::Pr40);
     showPR40                 = false;
-    gt6144Enabled            = presetCards.contains(CardId::Gt6144);
     showGT6144               = false;
-    iecCardEnabled           = presetCards.contains(CardId::Iec);
     showIECCard              = false;
     showCassetteDeck         = false;
     showWelcome              = false;
@@ -437,10 +427,6 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // produces the audible tape output through the mixer.
     // One reference for the whole composition: the first stage seeds the
     // transaction, and a preset REPLACES the topology rather than amending it.
-    auto& req = stageCardConfiguration();
-    req.cards = presetCards;
-    req.mode = fantasyPreset
-        ? pom1::TopologyMode::Fantasy : pom1::TopologyMode::Strict;
     req.jukeBoxJumper = cfg.jukeBox.jumper;
     req.jukeBoxChipMode = cfg.jukeBox.chipMode;
     req.codeTankJumper = cfg.codeTank.jumper;
@@ -986,16 +972,15 @@ void MainWindow_ImGui::launchPaintEditorFromChooser(bool tms)
 {
     if (tms) {
         applyBootConfig(kPresetTMS9918Card);
-        tms9918Enabled = true;
         stageCardConfiguration().cards.add(CardId::Tms9918);
         applyPendingCardConfiguration();
         showTMS9918 = true;
         showTMSPaintEditor = true;
     } else {
         applyBootConfig(kPresetGen2Color);
-        graphicsCardEnabled = true;
         showGraphicsCard = true;
         emulation->setHgrFramebufferAttached(true);
+        emulation->copySnapshot(uiSnapshot);
         showHGRPaintEditor = true;
     }
 }
@@ -1010,14 +995,11 @@ void MainWindow_ImGui::launchAudioEditorFromChooser(bool sid)
 {
     applyBootConfig(kPresetIntegerCassette);
     if (sid) {
-        sidEnabled = true;
         stageCardConfiguration().cards.add(CardId::Sid);
         // A1-SID evicts its bus rivals (A1-AUDIO SE shares $C800-$CFFF, the
         // Juke-Box latch sits at $CA00) — clear their pendings too so the
         // finalize pass can't plug one and evict the SID right back.
-        sidSpecialEditionEnabled = false;
         stageCardConfiguration().cards.remove(CardId::SidSpecialEdition);
-        jukeBoxEnabled = false;
         stageCardConfiguration().cards.remove(CardId::JukeBox);
         applyPendingCardConfiguration();
         showSidTracker = true;
@@ -1027,7 +1009,6 @@ void MainWindow_ImGui::launchAudioEditorFromChooser(bool sid)
         // inside every applyBootConfig — re-assert the pendings after the call
         // (like the SID branch above) so the editor never falls back on its
         // render guard's same-frame emergency plug (silent-card-on-boot).
-        aciEnabled = true;
         stageCardConfiguration().cards.add(CardId::Aci);
         applyPendingCardConfiguration();
         showSfxEditor = true;
@@ -1490,37 +1471,37 @@ MainWindow_ImGui::windowRegistry()
         // key                    title                                        show flag                    kind            persist
         // ── Tools ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 #if POM1_DEVTOOLS
-        { "Bench",                "POM1 Bench",                                &MW::showBench,              K::Tool,        true  , &MW::renderBenchWindow, nullptr, false, DockSlot::Workspace },
+        { "Bench",                "POM1 Bench",                                &MW::showBench,              K::Tool,        true  , &MW::renderBenchWindow, CardId::Invalid, false, DockSlot::Workspace },
 #endif
-        { "Telemetry",            "Telemetry Side Channel",                    &MW::showTelemetry,          K::Tool,        true  , &MW::renderTelemetryWindow, nullptr, false, DockSlot::Bottom },
-        { "TMS9918Inspector",     "TMS9918 VDP Inspector",                     &MW::showTMS9918Inspector,   K::Tool,        true  , &MW::renderTMS9918InspectorWindow, nullptr, false, DockSlot::Right },
-        { "SiliconStrict",        "Silicon Strict Inspector",                  &MW::showSiliconStrictWindow,K::Tool,        true  , &MW::renderSiliconStrictWindow, nullptr, false, DockSlot::Right },
-        { "MemoryViewer",         "Memory Viewer",                             &MW::showMemoryViewer,       K::Tool,        true, nullptr, nullptr, false, DockSlot::Right },
-        { "Debugger",             "CPU Debug Console",                         &MW::showDebugger,           K::Tool,        true, nullptr, nullptr, false, DockSlot::Bottom },
-        { "RewindTimeline",       "State Rewind",                              &MW::showRewindTimeline,     K::Tool,        true  , &MW::renderRewindTimelineWindow, nullptr, /*desktopOnly*/ true, DockSlot::Right },
-        { "MemoryMapGrid",        "Memory Map Grid",                           &MW::showMemoryMapGrid,      K::Tool,        true  , &MW::renderMemoryMapGridWindow, nullptr, false, DockSlot::Workspace },
+        { "Telemetry",            "Telemetry Side Channel",                    &MW::showTelemetry,          K::Tool,        true  , &MW::renderTelemetryWindow, CardId::Invalid, false, DockSlot::Bottom },
+        { "TMS9918Inspector",     "TMS9918 VDP Inspector",                     &MW::showTMS9918Inspector,   K::Tool,        true  , &MW::renderTMS9918InspectorWindow, CardId::Invalid, false, DockSlot::Right },
+        { "SiliconStrict",        "Silicon Strict Inspector",                  &MW::showSiliconStrictWindow,K::Tool,        true  , &MW::renderSiliconStrictWindow, CardId::Invalid, false, DockSlot::Right },
+        { "MemoryViewer",         "Memory Viewer",                             &MW::showMemoryViewer,       K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Right },
+        { "Debugger",             "CPU Debug Console",                         &MW::showDebugger,           K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Bottom },
+        { "RewindTimeline",       "State Rewind",                              &MW::showRewindTimeline,     K::Tool,        true  , &MW::renderRewindTimelineWindow, CardId::Invalid, /*desktopOnly*/ true, DockSlot::Right },
+        { "MemoryMapGrid",        "Memory Map Grid",                           &MW::showMemoryMapGrid,      K::Tool,        true  , &MW::renderMemoryMapGridWindow, CardId::Invalid, false, DockSlot::Workspace },
         { "MemoryBar",            "Memory Map Bar",                            &MW::showMemoryBar,          K::Tool,        true  , &MW::renderMemoryBarWindow },
         { "MemoryBarH",           "Memory Map Bar (Horizontal)",               &MW::showMemoryBarH,         K::Tool,        true  , &MW::renderMemoryBarHorizontalWindow },
         // ── Peripheral / card panels ──────────────────────────────────────────────────────────────────────────────────────────
-        { "CassetteDeck",         "Apple-1 Cassette Deck",                     &MW::showCassetteDeck,       K::Peripheral,  true  , &MW::renderCassetteDeckWindow, nullptr, false, DockSlot::Workspace },
-        { "GraphicsCard",         "Uncle Bernie's GEN2 HGR Graphic Card",      &MW::showGraphicsCard,       K::Peripheral,  true  , &MW::renderGraphicsCardWindow, &MW::graphicsCardEnabled, false, DockSlot::Workspace },
+        { "CassetteDeck",         "Apple-1 Cassette Deck",                     &MW::showCassetteDeck,       K::Peripheral,  true  , &MW::renderCassetteDeckWindow, CardId::Invalid, false, DockSlot::Workspace },
+        { "GraphicsCard",         "Uncle Bernie's GEN2 HGR Graphic Card",      &MW::showGraphicsCard,       K::Peripheral,  true  , &MW::renderGraphicsCardWindow, CardId::Gen2, false, DockSlot::Workspace },
 #if POM1_DEVTOOLS
-        { "HGRPaintEditor",       "HGR Paint Editor",                          &MW::showHGRPaintEditor,     K::Tool,        true, nullptr, nullptr, false, DockSlot::Workspace },
-        { "HGRSpriteEditor",      "HGR Sprite Editor",                         &MW::showHGRSpriteEditor,    K::Tool,        true, nullptr, nullptr, false, DockSlot::Workspace },
-        { "TMSPaintEditor",       "TMS9918 Paint Editor",                      &MW::showTMSPaintEditor,     K::Tool,        true, nullptr, nullptr, false, DockSlot::Workspace },
-        { "TMSSpriteEditor",      "TMS9918 Sprite Editor",                     &MW::showTMSSpriteEditor,    K::Tool,        true, nullptr, nullptr, false, DockSlot::Workspace },
-        { "SfxEditor",            "Beeper SFX Editor",                         &MW::showSfxEditor,          K::Tool,        true, nullptr, nullptr, false, DockSlot::Workspace },
-        { "SidTracker",           "SID Tracker",                               &MW::showSidTracker,         K::Tool,        true, nullptr, nullptr, false, DockSlot::Workspace },
+        { "HGRPaintEditor",       "HGR Paint Editor",                          &MW::showHGRPaintEditor,     K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Workspace },
+        { "HGRSpriteEditor",      "HGR Sprite Editor",                         &MW::showHGRSpriteEditor,    K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Workspace },
+        { "TMSPaintEditor",       "TMS9918 Paint Editor",                      &MW::showTMSPaintEditor,     K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Workspace },
+        { "TMSSpriteEditor",      "TMS9918 Sprite Editor",                     &MW::showTMSSpriteEditor,    K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Workspace },
+        { "SfxEditor",            "Beeper SFX Editor",                         &MW::showSfxEditor,          K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Workspace },
+        { "SidTracker",           "SID Tracker",                               &MW::showSidTracker,         K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Workspace },
 #endif
-        { "TMS9918",              "P-LAB Graphic Card (TMS9918)",              &MW::showTMS9918,            K::Peripheral,  true  , &MW::renderTMS9918Window, &MW::tms9918Enabled, false, DockSlot::Workspace },
-        { "GT6144",               "SWTPC GT-6144 Graphic Terminal",            &MW::showGT6144,             K::Peripheral,  true  , &MW::renderGT6144Window, &MW::gt6144Enabled, false, DockSlot::Workspace },
-        { "IECCard",              "IEC Disk",                                  &MW::showIECCard,            K::Peripheral,  true  , &MW::renderIECCardWindow, &MW::iecCardEnabled, false, DockSlot::Bottom },
-        { "WiFiModem",            "P-LAB Wi-Fi Modem",                         &MW::showWiFiModem,          K::Peripheral,  true  , &MW::renderWiFiModemWindow, &MW::wifiModemEnabled, false, DockSlot::Bottom },
-        { "TerminalCard",         "P-LAB Terminal Card",                       &MW::showTerminalCard,       K::Peripheral,  true  , &MW::renderTerminalCardWindow, &MW::terminalCardEnabled, false, DockSlot::Bottom },
-        { "PR40",                 "SWTPC PR-40 Printer",                       &MW::showPR40,               K::Peripheral,  true  , &MW::renderPR40Window, &MW::pr40Enabled, false, DockSlot::Bottom },
-        { "A1IO_RTC",             "P-LAB I/O Board & RTC",                     &MW::showA1IO_RTC,           K::Peripheral,  true  , &MW::renderA1IO_RTCWindow, &MW::a1ioRtcEnabled, false, DockSlot::Bottom },
-        { "JukeBox",              "P-LAB Juke-Box",                            &MW::showJukeBox,            K::Peripheral,  true  , &MW::renderJukeBoxWindow, &MW::jukeBoxEnabled },
-        { "CodeTankLibrary",      "P-LAB CodeTank Library",                    &MW::showCodeTankLibrary,    K::Peripheral,  true  , &MW::renderCodeTankLibraryWindow, nullptr, false, DockSlot::Right },
+        { "TMS9918",              "P-LAB Graphic Card (TMS9918)",              &MW::showTMS9918,            K::Peripheral,  true  , &MW::renderTMS9918Window, CardId::Tms9918, false, DockSlot::Workspace },
+        { "GT6144",               "SWTPC GT-6144 Graphic Terminal",            &MW::showGT6144,             K::Peripheral,  true  , &MW::renderGT6144Window, CardId::Gt6144, false, DockSlot::Workspace },
+        { "IECCard",              "IEC Disk",                                  &MW::showIECCard,            K::Peripheral,  true  , &MW::renderIECCardWindow, CardId::Iec, false, DockSlot::Bottom },
+        { "WiFiModem",            "P-LAB Wi-Fi Modem",                         &MW::showWiFiModem,          K::Peripheral,  true  , &MW::renderWiFiModemWindow, CardId::WifiModem, false, DockSlot::Bottom },
+        { "TerminalCard",         "P-LAB Terminal Card",                       &MW::showTerminalCard,       K::Peripheral,  true  , &MW::renderTerminalCardWindow, CardId::TerminalCard, false, DockSlot::Bottom },
+        { "PR40",                 "SWTPC PR-40 Printer",                       &MW::showPR40,               K::Peripheral,  true  , &MW::renderPR40Window, CardId::Pr40, false, DockSlot::Bottom },
+        { "A1IO_RTC",             "P-LAB I/O Board & RTC",                     &MW::showA1IO_RTC,           K::Peripheral,  true  , &MW::renderA1IO_RTCWindow, CardId::A1IoRtc, false, DockSlot::Bottom },
+        { "JukeBox",              "P-LAB Juke-Box",                            &MW::showJukeBox,            K::Peripheral,  true  , &MW::renderJukeBoxWindow, CardId::JukeBox },
+        { "CodeTankLibrary",      "P-LAB CodeTank Library",                    &MW::showCodeTankLibrary,    K::Peripheral,  true  , &MW::renderCodeTankLibraryWindow, CardId::Invalid, false, DockSlot::Right },
         // ── Tutorials (Help > Tutorials) ──────────────────────────────────────────────────────────────────────────────────────
         { "TutorialIntegerBasic", "Tutorial: Integer BASIC",                   &MW::showTutorialIntegerBasic, K::Tutorial,  true , &MW::renderTutorialIntegerBasicWindow },
         { "TutorialApplesoft",    "Tutorial: Applesoft Lite",                  &MW::showTutorialApplesoft,  K::Tutorial,    true  , &MW::renderTutorialApplesoftWindow },
