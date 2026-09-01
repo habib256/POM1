@@ -10,7 +10,7 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
-### Fixed — l'image de build bionic : une somme de contrôle sur une URL mouvante n'est pas une épingle
+### Fixed — plus une seule URL mouvante dans la chaîne AppImage
 
 `build-bionic-image.yml` échouait depuis le **22 août**, indépendamment de la CI.
 Le Dockerfile téléchargeait `linuxdeploy` et `appimagetool` depuis le tag
@@ -30,14 +30,31 @@ correspond toujours.
 `c20cd71e…` — URL et somme vérifiées verbatim. Son asset ne peut plus être
 réécrit sous ce tag.
 
-`appimagetool` **reste volontairement sur `continuous`**, et c'est un risque
-nommé plutôt qu'un oubli : la somme épinglée est l'artefact octet pour octet avec
-lequel toutes les AppImage POM1 publiées jusqu'ici ont été empaquetées, et en
-changer change le runtime embarqué dans ce que les utilisateurs téléchargent —
-ce qu'aucune CI ne peut vérifier, seule une vraie release le peut. Quand il
-cassera, la réponse est déjà mesurée et écrite dans le fichier : AppImageKit
-tag 13, asset `obsolete-appimagetool-x86_64.AppImage` (l'amont l'a renommé après
-coup), sha `df3baf5c…`, **ET_EXEC vérifié** — la propriété dont le bloc dépend.
+`appimagetool` suit, sur **AppImageKit tag 13**, asset
+`obsolete-appimagetool-x86_64.AppImage` — le préfixe fait partie de l'URL,
+l'amont ayant renommé ses assets après publication. Sa somme `continuous`
+n'avait pas *encore* dérivé, mais le dépôt n'est pas archivé et l'asset a été
+retouché le 2025-07-26 : même mèche, pas encore allumée.
+
+Basculer l'outil change le runtime embarqué dans ce que les utilisateurs
+téléchargent, et deux faits rendent ça vérifiable plutôt que pariable : les
+appimagetools du tag 13 en x86_64 **et** aarch64, ainsi que les runtimes qu'ils
+embarquent, sont tous **ELF ET_EXEC** (mesuré — c'est la propriété
+qu'AppImageLauncher exige et la raison même pour laquelle ce dépôt utilise le
+vieil outil d'AppImageKit) ; et `release.yml` **barre déjà** l'AppImage produite
+sur `readelf -h` = EXEC plus la magie `AI\x02`, sur les deux architectures. Une
+régression échouerait bruyamment au lieu d'être publiée.
+
+**`packaging/linux/build_appimage.sh` portait la même dérive, sans même une
+somme de contrôle.** Ce chemin n'est pris que hors image bionic — build local,
+sandbox — mais il téléchargeait les deux outils depuis `continuous`. Les deux
+URL passent sur les mêmes tags immuables. Le runtime aarch64 reste épinglé sur
+la release 12 : elle est déjà immuable, et on ne touche pas un chemin de release
+qui marche pour l'élégance — noté au passage que `13/obsolete-runtime-aarch64`
+est ET_EXEC lui aussi, si quelqu'un veut simplifier un jour.
+
+Les cinq URL épinglées répondent 200, et les sommes ont été vérifiées verbatim
+avant commit.
 
 
 ### Fixed — la CI était rouge depuis cinq jours, sur quatre causes distinctes
