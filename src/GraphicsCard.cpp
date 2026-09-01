@@ -543,22 +543,46 @@ uint16_t GraphicsCard::textRowAddress(int y, bool page2)
 GraphicsCard::RasterPos GraphicsCard::frameCycleToPos(uint64_t emuCycle,
                                                       uint64_t linesPerFrame)
 {
-    // Verbatim POM2 Apple2Display::frameCycleToPos. VBL lines collapse to
-    // kHiresHeight (192) so the segment builder ignores them (they govern
-    // the NEXT frame, whose start state already includes their effect).
-    const uint64_t rawLine = (emuCycle / Gen2VideoScanner::kCyclesPerLine)
-                             % linesPerFrame;
-    const int scanline = rawLine < static_cast<uint64_t>(kHiresHeight)
-                             ? static_cast<int>(rawLine)
-                             : kHiresHeight;
-    // The 40-byte visible window opens at horizontal cycle 25 (the first 25
-    // cycles of each scanline are horizontal blanking). A switch thrown in
-    // HBL (hpos < 25) lands at byteCol 0 → it governs the whole upcoming
-    // line; a switch inside the window splits the line at that byte
-    // boundary. v1 is exact at the column boundary (same scope as POM2);
-    // the transition cycle within a character clock is a later refinement.
-    const int hpos = static_cast<int>(emuCycle % Gen2VideoScanner::kCyclesPerLine);
-    const int byteCol = std::clamp(hpos - 25, 0, 40);
+    // Now routed through the SHARED beam clock (pom1::beamPosAt) rather than
+    // this card's own arithmetic — the unification BeamClock.h asked for. The
+    // reduction is exact, not approximate: the GEN2 emits one display byte per
+    // CPU cycle, so with ticksPerCpuCycle = ticksPerPixel = 1 a "tick" is a
+    // cycle is a byte column, and beamPosAt collapses to the formula this card
+    // used verbatim from POM2's Apple2Display::frameCycleToPos. Proved over
+    // every cycle of both a 262- and a 312-line frame by
+    // gen2_beam_geometry_smoke, which also re-derives the historical formula
+    // independently rather than trusting this comment.
+    //
+    // The two behaviours that reduction has to preserve, and does:
+    //   * VBL lines collapse onto 192 so the segment builder ignores them —
+    //     they govern the NEXT frame, whose start state already carries their
+    //     effect. That is beamPosAt's `line > activeLines ? activeLines` clamp.
+    //   * The 40-byte visible window opens at horizontal cycle 25 (the first 25
+    //     cycles of a line are horizontal blanking). A switch thrown in HBL
+    //     lands at byteCol 0 and governs the whole upcoming line; one inside
+    //     the window splits the line at that byte boundary. That is
+    //     activeLeftTick = 25 with the [0, activeWidth] clamp. v1 stays exact
+    //     at the column boundary (same scope as POM2); the transition cycle
+    //     within a character clock is a later refinement.
+    Gen2VideoScanner geom;
+    geom.setFiftyHz(linesPerFrame == Gen2VideoScanner::kLinesPerFrame50Hz);
+    const pom1::BeamGeometry g = geom.beamGeometry();
+    const int frameCycle = static_cast<int>(emuCycle % static_cast<uint64_t>(g.cyclesPerFrame));
+
+    // The line comes straight from the shared clock, VBlank clamp included.
+    const int scanline = pom1::beamPosAt(g, frameCycle).line;
+
+    // The column does NOT come from beamPosAt's `x`, and that is the whole
+    // subtlety of this adoption: `x` is zeroed outside the active region, but
+    // forEachBeamSegment SORTS events by (scanline, byteCol) — VBlank events
+    // included. Collapsing every VBlank event to column 0 would leave their
+    // relative order to an unstable sort, and VBlank events are exactly the ones
+    // that set the state the NEXT frame starts from. So the column is derived
+    // from lineTickAt, which is defined during blanking too. An exhaustive
+    // sweep of both frame sizes caught this the first time it was written the
+    // other way — gen2_beam_geometry_smoke, cycle 12506 of a 262-line frame.
+    const int byteCol = std::clamp(pom1::lineTickAt(g, frameCycle) - g.activeLeftTick,
+                                   0, g.activeWidth);
     return {scanline, byteCol};
 }
 

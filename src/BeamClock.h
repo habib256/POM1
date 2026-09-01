@@ -35,25 +35,49 @@ struct BeamGeometry {
 // region), x ∈ [0, activeWidth] (0 outside the active region / VBlank).
 struct BeamPos { int line; int x; };
 
-// Map a within-frame CPU cycle to the beam (line, x). frameCycle is clamped to
-// [0, cyclesPerFrame]. The line uses the same totalLines-division the per-line
-// scan/render cadence uses (so a beam line agrees with `frameCycle*262/frame`);
-// x is the active column derived from the within-line VDP tick.
-inline BeamPos beamPosAt(const BeamGeometry& g, int frameCycle)
+// The scanline a within-frame CPU cycle falls on, BEFORE the active-region
+// clamp — 0..totalLines-1, so VBlank lines keep their own numbers.
+inline int rawLineAt(const BeamGeometry& g, int frameCycle)
 {
     if (frameCycle < 0) frameCycle = 0;
     if (frameCycle > g.cyclesPerFrame) frameCycle = g.cyclesPerFrame;
-
-    const int totalLine = static_cast<int>(
+    return static_cast<int>(
         static_cast<int64_t>(frameCycle) * g.totalLines / g.cyclesPerFrame);
+}
+
+// The within-line tick for a frame cycle — the HORIZONTAL ORDINAL, defined
+// during blanking as well as inside the active region.
+//
+// beamPosAt's `x` below is this mapped into visible columns and zeroed outside
+// them, which is what a renderer wants. A caller that needs a monotone ordering
+// key across the whole line wants this instead, and the difference is not
+// academic: the GEN2 journal SORTS its soft-switch events by (scanline, column),
+// including events that land in VBlank, and two VBlank events that both
+// collapsed to column 0 would be reordered by an unstable sort — changing the
+// display state the next frame starts from.
+inline int lineTickAt(const BeamGeometry& g, int frameCycle)
+{
+    if (frameCycle < 0) frameCycle = 0;
+    if (frameCycle > g.cyclesPerFrame) frameCycle = g.cyclesPerFrame;
+    const int line = rawLineAt(g, frameCycle);
+    const int lineStartCycle = static_cast<int>(
+        static_cast<int64_t>(line) * g.cyclesPerFrame / g.totalLines);
+    return (frameCycle - lineStartCycle) * g.ticksPerCpuCycle;
+}
+
+// Map a within-frame CPU cycle to the beam (line, x). frameCycle is clamped to
+// [0, cyclesPerFrame]. The line uses the same totalLines-division the per-line
+// scan/render cadence uses (so a beam line agrees with `frameCycle*262/frame`);
+// x is the active column derived from the within-line tick, and is 0 outside
+// the active region — see lineTickAt above if you need the ordinal there.
+inline BeamPos beamPosAt(const BeamGeometry& g, int frameCycle)
+{
+    const int totalLine = rawLineAt(g, frameCycle);
     const int line = (totalLine < g.activeLines) ? totalLine : g.activeLines;
 
     int x = 0;
     if (line < g.activeLines) {
-        const int lineStartCycle = static_cast<int>(
-            static_cast<int64_t>(totalLine) * g.cyclesPerFrame / g.totalLines);
-        const int ticksIntoLine = (frameCycle - lineStartCycle) * g.ticksPerCpuCycle;
-        x = (ticksIntoLine - g.activeLeftTick) / g.ticksPerPixel;
+        x = (lineTickAt(g, frameCycle) - g.activeLeftTick) / g.ticksPerPixel;
         if (x < 0) x = 0;
         if (x > g.activeWidth) x = g.activeWidth;
     }

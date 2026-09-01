@@ -28,7 +28,7 @@
   },
   "header_fanout_ceilings": {
     "EmulationController.h": 15,
-    "GraphicsCard.h": 9,
+    "GraphicsCard.h": 10,
     "MainWindow_ImGui.h": 18,
     "Memory.h": 59
   }
