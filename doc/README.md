@@ -19,7 +19,8 @@ to the repo root.
 | [`QUICKSTART.md`](../QUICKSTART.md) | new users | Your first Apple-1 program in 5 minutes (BASIC → Wozmon → the Bench). |
 | [`CLAUDE.md`](../CLAUDE.md) | AI / contributors | **Emulator-side architecture, invariants, gotchas.** The auto-loaded entry point: memory map, MMIO, peripheral bus, mutex order, presets, testing. |
 | [`CHANGELOG.md`](../CHANGELOG.md) | everyone | Shipped work — emulator (from `TODO.md`) + 6502 software (from [`dev/TODO6502.md`](../dev/TODO6502.md)). |
-| [`TODO.md`](../TODO.md) | contributors | Open **emulator** work, grouped by subsystem. |
+| [`TODO.md`](../TODO.md) | contributors | Open **emulator** work as a HANDOVER list, grouped by what can actually be finished: finishable now · the big interesting work · maintenance that only matters if development continues · out of reach without hardware or someone else · deliberately dropped, with reasons. |
+| [`dev/TODO6502.md`](../dev/TODO6502.md) | contributors | Open **6502 software** work — afternoon-sized programs with a visible result, on libraries that already ship. The friendlier entry point of the two. |
 
 ## Writing 6502 software (`sketchs/doc/` + `dev/` tree)
 
