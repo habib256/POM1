@@ -526,6 +526,25 @@ target_include_directories(test_gen2_beam_race PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME gen2_beam_race_smoke COMMAND test_gen2_beam_race)
 set_tests_properties(gen2_beam_race_smoke PROPERTIES TIMEOUT 5)
 
+# -- GEN2 adopts the shared beam clock -----------------------------------------
+# The two cycle-accurate video engines each had their own cycle->(line,x): the
+# TMS9918 through pom1::beamPosAt, the GEN2 through a private formula ported
+# from POM2. GraphicsCard::frameCycleToPos now routes through the shared clock,
+# and the claim is EXACT equivalence -- so the test sweeps every cycle of a
+# whole 262-line frame and a whole 312-line one against the historical formula
+# re-derived inside the test. Asking the new code to agree with itself would
+# prove nothing.
+add_executable(test_gen2_beam_geometry
+    gen2_beam_geometry_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/GraphicsCard.cpp
+    ${CMAKE_SOURCE_DIR}/src/Gen2VideoScanner.cpp
+    ${CMAKE_SOURCE_DIR}/src/ResourceLocator.cpp
+)
+target_include_directories(test_gen2_beam_geometry PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+add_test(NAME gen2_beam_geometry_smoke COMMAND test_gen2_beam_geometry)
+set_tests_properties(gen2_beam_geometry_smoke PROPERTIES TIMEOUT 10)
+
 # -- GEN2 horizontal mid-scanline splits ---------------------------------------
 # Bernie's flagship release-card feature (port of POM2 horizontal_split):
 # TEXT columns alternating with HGR columns on the SAME scanline at the

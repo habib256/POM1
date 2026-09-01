@@ -10,6 +10,57 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — le GEN2 adopte l'horloge beam partagée
+
+POM1 a deux moteurs vidéo cycle-exacts et ils calculaient chacun leur position
+de faisceau : le TMS9918 par `pom1::beamPosAt` (`src/BeamClock.h`), le GEN2 par
+une formule privée dans `GraphicsCard::frameCycleToPos`, portée verbatim de
+l'`Apple2Display` de POM2. L'en-tête de `BeamClock.h` nommait lui-même l'écart —
+« GEN2 keeps its own absolute-cycle journal today; it can adopt this geometry
+once the journal/replay path is unified ». C'est cette adoption.
+
+`Gen2VideoScanner::beamGeometry()` décrit la carte dans le vocabulaire partagé.
+L'unité horizontale native du GEN2 est la **colonne d'octet**, pas le pixel : la
+carte émet un octet d'affichage par cycle CPU, 40 par ligne à partir du cycle 25.
+Avec `ticksPerCpuCycle = ticksPerPixel = 1`, un *tick* est un cycle est une
+colonne — et la fonction partagée se réduit exactement à l'arithmétique
+historique.
+
+**Prouvé exhaustivement, pas par échantillonnage** : `gen2_beam_geometry_smoke`
+balaie **chaque cycle** d'une trame de 262 lignes et d'une trame de 312 (37 310
+au total), comparés à la formule d'avant **re-dérivée dans le test** plutôt
+qu'appelée — demander au nouveau code d'être d'accord avec lui-même ne prouve
+rien.
+
+**Le balayage a servi dès la première exécution.** Router la colonne par le `x`
+de `beamPosAt` était faux : `x` est annulé hors zone active, or
+`forEachBeamSegment` **trie** les événements par `(scanline, byteCol)`,
+événements VBL compris — et ce sont précisément ceux qui fixent l'état de départ
+de la trame suivante. Les réduire tous à la colonne 0 aurait laissé leur ordre
+relatif à un tri instable. D'où deux primitives nouvelles dans `BeamClock.h` :
+`lineTickAt` (l'ordinal intra-ligne, défini pendant le blanking) et `rawLineAt`
+(la ligne non écrêtée), `beamPosAt` étant réexprimé sur les deux. Le défaut est
+apparu au cycle 12506 d'une trame de 262 lignes.
+
+`beam_clock_smoke` gagne une section pour ces primitives — elle aussi corrigée
+deux fois : elle supposait `cyclesPerFrame / totalLines` exact, ce qui vaut pour
+le GEN2 (17030/262 = 65) mais **pas** pour le TMS9918, dont la trame ne se divise
+pas en lignes entières. Les propriétés sont désormais affirmées en balayant et en
+détectant les changements de ligne, sans hypothèse d'inverse — et la remise à
+zéro de l'ordinal est affirmée comme *remise à zéro*, pas comme valeur exacte,
+parce que l'arithmétique d'origine peut rendre 1 au premier cycle d'une ligne
+quand la division tombe mal. Comportement hérité délibérément : le rendu TMS9918
+est calibré dessus.
+
+Ce qui prouve que **le beam fonctionne** reste inchangé et vert :
+`gen2_beam_race_smoke` (splits verticaux), `gen2_horizontal_split_smoke` (splits
+mi-ligne, la fonctionnalité phare de la carte de Bernie),
+`gen2_floatingbus_smoke` et l'image témoin `gfx_regress_gen2_testcard`.
+
+Fan-out de `GraphicsCard.h` 9 → 10 : un test dont le sujet est cette carte ne
+peut pas s'écrire sans l'inclure — même cas que `hermetic_core_smoke` pour
+`Memory.h`.
+
 ### Added — fidélité du terminal 1976 : PB7 peut se verrouiller sur le balayage
 
 L'affichage de l'Apple-1 n'est pas une mémoire d'écran. Le texte recircule dans

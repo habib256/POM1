@@ -3,6 +3,8 @@
 
 #include <cstdint>
 
+#include "BeamClock.h"
+
 /**
  * Gen2VideoScanner — cycle-accurate video timing core for Uncle Bernie's
  * GEN2 *release* color graphics card (back-port POM2 → POM1; see TODO.md).
@@ -103,6 +105,43 @@ public:
     void setFiftyHz(bool on) { linesPerFrame = on ? kLinesPerFrame50Hz : kLinesPerFrame; }
     bool isFiftyHz() const { return linesPerFrame == kLinesPerFrame50Hz; }
     uint64_t cyclesPerFrame() const { return kCyclesPerLine * linesPerFrame; }
+
+    /// This card's raster geometry, in the shared BeamClock vocabulary — the
+    /// seam BeamClock.h's own header called for ("GEN2 keeps its own
+    /// absolute-cycle journal today; it can adopt this geometry once the
+    /// journal/replay path is unified").
+    ///
+    /// The GEN2's native horizontal unit is the BYTE COLUMN, not the pixel: the
+    /// card emits one display byte per CPU cycle, 40 of them per line starting
+    /// at horizontal cycle 25. So `ticksPerCpuCycle` and `ticksPerPixel` are
+    /// both 1 and a "tick" IS a cycle IS a byte column — which is what makes
+    /// pom1::beamPosAt reduce to exactly the arithmetic this card has always
+    /// used, byte for byte (proved exhaustively over a whole frame by
+    /// gen2_beam_geometry_smoke).
+    ///
+    /// VBlank collapses onto `activeLines` in BeamClock exactly as the GEN2
+    /// renderer already did: a switch flipped during VBL governs the NEXT
+    /// frame, whose start state already carries its effect.
+    pom1::BeamGeometry beamGeometry() const
+    {
+        return pom1::BeamGeometry{
+            /*cyclesPerFrame  */ static_cast<int>(cyclesPerFrame()),
+            /*totalLines      */ static_cast<int>(linesPerFrame),
+            /*activeLines     */ kActiveLines,
+            /*activeWidth     */ kActiveByteCols,
+            /*ticksPerCpuCycle*/ 1,
+            /*ticksPerLine    */ static_cast<int>(kCyclesPerLine),
+            /*activeLeftTick  */ kActiveLeftCycle,
+            /*ticksPerPixel   */ 1,
+        };
+    }
+
+    /// The visible window: 40 display bytes per line, opening at horizontal
+    /// cycle 25 (the first 25 cycles of a line are horizontal blanking), over
+    /// 192 live scanlines.
+    static constexpr int kActiveLines     = 192;
+    static constexpr int kActiveByteCols  = 40;
+    static constexpr int kActiveLeftCycle = 25;
 
     // Position within the current frame, [0, cyclesPerFrame()). Exposed for
     // headless tests and the HST0 H/V-blank flag.
