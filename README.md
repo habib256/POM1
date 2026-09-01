@@ -348,6 +348,32 @@ Full target matrix and the in-app DevBench tools → **[`doc/DEVBENCH.md`](doc/D
 
 ---
 
+## 🛠 Hacking on POM1 itself
+
+The section above is about writing **Apple-1 software**. This one is about
+working on **the emulator**.
+
+```bash
+git clone https://github.com/habib256/pom1.git && cd pom1
+./setup_pom1.sh                 # deps + Dear ImGui (not vendored) + configure
+cd build && make -j && ctest    # ~2 min, 126 tests
+./POM1
+```
+
+**Read [`ARCHITECTURE.md`](ARCHITECTURE.md) first** — it is the human entry
+point: five concepts, the dependency rule and what enforces it, threads and
+locks, a table saying where your change goes, and an honest section on what is
+deliberately *not* clean. Then [`CONTRIBUTING.md`](CONTRIBUTING.md) for the
+house rules and the automated gates. [`CLAUDE.md`](CLAUDE.md) is the exhaustive
+reference underneath both — every invariant and every scar, worth grepping when
+something surprises you.
+
+Open work lives in [`TODO.md`](TODO.md) (emulator, in French) and
+[`dev/TODO6502.md`](dev/TODO6502.md) (6502 software). The full documentation
+index is [`doc/README.md`](doc/README.md).
+
+---
+
 ## 👏 Credits
 
 - **Arnaud Verhille** — Original POM1 (Java, 2000) & Dear ImGui port (2026)
@@ -365,7 +391,7 @@ Full target matrix and the in-app DevBench tools → **[`doc/DEVBENCH.md`](doc/D
 - [**AppleFritter**](https://applefritter.com/apple1/) — Apple 1 community hub.
 - [**P-LAB**](https://p-l4b.github.io/) — all P-LAB expansion docs.
 - [**HVSC**](https://www.exotica.org.uk/wiki/High_Voltage_SID_Collection) — C64 SID music archive (feeds [`tools/sid2apple1.py`](tools/sid2apple1.py)).
-- [POM1 Project Page](https://www.gistlabs.net/Apple1project/) · Architecture → [CLAUDE.md](CLAUDE.md) · Full doc map → [doc/README.md](doc/README.md).
+- [POM1 Project Page](https://www.gistlabs.net/Apple1project/) · Architecture → [ARCHITECTURE.md](ARCHITECTURE.md) · Full doc map → [doc/README.md](doc/README.md).
 
 ---
 

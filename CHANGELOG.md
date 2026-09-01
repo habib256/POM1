@@ -10,6 +10,58 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — rendre le dépôt reprenable par quelqu'un d'autre
+
+Mesuré plutôt que supposé : un clone neuf du dépôt, suivi de la procédure
+documentée, **a échoué à la première étape**.
+
+```
+fetch-pack: unexpected disconnect while reading sideband packet
+ERREUR : le clonage de Dear ImGui a échoué.
+-- Configuring incomplete, errors occurred!
+```
+
+Coupure réseau passagère — la seconde tentative a réussi, et la construction
+complète passe alors (126/126, zéro avertissement, 263 s). Mais le défaut est
+réel : `tools/ensure_imgui.sh` faisait un `git clone` d'un seul coup, sans
+reprise, et c'est le chemin d'acquisition de **dix** appelants —
+`setup_pom1.sh`, `CMakeLists.txt`, les deux workflows CI, trois conteneurs
+d'empaquetage et l'installeur Pi. Un hoquet réseau faisait échouer aussi bien le
+premier `setup` d'un nouveau venu qu'une build de release, avec un message qui
+ne suggérait même pas de réessayer. Trois tentatives avec attente croissante,
+nettoyage du clone partiel entre chaque (sans quoi la reprise échouerait pour
+une seconde raison, trompeuse), et un message final qui donne la commande à
+relancer.
+
+**Et le premier contact se faisait dans la mauvaise langue.** La documentation
+est en anglais ; `ensure_imgui.sh` (32 lignes accentuées) et `setup_pom1.sh`
+(14) parlaient français. C'est littéralement la première sortie qu'un
+développeur étranger voit. Les deux scripts sont passés en anglais, avec une
+ligne `LANGUAGE:` en tête qui dit pourquoi.
+
+**Le README ne s'adressait jamais à un contributeur.** Sa section « Write your
+own Apple 1 software » parle d'écrire du 6502 *pour* l'émulateur ; son unique
+pointeur développeur était en fin de fichier, dans *Resources*, et renvoyait
+vers `CLAUDE.md` — pas vers `ARCHITECTURE.md`, qui se présente pourtant comme
+« the human entry point ». Nouvelle section **Hacking on POM1 itself** avec les
+quatre commandes qui mènent du clone au test, et le pointeur corrigé.
+
+Nouveau **`CONTRIBUTING.md`** : le savoir existait mais éclaté entre
+`ARCHITECTURE.md` §5, la section *Testing* de `CLAUDE.md` et douze scripts de
+garde. Il rassemble la boucle build/test, les deux lanes et leur règle de
+défaut, le tableau des douze portes, la règle cardinale des plafonds (« jamais
+en lever un pour faire passer la CI »), les règles de maison, et comment écrire
+un test — y compris le piège `constexpr` trouvé cette semaine.
+
+Enfin `concurrent_frontends_smoke` est déclaré **`REPEAT UNTIL_PASS:3`**. Il
+mesure des durées de verrou en temps réel, et un runner partagé peut faire
+sauter ses bornes sans que rien n'aille mal (une fois sur deux exécutions,
+state-hold 279 ms contre 100 ms). La reprise est le correctif honnête plutôt que
+de relâcher les bornes : ces bornes SONT la raison d'être du test. Trois échecs
+indépendants échouent toujours. Ce n'est pas que de l'hygiène de CI — un nouveau
+venu dont la première contribution passe au rouge sur un aléa conclut qu'il a
+cassé quelque chose.
+
 ### Added — une palette de commandes (F9), dérivée des tables existantes
 
 Dernière puce du chantier 3. La moitié « menus » était déjà faite et ne
