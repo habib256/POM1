@@ -10,7 +10,16 @@
 // implementation define here. On WASM the AudioDevice TU defines
 // MA_NO_DEVICE_IO before the implementation include so decoders are still
 // compiled in without the backend layer.
+// Vendored miniaudio: /W0 for the include only (same reason as the GCC/clang
+// pragmas in AudioDevice.cpp — it is not ours to keep clean, and -DPOM1_WERROR=ON
+// would otherwise fail on it in every TU that pulls this header).
+#if defined(_MSC_VER)
+#pragma warning(push, 0)
+#endif
 #include "third_party/miniaudio.h"
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -1162,8 +1171,12 @@ bool CassetteDevice::pcmToDurations(const std::vector<float>& mono,
             // 5.1e9 with ease, and UBSan calls it exactly that. PcmFile.h bounds
             // the rate the two hand-rolled parsers accept, but miniaudio-decoded
             // files arrive here too, so the arithmetic itself has to be safe.
+            // std::round, not std::llround: the clamp below is done in the
+            // double domain on purpose (see above), and llround would both
+            // narrow here — MSVC C4244 — and be undefined for the very
+            // out-of-range values this arithmetic exists to survive.
             const double rawCycles =
-                std::llround(static_cast<double>(deltaSamples) *
+                std::round(static_cast<double>(deltaSamples) *
                              static_cast<double>(kTapeFileTimebaseHz) /
                              static_cast<double>(sampleRate));
             const uint32_t cycles = static_cast<uint32_t>(std::min(

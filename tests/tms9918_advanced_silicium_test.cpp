@@ -48,7 +48,7 @@ void vramWrite(TMS9918& vdp, uint16_t addr, uint8_t v)
 // Helper: write a SAT entry (Y, X, name, color) at SAT base $1B00.
 void writeSAT(TMS9918& vdp, int slot, uint8_t y, uint8_t x, uint8_t name, uint8_t col)
 {
-    const uint16_t addr = 0x1B00 + slot * 4;
+    const uint16_t addr = static_cast<uint16_t>(0x1B00 + slot * 4);
     vramWrite(vdp, addr,     y);
     vramWrite(vdp, addr + 1, x);
     vramWrite(vdp, addr + 2, name);

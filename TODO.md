@@ -102,7 +102,6 @@ commandes passent par `setCardPlugged()`. Reste, pour ce chantier :
 ### 5. Qualité, sécurité et chaîne de livraison (1–2 semaines)
 
 - [ ] **Ajouter une analyse statique incrémentale** `[M · solid]` — `clang-tidy` sur le code POM1 modifié, avec baseline initiale explicite ; ne pas analyser le code vendu.
-- [ ] **Passer Windows en warnings-as-errors** `[S · solid]` — nettoyer les conversions POM1 restantes, exclure `stb_vorbis.c`, puis activer `/WX` dans le job Windows.
 - [ ] **Produire SBOM et inventaire de licences** `[M · solid]` — attacher les deux aux releases et vérifier les composants vendus/bundlés.
 - [ ] **Ajouter des budgets de performance** `[M · solid]` — seuils reproductibles pour débit CPU, callback audio, application d'un preset et rewind ; alerter sur tendance avant de bloquer une PR.
 - [ ] **Créer un bundle local de diagnostic** `[M · solid]` — *Aide → Signaler un problème* assemble versions, journal, snapshot et configuration dans un zip explicitement choisi par l'utilisateur, sans télémétrie automatique. Éviter du travail non async-signal-safe dans un handler fatal.

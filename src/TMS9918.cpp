@@ -862,7 +862,8 @@ void TMS9918::renderGfxIILineRaw(int line, uint32_t* lineBuf,
     const int section   = row / 8;
     for (int col = 0; col < 32; ++col) {
         const uint8_t  name       = vram[(nameBase + row * 32 + col) & vramMask];
-        const uint16_t charOffset = (uint16_t)(section * 256 + name) * 8 + lineInRow;
+        const uint16_t charOffset =
+            static_cast<uint16_t>((uint16_t)(section * 256 + name) * 8 + lineInRow);
         const uint16_t patAddr    = patternBase + (charOffset & patternMask);
         const uint16_t colAddr    = colorBase   + (charOffset & colorMask);
         const uint8_t  pat        = vram[patAddr & vramMask];
@@ -1496,7 +1497,7 @@ void TMS9918::renderGraphicsII(uint32_t* pixels, const Snapshot& s, uint32_t bac
             uint16_t charOffset = (uint16_t)(section * 256 + name) * 8;
 
             for (int line = 0; line < 8; line++) {
-                uint16_t offset   = charOffset + line;
+                uint16_t offset   = static_cast<uint16_t>(charOffset + line);
                 uint16_t patAddr  = patternBase + (offset & patternMask);
                 uint16_t colAddr  = colorBase   + (offset & colorMask);
 

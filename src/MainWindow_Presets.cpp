@@ -867,8 +867,8 @@ void MainWindow_ImGui::renderProfileChooser()
         // edge (unreachable buttons) on OS windows narrower than ~1000 px.
         const float ebGap = 14.0f, ebH = 44.0f;
         const float ebW = std::min(240.0f, (std::min(1080.0f, winW - 40.0f) - 3.0f * ebGap) / 4.0f);
-        const float rowW = 4.0f * ebW + 3.0f * ebGap;
-        if (winW > rowW) ImGui::SetCursorPosX((winW - rowW) * 0.5f);
+        const float ebRowW = 4.0f * ebW + 3.0f * ebGap;   // not `rowW`: shadows
+        if (winW > ebRowW) ImGui::SetCursorPosX((winW - ebRowW) * 0.5f);
         const ImU32 pB = IM_COL32(150, 96, 34, 255), pH = IM_COL32(190, 128, 52, 255), pA = IM_COL32(120, 76, 26, 255);
         const ImU32 aB = IM_COL32(120, 60, 96, 255), aH = IM_COL32(152, 78, 124, 255), aA = IM_COL32(96, 48, 76, 255);
         ImGui::PushStyleColor(ImGuiCol_Button, pB);

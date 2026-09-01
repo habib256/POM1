@@ -38,10 +38,19 @@
 // TU. stb_vorbis raises benign signed/unsigned comparison warnings
 // under -Wall; silence them locally so the rest of the project keeps
 // its warning profile intact.
+// MSVC needs the same treatment and did not have it: stb_vorbis alone accounts
+// for 102 of the 134 distinct warning sites the Windows job reports, all of them
+// charged to THIS translation unit because the .c is included here — the same
+// reason GCC needs the pragmas above. `warning(push, 0)` drops to /W0 for the
+// include and restores the file's level after it, which is what makes
+// -DPOM1_WERROR=ON survivable on Windows without turning individual codes off
+// project-wide.
 #ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wall"
 #pragma clang diagnostic ignored "-Wextra"
+#elif defined(_MSC_VER)
+#pragma warning(push, 0)
 #elif defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wall"
@@ -50,6 +59,8 @@
 #include "third_party/stb_vorbis.c"
 #ifdef __clang__
 #pragma clang diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
 #elif defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
@@ -75,6 +86,8 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wall"
 #pragma clang diagnostic ignored "-Wextra"
+#elif defined(_MSC_VER)
+#pragma warning(push, 0)
 #elif defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstringop-overflow"
@@ -82,6 +95,8 @@
 #include "third_party/miniaudio.h"
 #ifdef __clang__
 #pragma clang diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
 #elif defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif

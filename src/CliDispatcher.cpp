@@ -397,8 +397,10 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& cleanExitOut)
                 const MachineConfig* preset = machinePreset(presetIdFromIndex(p));
                 bool first = true;
                 if (preset) {
-                    for (std::size_t i = 0; i < kCardCount; ++i) {
-                        const CardId id = static_cast<CardId>(i);
+                    // `card`, not `i`: the argv walk this is nested inside owns
+                    // that name (MSVC C4456).
+                    for (std::size_t card = 0; card < kCardCount; ++card) {
+                        const CardId id = static_cast<CardId>(card);
                         if (!preset->cards.contains(id)) continue;
                         if (!first) std::cout << ',';
                         std::cout << canonicalCardName(id);

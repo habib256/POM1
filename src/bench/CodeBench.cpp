@@ -947,9 +947,10 @@ void CodeBench::render(const char* title, bool* open)
                                ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
         std::string msg;
         if (pendingCloseReq_ == CloseReq::One) {
-            std::string title = "this tab";
-            for (const auto& d : docs_) if (d->uid == pendingCloseUid_) { title = d->title; break; }
-            msg = ICON_FA_TRIANGLE_EXCLAMATION "  Discard unsaved changes to \"" + title + "\"?";
+            // Not `title`: that is this function's parameter (the window name).
+            std::string tabTitle = "this tab";
+            for (const auto& d : docs_) if (d->uid == pendingCloseUid_) { tabTitle = d->title; break; }
+            msg = ICON_FA_TRIANGLE_EXCLAMATION "  Discard unsaved changes to \"" + tabTitle + "\"?";
         } else {
             const int keep = (pendingCloseReq_ == CloseReq::Others) ? pendingCloseUid_ : -1;
             int n = 0; for (const auto& d : docs_) if (d->uid != keep && d->dirty) ++n;

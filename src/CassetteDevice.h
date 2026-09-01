@@ -7,7 +7,16 @@
 #include "LockOrder.h"
 #include "RealtimeDiagnostics.h"
 #include "Peripheral.h"
+// Vendored miniaudio: /W0 for the include only (same reason as the GCC/clang
+// pragmas in AudioDevice.cpp — it is not ours to keep clean, and -DPOM1_WERROR=ON
+// would otherwise fail on it in every TU that pulls this header).
+#if defined(_MSC_VER)
+#pragma warning(push, 0)
+#endif
 #include "third_party/miniaudio.h"
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 #include <algorithm>
 #include <atomic>
