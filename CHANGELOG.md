@@ -10,7 +10,35 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
-### Fixed — la CI était rouge depuis cinq jours, sur trois causes distinctes
+### Fixed — la CI était rouge depuis cinq jours, sur quatre causes distinctes
+
+**4. Linux — un seuil de concurrence qui mesurait l'ordonnanceur, pas POM1.**
+Une fois le build Linux réparé, `concurrent_frontends_smoke` est apparu : il
+n'avait **jamais tourné** sur ce job, ayant été ajouté par le commit même qui
+cassait la compilation. Il échouait sur `maxStateWaitNs` = 1,66 s contre une
+porte à 500 ms — alors que le `maxStateHoldNs` restait à 16 ms. Personne n'avait
+donc tenu le verrou trop longtemps : un attendeur avait simplement perdu
+l'ordonnanceur.
+
+Deux mesures ont tranché. D'abord, 500 ms était intenable : sur un Mac 8 cœurs
+au repos, la même valeur va déjà de 57 à 350 ms. Ensuite — et c'est le point —
+**cette porte ne détecte pas ce pour quoi elle existe** : en désactivant le
+yield de priorité de `PriorityMutex` dans `emulationLoop` et en relançant huit
+fois, elle n'a franchi les 500 ms **qu'une fois sur huit**. Faible pouvoir de
+détection, fort taux de faux positifs.
+
+Ce que le yield achète réellement se voit sur la **progression** du fil
+concurrent : bascules de topologie terminées dans la même fenêtre, médiane ~117
+avec le yield contre ~35 sans, sur huit runs chacun. Les distributions se
+recouvrent sur un run isolé (116 contre 45), donc ce n'est pas encore un seuil ;
+c'est la mesure sur laquelle une future porte devra se construire.
+
+`maxStateWaitNs` devient donc une porte de **catastrophe** (5 s = un blocage) et
+non de qualité. Restent barrées les grandeurs que POM1 contrôle vraiment, toutes
+deux avec de la marge : le HOLD maximal mesuré 18-68 ms contre 100, et le
+callback audio 7-33 µs contre 50 ms.
+
+### Fixed — les trois premières causes
 
 `ci.yml` échouait sur **chaque** push depuis `c72d4eae` (27 août) : les jobs
 `linux` et `windows` rouges, `macos` et `wasm` verts. Cinq jours pendant
