@@ -48,6 +48,7 @@ inline constexpr int kKeyF3  = 292;
 inline constexpr int kKeyF5  = 294;
 inline constexpr int kKeyF6  = 295;
 inline constexpr int kKeyF7  = 296;
+inline constexpr int kKeyF9  = 298;
 inline constexpr int kKeyF10 = 299;
 
 inline constexpr int kModShift   = 0x0001;
@@ -69,6 +70,7 @@ enum class Command {
     ToggleMemoryMapGrid,
     ToggleDebugger,
     ToggleUiNav,
+    ToggleCommandPalette,
 };
 
 struct Binding {
@@ -76,6 +78,9 @@ struct Binding {
     int mods;                 ///< 0 = no modifier.
     const char* label;        ///< Display string, e.g. "Ctrl+F5".
     Command command;
+    /// Short imperative name, for the command palette's row. `description`
+    /// below is the Help window's sentence and is far too long for a list.
+    const char* name;
     /// One line for Help ▸ Keyboard Shortcuts. The window used to hold its own
     /// copy of this prose.
     const char* description;
@@ -85,21 +90,25 @@ struct Binding {
 };
 
 inline constexpr Binding kBindings[] = {
-    { kKeyF1,  0,           "F1",      Command::ToggleMemoryViewer,
+    { kKeyF1,  0,           "F1",      Command::ToggleMemoryViewer, "Memory Viewer",
       "Toggle the Memory Viewer", false },
-    { kKeyF2,  0,           "F2",      Command::ToggleMemoryMapGrid,
+    { kKeyF2,  0,           "F2",      Command::ToggleMemoryMapGrid, "Memory Map Grid",
       "Toggle the Memory Map Grid", false },
-    { kKeyF3,  0,           "F3",      Command::ToggleDebugger,
+    { kKeyF3,  0,           "F3",      Command::ToggleDebugger, "CPU Debug Console",
       "Toggle the CPU Debug Console", false },
-    { kKeyF5,  0,           "F5",      Command::SoftReset,
+    { kKeyF5,  0,           "F5",      Command::SoftReset, "Soft reset",
       "Soft reset (Apple-1 RESET line)", false },
-    { kKeyF5,  kModControl, "Ctrl+F5", Command::HardReset,
+    { kKeyF5,  kModControl, "Ctrl+F5", Command::HardReset, "Hard reset (power cycle)",
       "Hard reset (power cycle: RAM cleared)", false },
-    { kKeyF6,  0,           "F6",      Command::ToggleRun,
+    { kKeyF6,  0,           "F6",      Command::ToggleRun, "Start / stop the CPU",
       "Start / stop the CPU", false },
-    { kKeyF7,  0,           "F7",      Command::StepCpu,
+    { kKeyF7,  0,           "F7",      Command::StepCpu, "Single-step one instruction",
       "Single-step one instruction (hold to repeat)", true },
-    { kKeyF10, 0,           "F10",     Command::ToggleUiNav,
+    { kKeyF9,  0,           "F9",      Command::ToggleCommandPalette, "Command palette",
+      "Command palette: type to search every window, machine action and profile. "
+      "Derived from the same tables the menus are, so it always lists exactly what "
+      "the app has.", false },
+    { kKeyF10, 0,           "F10",     Command::ToggleUiNav, "UI keyboard navigation mode",
       "UI keyboard navigation mode on/off (accessibility): Tab / arrows / Space "
       "/ Enter drive the POM1 interface instead of typing into the Apple-1. The "
       "status bar shows \"UI NAV\" while active.", false },

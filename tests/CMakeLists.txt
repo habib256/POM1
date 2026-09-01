@@ -2345,6 +2345,18 @@ add_test(NAME logo_sketches_smoke
          WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set_tests_properties(logo_sketches_smoke PROPERTIES TIMEOUT 10)
 
+# command_palette_smoke -- the palette's matching and ranking. The palette itself
+# is derived (its entries come from windowRegistry(), the shortcut table and the
+# preset table, so it cannot drift from the app); what it OWNS is the decision of
+# what a query matches and in what order. Links nothing.
+add_executable(test_command_palette command_palette_smoke_test.cpp)
+target_include_directories(test_command_palette PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+add_test(NAME command_palette_smoke
+         COMMAND test_command_palette
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(command_palette_smoke PROPERTIES TIMEOUT 10)
+
 # imgui_pin_sync -- same idea for the OTHER pin the repo carries. Dear ImGui is
 # not vendored, and its tag was copy-pasted into eleven files; CMake and the
 # scripts now read IMGUI_VERSION, but two workflow `env:` blocks still can't

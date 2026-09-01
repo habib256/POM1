@@ -105,13 +105,22 @@ fenêtre d'aide rend les lignes qu'elle décrit, et l'interdiction des
 Ctrl+lettre est un `static_assert` sur la vraie table. Enfin, « quel
 répertoire implique quelle carte » (`src/SoftwareDirRules.h`) était écrit
 deux fois, une fois par direction ; les deux lisent la même table et
-`software_dir_rules_smoke` l'épingle. Reste, pour ce chantier :
+`software_dir_rules_smoke` l'épingle. La palette de commandes (F9) ferme la
+dernière puce : `src/CommandPalette.h` porte le filtrage et le classement, la
+liste étant dérivée de `windowRegistry()`, de la table de raccourcis et de celle
+des presets — elle ne peut donc pas diverger de ce que l'application contient.
 
-- [ ] **Dériver les entrées de menu du registre, puis une palette de commandes** `[M · solid]` — la moitié raccourcis est livrée (`src/ShortcutTable.h`, `shortcut_table_smoke`) et les fenêtres passent déjà par `windowRegistry()` pour la persistance, le dessin, le dock et la présence par preset. Reste les ~100 `MenuItem` : les bascules pures peuvent venir du registre, mais beaucoup portent des effets de bord (brancher une carte, initialiser un éditeur) et l'ordre/les séparateurs sont eux-mêmes une donnée à décrire. Puis la palette. Préserver l'interdiction des raccourcis Ctrl+lettre, désormais un `static_assert` en plus de `shortcuts_sync`.
-- [ ] **Un test par décision extraite** `[S · solid]` — chaque extraction arrive avec son smoke test qui ne lie ni ImGui ni GLFW, comme `mainwindow_logic_smoke` et `staged_card_configuration_smoke`.
+**Une règle, pas une tâche** : chaque décision extraite arrive avec son smoke
+test qui ne lie ni ImGui ni GLFW. Elle a été tenue huit fois ; elle reste vraie
+pour la prochaine et n'a pas à figurer dans une liste de cases.
 
-> Sortie : les décisions de l'UI sont testées hors ImGui ; `MainWindow_*` ne
-> contient plus que menus, docking, dessin et orchestration.
+> **Chantier clos.** Huit seams purs (`Apple1KeyMap`, `FullscreenExpand`,
+> `WindowGeometry`, `StagedCardConfiguration`, `LayoutDecisions`,
+> `PresetDecisions`, `ShortcutTable`, `SoftwareDirRules`, plus `CommandPalette`),
+> tous à 100 % de couverture de lignes ; le module `ui` passe de 2,4 % à 3,9 %
+> sur 14 468 lignes, les neuf autres modules inchangés. Ce qui reste non couvert
+> dans `MainWindow_*`, ce sont les ~13 900 lignes qui dessinent — et c'est le
+> résultat visé, pas un reste à traiter.
 
 ## Ensuite
 

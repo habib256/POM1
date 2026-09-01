@@ -10,6 +10,41 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — une palette de commandes (F9), dérivée des tables existantes
+
+Dernière puce du chantier 3. La moitié « menus » était déjà faite et ne
+l'annonçait pas : `MainWindow_Menu.cpp` construit tout le menu *Windows* depuis
+`windowRegistry()`, groupé par `kind`, avec les panneaux de cartes non branchées
+grisés. Restait la palette.
+
+`src/CommandPalette.h` (en-tête pur, ni ImGui ni GLFW) porte la seule chose qui
+soit une décision : ce qu'une requête filtre et dans quel ordre. La liste, elle,
+est **dérivée** — reconstruite à chaque ouverture depuis `windowRegistry()`,
+`pom1::shortcuts::kBindings` et `kMachinePresets[]` — donc une fenêtre, un
+raccourci ou un profil nouveaux y apparaissent sans que personne ne les inscrive
+quelque part. C'est la propriété qui compte : la palette ne peut pas diverger de
+ce que l'application contient.
+
+Détails qui évitent les doublons : les trois raccourcis qui basculent une fenêtre
+du registre (F1/F2/F3) affichent leur accélérateur sur la **ligne de la fenêtre**
+au lieu d'être listés une seconde fois comme commandes ; les fenêtres de type
+`Dialog` sont exclues, comme dans le menu *Windows*, ce qui fait aussi que la
+palette ne se liste pas elle-même.
+
+Au passage, l'effet d'une commande n'est plus écrit qu'**une fois** : le `switch`
+du répartiteur clavier devient `MainWindow_ImGui::runShortcutCommand()`, que la
+palette appelle aussi. Sans cela la palette en aurait ajouté une seconde copie.
+
+Nouveau test **`command_palette_smoke`** (6 sections, ne lie rien). **Il a trouvé
+un vrai défaut du modèle** : `« D e b u g Console »` battait `« Debug Console »`
+sur la requête `debug`, parce que chaque lettre isolée comptait comme un début de
+mot. Un utilisateur qui tape un mot veut le mot : la prime de contiguïté passe
+au-dessus de celle de début de mot.
+
+La palette s'ouvre par **F9** ou depuis la barre de menus. Elle a sa ligne de
+registre — `window_registry_sync` a refusé le drapeau `showCommandPalette` tant
+qu'elle n'existait pas.
+
 ### Changed — les cinq tiers de CI passent en warnings-as-errors
 
 Linux et macOS (Metal + OpenGL) portaient la porte depuis août. Windows et WASM
