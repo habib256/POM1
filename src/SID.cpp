@@ -9,12 +9,21 @@
 // directory (PUBLIC on the libresidfp_static target) puts its own SID.h
 // on the include path under the same name as ours; we go through the
 // residfp aggregate header to disambiguate.
+// /W0 for the vendored headers: `WaveformGenerator.h` shadows a class member
+// with a constructor parameter (C4458), which is upstream's business, not ours.
+// Same bracket as AudioDevice.cpp puts around stb_vorbis and miniaudio.
+#if defined(_MSC_VER)
+#pragma warning(push, 0)
+#endif
 #include "residfp/residfp_defs.h"
 // The libresidfp upstream SID.h lives under the libresidfp_static target's
 // PUBLIC include dir (third_party/libresidfp/src). Including it here by
 // quoted name would re-include this file (same basename); use the relative
 // path to disambiguate.
 #include "third_party/libresidfp/src/SID.h"
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 #include <algorithm>
 #include <cstring>

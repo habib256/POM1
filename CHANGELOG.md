@@ -45,9 +45,23 @@ qu'achète une porte d'avertissements, et ce qu'aucune relecture n'avait vu.
 Le nom de remplacement n'est pas `small` non plus : `<windows.h>` (rpcndr.h) en
 fait une macro pour `char`.
 
+Le premier run MSVC a rendu **deux sites de plus**, tous deux vendus, et tous
+deux instructifs :
+
+- `libresidfp/WaveformGenerator.h` masque un membre de classe (C4458). Il entre
+  par `SID.cpp`, qui n'avait pas le bracket — je l'avais mis autour de
+  `stb_vorbis` et de `miniaudio` seulement. Corrigé.
+- `stb_vorbis.c(4758)` déclenche C4701, « variable locale potentiellement non
+  initialisée », **malgré** le `warning(push, 0)`. C'est un avertissement de
+  **génération de code** : MSVC le décide après l'analyse de toute l'unité de
+  traduction, quand le `pop` est passé depuis longtemps. Il doit donc rester
+  désactivé pour le reste du fichier — d'où un `#pragma warning(disable: 4701)`
+  placé *après* le `pop`, avec la raison écrite à côté. C'est la seule concession
+  du lot, sur une unité de traduction dont le code POM1 se réduit à de la colle
+  miniaudio.
+
 Vérifié d'ici : suite complète verte (120/120) et build `-DPOM1_WERROR=ON` sous
-clang sans une seule erreur. Le verdict MSVC appartient au job Windows, que ce
-commit passe en `-DPOM1_WERROR=ON`.
+clang sans une seule erreur. Le verdict MSVC appartient au job Windows.
 
 
 ### Fixed — plus une seule URL mouvante dans la chaîne AppImage
