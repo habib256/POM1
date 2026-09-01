@@ -291,11 +291,14 @@ $FF00-$FFFF  Woz Monitor ROM + vectors ($FFFA-$FFFF)
 
 ```bash
 ctest                       # full suite (~5–30 s wall time; Klaus + TMS9918 tests dominate)
+tools/coverage.py --gate    # per-module line+branch coverage (nightly CI job)
 ctest -L emulator           # the release gate — green with no cc65 and no editors
 ctest -L devtools           # editors, DevBench/cc65 pipeline, BASIC compilers
 ctest --output-on-failure
 ctest -R klaus -V
 ```
+
+**Coverage is measured per MODULE, never as one percentage** (`-DPOM1_COVERAGE=ON` + `tools/coverage.py`, nightly `coverage` job in `ci.yml`). A single figure over the 44 500 measurable lines averages a cycle-exact 6502 against 14 400 lines of ImGui drawing no test binary links: it moves for the wrong reasons and is improved by testing whatever is easiest. Measured today — **cpu 93.3 %, parsers 93.6 %, topology 89.9 %, snapshot 88.9 %, memory 79.4 %, platform 60.7 %, devices 52.4 %, control 34.2 %, devtools 24.3 %, ui 2.4 % of 14 407 lines**. Only the first four are GATED (`THRESHOLDS` in the script: 90/90/85/85, set just under what the suite measures, so they catch a module LOSING coverage — a branch arriving without its case); the rest are reported, because a floor under 2.4 % UI coverage would be a number pretending to be a promise. The `ui` row is the quantified version of TODO.md's chantier 3. `llvm-cov`/`llvm-profdata` must come from the clang that compiled the tree — a mismatch says only "unsupported coverage format version" — so the script resolves them by that compiler's major version.
 
 **Two lanes, and every declared test carries exactly one of them** (`LABELS`,
 assigned at the bottom of `tests/CMakeLists.txt` from the `POM1_DEVTOOLS_TESTS`

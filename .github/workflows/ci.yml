@@ -493,3 +493,49 @@ jobs:
             fuzz-corpus/*/leak-*
             fuzz-corpus/*/timeout-*
           if-no-files-found: ignore
+
+  # ── Coverage by module, nightly ───────────────────────────────────────────
+  # tools/coverage.py builds the tree with LLVM source-based coverage, runs the
+  # whole ctest suite under it, and reports LINE + BRANCH coverage per module.
+  #
+  # It gates four modules and reports the rest. That asymmetry is the point: a
+  # single percentage over 44 500 measurable lines averages a cycle-exact 6502
+  # against 14 400 lines of ImGui drawing no test binary links, moves for the
+  # wrong reasons, and is improved by testing whatever is easiest. The four
+  # floors (cpu, parsers, topology, snapshot — THRESHOLDS in the script) sit
+  # just under what the suite measures today, so they catch a module LOSING
+  # coverage, which is what happens when a branch arrives without its case.
+  #
+  # Nightly, with the sanitizers and the fuzzers: the instrumented build is -O0
+  # with LTO off and the suite runs several times slower.
+  coverage:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake clang llvm libglfw3-dev libgl1-mesa-dev cc65
+
+      - name: Fetch Dear ImGui (pin from IMGUI_VERSION)
+        run: tools/ensure_imgui.sh imgui
+
+      - name: Coverage by module
+        env:
+          # llvm-cov and llvm-profdata must come from the SAME toolchain that
+          # compiled the tree, or the profile is reported as an unsupported
+          # format version and nothing else.
+          CC: clang
+          CXX: clang++
+        run: python3 tools/coverage.py --gate --json coverage.json
+
+      - name: Upload the table
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage-by-module
+          path: coverage.json
+          if-no-files-found: ignore

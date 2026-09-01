@@ -10,6 +10,59 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — couverture par module, et quatre seuils qui tiennent
+
+`-DPOM1_COVERAGE=ON` instrumente l'arbre (LLVM source-based coverage, LTO
+forcé off) et **`tools/coverage.py`** conduit le cycle entier : configure,
+build, `ctest` sous instrumentation, `llvm-profdata merge`, `llvm-cov export`,
+puis un tableau **lignes + branches par module**.
+
+Le refus explicite d'un pourcentage global est le cœur de l'affaire : une
+moyenne sur 44 500 lignes mesurables mélange un 6502 cycle-exact et 14 400
+lignes de dessin ImGui qu'aucun binaire de test ne lie. Elle bouge pour les
+mauvaises raisons et s'améliore en testant ce qui est facile. Première mesure,
+suite complète (120 tests, verts sous instrumentation) :
+
+| module | fichiers | lignes | ligne % | branche % |
+|---|---:|---:|---:|---:|
+| cpu | 1 | 723/775 | **93,3** | 90,7 |
+| parsers | 9 | 1973/2108 | **93,6** | 81,1 |
+| topology | 5 | 392/436 | **89,9** | 84,6 |
+| snapshot | 5 | 1020/1147 | **88,9** | 74,9 |
+| memory | 3 | 1193/1502 | 79,4 | 71,8 |
+| platform | 10 | 837/1378 | 60,7 | 53,6 |
+| devices | 64 | 4542/8663 | 52,4 | 41,2 |
+| control | 7 | 546/1596 | 34,2 | 34,9 |
+| devtools | 57 | 3045/12529 | 24,3 | 20,0 |
+| **ui** | 31 | **341/14407** | **2,4** | 3,5 |
+
+Le tableau confirme la thèse de `TODO.md` avec un chiffre : **14 407 lignes
+d'UI à 2,4 %**, et c'est là que vivaient les défauts connus (backspace
+destructif, six défauts du plein écran, auto-dial BBS). Le chantier 3 a
+maintenant sa mesure de départ.
+
+**Quatre seuils seulement** — cpu 90, parsers 90, topology 85, snapshot 85 —
+posés *sous* ce que la suite mesure déjà : ce sont des cliquets destinés à
+repérer un module qui **perd** de la couverture (une branche ajoutée sans son
+cas), pas des objectifs. Les six autres modules sont **rapportés et non
+barrés** : un plancher sous 2,4 % d'UI serait un nombre qui fait semblant
+d'être une promesse.
+
+Nouveau job CI **`coverage`** (nocturne, avec les sanitizers et les fuzzers —
+le build instrumenté est en `-O0` et la suite tourne plusieurs fois plus
+lentement) : `tools/coverage.py --gate --json coverage.json`, le JSON étant
+archivé pour suivre la tendance. `llvm-cov` et `llvm-profdata` sont résolus
+**dans la version du clang qui a compilé l'arbre** (un décalage ne dit rien
+d'autre que « unsupported coverage format version »), via `xcrun` sur macOS et
+`/usr/lib/llvm-N/bin` sur Debian/Ubuntu.
+
+Vérifié dans les deux sens : `--gate` passe sur l'arbre actuel, et un seuil
+volontairement inatteignable (`--min cpu:99`) échoue en nommant le module. Le
+build normal est inchangé — l'option est OFF par défaut, `build-coverage/` est
+un arbre séparé (sinon l'instrumentation dés-optimiserait le `build/` de tout
+le monde) et `ctest` reste à **120/120**.
+
+
 ### Security — les GitHub Actions sont épinglées au commit
 
 `uses: actions/checkout@v5` ressemble à une version ; ce n'en est pas une. `v5`
