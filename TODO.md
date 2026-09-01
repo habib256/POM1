@@ -1,142 +1,111 @@
-# TODO
+# TODO — ce qui reste, et ce qui ne se fera pas
 
-Backlog **ouvert** de l’émulateur POM1. Le travail livré vit dans
-[`CHANGELOG.md`](CHANGELOG.md), les décisions techniques dans le code et `git log`,
-et le logiciel 6502 dans [`dev/TODO6502.md`](dev/TODO6502.md).
+Ce fichier n'est pas une file de sprint : c'est la **liste de passation**. Il dit
+ce qui peut encore être terminé, ce qui serait beau mais demande du temps, ce qui
+n'a de sens que si le développement continue, et ce qui a été délibérément
+écarté. Le travail livré vit dans [`CHANGELOG.md`](CHANGELOG.md), les décisions
+techniques dans le code et `git log`.
+
+**Le logiciel 6502 a son propre backlog, [`dev/TODO6502.md`](dev/TODO6502.md),
+et c'est la meilleure porte d'entrée** pour quelqu'un qui découvre le projet :
+des programmes d'un après-midi, à résultat visible à l'écran, sur des
+bibliothèques déjà écrites et testées. Ce fichier-ci est celui de l'émulateur, et
+il est plus aride.
+
+Architecture pour les humains : [`ARCHITECTURE.md`](ARCHITECTURE.md). Comment
+contribuer : [`CONTRIBUTING.md`](CONTRIBUTING.md). Invariants et pièges :
+[`CLAUDE.md`](CLAUDE.md).
 
 ## Règles
 
-- Une case décrit un résultat vérifiable, pas l’historique qui y a conduit.
+- Une case décrit un résultat vérifiable, pas l'historique qui y a conduit.
 - Effort : **S** (<1 j), **M** (1–5 j), **L** (>5 j). Impact : **nice**, **solid**, **critical**.
-- Un chantier n’apparaît qu’une fois. Les dépendances sont indiquées explicitement.
 - Une réalisation quitte immédiatement ce fichier pour `CHANGELOG.md`.
-- 🚫 signifie qu’une ressource externe empêche réellement d’avancer.
+- 🚫 signifie qu'une ressource externe empêche réellement d'avancer.
 
-## Maintenant — trois chantiers, dans cet ordre
+## Où en est le projet
 
-POM1 est un monolithe modulaire sain et très testé : 118 tests verts en ~55 s,
-oracles CPU cycle-exacts, fuzzers qui ont trouvé de vrais défauts, ordre des
-verrous prouvé. Le cœur n'est pas le problème.
+127 tests verts en ~2 min, deux oracles CPU cycle-exacts, quatre campagnes de
+fuzzing dont deux ont trouvé de vrais défauts, ordre des verrous prouvé, cinq
+tiers de CI en warnings-as-errors. Un clone neuf compile et passe la suite.
 
-Le problème est le **périmètre** : sur ~85 600 lignes de `src/`, l'émulateur
-proprement dit en représente moins de 30 %, l'UI 20 % sans couverture directe,
-et l'outillage de développement 21 % — un second produit qui partage un
-processus, un build, une matrice de portage et un mainteneur. Les trois
-chantiers ci-dessous attaquent cela dans l'ordre du risque réel.
+Les trois chantiers structurants sont **clos** :
 
-Les grands refactors d'architecture précédemment planifiés (`PeripheralManager`,
-`CpuRunner`, `StateManager`, migration panneau par panneau) sont **écartés** :
-voir la section dédiée plus bas. Ils totalisaient 11 à 19 semaines de refactor
-pur, sans valeur utilisateur, sur un cœur actuellement stable.
+1. **Isoler l'environnement de développement** — `-DPOM1_DEVTOOLS=OFF` produit un
+   émulateur complet qui passe `ctest -L emulator` ; la frontière tient à 16
+   arêtes dans 4 fichiers et `architecture_check` refuse la 17ᵉ. Mesure : 149 →
+   104 unités de traduction, 4,13 → 2,86 Mo de binaire, 27 → 20 s de build.
+2. **Services hôte injectés** — plus aucun test n'ouvre le périphérique audio de
+   l'hôte ; un cœur nu se construit en 0,3 ms au lieu de 135 ms. Une seule
+   recherche de ressources (`ResourceLocator`), et `resource_probes_sync` refuse
+   la 53ᵉ sonde écrite à la main.
+3. **Sortir les décisions de l'UI** — neuf seams purs, tous à 100 % de couverture
+   de lignes ; le module `ui` passe de 2,4 % à 3,9 % sur 14 468 lignes, les neuf
+   autres modules inchangés. Ce qui reste non couvert dessine.
 
-Architecture pour les humains : [`ARCHITECTURE.md`](ARCHITECTURE.md). Invariants
-et pièges : [`CLAUDE.md`](CLAUDE.md).
+Les grands refactors d'architecture planifiés puis écartés (`PeripheralManager`,
+`CpuRunner`, `StateManager`, migration panneau par panneau) sont documentés en
+bas de ce fichier, avec la raison et la condition de réactivation.
 
-### 1. Isoler l'environnement de développement (une décision restante)
+## 1. Finissable — bornée, vérifiable, une session chacune
 
-L'isolation est livrée (`CHANGELOG.md`) : `-DPOM1_DEVTOOLS=OFF` produit un
-émulateur complet, sans avertissement, qui démarre et passe `ctest -L emulator`
-(90/90) ; la frontière tient à 16 arêtes dans 4 fichiers `MainWindow_*` et
-`architecture_check` refuse la 17ᵉ. Mesure macOS/Metal, arbre neuf, `-j8`,
-tests désactivés : **149 → 104** unités de traduction, **4,13 Mo → 2,86 Mo**
-de binaire (−31 %), **27 s → 20 s** de build.
+Le travail qu'on peut réellement terminer, par ordre de rendement.
 
 - [ ] **Décider du packaging** `[S · solid]` — la mesure ci-dessus est là, il reste à trancher : release unique avec outillage (statu quo), ou build « émulateur seul » pour la borne et le WASM. Deux points à traiter avec la décision : les jobs de `release.yml` embarquent cc65 inconditionnellement, et le préchargement WASM de `dev/` + `sketchs/` (~310 Ko) n'est utile qu'à la DevBench — les deux ne coûtent rien tant que `POM1_DEVTOOLS=ON` reste le défaut de release.
+- [ ] **Charger paresseusement les cassettes WASM** `[S · nice]` — retirer du téléchargement initial les 2,5 Mo de `cassettes/`, notamment `WOZ_talk.mp3` ; ne pas complexifier le chargement de `cfcard.po` sans mesure justifiant le gain.
+- [ ] **Intégrer le bootloader `flowenol/apple1-serial`** `[S · solid]` — choisir explicitement Terminal Card ou variante ACIA et réutiliser le pipeline de chargement pur.
+- [ ] **Éviter les reconfigurations au seek rewind** `[S · nice]` — ne pas réappliquer cartes et ROM lorsque les flags sont inchangés.
+- [ ] **Automatiser la porte de sortie de consolidation** `[S · solid]` — réunir warnings-as-errors sur trois OS, matrice headless, navigateur WASM, sanitizers, fuzz smoke, couverture et bundle de diagnostic dans une checklist release.
 
-### 2. Services hôte injectés — livré
+## 2. Le beau travail — grand, cadré, pas urgent
 
-L'injection du service audio est livrée (`CHANGELOG.md`), et la construction
-paresseuse de `pom1::SID` avec elle : la mesure qui justifiait l'injection était
-mal attribuée — dans un binaire de test, `AudioDevice(false)` coûte **0,07 ms**,
-et les ~120 ms d'un cœur hermétique étaient la **première construction de
-`pom1::SID`**. Les deux gains sont mesurés : plus aucun test n'ouvre le
-périphérique audio de l'hôte, et un cœur nu se construit en 0,3 ms au lieu de
-135 ms (`hermetic_core_smoke` §5).
+Ce qui reste d'intéressant. Rien ici n'est bloquant ; tout y est du vrai
+artisanat d'émulation ou d'outillage, et chacun peut être pris isolément.
 
-Le gel de `Memory` est livré et devient une règle permanente, plus un chantier :
-`architecture_check` mesure `memory_public_methods` (188) et
-`controller_public_methods` (201) et refuse toute croissance — aucune nouvelle
-méthode publique, aucun nouvel inclus de `Memory.h` (59 unités de traduction),
-et toute extraction abaisse les plafonds.
+- [ ] **Partager le journal `VideoEvents` et le rejeu beam** `[L · solid]` — extraire géométrie/journal hors de `Memory`, faire adopter `BeamClock` à GEN2 puis remplacer le rattrapage eager du TMS9918 ; sérialiser le journal.
+- [ ] **Confirmer le modèle de synchro trame sur du matériel réel** `[M · solid]` — `src/TerminalTiming.h` livre `FieldSync` : PB7 reste occupé jusqu'au prochain passage du balayage plutôt qu'un décompte fixe, ce qui est le comportement d'un terminal à registre à décalage. Le débit est préservé (une écriture par trame, épinglé), mais **le point de verrouillage est modélisé au bord de trame alors qu'en vrai il suit le curseur qui descend l'écran**. Confirmer à l'oscilloscope sur une section terminal, ou depuis les notes de timing de Woz ; ni l'un ni l'autre n'est dans cet arbre. Tant que ce n'est pas fait, le modèle reste hors bundle et désactivé par défaut (`--display-field-sync`). Le bruit périodique déterministe reste à faire.
+- [ ] **Valider le fetch SAT TMS9918 une ligne en avance** `[M · solid]` — mesurer d’abord sur silicium les écritures SAT en zone active, puis modéliser et tester la latence observée.
+- [ ] **Charger des presets externes validés** `[M · nice]` — format versionné, validation par `CardTopology`, table C++ de repli et tests sur le résultat plutôt que sur le texte source.
+- [ ] **Ajouter un IPC de scripting à l’exécution** `[M · nice]` — `--cmd-fd` ou socket locale portant les verbes CLI sans mélanger contrôle, clavier et affichage telnet.
+- [ ] **Ajouter les variables chaîne au BASIC natif** `[L · nice]` — descripteurs ptr+len, heap, runtime chaîne, expressions typées et tests de pression mémoire.
+- [ ] **Ajouter un périphérique SpeakJet/TTS optionnel** `[M · nice]` — router l’UART vers un backend TTS injecté sans dupliquer 6522/6551 ni rendre le service obligatoire.
+- [ ] **Étendre le débogage source au C et au WASM** `[M · solid]` — transporter les `.dbg` via cl65/cc65 web et prendre en charge plusieurs points d’arrêt.
 
-La découverte de ressources est livrée elle aussi : les 52 sondes `../` écrites
-à la main passent toutes par `ResourceLocator`, et `resource_probes_sync`
-(`tools/check_resource_probes.py`) refuse la 53ᵉ.
+> **Un point de départ concret pour le rejeu beam** : `src/BeamClock.h` existe
+> déjà, pur et testable, et son propre en-tête nomme ce qui manque — « GEN2 keeps
+> its own absolute-cycle journal today; it can adopt this geometry once the
+> journal/replay path is unified ». Le TMS9918 l'utilise, le GEN2 non. Faire
+> adopter `BeamClock` au GEN2 **sans toucher au format de snapshot** est un
+> premier pas isolé, vérifiable par les images témoins existantes.
 
-> **Chantier clos.** `Memory` ne crée plus d'`AudioDevice` ni de `pom1::SID`
-> dans l'application livrée, `hermetic_core_smoke` §4-§5 construit le cœur sur
-> un double en mémoire en 0,3 ms, et il n'existe plus qu'un seul ordre de
-> recherche pour les données de POM1.
+## 3. Entretien — n'a de sens que si le développement continue
 
-### 3. Sortir les décisions de l'UI (2–3 semaines restantes, incrémental)
-
-17 100 lignes de `MainWindow_*` sans test direct, et c'est là que vivaient les
-défauts connus (backspace destructif, six défauts du plein écran, auto-dial BBS
-perdu). **Mesuré** au départ (`tools/coverage.py`) : le module `ui` était à
-**2,4 % de couverture de lignes sur 14 407 lignes**, contre 93 % pour le CPU et
-les parseurs. **Re-mesuré après quatre extractions : 3,9 % sur 14 468 lignes**
-(558 lignes couvertes contre ~346), les neuf autres modules inchangés — le
-travail n'a donc pas été déplacé ailleurs. Les sept seams sont à **100 % de
-lignes** ; ce qui reste non couvert dans `ui`, ce sont les ~13 900 lignes qui
-dessinent, et c'est attendu. La méthode a déjà fait ses preuves — `src/Apple1KeyMap.h`,
-`src/WindowGeometry.h`, `src/StagedCardConfiguration.h` — mais ne couvre que
-quelques centaines de lignes. **Viser les ~2 000 lignes qui portent des
-décisions, pas les 17 000 qui dessinent.**
-
-Le miroir matériel est supprimé (`CHANGELOG.md`) : les seize `bool xEnabled` de
-`MainWindow` n'existent plus, l'état des cartes vient de `currentCards()` —
-transaction en cours si elle est ouverte, `CardSet` publié sinon — et les
-commandes passent par `setCardPlugged()`. Les décisions de layout et de plein
-écran sont extraites elles aussi (`CHANGELOG.md`) : `src/LayoutDecisions.h`
-porte l'arbitrage — quel rectangle est persisté, quelle géométrie s'applique,
-ce que fait une réinitialisation, et ce que signifie un clic sur la case Plein
-écran quand AppKit possède déjà la fenêtre — et `layout_decisions_smoke`
-l'épingle en 8 sections sans lier ni ImGui ni GLFW. Les décisions de presets
-le sont également : `src/PresetDecisions.h` porte le paquet de fidélité
-silicium, le profil ROM et son inventaire, le choix de cassette et les
-prédicats par preset — trois règles qui étaient écrites deux fois (le profil
-ROM, trois fois) le sont désormais une seule — et l'ouverture comme la
-fermeture des fenêtres passent par `windowRegistry()`, ce qui supprime les
-deux dernières récitations du jeu de fenêtres dans `applyMachineConfig`.
-`preset_decisions_smoke` lie la vraie table et vérifie les treize machines
-livrées. Les raccourcis enfin sont unifiés : `src/ShortcutTable.h` porte les
-huit liaisons, le répartiteur est un `switch` sur une commande nommée, la
-fenêtre d'aide rend les lignes qu'elle décrit, et l'interdiction des
-Ctrl+lettre est un `static_assert` sur la vraie table. Enfin, « quel
-répertoire implique quelle carte » (`src/SoftwareDirRules.h`) était écrit
-deux fois, une fois par direction ; les deux lisent la même table et
-`software_dir_rules_smoke` l'épingle. La palette de commandes (F9) ferme la
-dernière puce : `src/CommandPalette.h` porte le filtrage et le classement, la
-liste étant dérivée de `windowRegistry()`, de la table de raccourcis et de celle
-des presets — elle ne peut donc pas diverger de ce que l'application contient.
-
-**Une règle, pas une tâche** : chaque décision extraite arrive avec son smoke
-test qui ne lie ni ImGui ni GLFW. Elle a été tenue huit fois ; elle reste vraie
-pour la prochaine et n'a pas à figurer dans une liste de cases.
-
-> **Chantier clos.** Huit seams purs (`Apple1KeyMap`, `FullscreenExpand`,
-> `WindowGeometry`, `StagedCardConfiguration`, `LayoutDecisions`,
-> `PresetDecisions`, `ShortcutTable`, `SoftwareDirRules`, plus `CommandPalette`),
-> tous à 100 % de couverture de lignes ; le module `ui` passe de 2,4 % à 3,9 %
-> sur 14 468 lignes, les neuf autres modules inchangés. Ce qui reste non couvert
-> dans `MainWindow_*`, ce sont les ~13 900 lignes qui dessinent — et c'est le
-> résultat visé, pas un reste à traiter.
-
-## Ensuite
-
-### 4. Dette ciblée (à traiter quand elle gêne, pas avant)
-
-- [ ] **Libérer `EmulationSnapshot.h` des périphériques concrets** `[M · solid]` — retirer les dépendances vers `JukeBox`, `CodeTank`, TMS9918, réseau et imprimante ; basculer les consommateurs d'enums vers `src/CardTypes.h`. Justification mesurable : temps de recompilation, pas esthétique. À faire quand le fan-out coûte réellement.
-- [ ] **Remplacer les passthroughs par des commandes structurées** `[M · solid]` — préférer `applyCardConfiguration` et `setCardEnabled` aux wrappers par carte sur `EmulationController` (~215 méthodes publiques) ; supprimer chaque ancienne API dès son dernier appelant. Aucun grand refactor : on ne retire que ce qui n'a plus d'appelant.
-
-### 5. Qualité, sécurité et chaîne de livraison (1–2 semaines)
+**Si le projet s'arrête, cette section est caduque.** Ce sont des investissements
+dans la vitesse d'un développement futur, pas dans la qualité de ce qui est
+livré : rien ici ne corrige un défaut ni n'ajoute une capacité.
 
 - [ ] **Ajouter une analyse statique incrémentale** `[M · solid]` — `clang-tidy` sur le code POM1 modifié, avec baseline initiale explicite ; ne pas analyser le code vendu.
-- [ ] **Produire SBOM et inventaire de licences** `[M · solid]` — attacher les deux aux releases et vérifier les composants vendus/bundlés.
 - [ ] **Ajouter des budgets de performance** `[M · solid]` — seuils reproductibles pour débit CPU, callback audio, application d'un preset et rewind ; alerter sur tendance avant de bloquer une PR.
 - [ ] **Créer un bundle local de diagnostic** `[M · solid]` — *Aide → Signaler un problème* assemble versions, journal, snapshot et configuration dans un zip explicitement choisi par l'utilisateur, sans télémétrie automatique. Éviter du travail non async-signal-safe dans un handler fatal.
+- [ ] **Produire SBOM et inventaire de licences** `[M · solid]` — attacher les deux aux releases et vérifier les composants vendus/bundlés.
+- [ ] **Libérer `EmulationSnapshot.h` des périphériques concrets** `[M · solid]` — retirer les dépendances vers `JukeBox`, `CodeTank`, TMS9918, réseau et imprimante ; basculer les consommateurs d'enums vers `src/CardTypes.h`. Justification mesurable : temps de recompilation, pas esthétique. À faire quand le fan-out coûte réellement.
+- [ ] **Remplacer les passthroughs par des commandes structurées** `[M · solid]` — préférer `applyCardConfiguration` et `setCardEnabled` aux wrappers par carte sur `EmulationController` (~215 méthodes publiques) ; supprimer chaque ancienne API dès son dernier appelant. Aucun grand refactor : on ne retire que ce qui n'a plus d'appelant.
+- [ ] **Fermer les trous résiduels du snapshot** `[M · nice]` — position de cassette en flux, reconnexion propre modem/terminal, état interne libresidfp si une API amont le permet, et pied SHA-256 v2.
+- [ ] **Optimiser les deltas rewind TMS9918** `[M · nice]` — dirty-tracking des pages VRAM, seulement après profilage du coût de capture.
+- [ ] **Produire l’artefact Pi `cortex-a72` avec PGO en CI** `[M · nice]` — entraîner sur runner ARM64 et conserver l’AppImage aarch64 générique.
+
+## 4. Hors de portée sans quelque chose — ou quelqu'un — d'autre
+
+- [ ] **Valider la borne sur un Raspberry Pi réel** `[S · solid]` — vérifier démarrage kiosk, GLSL, audio à `POM1_AUDIO_LATENCY=120`, plein écran sans WM et restauration correcte par `--uninstall`.
+- [ ] 🚫 **Chargeur TurboType 57 600 bauds** `[M · solid]` — attendre la spécification détaillée et une ROM/binaire du dropper d'Uncle Bernie ; à réception, implémenter parser `.TUR`/`.APL`, injection 8 bits sans écho, CRC, sentinelle et retour Woz Monitor. C'est le plus réjouissant des items bloqués : charger à 57 600 bauds dans une machine de 1976.
+
 - [ ] **Alléger le dépôt Git** `[M · nice]` — inventorier les gros PDF, ZIP, vidéos, images et binaires FPGA ; conserver les sources indispensables, déplacer les archives vers releases/LFS ou un dépôt documentaire, puis documenter leur provenance. Repère : `.git` pèse 387 Mo, dont un `.po` de 32 Mo, un PDF de 18,5 Mo et une vidéo de 8,3 Mo. Le coût de ce chantier ne fait qu'augmenter.
-- [ ] **Automatiser la porte de sortie de consolidation** `[S · solid]` — réunir warnings-as-errors sur trois OS, matrice headless, navigateur WASM, sanitizers, fuzz smoke, couverture et bundle de diagnostic dans une checklist release.
+
+> **Avis contraire sur l'allègement du dépôt, si le projet s'arrête.** La logique
+> « le coût ne fait qu'augmenter » s'inverse à l'arrêt : réécrire l'historique
+> d'un dépôt qu'on s'apprête à figer casse tous les clones existants et tous les
+> liens de commit, pour un gain purement esthétique sur un arbre qui ne grossira
+> plus. À ne faire que si le développement reprend vraiment.
 
 ## Écarté — architecture non retenue pour l'instant
 
@@ -151,42 +120,3 @@ besoin doit être nommé au moment de la réactivation.
 - **Abaisser `EmulationController` sous 1 500 lignes** `[M]` — cible de ligne sans défaut associé. Remplacé par la suppression des passthroughs au fil de l'eau (chantier 4).
 - **Fabrique d'`IPanel`, migration panneau par panneau, et cible « noyau `MainWindow_ImGui` sous 500 lignes »** `[L]` — 4 à 6 semaines pour ré-héberger du code de dessin déjà fonctionnel. Écarté au profit de l'extraction des seules décisions (chantier 3), qui apporte la testabilité sans la réécriture. *Réactiver si* : les panneaux doivent devenir dynamiques (plugins, panneaux externes).
 - **Extraire les DTO `CpuView` / `MachineView` / `CardView`** `[M]` — utile en principe, mais `src/SnapshotPublisher.h` remplit déjà le rôle. Ne garder que la partie mesurable : libérer `EmulationSnapshot.h` (chantier 4).
-
-
-## Plus tard — produit et fidélité
-
-Ces travaux sont ouverts mais ne doivent pas interrompre la consolidation ci-dessus.
-
-### Packaging et plateformes
-
-- [ ] **Charger paresseusement les cassettes WASM** `[S · nice]` — retirer du téléchargement initial les 2,5 Mo de `cassettes/`, notamment `WOZ_talk.mp3` ; ne pas complexifier le chargement de `cfcard.po` sans mesure justifiant le gain.
-- [ ] **Valider la borne sur un Raspberry Pi réel** `[S · solid]` — vérifier démarrage kiosk, GLSL, audio à `POM1_AUDIO_LATENCY=120`, plein écran sans WM et restauration correcte par `--uninstall`.
-- [ ] **Produire l’artefact Pi `cortex-a72` avec PGO en CI** `[M · nice]` — entraîner sur runner ARM64 et conserver l’AppImage aarch64 générique.
-
-### Snapshot, rewind et automatisation
-
-- [ ] **Fermer les trous résiduels du snapshot** `[M · nice]` — position de cassette en flux, reconnexion propre modem/terminal, état interne libresidfp si une API amont le permet, et pied SHA-256 v2.
-- [ ] **Ajouter un IPC de scripting à l’exécution** `[M · nice]` — `--cmd-fd` ou socket locale portant les verbes CLI sans mélanger contrôle, clavier et affichage telnet.
-- [ ] **Charger des presets externes validés** `[M · nice]` — format versionné, validation par `CardTopology`, table C++ de repli et tests sur le résultat plutôt que sur le texte source.
-- [ ] **Optimiser les deltas rewind TMS9918** `[M · nice]` — dirty-tracking des pages VRAM, seulement après profilage du coût de capture.
-- [ ] **Éviter les reconfigurations au seek rewind** `[S · nice]` — ne pas réappliquer cartes et ROM lorsque les flags sont inchangés.
-
-### Graphismes et fidélité
-
-- [ ] **Valider le fetch SAT TMS9918 une ligne en avance** `[M · solid]` — mesurer d’abord sur silicium les écritures SAT en zone active, puis modéliser et tester la latence observée.
-- [ ] **Partager le journal `VideoEvents` et le rejeu beam** `[L · solid]` — extraire géométrie/journal hors de `Memory`, faire adopter `BeamClock` à GEN2 puis remplacer le rattrapage eager du TMS9918 ; sérialiser le journal.
-- [ ] **Confirmer le modèle de synchro trame sur du matériel réel** `[M · solid]` — `src/TerminalTiming.h` livre `FieldSync` : PB7 reste occupé jusqu'au prochain passage du balayage plutôt qu'un décompte fixe, ce qui est le comportement d'un terminal à registre à décalage. Le débit est préservé (une écriture par trame, épinglé), mais **le point de verrouillage est modélisé au bord de trame alors qu'en vrai il suit le curseur qui descend l'écran**. Confirmer à l'oscilloscope sur une section terminal, ou depuis les notes de timing de Woz ; ni l'un ni l'autre n'est dans cet arbre. Tant que ce n'est pas fait, le modèle reste hors bundle et désactivé par défaut (`--display-field-sync`). Le bruit périodique déterministe reste à faire.
-
-### Outils et langages
-
-- [ ] **Étendre le débogage source au C et au WASM** `[M · solid]` — transporter les `.dbg` via cl65/cc65 web et prendre en charge plusieurs points d’arrêt.
-- [ ] **Ajouter les variables chaîne au BASIC natif** `[L · nice]` — descripteurs ptr+len, heap, runtime chaîne, expressions typées et tests de pression mémoire.
-
-### Périphériques
-
-- [ ] **Intégrer le bootloader `flowenol/apple1-serial`** `[S · solid]` — choisir explicitement Terminal Card ou variante ACIA et réutiliser le pipeline de chargement pur.
-- [ ] **Ajouter un périphérique SpeakJet/TTS optionnel** `[M · nice]` — router l’UART vers un backend TTS injecté sans dupliquer 6522/6551 ni rendre le service obligatoire.
-
-## 🚫 Bloqué
-
-- [ ] 🚫 **Chargeur TurboType 57 600 bauds** `[M · solid]` — attendre la spécification détaillée et une ROM/binaire du dropper d’Uncle Bernie ; à réception, implémenter parser `.TUR`/`.APL`, injection 8 bits sans écho, CRC, sentinelle et retour Woz Monitor.
