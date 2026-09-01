@@ -10,6 +10,7 @@
 #include "HexDumpFile.h"
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
+#include "ResourceLocator.h"
 #include "NativeFileDialog.h"
 #include "POM1Build.h"
 #include "PomRenderer.h"
@@ -38,17 +39,15 @@ using namespace pom1::mainwindow::detail;
 // and return the canonical absolute path of the first hit. Empty when no
 // candidate exists. Used to seed the native picker's starting directory so
 // it lands inside the user's software/ or cassettes/ tree, not their $HOME.
-std::string resolveDataDir(std::initializer_list<const char*> probes)
+// Resolve one of POM1's data directories ("software", "cassettes", …) through
+// the single search order (`ResourceLocator.h`). This used to take a list of
+// hand-written probes — "x", "../x", "../../x" — repeated at five call sites,
+// which is exactly the drift that class exists to end: the picker would open
+// on `software/` from the repo root and on nothing at all from `build/tests/`,
+// and none of these lists knew about the packaged layouts.
+std::string resolveDataDir(const char* name)
 {
-    namespace fs = std::filesystem;
-    for (const char* p : probes) {
-        std::error_code ec;
-        if (fs::is_directory(p, ec)) {
-            auto canon = fs::canonical(p, ec);
-            if (!ec) return canon.string();
-        }
-    }
-    return std::string();
+    return pom1::ResourceLocator::defaultLocator().findDirectory(name).string();
 }
 
 // Append a context sub-directory to a resolved base dir, but only when that
@@ -133,7 +132,7 @@ void MainWindow_ImGui::loadMemory()
             hexOnly,
         };
         std::string defDir = resolveMemoryDefaultDir(
-            resolveDataDir({"software", "../software", "../../software"}),
+            resolveDataDir("software"),
             memoryContextSubdir());
         std::string picked;
         if (!pom1::NativeFileDialog::openFile(window, "Load Memory",
@@ -518,19 +517,14 @@ void MainWindow_ImGui::renderLoadDialog()
         if (!addressOnly) {
             if (!loadDlg.filesScanned) {
                 if (loadDlg.softAsmRoot.empty()) {
-                    std::string dirs[] = {"software", "../software", "../../software"};
-                    for (const auto& d : dirs) {
-                        if (std::filesystem::is_directory(d)) {
-                            loadDlg.softAsmRoot = std::filesystem::canonical(d).string();
-                            // Start inside the active card's sub-folder when it is
-                            // the sole content card (loadDlg.reset() clears these on
-                            // every open, so this re-seeds the context each time).
-                            // softAsmRoot stays the root so ".." nav is still confined.
-                            loadDlg.currentDir = resolveMemoryDefaultDir(
-                                loadDlg.softAsmRoot, memoryContextSubdir());
-                            break;
-                        }
-                    }
+                    loadDlg.softAsmRoot = resolveDataDir("software");
+                    // Start inside the active card's sub-folder when it is the
+                    // sole content card (loadDlg.reset() clears these on every
+                    // open, so this re-seeds the context each time).
+                    // softAsmRoot stays the root so ".." nav is still confined.
+                    if (!loadDlg.softAsmRoot.empty())
+                        loadDlg.currentDir = resolveMemoryDefaultDir(
+                            loadDlg.softAsmRoot, memoryContextSubdir());
                 }
                 loadDlg.dirList.clear();
                 loadDlg.fileList.clear();
@@ -647,8 +641,7 @@ void MainWindow_ImGui::loadTape()
             { "Audio (*.wav, *.ogg, *.mp3, *.flac)",
               {"wav", "ogg", "mp3", "flac"} },
         };
-        std::string defDir = resolveDataDir({"cassettes", "../cassettes",
-                                             "../../cassettes"});
+        std::string defDir = resolveDataDir("cassettes");
         std::string picked;
         if (!pom1::NativeFileDialog::openFile(window, "Load Cassette Tape",
                                               defDir, filters, picked))
@@ -684,14 +677,8 @@ void MainWindow_ImGui::renderLoadTapeDialog()
 
         if (!loadTapeDlg.filesScanned) {
             if (loadTapeDlg.cassettesRoot.empty()) {
-                const char* probes[] = {"cassettes", "../cassettes", "../../cassettes"};
-                for (const char* d : probes) {
-                    if (std::filesystem::is_directory(d)) {
-                        loadTapeDlg.cassettesRoot = std::filesystem::canonical(d).string();
-                        loadTapeDlg.currentDir = loadTapeDlg.cassettesRoot;
-                        break;
-                    }
-                }
+                loadTapeDlg.cassettesRoot = resolveDataDir("cassettes");
+                loadTapeDlg.currentDir = loadTapeDlg.cassettesRoot;
             }
             loadTapeDlg.dirList.clear();
             loadTapeDlg.fileList.clear();
@@ -952,7 +939,7 @@ void MainWindow_ImGui::renderSaveDialog()
                     // users writing to Uncle Bernie's convention directly.
                     filters.push_back(hexDumpFilter());
                 std::string defDir = resolveMemoryDefaultDir(
-                    resolveDataDir({"software", "../software", "../../software"}),
+                    resolveDataDir("software"),
                     memoryContextSubdir());
                 std::string picked;
                 if (!pom1::NativeFileDialog::saveFile(window, "Save Memory",
@@ -1005,20 +992,14 @@ void MainWindow_ImGui::renderSaveDialog()
 
 namespace {
 
-// Probe `snapshots/` (cwd → ../ → ../../) the same way Memory.cpp probes
-// other read/write data dirs, then create it on the first hit. Returns the
-// canonical absolute path or an empty string on failure.
+// Resolve `snapshots/` through the single search order, then create it beside
+// the cwd on the first miss. Unlike the other data dirs this one is WRITTEN to,
+// so the create-on-miss branch stays.
 std::string resolveSnapshotsDir()
 {
     namespace fs = std::filesystem;
-    const char* candidates[] = {"snapshots", "../snapshots", "../../snapshots"};
-    for (const auto* c : candidates) {
-        if (fs::is_directory(c)) {
-            std::error_code ec;
-            auto canon = fs::canonical(c, ec);
-            if (!ec) return canon.string();
-        }
-    }
+    const std::string found = resolveDataDir("snapshots");
+    if (!found.empty()) return found;
     // None found — create alongside the cwd.
     std::error_code ec;
     fs::create_directories("snapshots", ec);
@@ -1265,8 +1246,7 @@ void MainWindow_ImGui::saveTape()
             { "ACI pulse dump (*.aci)", {"aci"} },
             { "WAV audio (*.wav)", {"wav"} },
         };
-        std::string defDir = resolveDataDir({"cassettes", "../cassettes",
-                                             "../../cassettes"});
+        std::string defDir = resolveDataDir("cassettes");
         // Honour the legacy default basename so users keep the same target
         // when they alternate native and ImGui save paths.
         std::string defName = saveTapeDlg.filePath[0]

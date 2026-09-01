@@ -7,6 +7,7 @@
 
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
+#include "ResourceLocator.h"
 #include "POM1Build.h"
 #include "MacNativeFullscreen.h"  // macOS fullscreen space is invisible to GLFW
 #include "PomVersion.h"   // POM1_VERSION_STRING (generated from VERSION)
@@ -77,45 +78,12 @@ static std::string find_pic_file_path(const char* relBasename)
 #if POM1_IS_WASM
     return std::string("pic/") + relBasename;
 #else
-    namespace fs = std::filesystem;
-
-    auto try_path = [](const fs::path& p) -> std::string {
-        std::error_code ec;
-        if (fs::is_regular_file(p, ec))
-            return p.string();
-        return {};
-    };
-
-    const std::string rel_paths[] = {
-        std::string("pic/") + relBasename,
-        std::string("../pic/") + relBasename,
-        std::string("../../pic/") + relBasename,
-        std::string("../../../pic/") + relBasename,
-    };
-    for (const std::string& r : rel_paths) {
-        std::string s = try_path(fs::path(r));
-        if (!s.empty())
-            return s;
-    }
-
-#if defined(_WIN32)
-    char buf[MAX_PATH];
-    DWORD n = GetModuleFileNameA(nullptr, buf, MAX_PATH);
-    if (n > 0 && n < MAX_PATH) {
-        fs::path exeDir = fs::path(buf).parent_path();
-        const fs::path next_to_exe[] = {
-            exeDir / "pic" / relBasename,
-            exeDir.parent_path() / "pic" / relBasename,
-            exeDir.parent_path().parent_path() / "pic" / relBasename,
-        };
-        for (const auto& p : next_to_exe) {
-            std::string s = try_path(p);
-            if (!s.empty())
-                return s;
-        }
-    }
-#endif
-    return {};
+    // One search order for every POM1 resource (`ResourceLocator.h`): the cwd
+    // walk this used to spell out, plus the next-to-the-exe half that only
+    // existed under #if defined(_WIN32) — so a Linux or macOS build launched
+    // from anywhere but the tree simply showed no photo.
+    return pom1::ResourceLocator::defaultLocator()
+        .find(std::string("pic/") + relBasename).string();
 #endif
 }
 
@@ -125,40 +93,8 @@ static std::string find_about_photo_jpeg_path()
 #if POM1_IS_WASM
     return std::string("pic/") + kAboutPhotoFile;
 #else
-    namespace fs = std::filesystem;
-
-    auto try_path = [](const fs::path& p) -> std::string {
-        std::error_code ec;
-        if (fs::is_regular_file(p, ec))
-            return p.string();
-        return {};
-    };
-
-    static const char* const rel_dirs[] = { "pic", "../pic", "../../pic", "../../../pic" };
-    for (const char* r : rel_dirs) {
-        std::string s = try_path(fs::path(r) / kAboutPhotoFile);
-        if (!s.empty())
-            return s;
-    }
-
-#if defined(_WIN32)
-    char buf[MAX_PATH];
-    DWORD n = GetModuleFileNameA(nullptr, buf, MAX_PATH);
-    if (n > 0 && n < MAX_PATH) {
-        fs::path exeDir = fs::path(buf).parent_path();
-        const fs::path next_to_exe[] = {
-            exeDir / "pic" / kAboutPhotoFile,
-            exeDir.parent_path() / "pic" / kAboutPhotoFile,
-            exeDir.parent_path().parent_path() / "pic" / kAboutPhotoFile,
-        };
-        for (const auto& p : next_to_exe) {
-            std::string s = try_path(p);
-            if (!s.empty())
-                return s;
-        }
-    }
-#endif
-    return {};
+    return pom1::ResourceLocator::defaultLocator()
+        .find(std::string("pic/") + kAboutPhotoFile).string();
 #endif
 }
 

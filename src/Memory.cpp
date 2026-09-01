@@ -2007,12 +2007,11 @@ void Memory::setJukeBoxChipMode(JukeBox::ChipMode m)
 int Memory::loadJukeBoxRom(void)
 {
     lastError.clear();
-    const char* candidates[] = {
-        "jukebox.rom", "roms/jukebox.rom", "../roms/jukebox.rom", "../../roms/jukebox.rom",
-    };
-    for (const char* p : candidates) {
+    for (const char* rel : {"roms/jukebox.rom", "jukebox.rom"}) {
+        const std::filesystem::path found = resources().find(rel);
+        if (found.empty()) continue;
         std::string error;
-        if (jukeBox->loadRomFile(p, error)) {
+        if (jukeBox->loadRomFile(found.string(), error)) {
             if (jukeBoxEnabled)
                 applyJukeBoxFlatMemoryMirror();
             return 0;
@@ -2086,24 +2085,17 @@ int Memory::loadCodeTankRom(const std::string& path)
 {
     lastError.clear();
     if (!path.empty()) {
-        // Preset / CLI paths are usually repo-relative (roms/codetank/…).
-        // When the process cwd is build/ or another subdir, the bare path
-        // misses — try the same ../ and ../../ prefixes as the default
-        // probe below so we don't WARN and then succeed on setCodeTankEnabled.
+        // Preset / CLI paths are usually repo-relative (roms/codetank/…) and
+        // the process cwd is often build/. The locator owns that walk — and
+        // returns an absolute path untouched, which is what --codetank-rom
+        // and the file picker hand us.
         std::string error;
-        namespace fs = std::filesystem;
-        const fs::path p(path);
-        const char* relPrefixes[] = { "", "../", "../../", "../../../" };
-        for (const char* pre : relPrefixes) {
-            if (pre[0] != '\0' && p.is_absolute())
-                break;
-            const std::string tryPath = (pre[0] == '\0') ? path : std::string(pre) + path;
-            if (codeTank->loadRomFile(tryPath, error)) {
-                if (codeTankEnabled) applyCodeTankFlatMemoryMirror();
-                return 0;
-            }
+        const std::filesystem::path found = resources().find(path);
+        if (!found.empty() && codeTank->loadRomFile(found.string(), error)) {
+            if (codeTankEnabled) applyCodeTankFlatMemoryMirror();
+            return 0;
         }
-        lastError = error;
+        lastError = error.empty() ? ("CodeTank ROM not found: " + path) : error;
         pom1::log().warn("Mem", lastError);
         return 1;
     }
@@ -2115,16 +2107,12 @@ int Memory::loadCodeTankRom(const std::string& path)
     // single-file `roms/codetank.rom` (kept around from before the
     // library directory) stays as a fallback. Other carts (CLASSICS /
     // BASIC_LOGO / DEMOS) are picked via File → P-LAB CodeTank Library.
-    const char* candidates[] = {
-        "roms/codetank/Codetank_ARCADE.rom",
-        "../roms/codetank/Codetank_ARCADE.rom",
-        "../../roms/codetank/Codetank_ARCADE.rom",
-        "codetank.rom",
-        "roms/codetank.rom", "../roms/codetank.rom", "../../roms/codetank.rom",
-    };
-    for (const char* p : candidates) {
+    for (const char* rel : {"roms/codetank/Codetank_ARCADE.rom",
+                            "codetank.rom", "roms/codetank.rom"}) {
+        const std::filesystem::path found = resources().find(rel);
+        if (found.empty()) continue;
         std::string error;
-        if (codeTank->loadRomFile(p, error)) {
+        if (codeTank->loadRomFile(found.string(), error)) {
             if (codeTankEnabled) applyCodeTankFlatMemoryMirror();
             return 0;
         }

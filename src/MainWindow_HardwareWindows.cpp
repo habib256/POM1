@@ -9,6 +9,7 @@
 
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
+#include "ResourceLocator.h"
 #include "POM1Build.h"
 #include "PomRenderer.h"
 #include "WiFiModem.h"
@@ -1512,16 +1513,11 @@ void MainWindow_ImGui::renderJukeBoxWindow()
 
 namespace {
 
-// First existing roms/codetank directory across the usual cwd candidates
-// (repo root, build/, one level deeper). Returns {} if none exists.
+// The roms/codetank directory, through POM1's single search order
+// (`ResourceLocator.h`). Returns {} if it exists under no root.
 std::filesystem::path resolveCodeTankLibraryRoot()
 {
-    namespace fs = std::filesystem;
-    for (const char* p : { "roms/codetank", "../roms/codetank", "../../roms/codetank" }) {
-        std::error_code ec;
-        if (fs::is_directory(p, ec)) return p;
-    }
-    return {};
+    return pom1::ResourceLocator::defaultLocator().findDirectory("roms/codetank");
 }
 
 struct CodeTankLibraryEntry {

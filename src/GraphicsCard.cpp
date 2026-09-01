@@ -1,4 +1,5 @@
 #include "GraphicsCard.h"
+#include "ResourceLocator.h"
 
 #include <algorithm>
 #include <array>
@@ -391,16 +392,13 @@ void loadApple2eCharRom()
 {
     if (gApple2eCharRomTried) return;
     gApple2eCharRomTried = true;
-    static const char* kCandidates[] = {
-        "roms/apple2e_char.rom",
-        "../roms/apple2e_char.rom",
-        "../../roms/apple2e_char.rom",
-    };
-    for (const char* path : kCandidates) {
-        std::ifstream f(path, std::ios::binary);
-        if (!f) continue;
+    const std::filesystem::path romPath =
+        pom1::ResourceLocator::defaultLocator().find("roms/apple2e_char.rom");
+    if (!romPath.empty()) {
+        std::ifstream f(romPath, std::ios::binary);
+        if (!f) return;
         f.read(reinterpret_cast<char*>(gApple2eCharRom.data()), 4096);
-        if (f.gcount() != 4096) { gApple2eCharRom.fill(0); continue; }
+        if (f.gcount() != 4096) { gApple2eCharRom.fill(0); return; }
         // 4 KB Apple IIe Enhanced ROM stores pixels with INVERTED polarity
         // (1 = OFF) and bit 0 = leftmost natively. XOR with 0xFF flips to
         // (1 = ON). Verbatim from POM2::Memory::loadCharRom (4K branch).

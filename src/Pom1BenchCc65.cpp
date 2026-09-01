@@ -18,6 +18,7 @@
 // must survive unreferenced, so they are NEVER archived.
 
 #include "Pom1BenchCc65.h"
+#include "ResourceLocator.h"
 #include "Pom1BenchTargets.h"   // benchScratchDir
 #include "POM1Build.h"
 #include "Logger.h"
@@ -214,11 +215,11 @@ std::string resolveAssetPath(const std::string& rel, const std::string& sourcePa
         const fs::path cand = fs::path(devRoot).parent_path() / rel;
         if (fs::exists(cand, ec)) return fs::weakly_canonical(cand, ec).string();
     }
-    for (const char* pre : {"", "../", "../../", "../../../"}) {
-        const fs::path cand = fs::path(pre) / rel;
-        if (fs::exists(cand, ec)) return fs::absolute(cand, ec).string();
-    }
-    return {};
+    // Last resort: POM1's single search order. It replaces the four "", "../",
+    // "../../", "../../../" spellings this used to carry, and adds the
+    // exe-relative packaged roots the hand-rolled list never had.
+    const fs::path hit = pom1::ResourceLocator::defaultLocator().find(rel);
+    return hit.empty() ? std::string{} : fs::absolute(hit, ec).string();
 }
 
 AsmProjectCtx probeSketchProject(const std::string& sourcePath)

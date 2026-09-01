@@ -4,6 +4,7 @@
 // Pom1TmsPaintHost — see Pom1TmsPaintHost.h.
 
 #include "Pom1TmsPaintHost.h"
+#include "ResourceLocator.h"
 
 #include "EmulationController.h"
 #include "TmsPaintModel.h"        // tmspaint:: geometry constants
@@ -54,9 +55,10 @@ std::string Pom1TmsPaintHost::browseDir() const
 {
     namespace fs = std::filesystem;
     std::error_code ec;
-    for (const char* root : {"sdcard", "../sdcard", "../../sdcard"}) {
-        if (!fs::is_directory(root, ec)) continue;
-        fs::path tms = fs::path(root) / "TMS";
+    const fs::path root = pom1::ResourceLocator::defaultLocator()
+        .findDirectory("sdcard");
+    if (!root.empty()) {
+        fs::path tms = root / "TMS";
         if (!fs::is_directory(tms, ec)) fs::create_directories(tms, ec);
         fs::path canon = fs::canonical(tms, ec);
         if (!ec) return canon.string();
@@ -104,14 +106,8 @@ std::vector<tmspaint::DevSpriteCategory> Pom1TmsPaintHost::devSprites()
 
     namespace fs = std::filesystem;
     std::error_code ec;
-    const char* candidates[] = {
-        "dev/lib/tms9918",
-        "../dev/lib/tms9918",
-        "../../dev/lib/tms9918",
-    };
-    fs::path dir;
-    for (const char* c : candidates)
-        if (fs::is_directory(c, ec)) { dir = c; break; }
+    const fs::path dir =
+        pom1::ResourceLocator::defaultLocator().findDirectory("dev/lib/tms9918");
     if (dir.empty()) return devSpritesCache_;
 
     std::vector<fs::path> files;

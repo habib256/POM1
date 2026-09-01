@@ -20,6 +20,7 @@
 #include "X11ErrorGuard.h"
 #include "NativeFileDialog.h"
 #include "MainWindow_ImGui.h"
+#include "ResourceLocator.h"
 #include "MachinePresets.h"
 #include "IconsFontAwesome6.h"
 #include "Logger.h"
@@ -154,90 +155,26 @@ static void pom1_signal_handler(int)
 /// icon from the .app bundle, not GLFW — the helper is compiled out there.
 static std::string find_app_icon_path()
 {
-    namespace fs = std::filesystem;
-
-    auto try_path = [](const fs::path& p) -> std::string {
-        std::error_code ec;
-        if (fs::is_regular_file(p, ec))
-            return p.string();
-        return {};
-    };
-
-    static const char* const rel_candidates[] = {
-        "pic/icon.png",
-        "../pic/icon.png",
-        "../../pic/icon.png",
-        "../../../pic/icon.png",
-    };
-    for (const char* r : rel_candidates) {
-        std::string s = try_path(fs::path(r));
-        if (!s.empty())
-            return s;
-    }
-
-#if defined(_WIN32)
-    static const char kFile[] = "icon.png";
-    char buf[MAX_PATH];
-    DWORD n = GetModuleFileNameA(nullptr, buf, MAX_PATH);
-    if (n > 0 && n < MAX_PATH) {
-        fs::path exeDir = fs::path(buf).parent_path();
-        const fs::path next_to_exe[] = {
-            exeDir / "pic" / kFile,
-            exeDir.parent_path() / "pic" / kFile,
-            exeDir.parent_path().parent_path() / "pic" / kFile,
-        };
-        for (const auto& p : next_to_exe) {
-            std::string s = try_path(p);
-            if (!s.empty())
-                return s;
-        }
-    }
-#endif
-    return {};
+    // Working directory, its ancestors, then the executable and the packaged
+    // layouts around it — ResourceLocator.h owns that order for every POM1
+    // resource. This function used to carry its own cwd walk plus a Win32-only
+    // GetModuleFileNameA copy of the exe-relative half.
+    return pom1::ResourceLocator::defaultLocator().find("pic/icon.png").string();
 }
 #endif  // !defined(__APPLE__)
 
-/// Cherche un fichier de police `kFile` (fa-solid-900.ttf, DejaVuSans.ttf, …) dans
-/// les emplacements habituels : d'abord relatifs au répertoire de travail, puis à
-/// côté de l'exécutable (Windows). Renvoie {} si introuvable.
+/// Cherche un fichier de police `kFile` (fa-solid-900.ttf, DejaVuSans.ttf, …)
+/// dans l'ordre de recherche unique de POM1 (`ResourceLocator.h`) : répertoire
+/// de travail et ancêtres, puis l'exécutable et les dispositions que les
+/// empaqueteurs mettent autour. Renvoie {} si introuvable.
 static std::string find_font_path(const char* kFile)
 {
-    namespace fs = std::filesystem;
-
-    auto try_path = [](const fs::path& p) -> std::string {
-        std::error_code ec;
-        if (fs::is_regular_file(p, ec))
-            return p.string();
-        return {};
-    };
-
-    static const char* const rel_dirs[] = {
-        "fonts", "../fonts", "../../fonts", "../../../fonts", "build/fonts",
-    };
-    for (const char* d : rel_dirs) {
-        std::string s = try_path(fs::path(d) / kFile);
-        if (!s.empty())
-            return s;
-    }
-
-#if defined(_WIN32)
-    char buf[MAX_PATH];
-    DWORD n = GetModuleFileNameA(nullptr, buf, MAX_PATH);
-    if (n > 0 && n < MAX_PATH) {
-        fs::path exeDir = fs::path(buf).parent_path();
-        const fs::path next_to_exe[] = {
-            exeDir / "fonts" / kFile,
-            exeDir.parent_path() / "fonts" / kFile,
-            exeDir.parent_path().parent_path() / "fonts" / kFile,
-        };
-        for (const auto& p : next_to_exe) {
-            std::string s = try_path(p);
-            if (!s.empty())
-                return s;
-        }
-    }
-#endif
-    return {};
+    // Same single search order as every other POM1 resource. The old list also
+    // named "build/fonts" for a run from the repo root against a build tree;
+    // the locator's executable-derived roots cover that case and the Win32
+    // next-to-the-exe one it used to spell out by hand.
+    return pom1::ResourceLocator::defaultLocator()
+        .find(std::string("fonts/") + kFile).string();
 }
 
 /// sans fa-solid-900.ttf, ImGui affiche « ? » à la place des icônes Font Awesome.
@@ -1289,7 +1226,11 @@ int main(int argc, char* argv[])
     const char* fontPath = "fonts/fa-solid-900.ttf";
 #else
     std::string fontPathStorage = find_fa_solid_font_path();
-    const char* fontPath = fontPathStorage.empty() ? "../fonts/fa-solid-900.ttf" : fontPathStorage.c_str();
+    // Nothing found: hand AddFontFromFileTTF the canonical name so the failure
+    // message below names what was expected, not a ../ guess the locator
+    // has already tried from every root.
+    const char* fontPath = fontPathStorage.empty() ? "fonts/fa-solid-900.ttf"
+                                                   : fontPathStorage.c_str();
 #endif
     if (!io.Fonts->AddFontFromFileTTF(fontPath, 14.0f, &iconsConfig, iconsRanges)) {
         fprintf(stderr,

@@ -43,7 +43,7 @@ de binaire (−31 %), **27 s → 20 s** de build.
 
 - [ ] **Décider du packaging** `[S · solid]` — la mesure ci-dessus est là, il reste à trancher : release unique avec outillage (statu quo), ou build « émulateur seul » pour la borne et le WASM. Deux points à traiter avec la décision : les jobs de `release.yml` embarquent cc65 inconditionnellement, et le préchargement WASM de `dev/` + `sketchs/` (~310 Ko) n'est utile qu'à la DevBench — les deux ne coûtent rien tant que `POM1_DEVTOOLS=ON` reste le défaut de release.
 
-### 2. Services hôte injectés (1–2 semaines)
+### 2. Services hôte injectés — livré
 
 L'injection du service audio est livrée (`CHANGELOG.md`), et la construction
 paresseuse de `pom1::SID` avec elle : la mesure qui justifiait l'injection était
@@ -53,17 +53,20 @@ et les ~120 ms d'un cœur hermétique étaient la **première construction de
 périphérique audio de l'hôte, et un cœur nu se construit en 0,3 ms au lieu de
 135 ms (`hermetic_core_smoke` §5).
 
-- [ ] **Étendre `ResourceLocator` aux consommateurs restants** `[S · solid]` — `src/ResourceLocator.h` porte l'ordre de recherche unique et `Memory` le reçoit (`resource_locator_smoke`). Reste à y router les ~60 sondes `../` encore dispersées dans l'UI, le Bench et `GraphicsCard`/`Screen_ImGui`, et à couvrir les ressources web.
-
 Le gel de `Memory` est livré et devient une règle permanente, plus un chantier :
 `architecture_check` mesure `memory_public_methods` (188) et
 `controller_public_methods` (201) et refuse toute croissance — aucune nouvelle
 méthode publique, aucun nouvel inclus de `Memory.h` (59 unités de traduction),
 et toute extraction abaisse les plafonds.
 
-> Sortie atteinte pour l'audio : `Memory` ne crée plus d'`AudioDevice` dans
-> l'application livrée, et `hermetic_core_smoke` §4 construit le cœur sur un
-> double en mémoire. Reste la découverte de ressources hôtes hors du cœur.
+La découverte de ressources est livrée elle aussi : les 52 sondes `../` écrites
+à la main passent toutes par `ResourceLocator`, et `resource_probes_sync`
+(`tools/check_resource_probes.py`) refuse la 53ᵉ.
+
+> **Chantier clos.** `Memory` ne crée plus d'`AudioDevice` ni de `pom1::SID`
+> dans l'application livrée, `hermetic_core_smoke` §4-§5 construit le cœur sur
+> un double en mémoire en 0,3 ms, et il n'existe plus qu'un seul ordre de
+> recherche pour les données de POM1.
 
 ### 3. Sortir les décisions de l'UI (2–3 semaines restantes, incrémental)
 

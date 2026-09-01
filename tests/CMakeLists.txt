@@ -346,6 +346,7 @@ add_executable(test_hgr_paint_plot
     ${CMAKE_SOURCE_DIR}/src/hgrpaint/HgrFont.cpp
     ${CMAKE_SOURCE_DIR}/src/GraphicsCard.cpp
     ${CMAKE_SOURCE_DIR}/src/Gen2VideoScanner.cpp
+    ${CMAKE_SOURCE_DIR}/src/ResourceLocator.cpp
 )
 target_include_directories(test_hgr_paint_plot PRIVATE
     ${CMAKE_SOURCE_DIR}/src
@@ -365,6 +366,7 @@ add_executable(test_hgr_convert
     ${CMAKE_SOURCE_DIR}/src/hgrpaint/HgrPaintModel.cpp
     ${CMAKE_SOURCE_DIR}/src/GraphicsCard.cpp
     ${CMAKE_SOURCE_DIR}/src/Gen2VideoScanner.cpp
+    ${CMAKE_SOURCE_DIR}/src/ResourceLocator.cpp
 )
 target_include_directories(test_hgr_convert PRIVATE
     ${CMAKE_SOURCE_DIR}/src
@@ -507,6 +509,7 @@ add_executable(test_gen2_beam_race
     gen2_beam_race_smoke_test.cpp
     ${CMAKE_SOURCE_DIR}/src/GraphicsCard.cpp
     ${CMAKE_SOURCE_DIR}/src/Gen2VideoScanner.cpp
+    ${CMAKE_SOURCE_DIR}/src/ResourceLocator.cpp
 )
 target_include_directories(test_gen2_beam_race PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
@@ -523,6 +526,7 @@ add_executable(test_gen2_horizontal_split
     gen2_horizontal_split_smoke_test.cpp
     ${CMAKE_SOURCE_DIR}/src/GraphicsCard.cpp
     ${CMAKE_SOURCE_DIR}/src/Gen2VideoScanner.cpp
+    ${CMAKE_SOURCE_DIR}/src/ResourceLocator.cpp
 )
 target_include_directories(test_gen2_horizontal_split PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
@@ -538,6 +542,7 @@ add_executable(test_gen2_composite
     gen2_composite_smoke_test.cpp
     ${CMAKE_SOURCE_DIR}/src/GraphicsCard.cpp
     ${CMAKE_SOURCE_DIR}/src/Gen2VideoScanner.cpp
+    ${CMAKE_SOURCE_DIR}/src/ResourceLocator.cpp
 )
 target_include_directories(test_gen2_composite PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
@@ -897,6 +902,7 @@ add_executable(test_bench_cc65
     ${CMAKE_SOURCE_DIR}/src/DbgFile.cpp
     ${CMAKE_SOURCE_DIR}/src/Logger.cpp
     ${CMAKE_SOURCE_DIR}/src/bench/ProcessUtil.cpp
+    ${CMAKE_SOURCE_DIR}/src/ResourceLocator.cpp
 )
 target_include_directories(test_bench_cc65 PRIVATE
     ${CMAKE_SOURCE_DIR}/src
@@ -2111,6 +2117,20 @@ if(Python3_FOUND)
                      "${CMAKE_SOURCE_DIR}/tools/check_doc_paths.py"
              WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(doc_paths_sync PROPERTIES TIMEOUT 60)
+endif()
+
+# ── One search order for POM1's data ─────────────────────────────────────────
+# Fourth guard of the version_sync / imgui_pin_sync / doc_paths_sync family:
+# no source file may hand-roll its own "x, ../x, ../../x" walk. That drift is
+# what pom1::ResourceLocator exists to end, and it never comes back all at once
+# — it comes back one locally-reasonable call site at a time, which is exactly
+# what a lint catches and a review does not.
+if(Python3_FOUND)
+    add_test(NAME resource_probes_sync
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/check_resource_probes.py"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(resource_probes_sync PROPERTIES TIMEOUT 30)
 endif()
 
 # Architecture direction + trend baseline. It rejects a new core/device -> UI
