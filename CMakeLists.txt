@@ -106,6 +106,35 @@ if(POM1_SANITIZE)
     add_link_options(-fsanitize=${POM1_SANITIZE})
 endif()
 
+# ── Coverage instrumentation ─────────────────────────────────────────────────
+# -DPOM1_COVERAGE=ON builds with LLVM source-based coverage; tools/coverage.py
+# drives the whole cycle (configure, build, run ctest, merge, report per module).
+#
+# It instruments EVERY target, vendored code included, for the same reason the
+# sanitizers do: the profile has to describe the process that ran. The noise is
+# removed at REPORT time (tools/coverage.py ignores src/third_party and imgui),
+# which is the right place — a filter in the build would also silence the parts
+# of a vendored header that POM1's own templates instantiate.
+#
+# The number this is for is NOT a global percentage. A single figure over
+# 85 600 lines averages a cycle-exact CPU against 17 000 lines of ImGui drawing
+# and tells nobody anything; the per-module report and its thresholds do.
+# LTO off: profile counters and LTO produce unusable region mappings.
+option(POM1_COVERAGE "Build with LLVM source-based coverage instrumentation" OFF)
+if(POM1_COVERAGE)
+    if(MSVC)
+        message(FATAL_ERROR "POM1_COVERAGE needs Clang's source-based coverage; MSVC is not supported here")
+    endif()
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "POM1_COVERAGE needs Clang (got ${CMAKE_CXX_COMPILER_ID}); "
+                            "GCC's gcov format is not what tools/coverage.py reads")
+    endif()
+    message(STATUS "POM1: coverage instrumentation enabled, LTO forced OFF")
+    set(POM1_LTO OFF CACHE BOOL "" FORCE)
+    add_compile_options(-fprofile-instr-generate -fcoverage-mapping -g -O0)
+    add_link_options(-fprofile-instr-generate -fcoverage-mapping)
+endif()
+
 # Vendored libresidfp (cycle-accurate SID emulation, GPL-2.0). See
 # src/third_party/libresidfp/CMakeLists.txt for the source list.
 add_subdirectory(src/third_party/libresidfp)

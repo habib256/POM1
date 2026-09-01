@@ -72,7 +72,9 @@ La découverte de ressources est livrée elle aussi : les 52 sondes `../` écrit
 
 17 100 lignes de `MainWindow_*` sans test direct, et c'est là que vivaient les
 défauts connus (backspace destructif, six défauts du plein écran, auto-dial BBS
-perdu). La méthode a déjà fait ses preuves — `src/Apple1KeyMap.h`,
+perdu). **Mesuré** depuis (`tools/coverage.py`) : le module `ui` est à **2,4 %
+de couverture de lignes sur 14 407 lignes**, contre 93 % pour le CPU et les
+parseurs. C'est le chiffre de départ de ce chantier. La méthode a déjà fait ses preuves — `src/Apple1KeyMap.h`,
 `src/WindowGeometry.h`, `src/StagedCardConfiguration.h` — mais ne couvre que
 quelques centaines de lignes. **Viser les ~2 000 lignes qui portent des
 décisions, pas les 17 000 qui dessinent.**
@@ -99,7 +101,6 @@ commandes passent par `setCardPlugged()`. Reste, pour ce chantier :
 
 ### 5. Qualité, sécurité et chaîne de livraison (1–2 semaines)
 
-- [ ] **Mesurer la couverture par module** `[S · solid]` — publier couverture lignes/branches et définir des seuils sur les parseurs, la topologie, les snapshots et le cœur CPU plutôt qu'un pourcentage global trompeur.
 - [ ] **Ajouter une analyse statique incrémentale** `[M · solid]` — `clang-tidy` sur le code POM1 modifié, avec baseline initiale explicite ; ne pas analyser le code vendu.
 - [ ] **Passer Windows en warnings-as-errors** `[S · solid]` — nettoyer les conversions POM1 restantes, exclure `stb_vorbis.c`, puis activer `/WX` dans le job Windows.
 - [ ] **Produire SBOM et inventaire de licences** `[M · solid]` — attacher les deux aux releases et vérifier les composants vendus/bundlés.

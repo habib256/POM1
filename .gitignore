@@ -58,6 +58,7 @@ build-appimage
 build-debug
 # Sanitizer + secondary-renderer configures used by CI and local audits.
 build-san
+build-coverage
 build-gl
 build-asan
 build-tsan
