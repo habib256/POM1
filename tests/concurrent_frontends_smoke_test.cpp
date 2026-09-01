@@ -107,7 +107,27 @@ int main()
         callbacks < 10 || finite != callbacks * 128 ||
         realtime.stateLockAcquisitions == 0 ||
         realtime.audioCallbacks != callbacks ||
-        realtime.maxStateWaitNs > 500000000ULL ||
+        // maxStateWaitNs is a CATASTROPHE bound (5 s = a hang), not a quality
+        // one. It was 500 ms, and that number could not survive contact with a
+        // second machine: it fired on a healthy GitHub Linux runner at 1.66 s
+        // while max HOLD stayed at 16 ms — nobody held the lock too long, a
+        // waiter simply lost the scheduler. Measured here on an idle 8-core
+        // Mac it already ranged 57-350 ms against that 500 ms line.
+        //
+        // Worse, it does not detect what it was there for. Disabling the
+        // PriorityMutex yield in EmulationController::emulationLoop and running
+        // eight times tripped the 500 ms bound ONCE: low power, high false
+        // positive rate. What the yield actually buys shows up in PROGRESS of
+        // the contending thread — topology swaps completed in the same window,
+        // median ~117 with the yield against ~35 without, over eight runs each.
+        // The distributions overlap on a single run (116 vs 45), so that is not
+        // a threshold yet; it is the measurement a future gate should be built
+        // on, with enough samples to place a line.
+        //
+        // What stays gated is what POM1 itself controls, and both have room:
+        // max HOLD measured 18-68 ms against 100, and the audio callback 7-33
+        // µs against 50 ms.
+        realtime.maxStateWaitNs > 5000000000ULL ||
         realtime.maxStateHoldNs > 100000000ULL ||
         realtime.maxAudioCallbackNs > 50000000ULL) {
         std::fprintf(stderr,
