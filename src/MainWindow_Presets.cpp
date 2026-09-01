@@ -1080,12 +1080,19 @@ bool copyIniDefaultsFileTo(const char* basename, const std::string& destPath)
 // and the GLFW monitor enumeration.
 using pom1::wingeom::OsWindowGeom;
 
+#if !POM1_IS_WASM
+// Reading a sidecar back is a native-only concern: loadPresetLayout's whole
+// OS-window block is compiled out in the browser, where the canvas size comes
+// from computeWasmCanvasSize instead. WRITING one is not — pregenerateMissing-
+// PresetLayouts seeds .size files on every platform — so saveSizeFile below
+// stays unguarded.
 bool loadSizeFile(int idx, OsWindowGeom& g)
 {
     std::ifstream f(sizePathForPreset(idx));
     if (!f) return false;
     return pom1::wingeom::parseSizeSidecar(f, g);
 }
+#endif
 
 bool saveSizeFile(int idx, const OsWindowGeom& g)
 {

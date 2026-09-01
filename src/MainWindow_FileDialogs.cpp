@@ -72,6 +72,9 @@ std::string lowerExt(const std::string& path) { return pom1::lowerExtension(path
 // Filter entry covering every Wozmon-hex extension (.txt/.hex/.apl/.mon —
 // HexDumpFile.h owns the list). Built at call time so adding an extension there
 // is enough; the label is generated so it can never drift from the list.
+#if !POM1_IS_WASM
+// Only the NATIVE pickers take a filter list; the browser build stays on POM1's
+// in-process ImGui browser, which lists extensions from HexDumpFile.h directly.
 pom1::FileFilter hexDumpFilter()
 {
     pom1::FileFilter f;
@@ -85,6 +88,7 @@ pom1::FileFilter hexDumpFilter()
     f.description = label + ")";
     return f;
 }
+#endif
 }
 
 // The software/ sub-directory matching the SINGLE active "content" card, or ""

@@ -10,6 +10,36 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — les cinq tiers de CI passent en warnings-as-errors
+
+Linux et macOS (Metal + OpenGL) portaient la porte depuis août. Windows et WASM
+la portent désormais aussi, et **les deux étaient mal diagnostiqués**.
+
+**Windows.** Ce qui a tenu le drapeau à l'écart pendant trois cycles de CI rouges
+était un C4244 levé *à l'intérieur* de `<xutility>`, depuis une instanciation
+`std::fill<vector_iterator<uint8_t>, int>`. La note qui accompagnait le job
+disait que POM1 « ne contient aucun `fill(` », donc que le site d'appel exigeait
+la trace d'instanciation et une machine Windows. **C'était faux**, et c'est ce
+qui a envoyé trois tentatives dans le mur : un `grep std::fill(` les trouve tous.
+`std::fill(v.begin(), v.end(), 0)` sur un `std::vector<uint8_t>` déduit le type
+de valeur comme `int` ; le rétrécissement se produit donc sur le `*_First = _Val;`
+de `<xutility>` lui-même — imputé à l'en-tête, jamais à l'appelant, ce qui est
+exactement pourquoi il se lit comme introuvable. Six sites (cinq dans
+`Memory.cpp`, un dans `Pom1BenchHost.cpp`) écrivent maintenant
+`static_cast<uint8_t>(...)`, le même idiome que les cinq `std::fill_n` voisins
+utilisaient déjà : la passe précédente avait corrigé ceux-là et manqué ceux-ci.
+
+**WASM.** Cinq fonctions que seuls les chemins NATIFS appellent — le lecteur de
+sidecar `.size`, le constructeur de filtres du sélecteur natif et trois
+auxiliaires du bundle cc65 — étaient définies sans condition alors que leurs
+seuls appelants vivaient dans un `#if !POM1_IS_WASM`. Gardes posées sur les
+définitions. (Le décompte annoncé était « deux statiques inutilisées » ; il y en
+avait cinq.)
+
+Coût mesurable : les 11 lignes de gardes font monter `mainwindow_lines` de 16780
+à 16791. C'est le seul type de hausse que ce plafond accepte — une qui nomme ce
+qu'elle achète.
+
 ### Added — les dix croquis LOGO livrés deviennent atteignables (et vérifiés)
 
 `sketchs/logo/` embarque dix programmes tortue **APPLE-1 LOGO V2.6** depuis

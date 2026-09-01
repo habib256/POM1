@@ -122,7 +122,6 @@ deux fois, une fois par direction ; les deux lisent la même table et
 
 ### 5. Qualité, sécurité et chaîne de livraison (1–2 semaines)
 
-- [ ] **Finir Windows et WASM en warnings-as-errors** `[S · solid]` — le code POM1 est déjà propre sous `/W4` (30 sites corrigés, vendu bracketé) et le build WASM à trois défauts près. Ce qui reste côté MSVC est un C4244 levé dans `<xutility>` depuis une instanciation `std::fill<vector_iterator<uint8_t>, int>` : POM1 ne contient aucun `fill(`, donc le site se trouve par la trace d'instanciation. Côté WASM, deux fonctions statiques inutilisées. **Ne pas rebasculer le drapeau à l'aveugle** — trois cycles de CI rouges l'ont déjà prouvé.
 - [ ] **Ajouter une analyse statique incrémentale** `[M · solid]` — `clang-tidy` sur le code POM1 modifié, avec baseline initiale explicite ; ne pas analyser le code vendu.
 - [ ] **Produire SBOM et inventaire de licences** `[M · solid]` — attacher les deux aux releases et vérifier les composants vendus/bundlés.
 - [ ] **Ajouter des budgets de performance** `[M · solid]` — seuils reproductibles pour débit CPU, callback audio, application d'un preset et rewind ; alerter sur tendance avant de bloquer une PR.

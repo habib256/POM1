@@ -809,7 +809,7 @@ void Memory::initMemory(){
         for (int i = 0; i < ramSize * 1024; ++i)
             mem[i] = static_cast<uint8_t>(dist(gen));
     } else {
-        std::fill(mem.begin(), mem.end(), 0);
+        std::fill(mem.begin(), mem.end(), static_cast<uint8_t>(0));
     }
     resetRamWriteTrap();
     markAllPagesDirty();
@@ -1801,7 +1801,7 @@ void Memory::setMicroSDEnabled(bool b)
         // FLAGS runs after MEM — zeroing here would wipe just-restored RAM
         // (e.g. Applesoft Lite at $6000-$7FFF when switching presets).
         if (!snapshotRestoreInProgress) {
-            std::fill(mem.begin() + 0x8000, mem.begin() + 0xA000, 0);
+            std::fill(mem.begin() + 0x8000, mem.begin() + 0xA000, static_cast<uint8_t>(0));
             markPagesDirty(0x8000, 0x2000);
         }
     }
@@ -1834,7 +1834,7 @@ int Memory::loadSDCardRom()
     bool prev = writeInRom;
     writeInRom = true;
     // Clear region first — ROM file (8177 B) may not fill the full 8 KB space
-    std::fill(mem.begin() + 0x8000, mem.begin() + 0xA000, 0);
+    std::fill(mem.begin() + 0x8000, mem.begin() + 0xA000, static_cast<uint8_t>(0));
     int ret = loadROM("sdcard.rom", 0x8000, 0x2000, "SD CARD OS");
     markPagesDirty(0x8000, 0x2000);
     writeInRom = prev;
@@ -1854,7 +1854,7 @@ void Memory::setCFFA1Enabled(bool b)
         // Clear the CFFA1 ROM region. Skip during snapshot restore — same
         // MEM-then-FLAGS ordering hazard as setMicroSDEnabled(false).
         if (!snapshotRestoreInProgress) {
-            std::fill(mem.begin() + 0x9000, mem.begin() + 0xB000, 0);
+            std::fill(mem.begin() + 0x9000, mem.begin() + 0xB000, static_cast<uint8_t>(0));
             markPagesDirty(0x9000, 0x2000);
         }
     }
@@ -1958,7 +1958,7 @@ void Memory::setJukeBoxEnabled(bool b)
         // that guard. Skip during snapshot restore (MEM-then-FLAGS ordering, same
         // as setCFFA1Enabled/setMicroSDEnabled).
         if (!snapshotRestoreInProgress) {
-            std::fill(mem.begin() + 0x4000, mem.begin() + 0xC000, 0);
+            std::fill(mem.begin() + 0x4000, mem.begin() + 0xC000, static_cast<uint8_t>(0));
             markPagesDirty(0x4000, 0x8000);
         }
     }

@@ -41,6 +41,7 @@
 // ─────────────────────────────────────────────────────────────
 
 
+#if !POM1_IS_WASM   // the fallback linker cfg is written to a scratch dir for the DESKTOP ca65
 static const char* kBenchEmbeddedCfg =
     "MEMORY {\n"
     "    ZP:  start = $0000, size = $0030, type = rw, define = yes;\n"
@@ -53,6 +54,7 @@ static const char* kBenchEmbeddedCfg =
     "    DATA:     load = RAM, type = rw,  optional = yes;\n"
     "    BSS:      load = RAM, type = bss, optional = yes, define = yes;\n"
     "}\n";
+#endif
 
 namespace {
 
@@ -116,7 +118,7 @@ bool flashCodeTankDevRom(const std::string& binPath, const std::string& outPath,
         if (prev) prev.read(reinterpret_cast<char*>(rom.data()), 0x8000);
     }
     const size_t off = upperBank ? 0x4000 : 0x0000;
-    std::fill_n(rom.begin() + off, 0x4000, 0xFF);
+    std::fill_n(rom.begin() + off, 0x4000, static_cast<unsigned char>(0xFF));
     // Verify the build actually produced bytes: a missing/empty .bin reads 0
     // bytes and would otherwise flash a blank-but-"successful" bank. A short
     // read (< 16 KB) is legitimate — small programs don't fill the half.
@@ -489,6 +491,7 @@ void parseErrorMarkers(const std::string& out, std::vector<std::pair<int, std::s
 
 // Cross-platform install nudge appended whenever the cc65 toolchain (or the dev/
 // source tree it needs) is missing — turns a dead-end "not found" into a fix.
+#if !POM1_IS_WASM   // nothing to install in a browser: the WASM build ships its own toolchain
 const char* const kCc65InstallHint =
     "\nInstall the cc65 toolchain, then reopen the Bench:\n"
     "  Debian/Ubuntu : sudo apt install cc65\n"
@@ -496,6 +499,7 @@ const char* const kCc65InstallHint =
     "  Arch          : sudo pacman -S cc65\n"
     "  macOS         : brew install cc65\n"
     "  Windows/other : https://cc65.github.io/  (add its bin/ to PATH)\n";
+#endif
 
 // Plain-language one-liner for the most common ca65/ld65/cl65 diagnostics, so a
 // newcomer gets a nudge above the raw toolchain spew. Empty if nothing matches.
@@ -557,9 +561,11 @@ Pom1BenchHost::Pom1BenchHost(MainWindow_ImGui* mw) : mw_(mw)
 // target/) by pointing CC65_HOME at <cc65>/share/cc65 next to the resolved
 // binary, when the user hasn't already set CC65_HOME. apt/brew cc65 binaries
 // don't all derive their prefix from argv[0], so a bundled toolchain needs this.
+// Desktop only: the browser toolchain locates its own runtime, and probe()'s
+// caller is compiled out there — leaving this defined would be an unused static.
+#if !POM1_IS_WASM
 static void ensureCc65Home(const std::string& binaryPath)
 {
-#if !POM1_IS_WASM
     namespace fs = std::filesystem;
     if (binaryPath.empty()) return;
     if (const char* existing = std::getenv("CC65_HOME"); existing && *existing) return;
@@ -573,10 +579,8 @@ static void ensureCc65Home(const std::string& binaryPath)
   #else
     setenv("CC65_HOME", h.c_str(), 0);   // 0 = keep any pre-existing value (already guarded)
   #endif
-#else
-    (void)binaryPath;
-#endif
 }
+#endif
 
 void Pom1BenchHost::probe() const
 {
