@@ -10,6 +10,36 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — l'image de build bionic : une somme de contrôle sur une URL mouvante n'est pas une épingle
+
+`build-bionic-image.yml` échouait depuis le **22 août**, indépendamment de la CI.
+Le Dockerfile téléchargeait `linuxdeploy` et `appimagetool` depuis le tag
+**`continuous`** — mouvant — puis vérifiait un SHA-256 épinglé. C'est une
+contradiction : l'URL bouge, la somme ne peut pas, donc le seul aboutissement
+possible est un échec dur **sans version à incrémenter**, seulement une chasse à
+un nouveau hash qui se périmera à son tour.
+
+Le coupable, identifié en téléchargeant les quatre artefacts et en les hachant :
+`linuxdeploy` seul. L'amont a reconstruit son asset `continuous` le
+**1ᵉʳ août** — `e87ee081…` → `36a2d7e2…` — et l'image a cessé de se construire
+au premier run suivant. La somme d'`appimagetool` (`b90f4a8b…`), elle,
+correspond toujours.
+
+`linuxdeploy` passe donc sur un **vrai tag de release**,
+`1-alpha-20251107-1` (le plus récent non-prerelease), sha
+`c20cd71e…` — URL et somme vérifiées verbatim. Son asset ne peut plus être
+réécrit sous ce tag.
+
+`appimagetool` **reste volontairement sur `continuous`**, et c'est un risque
+nommé plutôt qu'un oubli : la somme épinglée est l'artefact octet pour octet avec
+lequel toutes les AppImage POM1 publiées jusqu'ici ont été empaquetées, et en
+changer change le runtime embarqué dans ce que les utilisateurs téléchargent —
+ce qu'aucune CI ne peut vérifier, seule une vraie release le peut. Quand il
+cassera, la réponse est déjà mesurée et écrite dans le fichier : AppImageKit
+tag 13, asset `obsolete-appimagetool-x86_64.AppImage` (l'amont l'a renommé après
+coup), sha `df3baf5c…`, **ET_EXEC vérifié** — la propriété dont le bloc dépend.
+
+
 ### Fixed — la CI était rouge depuis cinq jours, sur quatre causes distinctes
 
 **4. Linux — un seuil de concurrence qui mesurait l'ordonnanceur, pas POM1.**
