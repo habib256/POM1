@@ -85,7 +85,16 @@ fetch_extract() {
     chmod +x "${TOOLS}/${outname}.AppImage"
     (cd "${TOOLS}" && "./${outname}.AppImage" --appimage-extract >/dev/null && mv squashfs-root "${outname}.AppDir")
 }
-fetch_extract "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${APPIMAGE_ARCH}.AppImage" linuxdeploy
+# Les deux outils viennent de TAGS de release immuables, jamais de `continuous`.
+# Ce chemin-ci n'est pris que hors image bionic (build local, sandbox) : le
+# packageur de release, lui, trouve les outils déjà extraits dans
+# POM1_APPIMAGE_TOOLS_DIR, où le Dockerfile les a posés avec vérification de
+# somme. Mais `continuous` est un tag mouvant, et c'est exactement ce qui a
+# cassé l'image bionic le 1er août 2026 — un développeur qui empaquette
+# localement n'a aucune raison d'hériter de cette dérive-là.
+LINUXDEPLOY_TAG="1-alpha-20251107-1"      # plus récent tag non-prerelease
+APPIMAGETOOL_TAG="13"                     # dernière release d'AppImageKit
+fetch_extract "https://github.com/linuxdeploy/linuxdeploy/releases/download/${LINUXDEPLOY_TAG}/linuxdeploy-${APPIMAGE_ARCH}.AppImage" linuxdeploy
 # appimagetool depuis AppImageKit (l'ANCIEN dépôt), PAS le nouveau
 # AppImage/appimagetool. Raison : le nouveau appimagetool embarque un runtime
 # « static-pie » de type ELF ET_DYN et ne sait compresser qu'en zstd.
@@ -96,7 +105,11 @@ fetch_extract "https://github.com/linuxdeploy/linuxdeploy/releases/download/cont
 # ET_EXEC + squashfs gzip → reconnu par AppImageLauncher. Le binaire POM1
 # empaqueté est identique (plancher glibc 2.27 inchangé) ; seul le petit runtime
 # d'amorçage change. Vérifié : ET_EXEC, magic AI\x02, monte en gzip, se lance.
-fetch_extract "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${APPIMAGE_ARCH}.AppImage" appimagetool
+# Le préfixe `obsolete-` fait partie de l'URL : l'amont a renommé ces assets
+# APRÈS publication, pour décourager l'ancien outil. C'est pourtant celui qu'il
+# nous faut, et vérifié sur le tag 13 : appimagetool ET_EXEC en x86_64 comme en
+# aarch64, et les runtimes qu'il embarque le sont aussi.
+fetch_extract "https://github.com/AppImage/AppImageKit/releases/download/${APPIMAGETOOL_TAG}/obsolete-appimagetool-${APPIMAGE_ARCH}.AppImage" appimagetool
 
 # … mais ce raisonnement ne tient QUE sur x86_64. Le runtime embarqué dans la
 # release `continuous` d'AppImageKit est ET_EXEC en x86_64 et ET_DYN en
@@ -106,6 +119,11 @@ fetch_extract "https://github.com/AppImage/AppImageKit/releases/download/continu
 #   continuous/runtime-x86_64   → ET_EXEC
 #   continuous/runtime-aarch64  → ET_DYN   ← d'où l'échec du job Raspberry Pi
 #   12/runtime-aarch64          → ET_EXEC  ← la dernière version ET_EXEC publiée
+#
+# Revérifié le 2026-09-01 en passant les outils sur des tags immuables :
+# 13/obsolete-runtime-aarch64 est ET_EXEC lui aussi, donc ce contournement
+# pourrait un jour se simplifier. Il ne bouge pas ici : la release 12 est déjà
+# immuable, et on ne touche pas un chemin de release qui marche pour l'élégance.
 #
 # On épingle donc le runtime aarch64 sur la release figée 12 et on le passe à
 # appimagetool via --runtime-file. Le format type-2 est inchangé, seul le petit

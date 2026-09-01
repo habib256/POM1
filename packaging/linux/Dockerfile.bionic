@@ -30,8 +30,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 #
 # A checksum on a MOVING url is not a pin, it is a fuse: there is no version to
 # bump when it blows, only a hunt for a new hash that will go stale in turn. Both
-# AppImage tools were in that state; linuxdeploy blew, and is now on a real tag.
-# See the two blocks below — one fixed, one deliberately not.
+# AppImage tools were in that state and linuxdeploy blew; both are now on real
+# release tags whose assets cannot be rewritten under them.
 ARG CMAKE_VER=3.27.9
 ARG CMAKE_SHA256=72b01478eeb312bf1a0136208957784fe55a7b587f8d9f9142a7fc9b0b9e9a28
 ARG GLFW_VER=3.3.10
@@ -46,16 +46,24 @@ ARG CC65_COMMIT=547d923588d870aacf0b0016c67d0f6a92a70f83
 # the newest non-prerelease tag; its asset cannot be rewritten under it.
 ARG LINUXDEPLOY_TAG=1-alpha-20251107-1
 ARG LINUXDEPLOY_SHA256=c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
-# appimagetool: STILL on `continuous`, and that is a known, named risk rather than
-# an oversight. The pinned checksum below is the byte-for-byte artifact every POM1
-# AppImage released so far was packaged with, and changing it changes the runtime
-# embedded in what users download — which nothing in CI can verify, only a real
-# release can. So it stays until it breaks. When it does, the answer is already
-# measured: AppImageKit tag 13, asset `obsolete-appimagetool-x86_64.AppImage`
-# (upstream renamed it after the fact), sha256
-# df3baf5ca5facbecfc2f3fa6713c29ab9cefa8fd8c1eac5d283b79cab33e4acb — verified
-# ET_EXEC, which is the property the block below cares about.
-ARG APPIMAGETOOL_SHA256=b90f4a8b18967545fda78a445b27680a1642f1ef9488ced28b65398f2be7add2
+# appimagetool: same treatment. Its `continuous` asset had not drifted YET — the
+# old checksum still matched — but AppImageKit is not archived and that asset was
+# last touched 2025-07-26, so it is the same fuse waiting to blow.
+#
+# Switching the tool changes the runtime embedded in what users download, which is
+# the one thing here worth being careful about. Two facts make it checkable rather
+# than a bet: tag 13's x86_64 and aarch64 appimagetools, and the runtimes they
+# ship, are all ELF **ET_EXEC** (measured — that is the property AppImageLauncher
+# needs and the reason this repo uses AppImageKit's old tool at all); and
+# release.yml already GATES the produced AppImage on `readelf -h` reporting EXEC
+# plus the AI\x02 magic, on both architectures. A regression fails the release
+# loudly instead of shipping.
+#
+# The asset name carries `obsolete-` because upstream renamed it after publishing;
+# that prefix is part of the immutable URL, not a mistake.
+ARG APPIMAGETOOL_TAG=13
+ARG APPIMAGETOOL_ASSET=obsolete-appimagetool-x86_64.AppImage
+ARG APPIMAGETOOL_SHA256=df3baf5ca5facbecfc2f3fa6713c29ab9cefa8fd8c1eac5d283b79cab33e4acb
 
 # --- base tooling + X11/GL dev headers ---------------------------------------
 # bionic's apt archives moved to old-releases.ubuntu.com, but archive.ubuntu.com
@@ -121,13 +129,15 @@ ENV CC65_SHARE_DIR=/opt/cc65-install/share/cc65
 #     appimagetool from AppImageKit (the OLD repo): its runtime is ELF ET_EXEC +
 #     gzip squashfs, which AppImageLauncher accepts. The NEW AppImage/appimagetool
 #     ships a static-pie ET_DYN runtime that AppImageLauncher rejects ("type -1").
-#     Baking a fixed copy here freezes it against `continuous` drift. build_appimage.sh
+#     Both tools come from immutable release tags (see the ARGs above), so this
+#     no longer merely freezes a copy of a moving target — there is no moving
+#     target left. build_appimage.sh
 #     picks these up via POM1_APPIMAGE_TOOLS_DIR and calls appimagetool through
 #     AppRun (its bundled libgpgme isn't on bionic).
 RUN mkdir -p /opt/appimage-tools && cd /opt/appimage-tools && \
     wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/${LINUXDEPLOY_TAG}/linuxdeploy-x86_64.AppImage" -O linuxdeploy.AppImage && \
     echo "${LINUXDEPLOY_SHA256}  linuxdeploy.AppImage" | sha256sum -c - && \
-    wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -O appimagetool.AppImage && \
+    wget -q "https://github.com/AppImage/AppImageKit/releases/download/${APPIMAGETOOL_TAG}/${APPIMAGETOOL_ASSET}" -O appimagetool.AppImage && \
     echo "${APPIMAGETOOL_SHA256}  appimagetool.AppImage" | sha256sum -c - && \
     chmod +x ./*.AppImage && \
     ./linuxdeploy.AppImage  --appimage-extract >/dev/null && mv squashfs-root linuxdeploy.AppDir && \
