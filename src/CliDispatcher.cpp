@@ -318,6 +318,8 @@ constexpr CliFlagHelp kCliFlagHelp[] = {
     {'B', "--no-silicon-strict",                "Force TMS9918 paranoid VRAM timing off."},
     {'B', "--dram-refresh",                     "Force the Apple-1 DRAM-refresh CPU stall on."},
     {'B', "--no-dram-refresh",                  "Force the Apple-1 DRAM-refresh CPU stall off."},
+    {'B', "--display-field-sync",               "Phase-lock $D012 busy to the 60 Hz video scan."},
+    {'B', "--no-display-field-sync",            "Use the fixed $D012 busy countdown (default)."},
     {'B', "--vram-noise",                       "Power on TMS9918 VRAM with real noise instead of $FF/$00."},
     {'B', "--tms-frameflag-hostile",            "Model silicon whose status frame flag never registers."},
     {'B', "--ram-poison <HH>",                  "Fill system RAM with sentinel byte HH instead of $00."},
@@ -586,6 +588,14 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& cleanExitOut)
         }
         if (arg == "--no-dram-refresh") {
             plan.dramRefreshOverride = false;
+            continue;
+        }
+        if (arg == "--display-field-sync") {
+            plan.displayFieldSyncOverride = true;
+            continue;
+        }
+        if (arg == "--no-display-field-sync") {
+            plan.displayFieldSyncOverride = false;
             continue;
         }
         if (arg == "--vram-noise") {

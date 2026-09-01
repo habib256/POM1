@@ -2376,6 +2376,21 @@ add_test(NAME command_palette_smoke
          WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set_tests_properties(command_palette_smoke PROPERTIES TIMEOUT 10)
 
+# terminal_timing_smoke -- how long PB7 ($D012) stays busy after a display
+# write. Every printing program spins on the Woz Monitor's BIT/BMI poll, so this
+# is the most-executed timing in the machine. Two models: the historical fixed
+# countdown (default, what every golden image is validated on) and the
+# phase-locked FieldSync, which models a terminal that can only latch when the
+# scan reaches the cursor. The load-bearing assertion is section 3 -- consecutive
+# writes stay one field apart under BOTH, so 60 characters per second survives.
+add_executable(test_terminal_timing terminal_timing_smoke_test.cpp)
+target_include_directories(test_terminal_timing PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+add_test(NAME terminal_timing_smoke
+         COMMAND test_terminal_timing
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(terminal_timing_smoke PROPERTIES TIMEOUT 10)
+
 # imgui_pin_sync -- same idea for the OTHER pin the repo carries. Dear ImGui is
 # not vendored, and its tag was copy-pasted into eleven files; CMake and the
 # scripts now read IMGUI_VERSION, but two workflow `env:` blocks still can't

@@ -21,6 +21,7 @@
 
 #include "ResourceLocator.h"
 #include "CpuClock.h"
+#include "TerminalTiming.h"
 #include "DisplayDevice.h"
 #include "PeripheralBus.h"
 
@@ -468,6 +469,14 @@ public:
     const TMS9918& getTMS9918() const { return *tms9918; }
     void setTMS9918Enabled(bool b);
     bool isTMS9918Enabled() const { return tms9918Enabled; }
+    /// Pick how PB7 ($D012 busy) is driven — see TerminalTiming.h. FixedDelay is
+    /// the historical countdown every shipped program and golden image is
+    /// validated on; FieldSync phase-locks the wait to the video scan, which is
+    /// how Woz's shift-register terminal behaves. Live-togglable from the
+    /// Silicon Strict Inspector, and OFF by default: the phase-locked model is
+    /// reasoned, not measured (see TerminalTiming.h).
+    void setDisplayBusyModel(pom1::terminal::BusyModel m) { displayBusyModel_ = m; }
+    pom1::terminal::BusyModel displayBusyModel() const { return displayBusyModel_; }
     void setSiliconStrictMode(bool enabled);
     bool isSiliconStrictMode() const { return siliconStrictMode; }
 
@@ -700,6 +709,15 @@ private:
     // Display Apple 1 (0xD012) - délai d'affichage
     int displayBusyCycles = 0;       // Cycles restants avant display ready
     int displayCharDelay = POM1_CPU_CLOCK_HZ / 60;    // 60 chars/sec à l'horloge CPU nominale
+    // Free-running position inside the 60 Hz video field, advanced by
+    // advanceCycles() (which M6502 calls per INSTRUCTION, so this is precise to
+    // a few cycles). Only read when displayBusyModel_ is FieldSync. Deliberately
+    // NOT serialised: it is a video artefact with no program-visible state, and
+    // adding a field to the snapshot's fixed-length MEM section would cost a
+    // format version for it. A restore therefore resumes at phase 0, which
+    // changes the first wait after a load and nothing else.
+    int terminalFieldPhase_ = 0;
+    pom1::terminal::BusyModel displayBusyModel_ = pom1::terminal::BusyModel::FixedDelay;
 
     // ── PIA 6821 register banking ────────────────────────────────────────
     // Each of the PIA's two ports exposes TWO registers behind one address,

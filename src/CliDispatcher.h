@@ -162,6 +162,12 @@ struct CliPlan {
     // cycles stolen from the CPU; the video beam keeps running). Independent of
     // siliconStrictModeOverride so headless beam-race captures can isolate it.
     std::optional<bool>                dramRefreshOverride;
+    // --display-field-sync / --no-display-field-sync: how PB7 ($D012 busy) is
+    // driven — a fixed countdown, or phase-locked to the 60 Hz video scan the
+    // way Woz's shift-register terminal behaves (src/TerminalTiming.h). Unlike
+    // its neighbours this one has NO preset default: it is off everywhere
+    // unless asked, because the model is reasoned rather than measured.
+    std::optional<bool>                displayFieldSyncOverride;
     // --vram-noise: power-on the TMS9918 VRAM with true mt19937 noise (what warm
     // P-LAB DRAM shows on cold boot) instead of the lenient bistable $FF/$00
     // default. Surfaces uninitialised-SAT / ghost-terminator bugs (games that

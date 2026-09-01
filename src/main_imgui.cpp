@@ -736,6 +736,8 @@ static int runHeadless(pom1::CliPlan& plan)
     // running, so beam-race code drifts as on real DRAM silicon.
     if (plan.dramRefreshOverride)
         emu.setDramRefreshEnabled(*plan.dramRefreshOverride);
+    if (plan.displayFieldSyncOverride)
+        emu.setDisplayFieldSync(*plan.displayFieldSyncOverride);
 
     if (plan.cpuMax)
         emu.setExecutionSpeedCyclesPerFrame(1000000);
@@ -1329,6 +1331,8 @@ int main(int argc, char* argv[])
         mainWindow.setSiliconStrictModeOverride(*plan.siliconStrictModeOverride);
     if (plan.dramRefreshOverride)
         mainWindow.setDramRefreshOverride(*plan.dramRefreshOverride);
+    if (plan.displayFieldSyncOverride)
+        mainWindow.setDisplayFieldSyncOverride(*plan.displayFieldSyncOverride);
     if (!plan.deferredActions.empty())
         mainWindow.setDeferredCliActions(std::move(plan.deferredActions));
     mainWindow.setWindow(window);

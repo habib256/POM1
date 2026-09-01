@@ -25,6 +25,7 @@
 #include "KeyboardController.h"
 #include "M6502.h"
 #include "Memory.h"
+#include "TerminalTiming.h"
 #include "RewindBuffer.h"
 #include "SnapshotPublisher.h"
 // The core controller depends on the display ABSTRACTION, never on
@@ -372,6 +373,12 @@ public:
     // Silicon fidelity profile knobs. Each takes effect on the next
     // hardReset (or Memory::resetMemory). Defaults are OFF — historic
     // POM1 behaviour (MSX1 bistable VRAM, zero-init RAM) is preserved.
+    /// Apple-1 display busy model ($D012 PB7) — see src/TerminalTiming.h.
+    /// A silicon-fidelity knob like the four around it, but OFF by default and
+    /// not part of the Silicon Strict master bundle: the phase-locked model is
+    /// reasoned from Woz's shift-register terminal, not measured on one.
+    void setDisplayFieldSync(bool enabled);
+    bool isDisplayFieldSync() const;
     void setVramNoiseOnReset(bool enabled);
     bool isVramNoiseOnReset() const;
     void setTmsFrameFlagHostile(bool enabled);

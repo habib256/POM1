@@ -142,6 +142,7 @@ public:
     // Subsequent preset switches reset to default - this is intentional.
     void setSiliconStrictModeOverride(bool enabled) { siliconStrictModeOverride = enabled; }
     void setDramRefreshOverride(bool enabled) { dramRefreshOverride = enabled; }
+    void setDisplayFieldSyncOverride(bool enabled) { displayFieldSyncOverride = enabled; }
     // CLI phase-C verbs. Applied once after the staged card transaction
     // reaches zero (the same frame the deferred plug commits).
     void setDeferredCliActions(std::vector<pom1::CliAction> actions)
@@ -583,6 +584,12 @@ private:
     bool vramNoiseOnResetEnabled = false;
     bool systemRamNoiseOnResetEnabled = false;
     bool dramRefreshEnabled = false;
+    // Apple-1 display busy model ($D012 PB7) — see src/TerminalTiming.h.
+    // Deliberately NOT part of the Silicon Strict master bundle: unlike the
+    // knobs beside it, the phase-locked model is reasoned from Woz's
+    // shift-register terminal rather than measured on one, so it stays an
+    // individual opt-in that a preset never arms.
+    bool displayFieldSyncEnabled = false;
     // Stress-test toggle (Silicon Strict Inspector → TMS9918): the frame flag
     // never registers, so unbounded WAIT_VBLANK polls hang. NOT armed by the
     // master switch. Mirrors TMS9918::frameFlagHostile / --tms-frameflag-hostile.
@@ -1112,6 +1119,7 @@ private:
     std::string                         codeTankRomPathOverride; // --codetank-rom
     std::optional<bool>                 siliconStrictModeOverride; // --silicon-strict / --no-silicon-strict
     std::optional<bool>                 dramRefreshOverride;       // --dram-refresh / --no-dram-refresh
+    std::optional<bool>                 displayFieldSyncOverride;  // --display-field-sync / --no-…
     std::vector<pom1::CliAction>        deferredCliActions; // phase-C queue
     bool deferredCliActionsConsumed = false;
     // applyMachineConfig() normally triggers emulation->hardReset() to wipe

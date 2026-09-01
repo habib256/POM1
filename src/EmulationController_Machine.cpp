@@ -78,6 +78,19 @@ bool EmulationController::isCpuDecimalBugNMOS() const
     return cpu->isDecimalBugNMOS();
 }
 
+void EmulationController::setDisplayFieldSync(bool enabled)
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    memory->setDisplayBusyModel(enabled ? pom1::terminal::BusyModel::FieldSync
+                                        : pom1::terminal::BusyModel::FixedDelay);
+}
+
+bool EmulationController::isDisplayFieldSync() const
+{
+    std::lock_guard<PriorityMutex> lock(stateMutex);
+    return memory->displayBusyModel() == pom1::terminal::BusyModel::FieldSync;
+}
+
 void EmulationController::setVramNoiseOnReset(bool enabled)
 {
     std::lock_guard<PriorityMutex> lock(stateMutex);

@@ -1652,7 +1652,18 @@ void Memory::memWrite(uint16_t address, uint8_t value)
 
     if (address == 0xD012) {
         if (value != 0x7F) {
-            displayBusyCycles = displayCharDelay; // Simuler le délai du terminal
+            // How long PB7 stays busy is pom1::terminal's call — a fixed
+            // countdown by default, or phase-locked to the scan under
+            // FieldSync. The store lands MID-INSTRUCTION and advanceCycles()
+            // books those cycles only afterwards, so add the in-flight count
+            // for sub-instruction accuracy (same idiom as the TMS9918 beam
+            // catch-up above).
+            const int inFlight = cpuForIrq
+                ? static_cast<int>(cpuForIrq->getCurrentInstructionCycles()) : 0;
+            displayBusyCycles = pom1::terminal::busyCyclesAfterWrite(
+                displayBusyModel_,
+                pom1::terminal::advanceFieldPhase(terminalFieldPhase_, inFlight),
+                displayCharDelay);
             if (displayDevice) {
                 displayDevice->onChar(static_cast<char>(value & 0x7F));
             }
@@ -2189,6 +2200,11 @@ void Memory::advanceCycles(int cycles)
     if (cycles > 0 && displayBusyCycles > 0) {
         displayBusyCycles = std::max(0, displayBusyCycles - cycles);
     }
+    // Where the video scan is inside the 60 Hz field. Free-running and cheap
+    // (one add, one compare); only consulted when the display busy model is
+    // FieldSync. M6502 calls advanceCycles() per instruction, so the phase is
+    // accurate to a few cycles without any extra plumbing.
+    terminalFieldPhase_ = pom1::terminal::advanceFieldPhase(terminalFieldPhase_, cycles);
     cassetteDevice->advanceCycles(cycles);
     // GEN2 release video scanner — drives the cycle-accurate floating bus /
     // beam position. Same gating pattern as the cards above; zero cost when the

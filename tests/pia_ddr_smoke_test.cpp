@@ -39,6 +39,7 @@
 #include "PR40Printer.h"  // IWYU pragma: keep
 #include "DisplayDevice.h"
 #include "Memory.h"
+#include "TerminalTiming.h"
 
 #include <cstdio>
 #include <string>
@@ -170,6 +171,47 @@ int main()
         b.memWrite(0xD013, 0xA7);            // bank the data register back
         if (b.memRead(0xD013) != 0xA7)
             return fail("CRB is not writable after a restore");
+    }
+
+    // -----------------------------------------------------------------
+    // §9 The display busy model behind PB7 — the wiring, not the arithmetic.
+    //
+    // terminal_timing_smoke pins pom1::terminal on its own; what it cannot see
+    // is whether Memory actually consults it. A $D012 write must arm the busy
+    // countdown the SELECTED model asks for, and the default must remain the
+    // historical fixed delay every shipped program is validated on.
+    // -----------------------------------------------------------------
+    {
+        Memory m;
+        m.initMemory();
+
+        // Default: the fixed countdown. PB7 must read busy right after a write
+        // and stay busy well past a whole video field.
+        if (m.displayBusyModel() != pom1::terminal::BusyModel::FixedDelay)
+            return fail("the default display busy model must stay FixedDelay");
+        m.memWrite(0xD012, 0xC1);                      // 'A' through the data register
+        if (!(m.memRead(0xD012) & 0x80))
+            return fail("PB7 should be busy immediately after a $D012 write");
+        m.advanceCycles(pom1::terminal::kFieldCycles);  // 17030 — one field
+        if (!(m.memRead(0xD012) & 0x80))
+            return fail("FixedDelay is 17045 cycles: still busy after one 17030-cycle field");
+        m.advanceCycles(64);                            // 17030 + 64 > 17045
+        if (m.memRead(0xD012) & 0x80)
+            return fail("FixedDelay should have expired by 17094 cycles");
+
+        // FieldSync: the busy ends ON the field boundary, so it is never longer
+        // than one field — which is exactly what distinguishes it above.
+        Memory f;
+        f.initMemory();
+        f.setDisplayBusyModel(pom1::terminal::BusyModel::FieldSync);
+        if (f.displayBusyModel() != pom1::terminal::BusyModel::FieldSync)
+            return fail("setDisplayBusyModel did not take");
+        f.memWrite(0xD012, 0xC1);
+        if (!(f.memRead(0xD012) & 0x80))
+            return fail("PB7 should be busy immediately after a $D012 write (FieldSync)");
+        f.advanceCycles(pom1::terminal::kFieldCycles);
+        if (f.memRead(0xD012) & 0x80)
+            return fail("FieldSync must never stay busy beyond one 17030-cycle field");
     }
 
     std::printf("pia_ddr_smoke: OK (DDRB reads $7F through the CRB bank, "
