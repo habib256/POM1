@@ -20,6 +20,16 @@ endif()
 # applied directory-wide rather than per source file.
 add_compile_options(${POM1_WARNING_FLAGS})
 
+# ...with one exception, and it is not "nothing vendored is compiled here" after
+# all: AudioDevice.cpp #includes the vendored stb_vorbis.c textually, and that
+# trips C4701. MSVC decides 4700+ warnings during code generation, so no pragma
+# in the source can suppress them — see the twin block in the top-level
+# CMakeLists.txt, repeated here because source properties are directory-scoped.
+if(MSVC)
+    set_source_files_properties(${CMAKE_SOURCE_DIR}/src/AudioDevice.cpp
+                                PROPERTIES COMPILE_OPTIONS "/wd4701")
+endif()
+
 # Tests compiling AudioDevice.cpp (miniaudio, via POM1_TEST_CORE_SOURCES) need
 # libdl + libpthread. The main app gets both transitively from the glfw target;
 # tests don't link glfw. Modern glibc (>= 2.34) folds them into libc so the

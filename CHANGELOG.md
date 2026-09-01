@@ -52,13 +52,21 @@ deux instructifs :
   par `SID.cpp`, qui n'avait pas le bracket — je l'avais mis autour de
   `stb_vorbis` et de `miniaudio` seulement. Corrigé.
 - `stb_vorbis.c(4758)` déclenche C4701, « variable locale potentiellement non
-  initialisée », **malgré** le `warning(push, 0)`. C'est un avertissement de
-  **génération de code** : MSVC le décide après l'analyse de toute l'unité de
-  traduction, quand le `pop` est passé depuis longtemps. Il doit donc rester
-  désactivé pour le reste du fichier — d'où un `#pragma warning(disable: 4701)`
-  placé *après* le `pop`, avec la raison écrite à côté. C'est la seule concession
-  du lot, sur une unité de traduction dont le code POM1 se réduit à de la colle
-  miniaudio.
+  initialisée », **qu'aucun pragma ne peut couvrir**. Les avertissements de la
+  plage 4700+ sont décidés pendant la **génération de code**, après l'analyse de
+  l'unité de traduction entière : aucun état écrit dans le source n'atteint ce
+  moment-là. Le `warning(push, 0)` autour de l'inclusion a échoué, puis un
+  `disable` placé après le `pop` a échoué aussi — deux cycles de CI pour
+  l'apprendre. La suppression est donc un **drapeau de compilation**,
+  `/wd4701` sur ce seul fichier source, qui n'a pas d'état à perdre. C'est la
+  seule concession du lot, sur une unité de traduction dont le code POM1 se
+  réduit à de la colle miniaudio.
+
+  Au passage, le commentaire de `tests/CMakeLists.txt` — « nothing vendored is
+  compiled in this directory » — était faux : `AudioDevice.cpp` inclut
+  `stb_vorbis.c` textuellement, et `SID.cpp` les en-têtes libresidfp. C'est
+  précisément pourquoi les avertissements du vendu étaient imputés à
+  `pom1_test_devices`.
 
 Vérifié d'ici : suite complète verte (120/120) et build `-DPOM1_WERROR=ON` sous
 clang sans une seule erreur. Le verdict MSVC appartient au job Windows.
