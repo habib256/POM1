@@ -12,6 +12,7 @@ to the repo root.
 
 | Doc | For | What |
 |---|---|---|
+| [`roms/README.md`](../roms/README.md) | maintainers | **Provenance of the 16 ROM images** — what each one is, who wrote it, where it came from, its licence position, and which are reproducible from in-tree sources. Open questions are tagged ⟨to confirm⟩. |
 | [`CONTRIBUTING.md`](../CONTRIBUTING.md) | contributors | Build and test, the twelve automated gates and the one rule about ceilings, the house rules, how to write a test. |
 | [`ARCHITECTURE.md`](../ARCHITECTURE.md) | contributors | **Start here as a human.** The five concepts, the dependency rule and what enforces it, threads and locks, where a change belongs — and what is deliberately not clean. |
 | [`README.md`](../README.md) | users | Feature tour, the 13 presets (3 DevBench + 10 machines), software library, per-card hardware reference. |
