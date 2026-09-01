@@ -15,6 +15,7 @@
 // blocks (tutCode) so the reader knows exactly what to type on the Apple-1.
 
 #include "MainWindow_ImGui.h"
+#include "ShortcutTable.h"
 #include "MainWindow_Internal.h"
 #include "POM1Build.h"
 #include "Logger.h"
@@ -1159,8 +1160,12 @@ void MainWindow_ImGui::renderTutorialIECCardWindow()
 
 // ---------------------------------------------------------------------------
 // Help > Keyboard Shortcuts — one place listing every host-side key binding.
-// The F1-F10 rows mirror MainWindow_Keyboard.cpp's shortcuts[] table; update
-// both together (the table is tiny and the prose here needs context anyway).
+// The binding rows are RENDERED FROM pom1::shortcuts::kBindings, the same table
+// handleGlfwKey dispatches: this window used to hold a hand-written copy of them
+// under a comment asking the reader to update both together, which made the list
+// the user reads to learn the keys the copy most likely to be stale. The rows
+// below the loop are not bindings — they describe what POM1 deliberately does
+// NOT grab.
 // ---------------------------------------------------------------------------
 void MainWindow_ImGui::renderShortcutsHelpWindow()
 {
@@ -1185,17 +1190,8 @@ void MainWindow_ImGui::renderShortcutsHelpWindow()
             ImGui::TableSetupColumn("Key", ImGuiTableColumnFlags_WidthFixed, 110.0f);
             ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthStretch);
 
-            row("F1",       "Toggle the Memory Viewer");
-            row("F2",       "Toggle the Memory Map Grid");
-            row("F3",       "Toggle the CPU Debug Console");
-            row("F5",       "Soft reset (Apple-1 RESET line)");
-            row("Ctrl+F5",  "Hard reset (power cycle: RAM cleared)");
-            row("F6",       "Start / stop the CPU");
-            row("F7",       "Single-step one instruction (hold to repeat)");
-            row("F10",      "UI keyboard navigation mode on/off (accessibility): "
-                            "Tab / arrows / Space / Enter drive the POM1 interface "
-                            "instead of typing into the Apple-1. The status bar "
-                            "shows \"UI NAV\" while active.");
+            for (const pom1::shortcuts::Binding& b : pom1::shortcuts::kBindings)
+                row(b.label, b.description);
             row("Ctrl+A..Z", "Sent straight to the Apple-1 as the ASCII control "
                              "code $01-$1A, like the CTRL key on the real ASCII "
                              "keyboard: Ctrl+C breaks Integer BASIC, Ctrl+H is "

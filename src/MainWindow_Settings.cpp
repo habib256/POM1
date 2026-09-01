@@ -18,6 +18,7 @@
 #include "MainWindow_Internal.h"
 #include "POM1Build.h"
 #include "MacNativeFullscreen.h"  // macOS fullscreen space is invisible to GLFW
+#include "LayoutDecisions.h"  // fullscreen / layout arbitration, pure
 
 // The WASM fullscreen branch below calls emscripten_request_fullscreen_strategy /
 // emscripten_exit_fullscreen. These includes came along from MainWindow_Dialogs.cpp
@@ -117,61 +118,57 @@ void MainWindow_ImGui::renderScreenConfigDialog()
         // space). Leaving a native space is handed back to AppKit's own toggle.
 #if !POM1_IS_WASM
         const bool nativeFs = window && pom1::macWindowIsNativeFullscreen(window);
-        // Retire the in-flight latch once AppKit has actually left the space,
-        // or after the timeout if we somehow never observe that.
-        if (macNativeExitRequestedAt_ >= 0.0 &&
-            (!nativeFs || ImGui::GetTime() - macNativeExitRequestedAt_
-                              > kMacNativeExitTimeoutSeconds)) {
-            macNativeExitRequestedAt_ = -1.0;
-        }
-#endif
-        bool fullscreenUi = osWindowIsFullscreen();
-#if !POM1_IS_WASM
-        // Show the state the user ASKED for while AppKit animates out of the
-        // space — the style mask (and so osWindowIsFullscreen) stays set for
-        // the whole animation, and a checkbox that snaps back to ticked reads
-        // as "my click did nothing".
-        if (macNativeExitRequestedAt_ >= 0.0) fullscreenUi = false;
-#endif
-        bool fullscreenToggled = ImGui::Checkbox("Fullscreen", &fullscreenUi);
-#if !POM1_IS_WASM
-        // Swallow clicks while a native transition is already running: handing
-        // AppKit a second toggleFullScreen: mid-animation puts the window
-        // straight back into the space.
-        if (fullscreenToggled && macNativeExitRequestedAt_ >= 0.0)
-            fullscreenToggled = false;
-        // Inside a macOS native space, hand the exit back to AppKit and stop
-        // here: glfwSetWindowMonitor must never fight a window AppKit owns.
-        if (fullscreenToggled && nativeFs) {
-            pom1::macWindowToggleNativeFullscreen(window);
-            macNativeExitRequestedAt_ = ImGui::GetTime();
-            fullscreen = false;
-            // Same escape hatch as the plain path below: a --fullscreen kiosk
-            // must let go here too, or render() re-asserts setOsFullscreen(true)
-            // the moment AppKit finishes leaving the space.
-            cliForcedFullscreen_ = false;
-            fullscreenToggled = false;
-        }
-#endif
-        if (fullscreenToggled) {
-            fullscreen = fullscreenUi;
-#if POM1_IS_WASM
-            if (fullscreen) {
-                EmscriptenFullscreenStrategy strategy{};
-                strategy.scaleMode = EMSCRIPTEN_FULLSCREEN_SCALE_STRETCH;
-                strategy.canvasResolutionScaleMode = EMSCRIPTEN_FULLSCREEN_CANVAS_SCALE_HIDEF;
-                strategy.filteringMode = EMSCRIPTEN_FULLSCREEN_FILTERING_DEFAULT;
-                emscripten_request_fullscreen_strategy("#canvas", true, &strategy);
-            } else {
-                emscripten_exit_fullscreen();
-            }
 #else
-            // Unticking is the escape hatch out of a --fullscreen kiosk: drop
-            // the CLI force first, or render() would put the window straight
-            // back on the monitor next frame.
-            if (!fullscreen) cliForcedFullscreen_ = false;
-            setOsFullscreen(fullscreen);   // re-asserts the flag it was given
+        const bool nativeFs = false;   // no AppKit space in a browser
 #endif
+        // What the box SHOWS, and when an in-flight "leave the space" latch
+        // retires, are pure — pom1::layout::fullscreenCheckboxState, pinned by
+        // layout_decisions_smoke §7 along with the timeout and the swallowed
+        // second click. This side keeps only the AppKit and GLFW calls.
+        const pom1::layout::CheckboxState cs =
+            pom1::layout::fullscreenCheckboxState(osWindowIsFullscreen(), nativeFs,
+                                                  ImGui::GetTime(),
+                                                  macNativeExitRequestedAt_);
+        macNativeExitRequestedAt_ = cs.exitRequestedAt;
+
+        bool fullscreenUi = cs.showChecked;
+        if (ImGui::Checkbox("Fullscreen", &fullscreenUi)) {
+            const pom1::layout::TogglePlan plan =
+                pom1::layout::planFullscreenToggle(fullscreenUi, nativeFs,
+                                                   ImGui::GetTime(),
+                                                   macNativeExitRequestedAt_);
+            macNativeExitRequestedAt_ = plan.exitRequestedAt;
+            // Unticking is the escape hatch out of a --fullscreen kiosk: drop
+            // the CLI force, or render() puts the window straight back on the
+            // monitor next frame — including on the AppKit path, the moment the
+            // space finishes closing.
+            if (plan.dropCliForced) cliForcedFullscreen_ = false;
+            switch (plan.action) {
+            case pom1::layout::ToggleAction::Ignore:
+                break;
+            case pom1::layout::ToggleAction::HandBackToAppKit:
+#if !POM1_IS_WASM
+                pom1::macWindowToggleNativeFullscreen(window);
+#endif
+                fullscreen = plan.targetFullscreen;
+                break;
+            case pom1::layout::ToggleAction::ApplyOwnFullscreen:
+                fullscreen = plan.targetFullscreen;
+#if POM1_IS_WASM
+                if (fullscreen) {
+                    EmscriptenFullscreenStrategy strategy{};
+                    strategy.scaleMode = EMSCRIPTEN_FULLSCREEN_SCALE_STRETCH;
+                    strategy.canvasResolutionScaleMode = EMSCRIPTEN_FULLSCREEN_CANVAS_SCALE_HIDEF;
+                    strategy.filteringMode = EMSCRIPTEN_FULLSCREEN_FILTERING_DEFAULT;
+                    emscripten_request_fullscreen_strategy("#canvas", true, &strategy);
+                } else {
+                    emscripten_exit_fullscreen();
+                }
+#else
+                setOsFullscreen(fullscreen);   // re-asserts the flag it was given
+#endif
+                break;
+            }
         }
 
         ImGui::Spacing();

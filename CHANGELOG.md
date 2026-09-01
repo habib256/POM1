@@ -10,6 +10,208 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — la couverture de l'UI mesurée : 2,4 % → 3,9 %, et une leçon sur `constexpr`
+
+`TODO.md` donnait « `ui` à 2,4 % de couverture de lignes sur 14 407 » comme
+chiffre de départ du chantier 3. Après les quatre extractions, mesure sur une
+suite verte : **3,9 % sur 14 468 lignes** (558 couvertes contre ~346). Les neuf
+autres modules sont inchangés au dixième près — le travail n'a donc pas été
+déplacé ailleurs, ce qui est la première chose à vérifier.
+
+Les quatre nouveaux en-têtes ont d'abord été **déclarés dans le module `ui`** de
+`tools/coverage.py` : sans cela ils tombaient dans le fourre-tout `devices`.
+C'est délibéré et c'est le sens du chiffre — la ligne dit quelle part de la
+**logique** de la couche UI est testée, et reclasser ces lignes ailleurs
+améliorerait la mesure en déplaçant le travail. Précédent déjà en place :
+`Apple1KeyMap`, `WindowGeometry` et `FullscreenExpand` y étaient.
+
+**Un seam `constexpr` a besoin d'appels à l'exécution en plus des
+`static_assert`.** Le détail par fichier a montré six seams à 100 % et
+`ShortcutTable.h` à **30 %** — alors que chacune de ses propriétés était en fait
+*prouvée*, et plus solidement qu'un `assert` d'exécution ne le peut : un
+`static_assert` ne peut pas être sauté. L'instrumentation ne voit simplement pas
+une évaluation à la compilation. `shortcut_table_smoke` affirme désormais chaque
+propriété **deux fois** — une fois pliée, une fois à travers un blanchiment
+`volatile` (et un pointeur de fonction pour la surcharge sans argument) — ce qui
+porte le fichier à **100 % de lignes, de fonctions et de régions**. Les sept
+seams sont maintenant à 100 %.
+
+### Added — « quel répertoire implique quelle carte » : une table au lieu de deux
+
+Chantier 3 de `TODO.md`. Charger un programme depuis `software/Graphic HGR/`
+branche la carte GEN2 et ouvre son framebuffer ; depuis `software/NET/`, cela
+branche le modem Wi-Fi — ou le **réinitialise** si une session BBS est déjà
+ouverte. Cette correspondance était une chaîne de sept `else if` faits de
+`path.find("/X/") || path.find("\\X\\")` dans `performMemoryLoad()`, et le
+sélecteur de fichiers portait **la même relation à l'envers**, sous un
+commentaire qui le disait à voix haute : *« This is the reverse of the
+auto-enable-by-source-dir mapping in performMemoryLoad() »*. Deux tables, une
+seule relation.
+
+`src/SoftwareDirRules.h` (en-tête pur, `constexpr`) porte les deux directions.
+Ce que cela achète, ce sont des règles fausses de façon **invisible** :
+
+- **la correspondance porte sur un COMPOSANT de chemin**, sous les deux
+  conventions de séparateur *et* sous un mélange des deux (ce que produit un
+  chemin relatif en `/` joint à une base Windows). Une recherche de
+  sous-chaîne nue se déclencherait sur `software/NETWORKING/` ; oublier la forme
+  antislash rend chaque règle silencieusement morte sous Windows ;
+- **la première règle gagne** sur un chemin portant deux marqueurs. C'était
+  implicite dans l'ordre des `else if` ; c'est désormais une propriété testée ;
+- **toutes les règles ne sont pas un défaut de sélecteur.** Le contenu de la
+  microSD vit sur le système de fichiers de la carte, pas sous `software/` :
+  elle se branche au chargement mais ne doit jamais être le dossier que le
+  sélecteur ouvre. C'était un commentaire ; c'est un champ.
+
+Les conséquences restent portées par la règle qui les veut : l'éviction des
+cartes de stockage avant chargement (les deux cartes graphiques — sinon les
+fenêtres `$6000-$AFFF` de microSD/CFFA1 masquent le programme, ce qui se voit
+comme une carte noire et non comme une erreur) et la réinitialisation au
+rechargement (le seul modem). *Ce que* réinitialiser veut dire reste côté UI,
+donc une future règle qui lèverait le drapeau ne peut pas couper la session BBS
+de quelqu'un par inadvertance.
+
+Au passage, les trois branches qui appelaient `emulation->setCardEnabled()`
+passent comme les autres par `setCardPlugged()`, qui relit l'instantané : le
+reste de la trame voit les cascades déclenchées plutôt que la copie d'avant.
+
+Nouveau test **`software_dir_rules_smoke`** (6 sections, lane `emulator`, ne lie
+rien). `bbs_autodial` — qui charge réellement `software/NET/bbs.*.txt` et
+vérifie que le modem compose — reste vert de bout en bout.
+
+### Added — la table de raccourcis cesse d'être récitée trois fois
+
+Chantier 3 de `TODO.md`, troisième puce (moitié raccourcis). La table de
+liaisons se présentait comme « la source unique de vérité pour les libellés de
+menu **et** le répartiteur de touches » — et l'était, pour **trois** de ses huit
+lignes. Les cinq autres portaient une action nulle et étaient réparties par une
+échelle `else if (key == GLFW_KEY_F1) … else if (key == GLFW_KEY_F2) …` en
+dessous, soit une deuxième copie indexée sur les mêmes valeurs. La fenêtre
+*Help ▸ Keyboard Shortcuts* en tenait une **troisième**, écrite à la main, sous
+un commentaire demandant de « mettre les deux à jour ensemble » : la liste que
+l'utilisateur consulte pour apprendre les touches était la copie la plus
+susceptible d'être périmée.
+
+`src/ShortcutTable.h` (en-tête pur, `constexpr`, ni ImGui ni GLFW) porte les
+huit lignes, chacune nommant une **commande** au lieu d'un pointeur de membre
+autorisé à être nul, plus sa prose d'aide et sa politique de répétition
+(seul le pas-à-pas maintenu la veut ; un reset matériel répété est un démarrage
+qui n'aboutit jamais). Le répartiteur devient un `switch` sur l'énumération, et
+la fenêtre d'aide **rend les lignes qu'elle décrit**.
+
+**L'invariant devient du code.** « Jamais de Ctrl+lettre » — le répartiteur
+passe avant l'Apple-1, donc une telle liaison masque le code de contrôle ASCII
+de la même lettre et le rend intypable sur la machine émulée (c'est ainsi que
+Ctrl+O/S/V/Q avaient mangé `$0F`, `$13` XOFF, `$16` et `$11` XON). La règle est
+désormais un `static_assert` sur la vraie table dans `MainWindow_Keyboard.cpp` :
+ajouter une telle ligne **casse la compilation**. `shortcuts_sync` est conservé
+et repointé sur le nouvel en-tête — il lit le TEXTE, donc il attrape encore les
+formes que le prédicat C++ accepterait (une touche écrite en nombre brut) et il
+nomme le code de contrôle masqué, qui est la partie qui explique le bug.
+
+Nouveau test **`shortcut_table_smoke`** (6 sections, lane `emulator`, ne lie
+rien du tout) : chaque ligne est utilisable, la recherche discrimine bien touche
+*et* modificateurs (F5 et Ctrl+F5 sont un reset doux contre un cycle
+d'alimentation qui efface la RAM), la répétition appartient à la ligne, aucun
+accord n'est revendiqué deux fois, chaque commande est atteignable exactement
+une fois — et l'invariant Ctrl+lettre est vérifié **avec un cas témoin** prouvant
+que le contrôle se déclenche, comme `lock_order_smoke` le fait pour l'ordre des
+verrous.
+
+### Added — les décisions de presets sortent de l'UI, et trois règles cessent d'être écrites deux fois
+
+Chantier 3 de `TODO.md`, deuxième puce. `MachinePresets.h` portait déjà les
+DONNÉES et `CardTopology.h` la POLITIQUE des cartes ; ce qui restait dans
+`applyMachineConfig()` était la composition — et **trois de ses règles étaient
+énoncées deux fois**, dans deux fichiers, sous un commentaire demandant au
+lecteur de maintenir les copies synchronisées. Une règle énoncée deux fois est
+une règle qui peut se contredire.
+
+`src/PresetDecisions.h` (en-tête pur : ni ImGui, ni GLFW, ni `MainWindow`) les
+énonce une fois :
+
+- **le paquet de fidélité silicium** — douze drapeaux, armés par douze lignes
+  `= !fantasyPreset;` sur le chemin des presets et douze autres sur le bouton
+  maître Silicon Strict. `siliconFidelity()` compose la structure ; le seul
+  endroit qui l'applique est le nouveau `MainWindow_ImGui::applySiliconFidelity()`,
+  et les deux chemins ne peuvent plus diverger ;
+- **« où vit Applesoft Lite ? »** — `applesoftOnSdCard()`, un unique prédicat
+  qui décide *à la fois* le profil ROM que le contrôleur charge et l'inventaire
+  que la Memory Map affiche. C'étaient deux copies : la carte mémoire pouvait
+  décrire une machine autre que celle qui tourne. Le chemin **headless** en
+  portait une **troisième** ;
+- **« est-ce un profil DevBench ? »** — écrit comme une plage d'indices
+  (`presetIndex <= 2`) à un endroit et comme trois comparaisons de `PresetId` à
+  l'autre.
+
+Plus le choix de cassette (`tapeFor` — quelle bande, et laquelle est de la
+*donnée* que l'ACI lit plutôt que de la musique) et les prédicats restants
+(`animatesBoot`, `showsBanner`, `coldResetOnApply`).
+
+**Les fenêtres passent par le registre.** `applyMachineConfig` récitait le jeu
+de fenêtres deux fois de plus : 47 lignes de `showXxx = false;` puis une chaîne
+de 36 `else if (n == "<titre>")`. Les deux sont remplacées par une boucle sur
+`windowRegistry()`, qui gagne une colonne `resetOnPresetSwitch` (défaut *vrai* :
+une fenêtre appartient à un preset sauf si l'utilisateur y travaille — Bench,
+éditeurs, inspecteurs, Memory Viewer, Debugger). C'était bien un jeu qui
+divergeait : **le tutoriel IEC manquait à la liste de fermeture**, seul de seize
+tutoriels à rester ouvert d'un profil à l'autre. Corrigé par construction.
+Vérifié sur une machine réelle : le profil 12 ouvre exactement `CassetteDeck` et
+`Welcome`, les deux panneaux que sa table déclare.
+
+Nouveau test **`preset_decisions_smoke`** (8 sections, lane `emulator`) : il lie
+la **vraie** table de presets, donc chaque assertion porte sur les treize
+machines livrées et non sur des fixtures — le paquet silicium est tout-ou-rien
+et seuls les deux profils *Fantasy* le désarment, les deux compositions
+coïncident, l'inventaire ROM s'accorde avec le profil ROM branche par branche,
+une seule cassette n'est pas de la donnée, et les trois profils DevBench sont
+bien les indices 0-2.
+
+`mainwindow_lines` descend de 16950 à **16840** et le plafond suit ;
+`sources_outside_test_devices` reste à 86 — les deux en-têtes sont *header-only*.
+
+### Added — les décisions de layout et de plein écran sortent de l'UI
+
+Chantier 3 de `TODO.md`, première puce. `src/LayoutDecisions.h` — en-tête pur,
+sans ImGui, sans GLFW, sans `MainWindow` — reprend l'**arbitrage** que
+`FullscreenExpand` (le *timing*) et `WindowGeometry` (le *format*) avaient laissé
+derrière eux, et c'est là que vivaient les six défauts plein écran d'août 2026,
+dont aucun n'était épinglable sur place :
+
+- **quel rectangle est persisté** (`decidePersistedGeometry`) — toujours le
+  rectangle *fenêtré*, jamais le cadre plein écran ; `GLFW_MAXIMIZED` n'est pas
+  persisté depuis un espace natif macOS (AppKit y rapporte l'état zoomé de la
+  fenêtre sous-jacente) ; un `--fullscreen` de borne n'a pas le droit de
+  réécrire le profil en plein écran — le lancement suivant démarrerait plein
+  écran sans raison visible — mais ne peut pas pour autant supprimer le mode 2,
+  un espace natif étant toujours un geste de l'utilisateur ;
+- **quelle géométrie s'applique** (`planLayoutRestore`, cinq branches) — le
+  plein écran est une propriété de **session**, jamais de profil, et un espace
+  natif macOS n'est jamais ré-entré par programme ;
+- **ce que fait une réinitialisation** (`planLayoutReset`) — y compris le retrait
+  de l'entrée « Apple 1 Screen » de `pendingLayout`, sans lequel le forçage en
+  `ImGuiCond_Always` réécrit le rectangle fenêtré par-dessus l'expansion ;
+- **comment une géométrie en attente s'applique** (`placementApply`) — forcée et
+  conservée, ou `FirstUseEver` et consommée ;
+- **la case Plein écran face à AppKit** (`fullscreenCheckboxState`,
+  `planFullscreenToggle`) — le masque de style reste posé pendant toute
+  l'animation de sortie (~0,5 s), donc l'état brut ferait re-cocher la case et
+  inviterait un second clic qui remet la fenêtre dans l'espace ;
+- **la taille de fenêtre qu'un preset demande** (`computeOsWindowSize`) — une
+  seule fonction pour les **trois** copies de l'arithmétique (bureau, canvas
+  WASM, pré-génération des `.size`), avec le plancher POM1 Fantasy sur le bureau
+  et son absence délibérée dans le navigateur.
+
+Nouveau test **`layout_decisions_smoke`** (8 sections, lane `emulator`) : il ne
+lie que `WindowGeometry.cpp`, pour faire l'aller-retour réel
+`decidePersistedGeometry` → sidecar → `planLayoutRestore` (§4). Aucun
+gestionnaire de fenêtres n'est nécessaire pour que ces règles soient vraies.
+
+L'en-tête étant *header-only*, `sources_outside_test_devices` reste à 86 ;
+`mainwindow_lines` descend de 16955 à 16950 et le plafond suit. Le gain n'est
+pas le nombre de lignes — c'est que ces décisions sont désormais assertables.
+
+
 ### Changed — le code POM1 est propre sous MSVC `/W4` (la porte, pas encore)
 
 Le job Windows compilait en `/W4` **avertissements visibles mais non fatals**,

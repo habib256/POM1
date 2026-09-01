@@ -34,6 +34,7 @@
 #include "Screen_ImGui.h"
 #include "FullscreenExpand.h"
 #include "StagedCardConfiguration.h"
+#include "PresetDecisions.h"
 #include "Pom1CrtEffects.h"        // universal shader CRT post-process (opt-in)
 #include "GraphicsCard.h"
 #include "TMS9918.h"
@@ -242,6 +243,16 @@ public:
         // Factory dock home. Default Float = stays floating, which is what the
         // old table expressed by simply not listing the window.
         DockSlot dock = DockSlot::Float;
+        // Closed by applyMachineConfig() before the incoming preset's layout
+        // table re-opens what it declares. Default TRUE: a window belongs to a
+        // preset unless it is something the user actively works IN — the Bench,
+        // the editors, the inspectors, the Memory Viewer and the Debugger, which
+        // must survive a profile switch. This used to be a 47-line recitation of
+        // `showXxx = false;` inside applyMachineConfig, i.e. a second copy of
+        // the window set that could (and did) disagree with this table: the IEC
+        // tutorial was missing from it, so it alone among sixteen tutorials
+        // stayed open across every switch.
+        bool resetOnPresetSwitch = true;
     };
     static const std::vector<WindowDescriptor>& windowRegistry();
 
@@ -625,9 +636,11 @@ private:
     // keep reporting fullscreen and re-tick the Settings checkbox on the very
     // next frame; a second click would then hand AppKit another toggle and put
     // the window straight back into the space. Also a timeout, so a missed
-    // completion cannot wedge the checkbox permanently.
+    // completion cannot wedge the checkbox permanently. The arbitration itself
+    // (what the box shows, when the latch retires, what a click means) is pure
+    // and lives in LayoutDecisions.h, along with the timeout — this member is
+    // only where the value is kept between frames.
     double macNativeExitRequestedAt_ = -1.0;
-    static constexpr double kMacNativeExitTimeoutSeconds = 2.0;
 
     // ── Interface zoom ────────────────────────────────────────────────────
     // uiScale_ is the USER zoom (Settings ▸ Interface zoom, persisted
@@ -879,6 +892,14 @@ private:
     void configMemory();
     void about();
     void applyMachineConfig(int presetIndex);
+    /// Copy a decided silicon-fidelity bundle into the UI's own flags and push
+    /// it to the running machine. The DECISION is pure and lives in
+    /// PresetDecisions.h; this is the only place that carries it out, so the
+    /// preset path and the Silicon Strict master button cannot state it twice.
+    /// `pushToEmulation` is false on the preset path, where the same values
+    /// already ride in the CardConfigurationRequest.
+    void applySiliconFidelity(const pom1::presets::SiliconFidelity& f,
+                              bool pushToEmulation = false);
     // Boot helpers: applyBootConfig applies a preset then layers the CLI
     // overrides on top (the former first-frame block); called either from the
     // boot gate (explicit --preset) or when the profile chooser is picked.
@@ -1123,15 +1144,9 @@ private:
     GraphicsCard graphicsCard;
     pom1::CassetteDeck_ImGui cassetteDeck;
 
-    // Keyboard shortcuts — single source of truth for label + binding
-    struct Shortcut {
-        int key;
-        int mods;          // 0 = no modifier, GLFW_MOD_CONTROL, etc.
-        const char* label; // display string for MenuItem
-        void (MainWindow_ImGui::*action)();
-    };
-    static const Shortcut shortcuts[];
-    static const int shortcutCount;
+    // Keyboard shortcuts. The TABLE is pom1::shortcuts::kBindings (ShortcutTable.h,
+    // pure data: label, command and autorepeat policy per row); this forwarder is
+    // what puts a row's accelerator next to a menu item.
     static const char* shortcutLabel(int key, int mods = 0);
 };
 
