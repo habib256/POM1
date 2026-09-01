@@ -10,6 +10,55 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — la CI était rouge depuis cinq jours, sur trois causes distinctes
+
+`ci.yml` échouait sur **chaque** push depuis `c72d4eae` (27 août) : les jobs
+`linux` et `windows` rouges, `macos` et `wasm` verts. Cinq jours pendant
+lesquels tous les garde-fous du dépôt tournaient dans un pipeline que personne
+ne pouvait lire — exactement ce que `CLAUDE.md` dit déjà des suppressions de
+sanitizers : « permanently red and therefore unread ».
+
+**1. Linux — `requires` est un mot-clé C++20.** `src/CardTypes.h` déclarait
+`CardSet requires;`. GCC le signale sous `-Wc++20-compat`, que son `-Wall`
+inclut, et le job Linux est le seul à monter `-DPOM1_WERROR=ON` : erreur.
+clang ne le dit pas, donc macOS restait vert et rien ne le reproduisait en
+local. Le membre s'appelle `dependencies` — le mot que `CLAUDE.md` employait
+déjà pour cette notion. Vérifié en recompilant l'arbre entier avec
+`-Werror=c++20-compat` : plus aucune occurrence.
+
+**2. Windows — deux débordements de pile, pas deux mystères.** MSVC réserve
+1 Mo de pile par fil ; Linux et macOS en donnent 8. Les deux tests mouraient
+sans **aucune** sortie — le CRT jette un `stdout` tamponné quand le processus
+meurt, donc `--output-on-failure` ne montrait rien et le symptôme se lisait
+comme un segfault inexplicable. Mesuré avec `clang -Wframe-larger-than=32768`,
+qui est la façon de diagnostiquer ça depuis une machine qui n'est pas celle qui
+plante :
+
+| test | trame de `main` | |
+|---|---:|---|
+| `aci_tape_saving` | 2 130 928 o (2,03 Mo) | plantait |
+| `measured_cpu_rate_smoke` | 801 344 o (783 Ko) | plantait |
+| `concurrent_frontends_smoke` | 267 824 o (262 Ko) | passait |
+
+Ce n'est pas une coïncidence : `sizeof(EmulationSnapshot)` vaut **260 Ko** et
+`sizeof(EmulationController)` **261 Ko**, donc un test qui tient un contrôleur
+et trois instantanés par valeur dépasse la ligne du mégaoctet par simple
+arithmétique. `add_link_options(/STACK:8388608)` sous MSVC aligne Windows sur
+les deux autres. Relever la réserve plutôt que réécrire les tests est
+délibéré : l'asymétrie est celle de la plateforme, le même code tourne ailleurs
+sans problème, un drapeau d'édition de liens ne peut rien régresser, et ça
+couvre aussi le `POM1.exe` livré, dont la boucle de rendu copie le même
+instantané de 260 Ko. C'est une RÉSERVE — Windows engage les pages à la
+demande, donc le coût est en espace d'adressage, pas en mémoire.
+
+**3. Windows — `resource_probes_sync`, régression à moi.**
+`os.path.relpath` rend `src\MicroSD.cpp` sur Windows, donc une clé de liste
+blanche écrite `src/MicroSD.cpp` ne correspondait à rien et les cinq sites
+légitimes étaient signalés comme des infractions. Vert sur Linux et macOS,
+rouge sur Windows seulement. Les séparateurs sont normalisés ; `coverage.py`
+avait la même faiblesse latente et est corrigé au passage.
+
+
 ### Added — couverture par module, et quatre seuils qui tiennent
 
 `-DPOM1_COVERAGE=ON` instrumente l'arbre (LLVM source-based coverage, LTO

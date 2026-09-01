@@ -68,7 +68,7 @@ int main()
         assert(descriptor.rangeCount > 0);
         assert(descriptor.rangeCount <= descriptor.ranges.size());
         assert(descriptor.capabilities != CardCapability::None);
-        assert(!descriptor.requires.contains(descriptor.id));
+        assert(!descriptor.dependencies.contains(descriptor.id));
         assert(!descriptor.incompatible.contains(descriptor.id));
         for (std::size_t i = 0; i < descriptor.rangeCount; ++i)
             assert(descriptor.ranges[i].first <= descriptor.ranges[i].last);
@@ -112,12 +112,12 @@ int main()
         }
     }
 
-    assert(descriptor(CardId::ExtendedAci).requires == CardSet{CardId::Aci});
-    assert(descriptor(CardId::Iec).requires == CardSet{CardId::MicroSD});
-    assert(descriptor(CardId::CodeTank).requires == CardSet{CardId::Tms9918});
+    assert(descriptor(CardId::ExtendedAci).dependencies == CardSet{CardId::Aci});
+    assert(descriptor(CardId::Iec).dependencies == CardSet{CardId::MicroSD});
+    assert(descriptor(CardId::CodeTank).dependencies == CardSet{CardId::Tms9918});
     for (std::size_t i = 0; i < kCardCount; ++i) {
         const auto id = static_cast<CardId>(i);
-        assert(descriptor(id).requires == requiredCards(id));
+        assert(descriptor(id).dependencies == requiredCards(id));
     }
     assert(descriptor(CardId::Sid).variantGroup == "sid");
     assert(descriptor(CardId::SidSpecialEdition).variantGroup == "sid");

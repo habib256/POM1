@@ -106,6 +106,34 @@ if(POM1_SANITIZE)
     add_link_options(-fsanitize=${POM1_SANITIZE})
 endif()
 
+# ── Stack size (Windows only) ────────────────────────────────────────────────
+# MSVC reserves 1 MB per thread; Linux and macOS give 8 MB. POM1 is written
+# against the 8 MB, and the gap is not theoretical — it kept two tests red on
+# Windows alone from 2026-08-27, crashing with no output at all (the CRT
+# discards a buffered stdout when the process dies, so `--output-on-failure`
+# showed nothing and the failure read as a mystery segfault).
+#
+# Measured with `clang -Wframe-larger-than=32768`, which is the way to find
+# this class of bug from a machine that is not the one crashing:
+#
+#   aci_tape_saving_test.cpp      main   2 130 928 B   (2.03 MB)
+#   measured_cpu_rate_test.cpp    main     801 344 B   (783 KB)
+#   concurrent_frontends_smoke    main     267 824 B   (262 KB)   <- passes
+#
+# The 262 KB frame is the one that fits, and it is not a coincidence:
+# `sizeof(EmulationSnapshot)` is 260 KB and `sizeof(EmulationController)` is
+# 261 KB, so a test holding a controller and three snapshots by value is over
+# the 1 MB line by arithmetic alone.
+#
+# Raising the reserve rather than rewriting the tests is deliberate: the
+# asymmetry is the platform's, the same code runs fine on the two others, and
+# a linker flag cannot regress them. It also covers the shipped POM1.exe, whose
+# render loop copies the same 260 KB snapshot. RESERVE only — Windows commits
+# stack pages on demand, so this costs address space, not memory.
+if(MSVC)
+    add_link_options(/STACK:8388608)
+endif()
+
 # ── Coverage instrumentation ─────────────────────────────────────────────────
 # -DPOM1_COVERAGE=ON builds with LLVM source-based coverage; tools/coverage.py
 # drives the whole cycle (configure, build, run ctest, merge, report per module).
