@@ -42,7 +42,12 @@ static void renderPage(const uint8_t* page, std::vector<uint32_t>& out)
 static std::vector<uint8_t> solid(int r, int g, int b)
 {
     std::vector<uint8_t> v(static_cast<size_t>(kHiresWidth) * kHiresHeight * 4);
-    for (size_t i = 0; i < v.size(); i += 4) { v[i] = r; v[i + 1] = g; v[i + 2] = b; v[i + 3] = 255; }
+    for (size_t i = 0; i < v.size(); i += 4) {
+        v[i]     = static_cast<uint8_t>(r);
+        v[i + 1] = static_cast<uint8_t>(g);
+        v[i + 2] = static_cast<uint8_t>(b);
+        v[i + 3] = 255;
+    }
     return v;
 }
 
@@ -180,11 +185,18 @@ int main()
     // into them. Active span [90,190) → byte cols 0..11 and 28..39 are fully out.
     {
         const int sW = 100, sH = 192;
-        std::vector<uint8_t> img(static_cast<size_t>(sW) * sH * 4);
-        for (size_t i = 0; i < img.size(); i += 4) { img[i] = img[i+1] = img[i+2] = 200; img[i+3] = 255; }
+        // `smallImg`, not `img`: an outer 280x192 image by that name is in
+        // scope, and `small` is out too — <windows.h> (rpcndr.h) defines it as
+        // a macro for `char`. MSVC's C4456 is what surfaced this: line 195
+        // below said `img`, so this block was feeding the converter the OUTER
+        // image and asserting letterbox bars on a source that has none.
+        std::vector<uint8_t> smallImg(static_cast<size_t>(sW) * sH * 4);
+        for (size_t i = 0; i < smallImg.size(); i += 4) {
+            smallImg[i] = smallImg[i+1] = smallImg[i+2] = 200; smallImg[i+3] = 255;
+        }
         ImportOptions lo;
         lo.stretch = false; lo.dither = true; lo.chromaWeight = 6.0f;
-        imageToHgrPage(img.data(), sW, sH, lo, page.data());
+        imageToHgrPage(smallImg.data(), sW, sH, lo, page.data());
         for (int y = 0; y < kHiresHeight; ++y) {
             const int base = hgrByteOffset(0, y);
             for (int b = 0; b <= 11; ++b) assert(page[base + b] == 0);

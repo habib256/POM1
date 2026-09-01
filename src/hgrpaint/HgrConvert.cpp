@@ -168,8 +168,9 @@ private:
         const uint32_t win = (leftCtx | (wCur << 3)
                               | (static_cast<uint32_t>(wNext) << 17)) >> (2 * k);
         const unsigned absX = absX0 + 2 * k;
-        const uint8_t i0 = rotl4b(kArtifactColorLut[win & 0x7Fu], absX);
-        const uint8_t i1 = rotl4b(kArtifactColorLut[(win >> 1) & 0x7Fu], absX + 1);
+        const uint8_t i0 = static_cast<uint8_t>(rotl4b(kArtifactColorLut[win & 0x7Fu], absX));
+        const uint8_t i1 =
+            static_cast<uint8_t>(rotl4b(kArtifactColorLut[(win >> 1) & 0x7Fu], absX + 1));
         // Zero-offset fast path (always taken at pixel 0, and everywhere when
         // dither is off): the walked want IS the byte-start want — bit-exact.
         const bool walked = fw.f[0].r != 0.0f || fw.f[0].g != 0.0f || fw.f[0].b != 0.0f;
@@ -438,9 +439,9 @@ void imageToHgrPage(const uint8_t* rgba, int srcW, int srcH,
         LinRgb fw[4] = {};   // forward residuals pending for pixels k+1..k+4
         float cost = 0.0f;
         for (int k = 0; k < 7; ++k) {
-            const uint8_t i0 = rotl4b(kArtifactColorLut[w & 0x7Fu], absX);
+            const uint8_t i0 = static_cast<uint8_t>(rotl4b(kArtifactColorLut[w & 0x7Fu], absX));
             w >>= 1; ++absX;
-            const uint8_t i1 = rotl4b(kArtifactColorLut[w & 0x7Fu], absX);
+            const uint8_t i1 = static_cast<uint8_t>(rotl4b(kArtifactColorLut[w & 0x7Fu], absX));
             w >>= 1; ++absX;
             // Zero-offset fast path — must mirror ByteSearcher::scorePixel.
             const bool walked = fw[0].r != 0.0f || fw[0].g != 0.0f || fw[0].b != 0.0f;

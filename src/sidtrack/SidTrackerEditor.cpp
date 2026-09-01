@@ -339,8 +339,10 @@ void SidTrackerEditor::renderInstrument() {
 // A little ADSR envelope preview: attack ramp up, decay to sustain, sustain
 // hold, release ramp down — proportioned by the current nibbles.
 void SidTrackerEditor::renderAdsrGraph() {
-    const float a = (inst_.ad >> 4) & 0xF, d = inst_.ad & 0xF;
-    const float s = (inst_.sr >> 4) & 0xF, r = inst_.sr & 0xF;
+    const float a = static_cast<float>((inst_.ad >> 4) & 0xF);
+    const float d = static_cast<float>(inst_.ad & 0xF);
+    const float s = static_cast<float>((inst_.sr >> 4) & 0xF);
+    const float r = static_cast<float>(inst_.sr & 0xF);
     ImVec2 org = ImGui::GetCursorScreenPos();
     float w = std::max(140.0f, ImGui::GetContentRegionAvail().x);
     float h = 60.0f;

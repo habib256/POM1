@@ -201,7 +201,16 @@ jobs:
         # been run over this tree. /W4 is applied, so the count lands in the log.
         shell: bash
         run: |
-          cmake -S . -B build \
+          # -DPOM1_WERROR=ON: the third platform now holds the same line as
+          # Linux. It was left off because MSVC's /W4 set had never been
+          # measured over this tree; it has now — 134 distinct sites, 102 of
+          # them stb_vorbis (vendored, silenced at its include with
+          # `warning(push, 0)` exactly as GCC and clang already were), and 30
+          # in POM1's own code: narrowing conversions made explicit, four
+          # shadowed declarations renamed, and inet_ntoa replaced by inet_ntop.
+          # One of those shadows was a live defect — a letterbox test feeding
+          # the converter the wrong image.
+          cmake -S . -B build -DPOM1_WERROR=ON \
                 -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" \
                 -DVCPKG_TARGET_TRIPLET=x64-windows-static
           cmake --build build --config Release -j

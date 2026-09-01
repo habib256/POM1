@@ -10,6 +10,46 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — Windows tient la même ligne que Linux (`/WX`)
+
+Le job Windows compilait en `/W4` **avertissements visibles mais non fatals**,
+parce que le jeu d'avertissements de MSVC n'avait jamais été mesuré sur cet
+arbre. Il l'est : **134 sites distincts**, dont **102 dans `stb_vorbis.c`** —
+vendu, et déjà silencé côté GCC et clang par un bloc de pragmas, jamais côté
+MSVC. Le `.c` est inclus dans `AudioDevice.cpp`, donc ses avertissements étaient
+imputés à *cette* unité de traduction : un `warning(push, 0)` autour de
+l'inclusion, exactement comme les deux autres compilateurs, et les 102
+disparaissent. Même traitement pour `miniaudio.h`, y compris là où
+`CassetteDevice.h` le tire dans tout ce qui l'inclut.
+
+Restent **30 sites dans le code POM1**, tous corrigés plutôt que désactivés :
+
+- **C4244**, conversions rétrécissantes — rendues explicites par `static_cast`
+  (`M6502`, `TMS9918`, `HgrConvert`, `SidTrackerEditor`, six tests). Dans
+  `CassetteDevice`, `std::llround` devient `std::round` : la valeur était de
+  toute façon ramenée dans le domaine `double` juste après, et `llround` était à
+  la fois un rétrécissement et un comportement indéfini sur les valeurs
+  hors-bornes que cette arithmétique existe précisément pour survivre.
+- **C4456/C4457**, déclarations masquantes — quatre renommages.
+- **C4996**, `inet_ntoa` — remplacé par `inet_ntop` dans `TerminalCard` et
+  `TelemetryPort`. Déprécié sur Windows, et il rend de toute façon un pointeur
+  vers un tampon statique partagé sur toutes les plateformes.
+
+**Un de ces masquages était un vrai défaut.** Dans `hgr_convert_smoke_test`, le
+bloc « les bandes de letterbox restent noires » déclarait un `img` local de
+100×192 puis passait au convertisseur… l'`img` extérieur de 280×192. Il testait
+donc le letterbox sur une source qui n'en a pas. Corrigé, le test passe toujours
+— l'assertion tient sur l'entrée qu'elle prétendait utiliser. C'est ce
+qu'achète une porte d'avertissements, et ce qu'aucune relecture n'avait vu.
+
+Le nom de remplacement n'est pas `small` non plus : `<windows.h>` (rpcndr.h) en
+fait une macro pour `char`.
+
+Vérifié d'ici : suite complète verte (120/120) et build `-DPOM1_WERROR=ON` sous
+clang sans une seule erreur. Le verdict MSVC appartient au job Windows, que ce
+commit passe en `-DPOM1_WERROR=ON`.
+
+
 ### Fixed — plus une seule URL mouvante dans la chaîne AppImage
 
 `build-bionic-image.yml` échouait depuis le **22 août**, indépendamment de la CI.

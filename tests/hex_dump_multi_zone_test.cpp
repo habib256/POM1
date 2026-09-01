@@ -155,7 +155,7 @@ int main()
         const uint8_t expect[12] = {0x4C,0x5F,0x03,0x20,0x21,0x22,0x23,0x5E,
                                     0x3D,0x2B,0x3A,0x3B};
         for (int i = 0; i < 12; ++i)
-            assert(memSep.memRead(0x0280 + i) == expect[i] &&
+            assert(memSep.memRead(static_cast<uint16_t>(0x0280 + i)) == expect[i] &&
                    "inline-':' byte landed at the wrong address (parser scattered it)");
         // The byte before the ':' must NOT have been mistaken for address $005E.
         assert(memSep.memRead(0x005E) == 0x00 && "0x5E was misread as address $005E");

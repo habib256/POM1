@@ -49,7 +49,12 @@ static uint32_t pixelAt(const std::vector<uint32_t>& fb, int x, int y)
 static std::vector<uint8_t> solidImage(int w, int h, int r, int g, int b)
 {
     std::vector<uint8_t> img(static_cast<size_t>(w) * h * 4);
-    for (size_t i = 0; i < img.size(); i += 4) { img[i]=r; img[i+1]=g; img[i+2]=b; img[i+3]=255; }
+    for (size_t i = 0; i < img.size(); i += 4) {
+        img[i]   = static_cast<uint8_t>(r);
+        img[i+1] = static_cast<uint8_t>(g);
+        img[i+2] = static_cast<uint8_t>(b);
+        img[i+3] = 255;
+    }
     return img;
 }
 

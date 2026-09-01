@@ -129,8 +129,8 @@ std::vector<uint8_t> seedAiff(const char* compression, uint16_t bits, size_t fra
     putBe16(comm, 1); putBe32(comm, uint32_t(frames)); putBe16(comm, bits);
     // 44100 Hz as an 80-bit extended float.
     putBe16(comm, 0x400E);
-    for (uint8_t b : {0xACu, 0x44u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u})
-        comm.push_back(b);
+    for (unsigned b : {0xACu, 0x44u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u})
+        comm.push_back(static_cast<uint8_t>(b));
     if (compression) { putTag(comm, compression); comm.push_back(0); comm.push_back(0); }
     putTag(v, "COMM"); putBe32(v, uint32_t(comm.size()));
     v.insert(v.end(), comm.begin(), comm.end());

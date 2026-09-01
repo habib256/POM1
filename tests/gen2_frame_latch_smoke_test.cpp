@@ -28,7 +28,7 @@ int main()
     // 1) A "complete" frame: stamp a known pattern, then cross a full frame so the
     //    V-blank rollover latches it. (Adding > cpf guarantees >= 1 rollover even
     //    if the cold-plug scanner phase started mid-frame.)
-    for (int i = 0; i < 40; ++i) mem.memWrite(base + i, 0xAA);
+    for (int i = 0; i < 40; ++i) mem.memWrite(static_cast<uint16_t>(base + i), 0xAA);
     mem.advanceCycles(static_cast<int>(cpf) + 100);
 
     const uint8_t* latch = mem.gen2FrameLatch();  // index 0 == $2000
@@ -37,7 +37,7 @@ int main()
     // 2) A "mid-update": erase those bytes in LIVE RAM without crossing a frame.
     //    The live framebuffer changes, but the renderer's latch must stay frozen
     //    on the complete frame -> no half-drawn frame is ever shown.
-    for (int i = 0; i < 40; ++i) mem.memWrite(base + i, 0x00);
+    for (int i = 0; i < 40; ++i) mem.memWrite(static_cast<uint16_t>(base + i), 0x00);
     for (int i = 0; i < 40; ++i) assert(mem.getMemoryPointer()[base + i] == 0x00);
     for (int i = 0; i < 40; ++i) assert(latch[i] == 0xAA);   // latch still complete
 

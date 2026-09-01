@@ -581,7 +581,13 @@ void TerminalCard::acceptClient()
 #endif
 
     // Store client address
-    clientAddress = inet_ntoa(clientAddr.sin_addr);
+    // inet_ntop, not inet_ntoa: the latter is deprecated on Windows (C4996) and
+    // returns a pointer into a shared static buffer on every platform. Both
+    // <ws2tcpip.h> and <arpa/inet.h> are already included by the header.
+    char clientIp[INET_ADDRSTRLEN] = {};
+    if (inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, sizeof(clientIp)) == nullptr)
+        clientIp[0] = '\0';
+    clientAddress = clientIp;
     clientAddress += ":" + std::to_string(ntohs(clientAddr.sin_port));
 
     // Push the client into character-at-a-time mode. Without this negotiation a

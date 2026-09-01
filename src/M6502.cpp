@@ -547,7 +547,7 @@ void M6502::ROR_A(void)
     else
         statusRegister &= ~M6502::Status::C;
 
-    accumulator = tmp >> 1;
+    accumulator = static_cast<uint8_t>(tmp >> 1);
     setStatusRegisterNZ(accumulator);
 }
 
@@ -1282,7 +1282,7 @@ void M6502::hardReset(void)
 
     if (memory != nullptr) {
         for (int i = 0x100; i <= 0x1FF; i++) {
-            memory->memWrite(i, 0x00);
+            memory->memWrite(static_cast<uint16_t>(i), 0x00);
         }
     }
 
