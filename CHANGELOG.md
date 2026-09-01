@@ -10,7 +10,7 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
-### Changed — Windows tient la même ligne que Linux (`/WX`)
+### Changed — le code POM1 est propre sous MSVC `/W4` (la porte, pas encore)
 
 Le job Windows compilait en `/W4` **avertissements visibles mais non fatals**,
 parce que le jeu d'avertissements de MSVC n'avait jamais été mesuré sur cet
@@ -68,8 +68,29 @@ deux instructifs :
   précisément pourquoi les avertissements du vendu étaient imputés à
   `pom1_test_devices`.
 
+**La porte n'est pas activée.** Trois runs ont buté sur une classe que la liste
+initiale ne prédisait pas : un C4244 levé **à l'intérieur du `<xutility>` de
+MSVC**, depuis une instanciation `std::fill<vector_iterator<uint8_t>, int>`,
+imputée à `pom1_test_devices`. Or les sources POM1 ne contiennent **aucun**
+`fill(` : le site d'appel se trouve par la trace d'instanciation, pas par grep,
+et ça demande une machine Windows ou au moins un run qui imprime la chaîne de
+notes complète. Basculer le drapeau à l'aveugle a coûté trois cycles de CI
+rouges ; il repassera quand cette classe sera mesurée, pas avant. `/W4` reste
+appliqué, donc le compte continue d'atterrir dans le journal.
+
+Ce qui est acquis et permanent, en revanche : les 30 corrections, les brackets
+autour du code vendu, le `/wd4701`, et le défaut de test qu'elles ont révélé.
+
 Vérifié d'ici : suite complète verte (120/120) et build `-DPOM1_WERROR=ON` sous
-clang sans une seule erreur. Le verdict MSVC appartient au job Windows.
+clang sans une seule erreur.
+
+**Au passage, le build WASM mesuré aussi** (`emcc` local, `-DPOM1_WERROR=ON`) :
+trois défauts, dont un corrigé ici — `rewindBlobGeneration` était une variable
+inutilisée sous WASM, le rewind y étant désactivé ; ses deux déclarations
+passent sous le même `#if !POM1_IS_WASM` que les blocs qui les utilisent.
+Restent deux fonctions statiques inutilisées (`hexDumpFilter`,
+`loadSizeFile`) que le WASM ne compile pas ; le job WASM n'est donc pas barré
+non plus.
 
 
 ### Fixed — plus une seule URL mouvante dans la chaîne AppImage

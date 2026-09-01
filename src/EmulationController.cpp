@@ -680,10 +680,12 @@ void EmulationController::runEmulationSlice(double elapsedSeconds)
     // acted on after the lock is released (hardReset/softReset re-acquire stateMutex,
     // so they must run lock-free to avoid self-deadlock on the non-recursive mutex).
     bool termHardReset = false;
-    // State-rewind capture, staged under stateMutex and encoded after it
-    // (see the rewindMutex note in the header). Empty = nothing to encode.
+    // State-rewind capture, staged under stateMutex and encoded after it (see
+    // the rewindMutex note). Empty = nothing to encode; absent on WASM entirely.
+#if !POM1_IS_WASM
     std::vector<uint8_t> rewindBlob;
     uint64_t rewindBlobGeneration = 0;
+#endif
     bool termSoftReset = false;
     bool termClearScreen = false;
     {
