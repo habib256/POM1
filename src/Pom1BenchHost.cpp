@@ -345,6 +345,30 @@ const P1Ex kP1Examples[] = {
     { nullptr,           "Keyboard echo",                      false, kEx_c_keyboard, 3, "", 0 },
     { "BASIC",           "Hello (Integer BASIC)",              false, kSketchBasicInteger,   7, "", 0 },
     { nullptr,           "Hello (Applesoft Lite)",             false, kSketchBasicApplesoft, 8, "", 0 },
+    // APPLE-1 LOGO V2.6 turtle catalogue (sketchs/logo/, one .logo per row),
+    // ordered so each builds on the one above: a shape, then a parameterised
+    // procedure, then recursion, then RANDOM. Every listing is MACHINE-NEUTRAL
+    // and runs unchanged on the GEN2 HGR card — switch Mode to "LOGO GEN2 HGR"
+    // and press Run, the source needs no edit.
+    //
+    // They open on the TMS9918 target because that is the card the V2.6
+    // interpreter shipped on (Codetank_BASIC_LOGO, lower bank), and because a
+    // row can only name ONE: injectLogo picks the interpreter's RAM layout
+    // (proc_table / n_procs / cold entry) from the TARGET INDEX, not from the
+    // live machine, so a row that left the two disagreeing would poke TMS
+    // addresses into a GEN2 machine. Catalogue + dialect notes (turns are
+    // TR/TL, integers only, ≤ 6-char identifiers): sketchs/logo/README.md.
+    { "LOGO turtle (TMS9918)",
+                         "Hexagon  (REPEAT)",                  true,  "sketchs/logo/Hexagon.logo",  14, "", 0 },
+    { nullptr,           "Star  (over-turning)",               true,  "sketchs/logo/Star.logo",     14, "", 0 },
+    { nullptr,           "Star8  (star polygon {8/3})",        true,  "sketchs/logo/Star8.logo",    14, "", 0 },
+    { nullptr,           "Rosette  (nested REPEAT)",           true,  "sketchs/logo/Rosette.logo",  14, "", 0 },
+    { nullptr,           "Squares  (a :SIZE parameter)",       true,  "sketchs/logo/Squares.logo",  14, "", 0 },
+    { nullptr,           "Flower  (a proc calling a proc)",    true,  "sketchs/logo/Flower.logo",   14, "", 0 },
+    { nullptr,           "Spiral  (tail recursion + STOP)",    true,  "sketchs/logo/Spiral.logo",   14, "", 0 },
+    { nullptr,           "Tree  (branching recursion)",        true,  "sketchs/logo/Tree.logo",     14, "", 0 },
+    { nullptr,           "Rays  (RANDOM, SETH, PU/PD)",        true,  "sketchs/logo/Rays.logo",     14, "", 0 },
+    { nullptr,           "Meadow  (SETXY, SETPC, recursion)",  true,  "sketchs/logo/Meadow.logo",   14, "", 0 },
 };
 const int kP1ExampleCount = static_cast<int>(sizeof(kP1Examples) / sizeof(kP1Examples[0]));
 

@@ -689,7 +689,11 @@ if(WIN32)
 endif()
 add_test(NAME bench_logo_inject_smoke COMMAND test_bench_logo_inject
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_tests_properties(bench_logo_inject_smoke PROPERTIES TIMEOUT 120)
+# 120 s covered the two mechanism runs; the shipped-catalogue block adds ten
+# more cold starts (~8 s here, and this suite also runs under -O0
+# instrumentation in the coverage job, where everything is an order of
+# magnitude slower).
+set_tests_properties(bench_logo_inject_smoke PROPERTIES TIMEOUT 300)
 
 # -- Applesoft GEN2 interpreter smoke test -----------------------------------
 # Boots the sketchs/gen2/applesoft_gen2 ROM and checks the renumbered core runs
@@ -2323,6 +2327,23 @@ add_test(NAME software_dir_rules_smoke
          COMMAND test_software_dir_rules
          WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set_tests_properties(software_dir_rules_smoke PROPERTIES TIMEOUT 10)
+
+# logo_sketches_smoke -- the ten shipped APPLE-1 LOGO listings. Two things rot
+# independently and neither breaks the build: a sketch the loader cannot compile
+# (the user clicks the example and nothing draws), and the Bench's OFFER drifting
+# from the catalogue -- a new .logo nobody exposed, which is exactly how these ten
+# sat unreachable for months. Reads kP1Examples[] as TEXT (it lives in a UI TU no
+# test binary links), so it stays out of the devtools lane.
+add_executable(test_logo_sketches
+    logo_sketches_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/LogoProgramLoader.cpp
+)
+target_include_directories(test_logo_sketches PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+add_test(NAME logo_sketches_smoke
+         COMMAND test_logo_sketches
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(logo_sketches_smoke PROPERTIES TIMEOUT 10)
 
 # imgui_pin_sync -- same idea for the OTHER pin the repo carries. Dear ImGui is
 # not vendored, and its tag was copy-pasted into eleven files; CMake and the

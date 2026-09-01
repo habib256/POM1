@@ -10,6 +10,38 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — les dix croquis LOGO livrés deviennent atteignables (et vérifiés)
+
+`sketchs/logo/` embarque dix programmes tortue **APPLE-1 LOGO V2.6** depuis
+juillet 2026, et les deux cibles interpréteur du Bench existent depuis autant de
+temps. Il manquait le lien : rien dans l'interface ne les nommait. Ils
+apparaissent désormais dans le popup **Examples** sous le groupe *LOGO turtle*,
+rangés pour que chacun s'appuie sur le précédent — une forme, puis une procédure
+paramétrée, puis la récursion, puis `RANDOM`.
+
+Ils ouvrent sur la cible **TMS9918** et pas au choix, pour une raison de fond :
+`injectLogo` choisit la disposition RAM de l'interpréteur (`proc_table`,
+`n_procs`, entrée à froid) d'après **l'index de cible**, pas d'après la machine
+vivante. Une ligne qui laisserait les deux en désaccord poserait des adresses TMS
+dans une machine GEN2. Les listings restant machine-neutres, basculer le Mode sur
+*LOGO GEN2 HGR* les exécute sans toucher au source.
+
+**Deux tests, parce que deux choses pourrissent séparément.** Nouveau
+`logo_sketches_smoke` (6 sections, ne lie que `LogoProgramLoader`) : chaque
+croquis se compile pour **les deux** interpréteurs, chaque écriture atterrit dans
+la table de procédures ou sur `n_procs`, le chargeur est pur — et le Bench offre
+**exactement** le catalogue livré, ni un `.logo` oublié ni un lien mort (la table
+est lue comme du TEXTE, elle vit dans une unité UI qu'aucun binaire de test ne
+lie). Il refuse aussi l'orthographe `RT`/`LT`, que ce dialecte n'a pas.
+
+Et `bench_logo_inject_smoke` gagne un troisième bloc qui **exécute les dix sur
+l'interpréteur GEN2 réel** et vérifie que la tortue a dessiné (79 à 303 octets
+allumés dans le framebuffer). L'écart entre les deux tests est le point : le
+chargeur stocke les corps de procédure en source brut et n'inspecte aucun nom de
+commande, donc un écart de dialecte — un identifiant de plus de six caractères,
+deux opérations arithmétiques dans un argument — se compile parfaitement et
+échoue seulement sur la machine.
+
 ### Changed — la couverture de l'UI mesurée : 2,4 % → 3,9 %, et une leçon sur `constexpr`
 
 `TODO.md` donnait « `ui` à 2,4 % de couverture de lignes sur 14 407 » comme

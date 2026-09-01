@@ -35,6 +35,8 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -84,6 +86,24 @@ void injectAndFeed(Memory& mem, const logo::Result& prog)
 }
 
 int fail(const char* msg) { std::fprintf(stderr, "FAIL: %s\n", msg); return 1; }
+
+// The shipped sketch catalogue, found the same way readRom finds a ROM (tests
+// run from build/). Empty when the tree is not beside us.
+std::vector<std::filesystem::path> logoSketches()
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    for (const char* pre : {"", "../", "../../"}) {
+        const fs::path dir = fs::path(pre) / "sketchs" / "logo";
+        if (!fs::is_directory(dir, ec)) continue;
+        std::vector<fs::path> out;
+        for (const fs::directory_entry& e : fs::directory_iterator(dir, ec))
+            if (e.path().extension() == ".logo") out.push_back(e.path());
+        std::sort(out.begin(), out.end());
+        return out;
+    }
+    return {};
+}
 
 // The listing: a rosette procedure (nested REPEAT, one level — the deepest the
 // interpreter supports), called by name. The whole body is poked into proc_table;
@@ -203,6 +223,65 @@ int main()
             return fail(("GEN2: turtle drew too few HGR bytes (" +
                          std::to_string(lit) + " < 60) — proc not found/run, or nested REPEAT broke?").c_str());
         std::printf("logo-gen2 inject: OK (MAIN poked @ $B431, run via 'MAIN' -> %d HGR bytes)\n", lit);
+    }
+
+    // ---- Every SHIPPED sketch actually draws (sketchs/logo/*.logo) ---------
+    //
+    // These ten are what the DevBench's Examples popup offers. logo_sketches_smoke
+    // proves each one COMPILES; only running it proves it draws. The gap between
+    // those matters here: the loader stores procedure bodies as RAW SOURCE and
+    // never inspects a command name, so a dialect slip — an identifier over six
+    // characters, two arithmetic ops in one argument, the RT/LT spelling this
+    // Logo does not have — compiles perfectly and fails on the machine. Run on
+    // the GEN2 interpreter, whose framebuffer is plain RAM.
+    {
+        const std::vector<std::filesystem::path> sketches = logoSketches();
+        if (sketches.empty()) {
+            std::fprintf(stderr, "SKIP: sketchs/logo/ not found\n");
+            return kSkip;
+        }
+        std::vector<unsigned char> rom = readRom("roms/logo-gen2.rom");
+        if (rom.empty()) {
+            std::fprintf(stderr, "SKIP: roms/logo-gen2.rom not found\n");
+            return kSkip;
+        }
+        const logo::Target tgt = logo::targetGen2();
+
+        for (const std::filesystem::path& path : sketches) {
+            const std::string name = path.filename().string();
+            std::ifstream in(path, std::ios::binary);
+            const std::string src((std::istreambuf_iterator<char>(in)),
+                                  std::istreambuf_iterator<char>());
+            if (src.empty()) return fail((name + ": empty sketch").c_str());
+
+            logo::Result prog = logo::compile(src, tgt);
+            if (!prog.ok) return fail((name + ": " + prog.error).c_str());
+
+            Memory mem; mem.initMemory();
+            std::memcpy(mem.getMemoryPointerMutable() + 0x6000, rom.data(),
+                        std::min<size_t>(rom.size(), 0x5000));
+            NullDisplay disp; mem.setDisplayDevice(&disp);
+            M6502 cpu(&mem);
+            coldStart(cpu, tgt.coldEntry, 20000000);
+            injectAndFeed(mem, prog);
+
+            int lit = 0;
+            const long long kBudget = 400000000, kSlice = 500000;
+            for (long long c = 0; c < kBudget; c += kSlice) {
+                cpu.run(kSlice);
+                uint8_t* ram = mem.getMemoryPointerMutable();
+                lit = 0;
+                for (int a = 0x2000; a < 0x4000; ++a) if (ram[a]) ++lit;
+                if (lit >= 60) break;
+            }
+            mem.setDisplayDevice(nullptr);
+            if (lit < 60)
+                return fail((name + ": drew only " + std::to_string(lit) +
+                             " HGR bytes — dialect slip, or the turtle never ran?").c_str());
+            std::printf("  %-14s %5d HGR bytes\n", name.c_str(), lit);
+        }
+        std::printf("logo sketches: OK (%zu shipped listings drew on GEN2)\n",
+                    sketches.size());
     }
 
     std::printf("bench_logo_inject_smoke: OK\n");
