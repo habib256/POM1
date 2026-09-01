@@ -37,6 +37,58 @@ Built with Dear ImGui — OpenGL on Linux/Windows/Web, Metal on macOS. Fast, lig
 
 ---
 
+## 🔬 What POM1 is, in evidence
+
+The section above is the pitch. This one is the claim, and every line of it names
+the test that proves it — run `ctest` and watch.
+
+**The 6502 is validated by two oracles POM1 did not write.** Klaus Dormann's
+functional suite (`klaus_6502_functional`) and Tom Harte's *65x02 ProcessorTests*
+(`cpu_harte_smoke` — 100 cases against each of the 151 documented opcodes,
+**cycle-exact**) were both written to test other people's processors. Around them:
+interrupt entry timing to the cycle, the real NMOS operand lengths of the
+undocumented opcodes, and the cycle counts of the illegal ones
+(`cpu_interrupt_smoke`, `cpu_pc_length_smoke`, `cpu_illegal_cycles_smoke`).
+
+**Every format POM1 parses itself is fuzzed** — disk images, snapshots, WAV and
+AIFF cassette audio, and all three memory-dump dialects. (Compressed audio goes
+to miniaudio, which is not POM1's to fuzz.) Two of the four campaigns found **real defects**, now pinned
+as regression cases: 1541 directory walks that trusted a hop counter instead of
+detecting a cycle (a self-linking sector yielded a 254 KB "file" out of a 174 KB
+disk), a free-block count that believed the disk over the geometry, an unbounded
+WAV sample rate, and NaN samples that read as silence because every comparison
+against a NaN is false.
+
+**Graphics regressions are caught by pixels, not by eye.** `gfx_regress_gen2_testcard`
+boots headless, dumps the GEN2 framebuffer and compares its SHA-256 against a
+committed PNG.
+
+**Four platforms and the browser, all gated the same way.** Linux, macOS (Metal
+*and* OpenGL — both configurations built and tested), Windows, WebAssembly, plus a
+Raspberry Pi GLES tier. Every one compiles with **warnings as errors**.
+
+**The hardware is real, and most of it is rare.** Sixteen expansion cards on the
+bus (`CardId` in [`src/CardTypes.h`](src/CardTypes.h)), plus Krusader as a ROM
+payload — small-run community boards from P-LAB, Uncle Bernie and Rich Dreher,
+several of which exist in numbers you could count. Claudio Parmigiani's A1-AUDIO
+Special Edition was a **ten-unit run**. Where the real bus forbids two cards at
+once, POM1 refuses too (`card_topology_smoke`); the two presets that allow
+multiplexing are both named *Fantasy* for that reason.
+
+**126 tests, about two minutes**, in two lanes: the release gate that must be
+green on a machine with no toolchain, and the development environment's own.
+Coverage is measured **per module** rather than as one average — 93 % on the CPU
+and the parsers, 3.9 % on the 14 468 lines of UI, most of which draw rather than
+decide and which no test binary links. Both figures are published in
+[`CLAUDE.md`](CLAUDE.md) because one average would hide them.
+
+POM1 began as a Java emulator in **2000** and was rewritten against Dear ImGui in
+**2026**. What it does not claim: analogue video fidelity, undocumented-opcode
+*behaviour* beyond timing, or bug-compatibility with any particular Apple-1
+replica.
+
+---
+
 ## ⚡ 60-second tour
 
 Five things to try **right after first boot** (every preset boots into WOZ Monitor at `$FF00`). New to the Apple 1? Follow the guided **[`QUICKSTART.md`](QUICKSTART.md)** — your first program in 5 minutes.
