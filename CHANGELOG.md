@@ -10,6 +10,47 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — la puce A1-SID est construite au branchement, plus à la construction du cœur
+
+`Memory` fabriquait un `pom1::SID` dans son constructeur. libresidfp y calcule
+ses tables de filtre : **~120 ms pour la première puce d'un processus**
+(0,46 ms pour chacune des suivantes). Mesuré sur un binaire de test qui ne
+touche jamais la carte, c'était **116 ms sur 121 ms — 96 % du temps
+d'exécution**. Or `Memory` est construit dans **60 des 68** fichiers de test
+qui le référencent, et **deux** seulement branchent l'A1-SID.
+
+`Memory::sidChip()` construit la puce à la première utilisation, sous
+`std::call_once` — l'UI et le fil d'émulation peuvent tous deux être le premier
+à demander. Tous les accès passent par là, donc aucun appelant ne peut observer
+un `sid` nul, et le format d'instantané est inchangé : la section « A1-SID »
+est toujours écrite.
+
+Le coût n'a pas disparu, il a **déménagé, et c'est délibéré** : le constructeur
+d'`EmulationController` réchauffe la puce **avant tout verrou** et avant que le
+fil d'émulation existe. Tous les sites où un frontend la toucherait en premier
+tiennent `stateMutex` — `SnapshotPublisher` lit le modèle de puce à chaque
+publication, `MachineCoordinator` attache la carte pendant un échange de
+topologie — et payer les 120 ms là gèle le callback audio et le fil de rendu
+d'autant. `concurrent_frontends_smoke` a attrapé exactement ça (`state-hold`
+231 ms contre une porte à 100 ms) sur la première version du correctif.
+
+Mesures, même machine, à chaud :
+
+| | avant | après |
+|---|---|---|
+| `test_cpu_pc_length` (cœur nu) | 135 ms | 10 ms |
+| `hermetic_core_smoke`, construction d'un `Memory` | — | 0,3 ms |
+| `ctest` complet (118 tests, série) | 134,9 s | 128,2 s |
+
+`hermetic_core_smoke` §5 épingle les deux moitiés : un cœur nu se construit en
+moins de 60 ms — il n'existe pas d'accesseur « la puce est-elle construite ? »
+sur lequel s'appuyer, la surface publique de `Memory` étant gelée, donc
+l'observable est celui qui comptait — et brancher la carte construit la puce
+**et** l'enregistre sur le mixeur injecté. Plafonds `architecture_check` :
+`memory_lines` 3965 → 3990 et `controller_lines` 3079 → 3089, ces 35 lignes
+étant la couture elle-même ; `memory_public_methods` reste à 188.
+
+
 ### Changed — l'UI ne garde plus de copie de la topologie matérielle
 
 Seize `bool xEnabled` de `MainWindow` doublaient l'état des cartes de la

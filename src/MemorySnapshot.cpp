@@ -161,7 +161,7 @@ const std::array<Memory::CardSlot, 18>& Memory::cardSlots()
           pom1::CardCapability::Snapshot | pom1::CardCapability::Audio, "sid"}, "A1-SID", kFlagSID,
          [](const Memory& m) { return m.sidEnabled; },
          [](Memory& m, bool b) { m.setSIDEnabled(b); },
-         [](const Memory& m) -> pom1::Peripheral* { return m.sid.get(); }},
+         [](const Memory& m) -> pom1::Peripheral* { return &m.sidChip(); }},
 
         // Flag-only: the A1-SID card variant ($C800-$CFFF vs $CC00-$CC1F)
         // shares the one SID instance, so it has no section of its own.

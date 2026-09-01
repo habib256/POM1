@@ -73,6 +73,16 @@ EmulationController::EmulationController(DisplayDevice* screenWidget,
     memory->setDisplayDevice(screen);
     memory->setCpuForIrq(cpu.get());
 
+    // Build the A1-SID here — before any lock, before the emulation thread.
+    // Memory defers the chip (~120 ms of libresidfp filter tables, see
+    // Memory::sidChip) so a bare test core never pays it, but every site a
+    // frontend would first touch it from holds stateMutex: the publisher
+    // reads the chip model, MachineCoordinator attaches the card. Paying it
+    // there parks the audio callback and the render thread for the whole
+    // 120 ms — which is what concurrent_frontends_smoke's 100 ms
+    // maxStateHoldNs gate caught.
+    (void)memory->getSID();
+
     {
         std::lock_guard<PriorityMutex> lock(stateMutex);
         memory->configureResetVectors(kDefaultResetVector);

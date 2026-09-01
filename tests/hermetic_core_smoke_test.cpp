@@ -23,6 +23,10 @@
 //     an `AudioDevice` when nothing is injected — with the OS output OFF by
 //     default, which is what a bare `Memory mem;` in 50 test files gets.
 //     §4 builds a core on the in-memory double and watches it register.
+//
+//   * the A1-SID chip was built by the constructor, and libresidfp spends
+//     ~120 ms there computing filter tables. §5 pins that a core defers it
+//     to the plug — the single largest item left in the 205 ms above.
 
 #include "TMS9918.h"      // IWYU pragma: keep — Memory's unique_ptr members
 #include "WiFiModem.h"    // IWYU pragma: keep
@@ -34,8 +38,10 @@
 #include "AudioService.h"
 #include "CassetteDevice.h"
 #include "ResourceLocator.h"
+#include "SID.h"        // IWYU pragma: keep — §5 plugs the card
 
 #include <cassert>
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -160,6 +166,39 @@ int main()
         assert(audio.sourceCount() == 0 &&
                "~Memory must unregister every source it added: an injected "
                "service outlives the machine and would keep a dangling pointer");
+    }
+
+    // ── §5 The A1-SID chip is not built until the card is plugged ───────────
+    //
+    // libresidfp computes its filter tables in the chip's constructor: ~120 ms
+    // for the FIRST pom1::SID in a process (0,46 ms for each one after it).
+    // Built from Memory's constructor, that was ~96 % of the wall time of
+    // every test binary holding a bare core — 60 of the 68 — and exactly two
+    // of them ever touch the card. Memory::sidChip() defers it.
+    //
+    // There is no "has the chip been built?" accessor to assert on (Memory's
+    // public surface is frozen), so the observable is the one that mattered:
+    // how long the core takes to come up. Built and deferred are ~5 ms and
+    // ~125 ms apart, so 60 ms separates them on any machine that can run the
+    // rest of this suite. The plug half is the functional pin — deferring the
+    // chip must not lose the audio source it hands the mixer.
+    {
+        pom1::NullAudioService audio;
+        const auto before = std::chrono::steady_clock::now();
+        Memory mem(/*initializeAudioHardware=*/false,
+                   pom1::ResourceLocator::rootedAt(sandbox / "empty"), &audio);
+        const double ms = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - before).count();
+        std::printf("hermetic_core_smoke: bare core built in %.1f ms\n", ms);
+        assert(ms < 60.0 &&
+               "constructing a core must not build the A1-SID chip");
+
+        assert(audio.sourceCount() == 0);
+        mem.setSIDEnabled(true);
+        assert(audio.hasSource(&mem.getSID()) && audio.sourceCount() == 1 &&
+               "plugging the card must build the chip AND register it");
+        mem.setSIDEnabled(false);
+        assert(audio.sourceCount() == 0);
     }
 
     fs::remove_all(sandbox);
