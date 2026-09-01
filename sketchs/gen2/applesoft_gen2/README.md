@@ -90,7 +90,7 @@ $0400-$07FF  TEXT / LO-RES page 1   (PRINT, GR, PLOT, HLIN, VLIN, SCRN)
 $0800-$1FFF  BASIC program + vars   (HIMEM pinned at $2000)
 $2000-$3FFF  HI-RES page 1          (HGR, HPLOT)
 $4000-$5FFF  HI-RES page 2          (HGR2, SHOW)
-$6000-....   interpreter image (run 6000R)
+$9800-$BFFF  interpreter image (run 9800R — BASROM in applesoft_gen2.cfg)
 $FF00-$FFFF  WOZ Monitor (APRINT / Apple-1 ECHO $FFEF)
 ```
 

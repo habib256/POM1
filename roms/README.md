@@ -93,15 +93,22 @@ script, so a successor can regenerate them and verify the bytes.
 | `msbasic.rom` | [`../dev/msbasic/`](../dev/msbasic/) — `build_msbasic.sh`, from pinned commits of `mist64/msbasic` and a `coopzone-dc` overlay; the script asserts the resulting hash. | Documented in [`../dev/msbasic/README.md`](../dev/msbasic/README.md), including the fact that **neither upstream repository carries a licence file**. |
 | `codetank/*.rom` | [`../tools/build_codetank_rom.py`](../tools/build_codetank_rom.py), from sources under `../dev/codetank/` and `../sketchs/`. `tools/verify_codetank_roms.py` is the burn gate. | POM1's own, plus the per-program credits in `../dev/codetank/README.md`. |
 
-⟨to confirm⟩ `applesoft-gen2.rom` and `logo-gen2.rom` are the GEN2 builds of the
-Applesoft-with-graphics interpreter and of APPLE-1 LOGO V2.6. Sources for the
-TMS9918 siblings live under
-[`../sketchs/tms9918/applesoft_tms9918/`](../sketchs/tms9918/applesoft_tms9918/)
-and [`../sketchs/tms9918/tool_logo/`](../sketchs/tms9918/tool_logo/), and the
-LOGO manual is complete — but **the build path that produces these two GEN2
-`.rom` files is not recorded anywhere**. If they are reproducible, say how here;
-if they are hand-built artefacts, say that instead, because it decides whether a
-successor can ever regenerate them.
+`applesoft-gen2.rom` and `logo-gen2.rom` are **DevBench sketches**, which is why
+they are not in `dev/`: each is an ordinary asm project under `sketchs/gen2/`
+with a `.sketch.json` telling the Bench how to build it.
+
+| Image | Sketch | Links at | Entry |
+|---|---|---|---|
+| `applesoft-gen2.rom` | [`../sketchs/gen2/applesoft_gen2/`](../sketchs/gen2/applesoft_gen2/) — `applesoft-gen2.s` + `io.s`, cfg `applesoft_gen2.cfg` (`gen2gfx.inc`, `macros.s`, `zeropage.s` are `.include`d) | `BASROM $9800`, size `$2800` | `9800R` |
+| `logo-gen2.rom` | [`../sketchs/gen2/tool_logo_gen2/`](../sketchs/gen2/tool_logo_gen2/) — `logo_gen2.asm`, cfg `logo_gen2.cfg`, defines `CODETANK_BUILD` + `LOGO_GEN2`, plus seven library modules from `dev/lib/` named in its `.sketch.json` | `CODE $6000`, size `$5000` | `6000R` |
+
+Both build on POM1 preset 2 (GEN2 HGR Development Bench): open the sketch in the
+Bench and Build. Their behaviour is pinned by `applesoft_gen2_smoke` and by
+`bench_logo_inject_smoke` respectively, so a rebuild that shifts an entry point
+fails the suite rather than shipping quietly.
+
+**Installing a rebuilt image into `roms/` is manual** — no script copies it, and
+the shipped `.rom` files are prebuilt artefacts of exactly this path.
 
 ## What still needs the maintainer
 
@@ -110,9 +117,5 @@ Everything tagged **⟨to confirm⟩** above, which is:
 1. The sourcing of the six Apple images (§1) — which archive or dump, and when.
 2. The licence position of Krusader, the CFFA1 firmware, the Juke-Box image and
    the Extended ACI page (§2).
-3. Whether `applesoft-gen2.rom` and `logo-gen2.rom` are reproducible, and how
-   (§3) — the one gap that affects whether the collection stays *buildable*
-   rather than merely *archived*.
-
 Nothing here blocks running or building POM1. It matters the day someone else
 has to answer for the collection.
