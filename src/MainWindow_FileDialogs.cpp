@@ -9,6 +9,7 @@
 
 #include "HexDumpFile.h"
 #include "MainWindow_ImGui.h"
+#include "SoftwareDirRules.h"
 #include "MainWindow_Internal.h"
 #include "ResourceLocator.h"
 #include "NativeFileDialog.h"
@@ -86,31 +87,16 @@ pom1::FileFilter hexDumpFilter()
 }
 }
 
-// Returns the software/ sub-directory matching the SINGLE active "content" card,
-// or "" when zero or more-than-one such card is plugged (ambiguous → stay at the
-// software/ root). This is the reverse of the auto-enable-by-source-dir mapping
-// in performMemoryLoad(): loading from software/Graphic HGR/ enables GEN2, so
-// with GEN2 the sole content card we default the picker back into Graphic HGR/.
-// microSD is intentionally excluded (its content lives on the SD filesystem, not
-// under software/); CodeTank implies the TMS9918 host, so it maps to Graphic TMS9918.
+// The software/ sub-directory matching the SINGLE active "content" card, or ""
+// when zero or several are plugged (ambiguous → stay at the software/ root).
+// This is the REVERSE of the auto-enable-by-source-dir mapping in
+// performMemoryLoad(), and it used to be a second copy of that table; both
+// directions now read pom1::softwaredir::kRules, which is where the exclusions
+// live too (microSD's content is on the SD filesystem, not under software/).
 std::string MainWindow_ImGui::memoryContextSubdir() const
 {
-    struct { pom1::CardId card; const char* dir; } cards[] = {
-        { pom1::CardId::Gen2,      "Graphic HGR" },
-        { pom1::CardId::Tms9918,   "Graphic TMS9918" },
-        { pom1::CardId::Sid,       "SOUND SID" },
-        { pom1::CardId::WifiModem, "NET" },
-        { pom1::CardId::A1IoRtc,   "a1io_rtc" },
-        { pom1::CardId::Gt6144,    "Graphic gt-6144" },
-    };
-    const char* found = nullptr;
-    for (const auto& c : cards) {
-        if (cardPlugged(c.card)) {
-            if (found) return std::string();   // ≥2 content cards → ambiguous
-            found = c.dir;
-        }
-    }
-    return found ? std::string(found) : std::string();
+    const char* dir = pom1::softwaredir::pickerDefaultDirectory(currentCards());
+    return dir ? std::string(dir) : std::string();
 }
 
 void MainWindow_ImGui::loadMemory()
@@ -334,83 +320,53 @@ bool MainWindow_ImGui::performMemoryLoad(const std::string& path,
     // applyMachineConfig() commits its own transaction.
     applyPendingCardConfiguration();
 
-    // Auto-enable hardware cards based on source directory.
-    // Folder layout under software/: "Graphic HGR", "Graphic TMS9918",
-    // "Apple-1_TMS_CC65" (cc65 CodeTank drop-ins), "Graphic gt-6144",
-    // "NET", "a1io_rtc", "SOUND SID", ... Match the canonical folder name
-    // (forward and backslash separators) and ALWAYS raise the corresponding
-    // window so loading from the folder opens the panel before interaction.
-    // This matters for the Fantasy preset, which leaves graphic cards
-    // unplugged by default — the user expects "open file from Graphic HGR/"
-    // to both plug HGR and pop the framebuffer window.
-    auto pathHas = [&](const char* fwd, const char* back) {
-        return path.find(fwd) != std::string::npos ||
-               path.find(back) != std::string::npos;
-    };
-    // Storage cards unplugged to make room for a graphic-card program (see the
-    // Graphic HGR / GT-6144 branches). Reported in the final status line.
+    // Auto-enable hardware cards from the source directory. WHICH card, which
+    // window, whether storage has to come off the bus first and what the status
+    // line says are all one table now — pom1::softwaredir::kRules, which the
+    // file picker also reads backwards (memoryContextSubdir). What stays here is
+    // the two cards whose plug is not the generic one, and the one cascade the
+    // UI has to notice.
+    //
+    // Storage cards unplugged to make room for a graphic-card program; reported
+    // in the final status line.
     std::vector<std::string> evicted;
-    if (pathHas("/Graphic HGR/", "\\Graphic HGR\\")) {
-        if (!cardPlugged(pom1::CardId::Gen2)) {
-            emulation->setHgrFramebufferAttached(true);
-        }
-        showGraphicsCard = true;
-        // Clear any ROM/IO storage card off the bus BEFORE loading so the HGR
-        // program lands in clean RAM (the multiplexing-Fantasy preset plugs
-        // microSD/CFFA1 whose $6000-$AFFF windows otherwise shadow it → black
-        // card). No-op on the single-card GEN2 presets.
-        evicted = evictStorageCards();
-    } else if (pathHas("/SOUND SID/", "\\SOUND SID\\")) {
-        if (!cardPlugged(pom1::CardId::Sid)) {
-            // Plugging A1-SID evicts A1-AUDIO SE (same MOS chip) and the
-            // Juke-Box ($CA00 latch sits inside the SID window). The bus does
-            // that; the UI reads it back rather than repeating the rule.
-            setCardPlugged(pom1::CardId::Sid, true);
-            setStatusMessage("P-LAB A1-SID plugged", 2.0f);
-        }
-    } else if (pathHas("/Graphic TMS9918/", "\\Graphic TMS9918\\") ||
-               pathHas("/Apple-1_TMS_CC65/", "\\Apple-1_TMS_CC65\\")) {
-        if (!cardPlugged(pom1::CardId::Tms9918)) {
-            setCardPlugged(pom1::CardId::Tms9918, true);
-            setStatusMessage("P-LAB TMS9918 plugged", 2.0f);
-        }
-        showTMS9918 = true;
-    } else if (pathHas("/sdcard/", "\\sdcard\\")) {
-        if (!cardPlugged(pom1::CardId::MicroSD)) {
-            // Memory evicts CodeTank ($6000-$7FFF Applesoft Lite overlap); the
-            // TMS9918 host stays plugged. Only its window is the UI's business.
-            setCardPlugged(pom1::CardId::MicroSD, true);
-            if (!cardPlugged(pom1::CardId::CodeTank)) {
+    if (const pom1::softwaredir::Rule* rule = pom1::softwaredir::matchPath(path)) {
+        const bool alreadyPlugged = cardPlugged(rule->card);
+        if (!alreadyPlugged) {
+            if (rule->card == pom1::CardId::Gen2) {
+                // GEN2 attaches through its framebuffer rather than the generic
+                // card path.
+                emulation->setHgrFramebufferAttached(true);
+            } else {
+                setCardPlugged(rule->card, true);
+            }
+            if (rule->pluggedMessage)
+                setStatusMessage(rule->pluggedMessage, rule->messageSeconds);
+            // microSD evicts CodeTank ($6000-$7FFF Applesoft Lite overlap) on the
+            // bus; the TMS9918 host stays. Only the panel is the UI's business.
+            if (rule->card == pom1::CardId::MicroSD
+                && !cardPlugged(pom1::CardId::CodeTank)) {
                 showCodeTankLibrary = false;
                 codeTankPendingWozRunAt = 0.0;
             }
-            setStatusMessage("P-LAB microSD Card plugged", 2.0f);
+        } else if (rule->resetWhenAlreadyPlugged) {
+            // WHETHER a reload wants a reset is the table's call; WHAT a reset
+            // is remains per-card, so a future rule setting the flag cannot
+            // silently drop someone's BBS session.
+            if (rule->card == pom1::CardId::WifiModem)
+                emulation->wifiModemReset();
+            if (rule->resetMessage)
+                setStatusMessage(rule->resetMessage, rule->messageSeconds);
         }
-    } else if (pathHas("/NET/", "\\NET\\")) {
-        if (!cardPlugged(pom1::CardId::WifiModem)) {
-            emulation->setCardEnabled(pom1::CardId::WifiModem, true);
-            setStatusMessage("P-LAB Wi-Fi Modem plugged", 2.0f);
-        } else {
-            // Reload from software/NET/: drop any live BBS connection and
-            // clear ACIA state so the new auto-dial program starts fresh.
-            emulation->wifiModemReset();
-            setStatusMessage("P-LAB Wi-Fi Modem reset", 2.0f);
+        if (rule->raiseCardWindow) {
+            for (const WindowDescriptor& w : windowRegistry()) {
+                if (w.gate != rule->card) continue;
+                this->*(w.show) = true;
+                break;
+            }
         }
-        showWiFiModem = true;
-    } else if (pathHas("/a1io_rtc/", "\\a1io_rtc\\")) {
-        if (!cardPlugged(pom1::CardId::A1IoRtc)) {
-            emulation->setCardEnabled(pom1::CardId::A1IoRtc, true);
-            setStatusMessage("P-LAB I/O Board & RTC plugged", 2.0f);
-        }
-        showA1IO_RTC = true;
-    } else if (pathHas("/Graphic gt-6144/", "\\Graphic gt-6144\\")) {
-        if (!cardPlugged(pom1::CardId::Gt6144)) {
-            emulation->setCardEnabled(pom1::CardId::Gt6144, true);
-            setStatusMessage("SWTPC GT-6144 plugged (64x96 framebuffer at $D00A)", 3.0f);
-        }
-        showGT6144 = true;
-        // Same clean-RAM rationale as the Graphic HGR branch above.
-        evicted = evictStorageCards();
+        if (rule->evictStorageCards)
+            evicted = evictStorageCards();
     }
 
     uint16_t addr = address;

@@ -106,9 +106,19 @@ MODULES = [
         r"^src/Pom1CrtEffects\.",
         r"^src/CrtEffectStack",
         r"^src/PomRenderer",
+        # The decision seams extracted OUT of MainWindow_* stay in this module
+        # on purpose. They are what the "sortir les décisions de l'UI" chantier
+        # buys, and the whole point of the number below is how much of the UI
+        # layer's LOGIC is tested — reclassifying those lines into another
+        # module would improve the figure by moving the work, which is exactly
+        # the gaming a per-module table exists to prevent.
         r"^src/Apple1KeyMap\.",
         r"^src/WindowGeometry\.",
         r"^src/FullscreenExpand\.",
+        r"^src/LayoutDecisions\.",
+        r"^src/PresetDecisions\.",
+        r"^src/ShortcutTable\.",
+        r"^src/SoftwareDirRules\.",
     )),
     ("platform", (
         r"^src/ResourceLocator\.cpp$",

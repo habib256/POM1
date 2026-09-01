@@ -10,6 +10,7 @@
 #include "TerminalCard.h"
 #include "POM1Build.h"
 #include "MacNativeFullscreen.h"
+#include "LayoutDecisions.h"  // fullscreen / layout arbitration, pure
 #include "Disassembler6502.h"
 #include "Logger.h"
 #include "imgui.h"
@@ -636,9 +637,10 @@ void MainWindow_ImGui::render()
     // maximized/fullscreen session still restores a sane underlying window.
     // osWindowIsFullscreen() (not `fullscreen`) so a macOS native fullscreen
     // space doesn't overwrite the windowed rect with the screen size.
-    if (window && !osWindowIsFullscreen()
-        && !glfwGetWindowAttrib(window, GLFW_MAXIMIZED)
-        && !glfwGetWindowAttrib(window, GLFW_ICONIFIED)) {
+    if (window && pom1::layout::shouldTrackWindowedRect(
+                      osWindowIsFullscreen(),
+                      glfwGetWindowAttrib(window, GLFW_MAXIMIZED) != 0,
+                      glfwGetWindowAttrib(window, GLFW_ICONIFIED) != 0)) {
         glfwGetWindowPos(window, &windowedPosX, &windowedPosY);
         glfwGetWindowSize(window, &windowedWidth, &windowedHeight);
     }

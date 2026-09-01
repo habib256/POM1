@@ -72,9 +72,13 @@ La découverte de ressources est livrée elle aussi : les 52 sondes `../` écrit
 
 17 100 lignes de `MainWindow_*` sans test direct, et c'est là que vivaient les
 défauts connus (backspace destructif, six défauts du plein écran, auto-dial BBS
-perdu). **Mesuré** depuis (`tools/coverage.py`) : le module `ui` est à **2,4 %
-de couverture de lignes sur 14 407 lignes**, contre 93 % pour le CPU et les
-parseurs. C'est le chiffre de départ de ce chantier. La méthode a déjà fait ses preuves — `src/Apple1KeyMap.h`,
+perdu). **Mesuré** au départ (`tools/coverage.py`) : le module `ui` était à
+**2,4 % de couverture de lignes sur 14 407 lignes**, contre 93 % pour le CPU et
+les parseurs. **Re-mesuré après quatre extractions : 3,9 % sur 14 468 lignes**
+(558 lignes couvertes contre ~346), les neuf autres modules inchangés — le
+travail n'a donc pas été déplacé ailleurs. Les sept seams sont à **100 % de
+lignes** ; ce qui reste non couvert dans `ui`, ce sont les ~13 900 lignes qui
+dessinent, et c'est attendu. La méthode a déjà fait ses preuves — `src/Apple1KeyMap.h`,
 `src/WindowGeometry.h`, `src/StagedCardConfiguration.h` — mais ne couvre que
 quelques centaines de lignes. **Viser les ~2 000 lignes qui portent des
 décisions, pas les 17 000 qui dessinent.**
@@ -82,11 +86,28 @@ décisions, pas les 17 000 qui dessinent.**
 Le miroir matériel est supprimé (`CHANGELOG.md`) : les seize `bool xEnabled` de
 `MainWindow` n'existent plus, l'état des cartes vient de `currentCards()` —
 transaction en cours si elle est ouverte, `CardSet` publié sinon — et les
-commandes passent par `setCardPlugged()`. Reste, pour ce chantier :
+commandes passent par `setCardPlugged()`. Les décisions de layout et de plein
+écran sont extraites elles aussi (`CHANGELOG.md`) : `src/LayoutDecisions.h`
+porte l'arbitrage — quel rectangle est persisté, quelle géométrie s'applique,
+ce que fait une réinitialisation, et ce que signifie un clic sur la case Plein
+écran quand AppKit possède déjà la fenêtre — et `layout_decisions_smoke`
+l'épingle en 8 sections sans lier ni ImGui ni GLFW. Les décisions de presets
+le sont également : `src/PresetDecisions.h` porte le paquet de fidélité
+silicium, le profil ROM et son inventaire, le choix de cassette et les
+prédicats par preset — trois règles qui étaient écrites deux fois (le profil
+ROM, trois fois) le sont désormais une seule — et l'ouverture comme la
+fermeture des fenêtres passent par `windowRegistry()`, ce qui supprime les
+deux dernières récitations du jeu de fenêtres dans `applyMachineConfig`.
+`preset_decisions_smoke` lie la vraie table et vérifie les treize machines
+livrées. Les raccourcis enfin sont unifiés : `src/ShortcutTable.h` porte les
+huit liaisons, le répartiteur est un `switch` sur une commande nommée, la
+fenêtre d'aide rend les lignes qu'elle décrit, et l'interdiction des
+Ctrl+lettre est un `static_assert` sur la vraie table. Enfin, « quel
+répertoire implique quelle carte » (`src/SoftwareDirRules.h`) était écrit
+deux fois, une fois par direction ; les deux lisent la même table et
+`software_dir_rules_smoke` l'épingle. Reste, pour ce chantier :
 
-- [ ] **Extraire les décisions de layout et de plein écran** `[M · solid]` — la règle d'attente sur `DisplaySize`, l'arbitrage plein écran natif macOS, la persistance `.size` et le choix « quelle géométrie s'applique » sont des fonctions pures ; les six défauts d'août 2026 y vivaient et aucun n'était épinglable sur place.
-- [ ] **Extraire les décisions de presets et de topologie** `[M · solid]` — quel preset, quelles cartes, quel ROM, quelles fenêtres ouvertes : `src/MachinePresets.h` et `src/CardTopology.h` portent déjà les données et la politique ; l'UI ne doit plus contenir que la composition.
-- [ ] **Unifier fenêtres, menus et raccourcis par identifiant stable** `[M · solid]` — un registre unique alimentant menus, raccourcis et persistance, puis une palette de commandes qui en dérive. Préserver l'interdiction des raccourcis Ctrl+lettre, réservés aux codes de contrôle Apple-1 (`shortcuts_sync`).
+- [ ] **Dériver les entrées de menu du registre, puis une palette de commandes** `[M · solid]` — la moitié raccourcis est livrée (`src/ShortcutTable.h`, `shortcut_table_smoke`) et les fenêtres passent déjà par `windowRegistry()` pour la persistance, le dessin, le dock et la présence par preset. Reste les ~100 `MenuItem` : les bascules pures peuvent venir du registre, mais beaucoup portent des effets de bord (brancher une carte, initialiser un éditeur) et l'ordre/les séparateurs sont eux-mêmes une donnée à décrire. Puis la palette. Préserver l'interdiction des raccourcis Ctrl+lettre, désormais un `static_assert` en plus de `shortcuts_sync`.
 - [ ] **Un test par décision extraite** `[S · solid]` — chaque extraction arrive avec son smoke test qui ne lie ni ImGui ni GLFW, comme `mainwindow_logic_smoke` et `staged_card_configuration_smoke`.
 
 > Sortie : les décisions de l'UI sont testées hors ImGui ; `MainWindow_*` ne

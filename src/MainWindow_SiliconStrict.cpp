@@ -170,33 +170,13 @@ void MainWindow_ImGui::renderSiliconStrictWindow()
         ImGui::PushStyleColor(ImGuiCol_Text,          ImVec4(1, 1, 1, 1));
         if (ImGui::Button(label, ImVec2(-FLT_MIN, 42.0f))) {
             const bool turnOn = !siliconStrictModeEnabled;
-            siliconStrictModeEnabled       = turnOn;
-            vramNoiseOnResetEnabled        = turnOn;
-            systemRamNoiseOnResetEnabled   = turnOn;
-            dramRefreshEnabled             = turnOn;
-            oorStrictModeEnabled           = turnOn;
-            emulation->setSiliconStrictMode(turnOn);
-            emulation->setVramNoiseOnReset(turnOn);
-            emulation->setSystemRamNoiseOnReset(turnOn);
-            emulation->setDramRefreshEnabled(turnOn);
-            emulation->setOutOfRangeStrictMode(turnOn);
-            cpuDecimalBugEnabled           = turnOn;
-            emulation->setCpuDecimalBugNMOS(turnOn);
-            // GEN2 HGR silicon-fidelity knobs (latch / floating-bus /
-            // scanner-phase / DRAM noise) are part of the master bundle — arm
-            // or disarm all four and keep their individual checkbox flags below
-            // in sync. Mirrors the preset apply path's setGen2RandomPowerOn().
-            gen2RandomPowerOnEnabled       = turnOn;
-            gen2RandomLatchEnabled         = turnOn;
-            gen2RandomFloatingBusEnabled   = turnOn;
-            gen2RandomScannerPhaseEnabled  = turnOn;
-            gen2RandomDramNoiseEnabled     = turnOn;
-            emulation->setGen2RandomPowerOn(turnOn);
-            // Strict-mode RAM topology: real Apple-1 has 8 KB dual-bank RAM
-            // ($0000-$0FFF + $E000-$EFFF) with $1000-$7FFF floating. Force
-            // the preset RAM ceiling to 8 KB when strict is armed; restore
-            // to 64 KB when fantasy is armed (anything-goes emulation map).
-            presetRamKB = turnOn ? 8 : 64;
+            // The bundle is ONE decision, shared verbatim with the preset apply
+            // path (pom1::presets::siliconFidelity) — including the four GEN2
+            // power-on knobs, which are what setGen2RandomPowerOn() means and
+            // whose individual checkboxes below only mirror. This is the master
+            // switch, so it pushes to the running machine as well.
+            applySiliconFidelity(pom1::presets::siliconFidelity(turnOn), true);
+            presetRamKB = pom1::presets::strictRamKB(turnOn);
             emulation->setPresetRamKB(presetRamKB);
             // monochromeVariant stays as-is — it represents which physical card
             // Bernie shipped (colour vs B&W), independent of strict-vs-fantasy.

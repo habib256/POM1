@@ -12,6 +12,8 @@
 #include "POM1Build.h"
 #include "MacNativeFullscreen.h"
 #include "WindowGeometry.h"  // macOS fullscreen space is invisible to GLFW
+#include "LayoutDecisions.h"  // the persist/restore/reset arbitration, pure
+#include "PresetDecisions.h"  // what applying a preset MEANS, pure
 #include "Logger.h"
 #include "ResourceLocator.h"  // pom1::executableDirectory() for exe-relative ini_defaults/
 #if POM1_DEVTOOLS
@@ -85,7 +87,7 @@ using namespace pom1::mainwindow::detail;
 // BASIC.ogg), not alternative places to look — the places are the locator's
 // business, and spelling them here is what used to make a preset find its
 // cassette from the repo root and not from `build/`.
-std::string findFirstExistingPath(std::initializer_list<const char*> candidates)
+std::string findFirstExistingPath(const std::vector<const char*>& candidates)
 {
     const pom1::ResourceLocator res = pom1::ResourceLocator::defaultLocator();
     for (const char* rel : candidates) {
@@ -111,17 +113,17 @@ void MainWindow_ImGui::applyPendingLayout(const char* windowName)
     // position/size onto live windows with ImGuiCond_Always and KEEP the entry
     // so it re-applies every frame until layoutResetForceFrames drains; normal
     // switches use FirstUseEver and consume the entry once.
-    const bool force = layoutResetForceFrames > 0;
-    const ImGuiCond cond = force ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
     for (auto it = pendingLayout.begin(); it != pendingLayout.end(); ++it) {
-        if (it->name == windowName) {
-            ImGui::SetNextWindowPos(it->pos, cond);
-            if (it->size.x > 0.0f)
-                ImGui::SetNextWindowSize(it->size, cond);
-            if (!force)
-                pendingLayout.erase(it);
-            return;
-        }
+        if (it->name != windowName) continue;
+        const pom1::layout::PlacementApply a =
+            pom1::layout::placementApply(true, layoutResetForceFrames > 0);
+        const ImGuiCond cond = a.always ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
+        ImGui::SetNextWindowPos(it->pos, cond);
+        if (it->size.x > 0.0f)
+            ImGui::SetNextWindowSize(it->size, cond);
+        if (a.consume)
+            pendingLayout.erase(it);
+        return;
     }
 }
 
@@ -145,23 +147,24 @@ void MainWindow_ImGui::defaultOsWindowSize(int presetIndex, int& outW, int& outH
     const float sh = cell.y * Screen_ImGui::kApple1Rows * screen->scale
                      + uiPx(kApple1ImGuiWinPadH);
     const ImVec2 extent = computePresetLayoutExtent(cfg, ImVec2(sw, sh));
-    const float rightPad  = 10.0f;
-    const float bottomPad = uiPx(kStatusBarBandHeight + kApple1WindowDecorationSlop);
-    int glfwW = static_cast<int>(sw) + kApple1GlfwExtraW;
-    int glfwH = static_cast<int>(std::ceil(sh + apple1LayoutVerticalChrome()));
-    if (extent.x > 0.0f && extent.y > 0.0f) {
-        glfwW = std::max(glfwW, static_cast<int>(std::ceil(extent.x + rightPad)));
-        glfwH = std::max(glfwH, static_cast<int>(std::ceil(extent.y + bottomPad)));
-    }
     // Floor at the last preset (POM1 Fantasy) extent — the canonical frame.
     const ImVec2 fantasyExtent = computePresetLayoutExtent(
         kMachinePresets[pom1::presetIndex(kDefaultPresetId)], ImVec2(sw, sh));
-    if (fantasyExtent.x > 0.0f && fantasyExtent.y > 0.0f) {
-        glfwW = std::max(glfwW, static_cast<int>(std::ceil(fantasyExtent.x + rightPad)));
-        glfwH = std::max(glfwH, static_cast<int>(std::ceil(fantasyExtent.y + bottomPad)));
-    }
-    outW = glfwW;
-    outH = glfwH;
+
+    pom1::layout::OsWindowSizeInputs in;
+    in.screenW        = sw;
+    in.screenH        = sh;
+    in.verticalChrome = apple1LayoutVerticalChrome();
+    in.extraW         = kApple1GlfwExtraW;
+    in.extentW        = extent.x;
+    in.extentH        = extent.y;
+    in.floorExtentW   = fantasyExtent.x;
+    in.floorExtentH   = fantasyExtent.y;
+    in.rightPad       = 10.0f;
+    in.bottomPad      = uiPx(kStatusBarBandHeight + kApple1WindowDecorationSlop);
+    const pom1::layout::OsWindowSize sz = pom1::layout::computeOsWindowSize(in);
+    outW = sz.w;
+    outH = sz.h;
 }
 
 #if POM1_IS_WASM
@@ -189,18 +192,59 @@ void MainWindow_ImGui::computeWasmCanvasSize(int presetIndex, int& outW, int& ou
                      + uiPx(kApple1ImGuiWinPadH);
     const ImVec2 extent = computePresetLayoutExtent(cfg, ImVec2(sw, sh));
 
-    // Base = Apple-1 screen window + chrome (same as the old per-frame path).
-    int w = static_cast<int>(sw) + kApple1GlfwExtraW;
-    int h = static_cast<int>(std::ceil(sh + apple1LayoutVerticalChrome()));
-    if (extent.x > 0.0f && extent.y > 0.0f) {
-        w = std::max(w, static_cast<int>(std::ceil(extent.x + 8.0f)));
-        h = std::max(h, static_cast<int>(std::ceil(extent.y + 8.0f)));
-    }
-    // Same clamps the per-frame path used: floor for usability, cap for safety.
-    outW = std::min(std::max(w, 320), 4096);
-    outH = std::min(std::max(h, 240), 4096);
+    // Same arithmetic as defaultOsWindowSize, with NO Fantasy floor (see the
+    // note above, and OsWindowSizeInputs::floorExtentW) and the clamps the
+    // per-frame path used: floor for usability, cap for safety.
+    pom1::layout::OsWindowSizeInputs in;
+    in.screenW        = sw;
+    in.screenH        = sh;
+    in.verticalChrome = apple1LayoutVerticalChrome();
+    in.extraW         = kApple1GlfwExtraW;
+    in.extentW        = extent.x;
+    in.extentH        = extent.y;
+    in.rightPad       = 8.0f;
+    in.bottomPad      = 8.0f;
+    in.minW = 320; in.minH = 240;
+    in.maxW = 4096; in.maxH = 4096;
+    const pom1::layout::OsWindowSize sz = pom1::layout::computeOsWindowSize(in);
+    outW = sz.w;
+    outH = sz.h;
 }
 #endif
+
+// Carry out a decided silicon-fidelity bundle. Twelve assignments used to sit
+// inline in applyMachineConfig and twelve more in the Silicon Strict master
+// button, each with a comment asking the reader to keep the two lists in sync —
+// which is what a rule stated twice always costs. The rule itself is now
+// pom1::presets::siliconFidelity(); this is the single place that applies it.
+//
+// `pushToEmulation` is false on the preset path: the same values already travel
+// in the CardConfigurationRequest and the controller applies them inside the
+// topology transaction, so pushing them here would be a second, unsynchronised
+// write to a machine that is mid-swap.
+void MainWindow_ImGui::applySiliconFidelity(const pom1::presets::SiliconFidelity& f,
+                                            bool pushToEmulation)
+{
+    siliconStrictModeEnabled      = f.siliconStrict;
+    oorStrictModeEnabled          = f.outOfRangeStrict;
+    dramRefreshEnabled            = f.dramRefresh;
+    vramNoiseOnResetEnabled       = f.vramNoiseOnReset;
+    systemRamNoiseOnResetEnabled  = f.systemRamNoiseOnReset;
+    cpuDecimalBugEnabled          = f.cpuDecimalBugNMOS;
+    gen2RandomPowerOnEnabled      = f.gen2RandomPowerOn;
+    gen2RandomLatchEnabled        = f.gen2RandomLatch;
+    gen2RandomFloatingBusEnabled  = f.gen2RandomFloatingBus;
+    gen2RandomScannerPhaseEnabled = f.gen2RandomScannerPhase;
+    gen2RandomDramNoiseEnabled    = f.gen2RandomDramNoise;
+    if (!pushToEmulation) return;
+    emulation->setSiliconStrictMode(f.siliconStrict);
+    emulation->setOutOfRangeStrictMode(f.outOfRangeStrict);
+    emulation->setDramRefreshEnabled(f.dramRefresh);
+    emulation->setVramNoiseOnReset(f.vramNoiseOnReset);
+    emulation->setSystemRamNoiseOnReset(f.systemRamNoiseOnReset);
+    emulation->setCpuDecimalBugNMOS(f.cpuDecimalBugNMOS);
+    emulation->setGen2RandomPowerOn(f.gen2RandomPowerOn);
+}
 
 void MainWindow_ImGui::applyMachineConfig(int presetIndex)
 {
@@ -226,48 +270,13 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // source of truth for what's visible. Each `showXxx` is then
     // re-enabled by the layout-driven auto-show loop further below, if
     // the new preset declares that panel.
-    showAbout                = false;
-    showSpecialThanks        = false;
-    showHardwareReference    = false;
-    showSoftwareReference    = false;
-    showWelcome              = false;
-    showTutorialIntegerBasic = false;
-    showTutorialApplesoft    = false;
-    showTutorialMicroSD      = false;
-    showTutorialCassette     = false;
-    showTutorialModemBBS     = false;
-    showTutorialGT6144       = false;
-    showTutorialPR40         = false;
-    showTutorialTMS9918      = false;
-    showTutorialA1IORTC      = false;
-    showTutorialSID          = false;
-    showTutorialGEN2HGR      = false;
-    showTutorialCFFA1        = false;
-    showTutorialJukeBox      = false;
-    showTutorialTerminalCard = false;
-    showTutorialKrusader     = false;
-    showWozJobsPhoto         = false;
-    showWozJobsRectPhoto     = false;
-    showTmsBoardPhoto        = false;
-    showGen2WorkbenchPhoto   = false;
-    showKeyboardPhoto        = false;
-    showWozPhoto             = false;
-    showCopsonApple1Photo    = false;
-    showHappyWozPhoto        = false;
-    showPlabTms9918Photo     = false;
-    showScreenConfig         = false;
-    showMemoryConfig         = false;
-    showLoadDialog           = false;
-    showLoadTapeDialog       = false;
-    showCassetteDeck         = false;
-    showCodeTankLibrary      = false;
-    codeTankPendingWozRunAt  = 0.0;
+    for (const WindowDescriptor& w : windowRegistry()) {
+        if (w.resetOnPresetSwitch)
+            this->*(w.show) = false;
+    }
+    // Two pieces of transient state that hang off panels the loop just closed.
+    codeTankPendingWozRunAt   = 0.0;
     bringTms9918WindowToFront = false;
-    showMemoryMapGrid        = false;
-    showMemoryBar            = false;
-    showMemoryBarH           = false;
-    // showMemoryViewer / showDebugger are kept across switches — they're
-    // debug tools that users actively work with, not preset-bound panels.
 
     // Clear ImGui's accumulated window settings before loading the
     // incoming preset's ini. Without this, each per-preset ini grows on
@@ -285,8 +294,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // preset switch.
     ImGui::ClearIniSettings();
 
-    // Show POM1 banner only for the last preset (POM1 Fantasy)
-    screen->setShowBanner(presetId == kDefaultPresetId);
+    screen->setShowBanner(pom1::presets::showsBanner(presetId));
 
     // Silicon-fidelity power-on state (RAM size + VRAM/RAM cold-boot noise) is
     // consumed by the hardReset() below — resetMemory() seeds main RAM and
@@ -295,58 +303,26 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // on a later manual reset (user-visible bug: TMS sprites that depend on the
     // uninitialised-SAT noise rendered too cleanly on silicon presets at boot).
     const bool fantasyPreset = isFantasyPreset(presetId);
+    // The whole silicon-fidelity bundle is ONE decision, and it is stated once —
+    // pom1::presets::siliconFidelityForPreset. The Silicon Strict master button
+    // (MainWindow_SiliconStrict.cpp) composes the same struct, so the two paths
+    // can no longer drift; pinned by preset_decisions_smoke.
+    const pom1::presets::SiliconFidelity fidelity =
+        pom1::presets::siliconFidelityForPreset(presetId);
     presetRamKB = cfg.ramKB;
 
-    // Skip the full hard reset on the very first invocation — at that
-    // point Memory::Memory() has just run initMemory() (default ROMs +
-    // peripheral resets) so hardReset() would redo the exact same work
-    // (double BASIC/WOZ/ACI/SD loads, multiple TerminalCard re-listens).
-    // From the second call onward (preset switch, user action) the
-    // hardReset is mandatory: we need to wipe RAM, reload default ROMs,
-    // and reset every peripheral before applying the new preset.
-    // Exception: a SILICON preset on the very first call still needs ONE reset
-    // so the just-armed power-on noise replaces the constructor's lenient seed
-    // (Fantasy first-boot keeps skipping it — no power-on noise wanted there).
-    // DevBench profiles (indices 0-2) are a compile-and-run workflow, not a
-    // cold-boot demo: skip the ~3 s power-on scenarization so the reset lands on
-    // a cleared screen immediately.
-    const bool isDevBench = presetId == PresetId::CC65Bench ||
-                            presetId == PresetId::TMS9918Bench ||
-                            presetId == PresetId::Gen2Bench;
-    const bool coldResetPreset = presetAppliedOnce || !fantasyPreset;
+    // Whether this apply performs the destructive reset — the first-invocation
+    // skip and the silicon-preset exception to it are documented on the rule
+    // itself (pom1::presets::coldResetOnApply).
+    const bool coldResetPreset =
+        pom1::presets::coldResetOnApply(presetAppliedOnce, presetId);
     presetAppliedOnce = true;
     loadedPrograms.clear();
     loadedRoms.clear();
 
-    // RAM size for this preset + fantasyPreset were applied above (before the
-    // boot reset, so the power-on noise lands on the first frame). Continue
-    // arming the rest of the silicon-fidelity bundle.
-    siliconStrictModeEnabled = !fantasyPreset;
-    oorStrictModeEnabled = !fantasyPreset;
-    // Silicon Strict is an all-or-nothing master switch: a non-Fantasy preset
-    // ARMS every silicon-fidelity knob at once, Fantasy (the default, last
-    // preset) DISARMS them all. After the preset lands the user can flip any
-    // individual knob in the Silicon Strict window and that override sticks
-    // until the next preset switch or master toggle. The same bundle is armed
-    // by the master button in MainWindow_HardwareWindows.cpp — keep them in
-    // sync. DRAM refresh (4/65 CPU steal) is part of the bundle, so a Silicon
-    // preset reproduces the real-DRAM beam-race drift out of the box.
-    dramRefreshEnabled = !fantasyPreset;
-    vramNoiseOnResetEnabled = !fantasyPreset;        // armed before the boot reset above
-    systemRamNoiseOnResetEnabled = !fantasyPreset;   // armed before the boot reset above
-    // NMOS decimal ADC/SBC flag bug: original-chip behaviour on strict presets,
-    // 65C02-corrected on the (fantasy) Multiplexing presets.
-    cpuDecimalBugEnabled = !fantasyPreset;
-    // GEN2 HGR random power-on state. Same Fantasy-OFF rule as siliconStrictMode;
-    // when the card plugs below, Memory consults this flag
-    // to decide between random / documented latch + DRAM + scanner phase.
-    gen2RandomPowerOnEnabled = !fantasyPreset;
-    // Keep the four individual Silicon Strict Inspector checkboxes in sync with
-    // the master power-on flag (setGen2RandomPowerOn flips all four together).
-    gen2RandomLatchEnabled        = !fantasyPreset;
-    gen2RandomFloatingBusEnabled  = !fantasyPreset;
-    gen2RandomScannerPhaseEnabled = !fantasyPreset;
-    gen2RandomDramNoiseEnabled    = !fantasyPreset;
+    // RAM size + the fidelity bundle were decided above, before the boot reset,
+    // so the power-on noise lands on the very first frame.
+    applySiliconFidelity(fidelity);
 
     // The transaction opens HERE, with the topology, because that is what the
     // rest of this function reads back through currentCards(): a preset
@@ -358,76 +334,38 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     req.mode = fantasyPreset
         ? pom1::TopologyMode::Fantasy : pom1::TopologyMode::Strict;
 
-    showGraphicsCard         = false;
-    showTMS9918              = false;
-    showA1IO_RTC             = false;
-    showWiFiModem            = false;
-    jukeBoxJumper            = cfg.jukeBox.jumper;
-    jukeBoxChipMode          = cfg.jukeBox.chipMode;
-    showJukeBox              = false;
-    codeTankJumper           = cfg.codeTank.jumper;
-#if !POM1_IS_WASM
-    showTerminalCard         = false;
-#endif
-    showPR40                 = false;
-    showGT6144               = false;
-    showIECCard              = false;
-    showCassetteDeck         = false;
-    showWelcome              = false;
+    // The card panels above were closed by the registry loop; what is left here
+    // is board state the preset carries.
+    jukeBoxJumper   = cfg.jukeBox.jumper;
+    jukeBoxChipMode = cfg.jukeBox.chipMode;
+    codeTankJumper  = cfg.codeTank.jumper;
 
-    // Layout-driven auto-show: every panel named in the preset's layout
-    // table opens on load. This replaces the old per-flag "show on preset
-    // apply" rules (hardcoded showCassetteDeck / showWelcome for the
-    // default POM1 preset, and the former PR-40 / GT-6144 shortcuts
-    // used previously). Keeping the decision in the layout table means
-    // every preset can independently declare which panels to open, and
-    // POM1 Fantasy — whose layout lists "Apple 1 Screen" + "Welcome" +
-    // "Apple-1 Cassette Deck" — still boots with the same three windows
-    // as before.
+    // Layout-driven auto-show: every panel named in the preset's layout table
+    // opens on load, resolved against windowRegistry() by TITLE. Keeping the
+    // decision in the layout table means every preset independently declares
+    // which panels to open, and POM1 Fantasy — whose layout lists "Apple 1
+    // Screen" + "Welcome" + "Apple-1 Cassette Deck" — still boots with the same
+    // three windows as before. Going through the registry rather than a
+    // hand-written `if (n == title) showX = true;` chain removes the FOURTH
+    // recitation of the window set (persistence, the menus, kDockLayout[] and
+    // this one) — and with it the class of bug where a layout table names a
+    // window whose branch nobody remembered to add.
     for (int i = 0; i < cfg.layoutCount; ++i) {
-        const std::string_view n = cfg.layout[i].name;
-        // Peripheral / auxiliary windows
-        if      (n == "Uncle Bernie's GEN2 HGR Graphic Card") showGraphicsCard = true;
-        else if (n == "P-LAB Graphic Card (TMS9918)")         showTMS9918      = true;
-        else if (n == "P-LAB I/O Board & RTC")                showA1IO_RTC     = true;
-        else if (n == "P-LAB Wi-Fi Modem")                    showWiFiModem    = true;
-        else if (n == "P-LAB Juke-Box")                       showJukeBox      = true;
-        else if (n == "P-LAB CodeTank Library" || n == "P-LAB CodeTank")
-            showCodeTankLibrary = true;
-#if !POM1_IS_WASM
-        else if (n == "P-LAB Terminal Card")                  showTerminalCard = true;
+        std::string_view n = cfg.layout[i].name;
+        // "Apple 1 Screen" is always visible and owns no show flag.
+        if (n == "Apple 1 Screen") continue;
+        // Legacy alias accepted by hand-written layout tables.
+        if (n == "P-LAB CodeTank") n = "P-LAB CodeTank Library";
+        for (const WindowDescriptor& w : windowRegistry()) {
+            if (n != std::string_view(w.title)) continue;
+#if POM1_IS_WASM
+            // Desktop-only panels, and the Terminal Card whose card this build
+            // removes from every preset below, must not be auto-opened here.
+            if (w.desktopOnly || w.gate == CardId::TerminalCard) break;
 #endif
-        else if (n == "SWTPC PR-40 Printer")                  showPR40         = true;
-        else if (n == "SWTPC GT-6144 Graphic Terminal")       showGT6144       = true;
-        else if (n == "IEC Disk")                             showIECCard      = true;
-        else if (n == "Apple-1 Cassette Deck")                showCassetteDeck = true;
-        else if (n == "Welcome")                              showWelcome      = true;
-        else if (n == "Memory Map Bar (Horizontal)")          showMemoryBarH   = true;
-        else if (n == "Woz & Jobs (1976)")                    showWozJobsPhoto = true;
-        else if (n == "Apple-1 Demo Session (1976)")          showWozJobsRectPhoto = true;
-        else if (n == "P-LAB TMS9918 Card (Photo)")           showTmsBoardPhoto = true;
-        else if (n == "GEN2 Video Workbench (Photo)")         showGen2WorkbenchPhoto = true;
-        else if (n == "Apple-1 ASCII Keyboard")               showKeyboardPhoto = true;
-        else if (n == "Steve Wozniak (Photo)")                showWozPhoto = true;
-        // Tutorial windows — names MUST match the titles used in
-        // renderTutorialXxxWindow() calls (MainWindow_Dialogs.cpp).
-        else if (n == "Tutorial: Integer BASIC")              showTutorialIntegerBasic = true;
-        else if (n == "Tutorial: Applesoft Lite")                  showTutorialApplesoft    = true;
-        else if (n == "Tutorial: microSD")                    showTutorialMicroSD      = true;
-        else if (n == "Tutorial: Cassette (ACI)")             showTutorialCassette     = true;
-        else if (n == "Tutorial: Wi-Fi Modem BBS")            showTutorialModemBBS     = true;
-        else if (n == "Tutorial: SWTPC GT-6144")              showTutorialGT6144       = true;
-        else if (n == "Tutorial: IEC")                        showTutorialIECCard      = true;
-        else if (n == "Tutorial: SWTPC PR-40 Printer")        showTutorialPR40         = true;
-        else if (n == "Tutorial: P-LAB TMS9918")              showTutorialTMS9918      = true;
-        else if (n == "Tutorial: P-LAB A1-IO & RTC")          showTutorialA1IORTC      = true;
-        else if (n == "Tutorial: A1-SID / A1-AUDIO SE")       showTutorialSID          = true;
-        else if (n == "Tutorial: Uncle Bernie's GEN2 HGR")    showTutorialGEN2HGR      = true;
-        else if (n == "Tutorial: CFFA1 CompactFlash")         showTutorialCFFA1        = true;
-        else if (n == "Tutorial: P-LAB Juke-Box")             showTutorialJukeBox      = true;
-        else if (n == "Tutorial: P-LAB Terminal Card")        showTutorialTerminalCard = true;
-        else if (n == "Tutorial: Krusader")                   showTutorialKrusader     = true;
-        // "Apple 1 Screen" is always visible and has no show flag.
+            this->*(w.show) = true;
+            break;
+        }
     }
 
     // Compose plug intents. Cassette audio source is always
@@ -440,31 +378,20 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     req.codeTankJumper = cfg.codeTank.jumper;
     req.codeTankRomPath =
         (cfg.codeTank.romPath ? cfg.codeTank.romPath : std::string());
-    using SystemRomProfile = pom1::CardConfigurationRequest::SystemRomProfile;
-    if (cfg.basicType == BasicType::ApplesoftLite) {
-        req.systemRomProfile =
-            cfg.hasCard(CardId::MicroSD) && !cfg.hasCard(CardId::Cffa1)
-                ? (fantasyPreset ? SystemRomProfile::ApplesoftSdFantasy
-                                 : SystemRomProfile::ApplesoftSd)
-                : SystemRomProfile::ApplesoftCffa1;
-    } else if (cfg.basicType == BasicType::Integer) {
-        req.systemRomProfile = SystemRomProfile::IntegerBasic;
-    } else {
-        req.systemRomProfile = SystemRomProfile::MonitorOnly;
-    }
+    req.systemRomProfile = pom1::presets::romProfileFor(cfg, fantasyPreset);
     req.loadKrusader = cfg.krusader;
     req.loadCffa1Firmware = cfg.hasCard(CardId::Cffa1);
     req.coldReset = coldResetPreset;
-    req.animateBoot = !isDevBench;
+    req.animateBoot = pom1::presets::animatesBoot(presetId);
     req.activateCassetteAudio = true;
     req.presetRamKB = cfg.ramKB;
-    req.siliconStrict = !fantasyPreset;
-    req.outOfRangeStrict = !fantasyPreset;
-    req.vramNoiseOnReset = !fantasyPreset;
-    req.systemRamNoiseOnReset = !fantasyPreset;
-    req.cpuDecimalBugNMOS = !fantasyPreset;
-    req.dramRefresh = !fantasyPreset;
-    req.gen2RandomPowerOn = !fantasyPreset;
+    req.siliconStrict         = fidelity.siliconStrict;
+    req.outOfRangeStrict      = fidelity.outOfRangeStrict;
+    req.vramNoiseOnReset      = fidelity.vramNoiseOnReset;
+    req.systemRamNoiseOnReset = fidelity.systemRamNoiseOnReset;
+    req.cpuDecimalBugNMOS     = fidelity.cpuDecimalBugNMOS;
+    req.dramRefresh           = fidelity.dramRefresh;
+    req.gen2RandomPowerOn     = fidelity.gen2RandomPowerOn;
 #if !POM1_IS_WASM
     // Native builds retain the preset's Terminal Card intent.
 #else
@@ -474,43 +401,20 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     stagedPresetTapePath.clear();
     stagedPresetTapeForceProgramMode = false;
     stagedPresetTapeAutoPlay = false;
-    if (cfg.basicType == BasicType::IntegerCassette) {
-        stagedPresetTapePath =
-            findFirstExistingPath({"cassettes/BASIC.aci", "cassettes/BASIC.ogg"});
-        stagedPresetTapeForceProgramMode = true;
-        if (stagedPresetTapePath.empty()) {
-            pom1::log().warn("POM1",
-                "Integer BASIC cassette asset not found (expected cassettes/BASIC.aci or BASIC.ogg)");
-        }
-    } else if (presetId == kDefaultPresetId) {
-        // POM1 Multiplexing Fantasy (2026) — shipped default; deck opens with
-        // Woz's talk inserted (Play is user-driven). No other preset preloads it.
-        stagedPresetTapePath = findFirstExistingPath({"cassettes/WOZ_talk.mp3"});
-        if (stagedPresetTapePath.empty()) {
-            pom1::log().warn("POM1",
-                "WOZ_talk.mp3 not found (expected cassettes/WOZ_talk.mp3)");
-        }
+    // Which tape a preset preloads, and whether it is DATA or deck music, is
+    // pure (pom1::presets::tapeFor); resolving the candidates on disk is not.
+    const pom1::presets::PresetTape tape = pom1::presets::tapeFor(cfg, presetId);
+    if (!tape.candidates.empty()) {
+        stagedPresetTapePath = findFirstExistingPath(tape.candidates);
+        stagedPresetTapeForceProgramMode = tape.forceProgramMode;
+        stagedPresetTapeAutoPlay         = tape.autoPlay;
+        if (stagedPresetTapePath.empty() && tape.missingWarning)
+            pom1::log().warn("POM1", tape.missingWarning);
     }
     // The controller loads these ROMs inside the topology transaction below;
     // this list is presentation metadata only.
-    if (cfg.basicType == BasicType::ApplesoftLite) {
-        if (cfg.hasCard(CardId::MicroSD) && !cfg.hasCard(CardId::Cffa1)) {
-            loadedRoms.push_back({"Applesoft Lite (loaded in card RAM)", 0x6000, 0x7FFF});
-            if (fantasyPreset)
-                loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
-            loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
-        } else {
-            loadedRoms.push_back({"Applesoft Lite (CFFA1)", 0xE000, 0xFFFF});
-        }
-    } else {
-        if (cfg.basicType == BasicType::Integer)
-            loadedRoms.push_back({"Integer BASIC", 0xE000, 0xEFFF});
-        loadedRoms.push_back({"Woz Monitor", 0xFF00, 0xFFFF});
-    }
-    if (cfg.krusader)
-        loadedRoms.push_back({"Krusader", 0xE000, 0xFFFF});
-    if (cfg.hasCard(CardId::Cffa1))
-        loadedRoms.push_back({"CFFA1 Firmware", 0x9000, 0xAFDF});
+    for (const pom1::presets::RomSpan& r : pom1::presets::romInventoryFor(cfg, fantasyPreset))
+        loadedRoms.push_back({r.name, r.start, r.end});
 
     // Populate pending layout positions. These are `FirstUseEver` hints
     // applied in applyPendingLayout(); they only take effect for windows
@@ -570,7 +474,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     // target — which also maps to preset 0/1/2 — would wipe the C sketch back
     // to asm); see Pom1BenchHost::onTargetSelected.
 #if POM1_DEVTOOLS
-    if (presetIndex >= 0 && presetIndex <= 2 && !suppressDevBenchAutoload) {
+    if (pom1::presets::isDevBenchPreset(presetId) && !suppressDevBenchAutoload) {
         ensureBench();
         showBench = true;
         if (!codeBench_->loadStarterForTargetIfClean(presetIndex)) {
@@ -1072,21 +976,17 @@ void MainWindow_ImGui::applyHeadlessConfig(EmulationController& emu, int presetI
     request.jukeBoxChipMode = cfg.jukeBox.chipMode;
     request.codeTankJumper = cfg.codeTank.jumper;
     if (cfg.codeTank.romPath) request.codeTankRomPath = cfg.codeTank.romPath;
-    using SystemRomProfile = pom1::CardConfigurationRequest::SystemRomProfile;
-    if (cfg.basicType == BasicType::ApplesoftLite) {
-        request.systemRomProfile =
-            cfg.hasCard(CardId::MicroSD) && !cfg.hasCard(CardId::Cffa1)
-                ? (fantasy ? SystemRomProfile::ApplesoftSdFantasy
-                           : SystemRomProfile::ApplesoftSd)
-                : SystemRomProfile::ApplesoftCffa1;
-    } else if (cfg.basicType == BasicType::Integer) {
-        request.systemRomProfile = SystemRomProfile::IntegerBasic;
-    } else {
-        request.systemRomProfile = SystemRomProfile::MonitorOnly;
-    }
+    // Same rule as the GUI path — one function, so a headless boot cannot load a
+    // different BASIC than the profile the user sees.
+    request.systemRomProfile = pom1::presets::romProfileFor(cfg, fantasy);
     request.loadKrusader = cfg.krusader;
     request.loadCffa1Firmware = cfg.hasCard(CardId::Cffa1);
     request.presetRamKB = cfg.ramKB;
+    // Deliberately NOT pom1::presets::siliconFidelityForPreset(): headless is
+    // tests and golden-image regression, so only the two knobs that change the
+    // MEMORY MAP are armed, and the GEN2 power-on state stays deterministic (see
+    // the note above). Arming the noise bundle here would make
+    // gfx_regress_gen2_testcard non-reproducible.
     request.siliconStrict = !fantasy;
     request.outOfRangeStrict = !fantasy;
     request.gen2RandomPowerOn = false;
@@ -1314,31 +1214,23 @@ void MainWindow_ImGui::savePresetLayout(int idx)
         // frame while the window is neither maximized nor fullscreen — see
         // render()) plus the maximized/fullscreen flags, so a maximized or
         // fullscreen session restores with a sane underlying windowed rect.
-        OsWindowGeom g;
-        const bool nativeFs = pom1::macWindowIsNativeFullscreen(window);
-        const bool anyFs    = osWindowIsFullscreen();
-        // GLFW_MAXIMIZED is meaningless inside a macOS fullscreen space (AppKit
-        // reports the zoomed state of the underlying window) — don't persist it
-        // as an intent to restore maximized.
-        const bool maxed = !nativeFs && glfwGetWindowAttrib(window, GLFW_MAXIMIZED) != 0;
-        if (!maxed && !anyFs) {
-            glfwGetWindowSize(window, &g.w, &g.h);
-            glfwGetWindowPos(window, &g.x, &g.y);
-        } else {
-            g.w = windowedWidth;
-            g.h = windowedHeight;
-            g.x = windowedPosX;
-            g.y = windowedPosY;
-        }
-        g.havePos   = true;
-        g.maximized = maxed;
-        // A CLI --fullscreen (kiosk) must not rewrite the profile's saved
-        // layout: the next plain launch would come up fullscreen for no
-        // visible reason. Only a user-driven fullscreen persists. The flag
-        // only ever drives POM1's OWN fullscreen, so it can't suppress mode 2
-        // — a macOS native space is always something the user asked for.
-        g.fullscreenMode = nativeFs ? 2
-                                    : ((anyFs && !cliForcedFullscreen_) ? 1 : 0);
+        // Which rect and which mode go into the sidecar is pure policy —
+        // pom1::layout::decidePersistedGeometry, pinned by
+        // layout_decisions_smoke §2 (the kiosk exemption, the macOS space, and
+        // GLFW_MAXIMIZED being meaningless inside one). This side only reads
+        // the window.
+        pom1::layout::SaveInputs in;
+        glfwGetWindowSize(window, &in.liveW, &in.liveH);
+        glfwGetWindowPos(window, &in.liveX, &in.liveY);
+        in.windowedW = windowedWidth;
+        in.windowedH = windowedHeight;
+        in.windowedX = windowedPosX;
+        in.windowedY = windowedPosY;
+        in.maximizedAttrib     = glfwGetWindowAttrib(window, GLFW_MAXIMIZED) != 0;
+        in.nativeFullscreen    = pom1::macWindowIsNativeFullscreen(window);
+        in.anyFullscreen       = osWindowIsFullscreen();
+        in.cliForcedFullscreen = cliForcedFullscreen_;
+        const OsWindowGeom g = pom1::layout::decidePersistedGeometry(in);
         if (g.w > 0 && g.h > 0) saveSizeFile(idx, g);
     }
 #endif
@@ -1363,62 +1255,44 @@ bool MainWindow_ImGui::loadPresetLayout(int idx)
 #if !POM1_IS_WASM
     if (window) {
         OsWindowGeom g;
-        if (loadSizeFile(idx, g)) {
-            clampToVisibleMonitor(window, g);
-            if (osWindowIsFullscreen()) {
-                // Fullscreen is a SESSION property, not a per-profile one:
-                // switching profile must never yank the user out of it (and on
-                // macOS the setFrame: behind glfwSetWindowSize is ignored by
-                // AppKit inside a fullscreen space anyway — the frame would
-                // stay full-screen while every layout decision assumed it had
-                // shrunk). Adopt the incoming profile's windowed rect so
-                // LEAVING fullscreen later lands on it.
-                windowedWidth  = g.w;
-                windowedHeight = g.h;
-                if (g.havePos) { windowedPosX = g.x; windowedPosY = g.y; }
-                // The .ini just loaded was authored for that windowed frame, so
-                // the Apple 1 Screen window would sit in a corner of the
-                // screen — re-expand it over the whole display, exactly as the
-                // windowed→fullscreen transition does. A profile saved IN
-                // fullscreen already carries a fullscreen-sized layout: leave
-                // its arrangement alone.
-                if (g.fullscreenMode == 0)
-                    armFullscreenScreenExpand();
-            } else if (g.fullscreenMode == 1) {
-                // Profile saved under POM1's own fullscreen toggle, session is
-                // windowed — restore straight into it; keep the windowed rect
-                // in the tracking members so leaving fullscreen lands right.
-                windowedWidth  = g.w;
-                windowedHeight = g.h;
-                if (g.havePos) { windowedPosX = g.x; windowedPosY = g.y; }
-                GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-                const GLFWvidmode* mode = monitor ? glfwGetVideoMode(monitor) : nullptr;
-                if (monitor && mode) {
-                    glfwSetWindowMonitor(window, monitor, 0, 0,
-                                         mode->width, mode->height, mode->refreshRate);
-                    fullscreen = true;
-                }
-            } else {
-                // Windowed (mode 0), or a profile saved in a macOS native
-                // fullscreen space (mode 2) — that one is NOT re-entered from
-                // here: only the user's green button owns that space, so we
-                // restore the underlying windowed rect it recorded.
-                if (g.havePos) glfwSetWindowPos(window, g.x, g.y);
-                glfwSetWindowSize(window, g.w, g.h);
-                if (g.maximized)
-                    glfwMaximizeWindow(window);
-                else if (glfwGetWindowAttrib(window, GLFW_MAXIMIZED))
-                    glfwRestoreWindow(window);
-            }
-        } else if (osWindowIsFullscreen()) {
-            // No .size sidecar — a hand-seeded profile, or one whose file the
-            // user deleted. The .ini itself DID load, and it was authored for a
-            // windowed frame, so the Apple 1 Screen still needs the expand the
-            // sized path arms above. Without this the profile falls between two
-            // stools: applyMachineConfig skips it because a layout *was*
-            // loaded, and the block above never runs.
-            armFullscreenScreenExpand();
+        const bool haveSize = loadSizeFile(idx, g);
+        if (haveSize) clampToVisibleMonitor(window, g);
+        // WHICH geometry applies is pure policy — pom1::layout::planLayoutRestore,
+        // pinned branch by branch by layout_decisions_smoke §3. The two rules
+        // that keep getting rediscovered live there: fullscreen is a SESSION
+        // property and never a per-profile one (switching profile must not yank
+        // the user out of it, and on macOS the setFrame: behind glfwSetWindowSize
+        // is ignored inside a space anyway), and a native space is never
+        // re-entered programmatically — only the green button owns it. This side
+        // is left with the GLFW calls.
+        const pom1::layout::RestorePlan plan =
+            pom1::layout::planLayoutRestore(haveSize, g, osWindowIsFullscreen());
+        if (plan.adoptWindowedRect) {
+            // Adopt the incoming profile's windowed rect so LEAVING fullscreen
+            // later lands on it.
+            windowedWidth  = g.w;
+            windowedHeight = g.h;
+            if (g.havePos) { windowedPosX = g.x; windowedPosY = g.y; }
         }
+        if (plan.action == pom1::layout::RestoreAction::EnterOwnFullscreen) {
+            GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+            const GLFWvidmode* mode = monitor ? glfwGetVideoMode(monitor) : nullptr;
+            if (monitor && mode) {
+                glfwSetWindowMonitor(window, monitor, 0, 0,
+                                     mode->width, mode->height, mode->refreshRate);
+                fullscreen = true;
+            }
+        }
+        if (plan.applyPos)  glfwSetWindowPos(window, g.x, g.y);
+        if (plan.applySize) glfwSetWindowSize(window, g.w, g.h);
+        if (plan.maximize)
+            glfwMaximizeWindow(window);
+        else if (plan.unmaximize && glfwGetWindowAttrib(window, GLFW_MAXIMIZED))
+            glfwRestoreWindow(window);
+        // The .ini just loaded was authored for a windowed frame, so the Apple 1
+        // Screen would sit in a corner of the display — re-expand it, exactly as
+        // the windowed→fullscreen transition does.
+        if (plan.armExpand) armFullscreenScreenExpand();
     }
 #endif
     return true;
@@ -1449,14 +1323,14 @@ MainWindow_ImGui::windowRegistry()
         // key                    title                                        show flag                    kind            persist
         // ── Tools ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 #if POM1_DEVTOOLS
-        { "Bench",                "POM1 Bench",                                &MW::showBench,              K::Tool,        true  , &MW::renderBenchWindow, CardId::Invalid, false, DockSlot::Workspace },
+        { "Bench",                "POM1 Bench",                                &MW::showBench,              K::Tool,        true  , &MW::renderBenchWindow, CardId::Invalid, false, DockSlot::Workspace, /*resetOnPresetSwitch*/ false },
 #endif
-        { "Telemetry",            "Telemetry Side Channel",                    &MW::showTelemetry,          K::Tool,        true  , &MW::renderTelemetryWindow, CardId::Invalid, false, DockSlot::Bottom },
-        { "TMS9918Inspector",     "TMS9918 VDP Inspector",                     &MW::showTMS9918Inspector,   K::Tool,        true  , &MW::renderTMS9918InspectorWindow, CardId::Invalid, false, DockSlot::Right },
-        { "SiliconStrict",        "Silicon Strict Inspector",                  &MW::showSiliconStrictWindow,K::Tool,        true  , &MW::renderSiliconStrictWindow, CardId::Invalid, false, DockSlot::Right },
-        { "MemoryViewer",         "Memory Viewer",                             &MW::showMemoryViewer,       K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Right },
-        { "Debugger",             "CPU Debug Console",                         &MW::showDebugger,           K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Bottom },
-        { "RewindTimeline",       "State Rewind",                              &MW::showRewindTimeline,     K::Tool,        true  , &MW::renderRewindTimelineWindow, CardId::Invalid, /*desktopOnly*/ true, DockSlot::Right },
+        { "Telemetry",            "Telemetry Side Channel",                    &MW::showTelemetry,          K::Tool,        true  , &MW::renderTelemetryWindow, CardId::Invalid, false, DockSlot::Bottom, /*resetOnPresetSwitch*/ false },
+        { "TMS9918Inspector",     "TMS9918 VDP Inspector",                     &MW::showTMS9918Inspector,   K::Tool,        true  , &MW::renderTMS9918InspectorWindow, CardId::Invalid, false, DockSlot::Right, /*resetOnPresetSwitch*/ false },
+        { "SiliconStrict",        "Silicon Strict Inspector",                  &MW::showSiliconStrictWindow,K::Tool,        true  , &MW::renderSiliconStrictWindow, CardId::Invalid, false, DockSlot::Right, /*resetOnPresetSwitch*/ false },
+        { "MemoryViewer",         "Memory Viewer",                             &MW::showMemoryViewer,       K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Right, /*resetOnPresetSwitch*/ false },
+        { "Debugger",             "CPU Debug Console",                         &MW::showDebugger,           K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Bottom, /*resetOnPresetSwitch*/ false },
+        { "RewindTimeline",       "State Rewind",                              &MW::showRewindTimeline,     K::Tool,        true  , &MW::renderRewindTimelineWindow, CardId::Invalid, /*desktopOnly*/ true, DockSlot::Right, /*resetOnPresetSwitch*/ false },
         { "MemoryMapGrid",        "Memory Map Grid",                           &MW::showMemoryMapGrid,      K::Tool,        true  , &MW::renderMemoryMapGridWindow, CardId::Invalid, false, DockSlot::Workspace },
         { "MemoryBar",            "Memory Map Bar",                            &MW::showMemoryBar,          K::Tool,        true  , &MW::renderMemoryBarWindow },
         { "MemoryBarH",           "Memory Map Bar (Horizontal)",               &MW::showMemoryBarH,         K::Tool,        true  , &MW::renderMemoryBarHorizontalWindow },
@@ -1464,12 +1338,12 @@ MainWindow_ImGui::windowRegistry()
         { "CassetteDeck",         "Apple-1 Cassette Deck",                     &MW::showCassetteDeck,       K::Peripheral,  true  , &MW::renderCassetteDeckWindow, CardId::Invalid, false, DockSlot::Workspace },
         { "GraphicsCard",         "Uncle Bernie's GEN2 HGR Graphic Card",      &MW::showGraphicsCard,       K::Peripheral,  true  , &MW::renderGraphicsCardWindow, CardId::Gen2, false, DockSlot::Workspace },
 #if POM1_DEVTOOLS
-        { "HGRPaintEditor",       "HGR Paint Editor",                          &MW::showHGRPaintEditor,     K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Workspace },
-        { "HGRSpriteEditor",      "HGR Sprite Editor",                         &MW::showHGRSpriteEditor,    K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Workspace },
-        { "TMSPaintEditor",       "TMS9918 Paint Editor",                      &MW::showTMSPaintEditor,     K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Workspace },
-        { "TMSSpriteEditor",      "TMS9918 Sprite Editor",                     &MW::showTMSSpriteEditor,    K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Workspace },
-        { "SfxEditor",            "Beeper SFX Editor",                         &MW::showSfxEditor,          K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Workspace },
-        { "SidTracker",           "SID Tracker",                               &MW::showSidTracker,         K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Workspace },
+        { "HGRPaintEditor",       "HGR Paint Editor",                          &MW::showHGRPaintEditor,     K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Workspace, /*resetOnPresetSwitch*/ false },
+        { "HGRSpriteEditor",      "HGR Sprite Editor",                         &MW::showHGRSpriteEditor,    K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Workspace, /*resetOnPresetSwitch*/ false },
+        { "TMSPaintEditor",       "TMS9918 Paint Editor",                      &MW::showTMSPaintEditor,     K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Workspace, /*resetOnPresetSwitch*/ false },
+        { "TMSSpriteEditor",      "TMS9918 Sprite Editor",                     &MW::showTMSSpriteEditor,    K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Workspace, /*resetOnPresetSwitch*/ false },
+        { "SfxEditor",            "Beeper SFX Editor",                         &MW::showSfxEditor,          K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Workspace, /*resetOnPresetSwitch*/ false },
+        { "SidTracker",           "SID Tracker",                               &MW::showSidTracker,         K::Tool,        true, nullptr, CardId::Invalid, false, DockSlot::Workspace, /*resetOnPresetSwitch*/ false },
 #endif
         { "TMS9918",              "P-LAB Graphic Card (TMS9918)",              &MW::showTMS9918,            K::Peripheral,  true  , &MW::renderTMS9918Window, CardId::Tms9918, false, DockSlot::Workspace },
         { "GT6144",               "SWTPC GT-6144 Graphic Terminal",            &MW::showGT6144,             K::Peripheral,  true  , &MW::renderGT6144Window, CardId::Gt6144, false, DockSlot::Workspace },
@@ -1502,7 +1376,7 @@ MainWindow_ImGui::windowRegistry()
         { "SpecialThanks",        "Ports & acknowledgements",                  &MW::showSpecialThanks,      K::Info,        true  , &MW::renderSpecialThanksWindow },
         { "HardwareReference",    "Hardware Reference",                        &MW::showHardwareReference,  K::Info,        true  , &MW::renderHardwareReferenceWindow },
         { "SoftwareReference",    "Software Reference",                        &MW::showSoftwareReference,  K::Info,        true  , &MW::renderSoftwareReferenceWindow },
-        { "ShortcutsHelp",        "Keyboard Shortcuts",                        &MW::showShortcutsHelp,      K::Info,        true  , &MW::renderShortcutsHelpWindow },
+        { "ShortcutsHelp",        "Keyboard Shortcuts",                        &MW::showShortcutsHelp,      K::Info,        true  , &MW::renderShortcutsHelpWindow, CardId::Invalid, false, DockSlot::Float, /*resetOnPresetSwitch*/ false },
         { "Welcome",              "Welcome",                                   &MW::showWelcome,            K::Info,        true  , &MW::renderWelcomeWindow },
         { "WozJobsPhoto",         "Woz & Jobs (1976)",                         &MW::showWozJobsPhoto,       K::Info,        true  },
         { "WozJobsRectPhoto",     "Apple-1 Demo Session (1976)",               &MW::showWozJobsRectPhoto,   K::Info,        true  },
@@ -1515,19 +1389,19 @@ MainWindow_ImGui::windowRegistry()
         { "PlabTms9918Photo",     "P-LAB TMS9918 Board (Photo)",               &MW::showPlabTms9918Photo,   K::Info,        true  },
         // ── Transient dialogs — NOT persisted (would re-pop a file/config op) ─────────────────────────────────────────────────
         { "ScreenConfig",         "Display Settings",                          &MW::showScreenConfig,       K::Dialog,      false , &MW::renderScreenConfigDialog },
-        { "CrtSettings",          "CRT Effects",                               &MW::showCrtSettings,        K::Dialog,      false , &MW::renderCrtSettingsWindow },
+        { "CrtSettings",          "CRT Effects",                               &MW::showCrtSettings,        K::Dialog,      false , &MW::renderCrtSettingsWindow, CardId::Invalid, false, DockSlot::Float, /*resetOnPresetSwitch*/ false },
         { "MemoryConfig",         "Memory Settings",                           &MW::showMemoryConfig,       K::Dialog,      false , &MW::renderMemoryConfigDialog },
         { "LoadDialog",           "Load Program",                              &MW::showLoadDialog,         K::Dialog,      false , &MW::renderLoadDialog },
         { "LoadTapeDialog",       "Load Tape",                                 &MW::showLoadTapeDialog,     K::Dialog,      false , &MW::renderLoadTapeDialog },
-        { "SaveDialog",           "Save Memory",                               &MW::showSaveDialog,         K::Dialog,      false , &MW::renderSaveDialog },
-        { "SaveTapeDialog",       "Save Tape",                                 &MW::showSaveTapeDialog,     K::Dialog,      false , &MW::renderSaveTapeDialog },
-        { "LoadSnapshotDialog",   "Load Snapshot",                             &MW::showLoadSnapshotDialog, K::Dialog,      false , &MW::renderLoadSnapshotDialog },
-        { "SaveSnapshotDialog",   "Save Snapshot",                             &MW::showSaveSnapshotDialog, K::Dialog,      false , &MW::renderSaveSnapshotDialog },
+        { "SaveDialog",           "Save Memory",                               &MW::showSaveDialog,         K::Dialog,      false , &MW::renderSaveDialog, CardId::Invalid, false, DockSlot::Float, /*resetOnPresetSwitch*/ false },
+        { "SaveTapeDialog",       "Save Tape",                                 &MW::showSaveTapeDialog,     K::Dialog,      false , &MW::renderSaveTapeDialog, CardId::Invalid, false, DockSlot::Float, /*resetOnPresetSwitch*/ false },
+        { "LoadSnapshotDialog",   "Load Snapshot",                             &MW::showLoadSnapshotDialog, K::Dialog,      false , &MW::renderLoadSnapshotDialog, CardId::Invalid, false, DockSlot::Float, /*resetOnPresetSwitch*/ false },
+        { "SaveSnapshotDialog",   "Save Snapshot",                             &MW::showSaveSnapshotDialog, K::Dialog,      false , &MW::renderSaveSnapshotDialog, CardId::Invalid, false, DockSlot::Float, /*resetOnPresetSwitch*/ false },
         // Boot/relaunch profile selector — a full-viewport overlay, not a saved
         // window. Persisting it would re-open the chooser over the machine on
         // every load. Listed (persist=false) so the completeness audit accounts
         // for every show* flag rather than silently omitting this one.
-        { "ProfileChooser",       "Profile Chooser",                           &MW::showProfileChooser,     K::Dialog,      false },
+        { "ProfileChooser",       "Profile Chooser",                           &MW::showProfileChooser,     K::Dialog,      false, nullptr, CardId::Invalid, false, DockSlot::Float, /*resetOnPresetSwitch*/ false },
     };
     return kReg;
 }
@@ -1657,49 +1531,51 @@ void MainWindow_ImGui::resetActivePresetLayout()
     std::snprintf(iniBase, sizeof(iniBase), "imgui_preset_%02d.ini", idx);
     std::snprintf(sizeBase, sizeof(sizeBase), "preset_%02d.size", idx);
     copyIniDefaultsFileTo(sizeBase, sizePathForPreset(idx));  // OS window size sidecar
-    if (copyIniDefaultsFileTo(iniBase, iniPathForPreset(idx)) && loadPresetLayout(idx)) {
-        pendingLayout.clear();
-        layoutResetForceFrames = 0;             // ini already force-applied via ApplyAll
+    const bool curated =
+        copyIniDefaultsFileTo(iniBase, iniPathForPreset(idx)) && loadPresetLayout(idx);
+    // What a reset has to do beyond the files is pure policy —
+    // pom1::layout::planLayoutReset, pinned by layout_decisions_smoke §5.
+    const pom1::layout::ResetPlan plan =
+        pom1::layout::planLayoutReset(curated, osWindowIsFullscreen());
+
+    pendingLayout.clear();
+    if (curated) {
+        layoutResetForceFrames = plan.forceFrames;   // 0 — the ini already applied
         setStatusMessage("Window layout reset to factory default", 2.5f);
         return;
     }
 
     // No curated seed — rebuild from the hard-coded layout table and force it
     // onto live windows for a couple of frames.
-    pendingLayout.clear();
     for (int i = 0; i < cfg.layoutCount; ++i) {
         const auto& p = cfg.layout[i];
         pendingLayout.push_back({p.name, toImVec2(p.pos), toImVec2(p.size)});
     }
-    layoutResetForceFrames = 2;                 // apply with Always next frame(s)
+    layoutResetForceFrames = plan.forceFrames;
 
 #if !POM1_IS_WASM
-    // Never resize the OS frame while fullscreen — the layout reset above still
-    // rearranges the ImGui windows inside the screen-sized frame.
-    if (window && !osWindowIsFullscreen()) {
+    if (window && plan.resizeOsWindow) {
         int glfwW = 0, glfwH = 0;
         defaultOsWindowSize(idx, glfwW, glfwH);
         glfwSetWindowSize(window, glfwW, glfwH);
-    } else if (window) {
-        // Fullscreen: pendingLayout was just rebuilt from the hard-coded table,
-        // whose coordinates are windowed-frame ones — the Apple 1 Screen would
-        // be force-moved into the top-left corner of a screen-sized frame with
-        // nothing to follow. Re-expand it, exactly as a profile switch does.
-        // (The curated branch above gets this for free via loadPresetLayout.)
-        //
-        // Drop its pendingLayout entry first: a reset force-applies entries with
-        // ImGuiCond_Always for layoutResetForceFrames frames, and
-        // applyPendingLayout runs AFTER the expand's SetNextWindowSize — it
-        // would otherwise stamp the windowed rect back over it. Every other
-        // window still gets the factory arrangement inside the fullscreen frame.
+    }
+    if (window && plan.dropScreenPlacement) {
+        // Fullscreen: the table's coordinates are windowed-frame ones, so the
+        // Apple 1 Screen would be force-moved into the top-left corner of a
+        // screen-sized frame. Its entry goes first — the force applies with
+        // ImGuiCond_Always and applyPendingLayout runs AFTER the expand's
+        // SetNextWindowSize, so keeping it stamps the windowed rect back over
+        // the expand. Every other window still gets the factory arrangement
+        // inside the fullscreen frame.
         pendingLayout.erase(
             std::remove_if(pendingLayout.begin(), pendingLayout.end(),
                            [](const PendingWindowPlacement& p) {
                                return p.name == "Apple 1 Screen";
                            }),
             pendingLayout.end());
-        armFullscreenScreenExpand();
     }
+    if (window && plan.armExpand)
+        armFullscreenScreenExpand();
 #endif
     setStatusMessage("Window layout reset to preset default", 2.5f);
 }
@@ -1808,18 +1684,27 @@ void MainWindow_ImGui::pregenerateMissingPresetLayouts()
                         break;
                     }
                 }
-                ImVec2 extent = pom1::mainwindow::detail::computePresetLayoutExtent(cfg, fallback);
-                int w = static_cast<int>(std::ceil(extent.x + 10.0f));
-                int h = static_cast<int>(std::ceil(extent.y + 60.0f));
-                // Floor at the explicit default Fantasy preset's reference frame.
+                // Third caller of the same rule (with the seeded-file pads and
+                // no screen-window base): bounding box, floored at the explicit
+                // default Fantasy preset's reference frame.
                 const MachineConfig& fantasy =
                     kMachinePresets[pom1::presetIndex(kDefaultPresetId)];
-                ImVec2 fext = pom1::mainwindow::detail::computePresetLayoutExtent(fantasy, fallback);
-                if (fext.x > 0.0f) w = std::max(w, static_cast<int>(std::ceil(fext.x + 10.0f)));
-                if (fext.y > 0.0f) h = std::max(h, static_cast<int>(std::ceil(fext.y + 60.0f)));
+                pom1::layout::OsWindowSizeInputs in;
+                const ImVec2 extent =
+                    pom1::mainwindow::detail::computePresetLayoutExtent(cfg, fallback);
+                const ImVec2 fext =
+                    pom1::mainwindow::detail::computePresetLayoutExtent(fantasy, fallback);
+                in.extentW      = extent.x;
+                in.extentH      = extent.y;
+                in.floorExtentW = fext.x;
+                in.floorExtentH = fext.y;
+                in.rightPad     = 10.0f;
+                in.bottomPad    = 60.0f;
+                const pom1::layout::OsWindowSize sz =
+                    pom1::layout::computeOsWindowSize(in);
                 OsWindowGeom g;
-                g.w = w;
-                g.h = h;   // no position: factory default leaves placement to the OS
+                g.w = sz.w;
+                g.h = sz.h;   // no position: factory default leaves placement to the OS
                 saveSizeFile(idx, g);
             }
         }

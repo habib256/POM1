@@ -2260,6 +2260,70 @@ add_test(NAME mainwindow_logic_smoke
          WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 set_tests_properties(mainwindow_logic_smoke PROPERTIES TIMEOUT 10)
 
+# layout_decisions_smoke -- the layout/fullscreen ARBITRATION, pure. The timing
+# (FullscreenExpand) and the sidecar FORMAT (WindowGeometry) were already out;
+# what stayed interleaved with GLFW and ImGui was every DECISION around them —
+# which rect gets persisted, which geometry applies on restore, and what a click
+# on the Fullscreen checkbox means when AppKit already owns the window. That is
+# where the six august 2026 fullscreen defects lived. Header-only, so the target
+# links only WindowGeometry.cpp, for the save/restore round trip (section 4).
+add_executable(test_layout_decisions
+    layout_decisions_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/WindowGeometry.cpp
+)
+target_include_directories(test_layout_decisions PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+add_test(NAME layout_decisions_smoke
+         COMMAND test_layout_decisions
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(layout_decisions_smoke PROPERTIES TIMEOUT 10)
+
+# preset_decisions_smoke -- what applying a preset MEANS, pure. MachinePresets.h
+# owned the DATA and CardTopology.h the card POLICY; the composition stayed in
+# applyMachineConfig, where three of its rules were each stated twice under a
+# "keep them in sync" comment. It links the REAL preset table, so the assertions
+# are about the thirteen machines POM1 ships, not about fixtures.
+add_executable(test_preset_decisions
+    preset_decisions_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/MachinePresets.cpp
+    ${CMAKE_SOURCE_DIR}/src/CardTopology.cpp
+)
+target_include_directories(test_preset_decisions PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+add_test(NAME preset_decisions_smoke
+         COMMAND test_preset_decisions
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(preset_decisions_smoke PROPERTIES TIMEOUT 10)
+
+# shortcut_table_smoke -- POM1's key bindings as data. The table used to call
+# itself the single source of truth for the menu labels and the dispatcher, and
+# was, for three of its eight rows; the other five were dispatched by an
+# if/else ladder keyed on the same values, and the Help window held a third copy
+# as prose. The "no CTRL+letter" invariant is asserted here on the real table
+# WITH a control case proving the check fires -- shortcuts_sync still reads the
+# source text, which catches forms this predicate would accept.
+add_executable(test_shortcut_table shortcut_table_smoke_test.cpp)
+target_include_directories(test_shortcut_table PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+add_test(NAME shortcut_table_smoke
+         COMMAND test_shortcut_table
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(shortcut_table_smoke PROPERTIES TIMEOUT 10)
+
+# software_dir_rules_smoke -- which card a shipped software/ directory implies.
+# The mapping was a seven-branch else-if chain of path.find("/X/") in
+# performMemoryLoad, and the file picker held the same relation AGAIN, backwards.
+# Both directions now read one table; the component match (both separators, and
+# mixed) is the part that is invisible when wrong -- a bare substring fires on
+# NETWORKING/, and a missing backslash form makes every rule dead on Windows.
+add_executable(test_software_dir_rules software_dir_rules_smoke_test.cpp)
+target_include_directories(test_software_dir_rules PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+add_test(NAME software_dir_rules_smoke
+         COMMAND test_software_dir_rules
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(software_dir_rules_smoke PROPERTIES TIMEOUT 10)
+
 # imgui_pin_sync -- same idea for the OTHER pin the repo carries. Dear ImGui is
 # not vendored, and its tag was copy-pasted into eleven files; CMake and the
 # scripts now read IMGUI_VERSION, but two workflow `env:` blocks still can't

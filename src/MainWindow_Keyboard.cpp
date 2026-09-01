@@ -8,6 +8,7 @@
 #include "MainWindow_ImGui.h"
 #include "POM1Build.h"
 #include "Apple1KeyMap.h"
+#include "ShortcutTable.h"
 
 #include "imgui.h"
 
@@ -27,35 +28,32 @@ static_assert(pom1::keymap::kModShift     == GLFW_MOD_SHIFT,     "GLFW mod drift
 static_assert(pom1::keymap::kModControl   == GLFW_MOD_CONTROL,   "GLFW mod drift");
 static_assert(pom1::keymap::kModAlt       == GLFW_MOD_ALT,       "GLFW mod drift");
 static_assert(pom1::keymap::kModSuper     == GLFW_MOD_SUPER,     "GLFW mod drift");
+// ShortcutTable mirrors the same way, for the function keys it binds.
+static_assert(pom1::shortcuts::kKeyF1  == GLFW_KEY_F1,  "GLFW key drift");
+static_assert(pom1::shortcuts::kKeyF2  == GLFW_KEY_F2,  "GLFW key drift");
+static_assert(pom1::shortcuts::kKeyF3  == GLFW_KEY_F3,  "GLFW key drift");
+static_assert(pom1::shortcuts::kKeyF5  == GLFW_KEY_F5,  "GLFW key drift");
+static_assert(pom1::shortcuts::kKeyF6  == GLFW_KEY_F6,  "GLFW key drift");
+static_assert(pom1::shortcuts::kKeyF7  == GLFW_KEY_F7,  "GLFW key drift");
+static_assert(pom1::shortcuts::kKeyF10 == GLFW_KEY_F10, "GLFW key drift");
+static_assert(pom1::shortcuts::kKeyA   == GLFW_KEY_A,   "GLFW key drift");
+static_assert(pom1::shortcuts::kKeyZ   == GLFW_KEY_Z,   "GLFW key drift");
+static_assert(pom1::shortcuts::kModControl == GLFW_MOD_CONTROL, "GLFW mod drift");
+// The invariant, checked at COMPILE time on the real table: adding a
+// Ctrl+<letter> row makes this translation unit fail to build.
+static_assert(!pom1::shortcuts::holdsCtrlLetterChord(),
+              "a CTRL+letter shortcut shadows the Apple-1 control code of the "
+              "same letter and makes it untypeable - see ShortcutTable.h");
 
-// NEVER add a CTRL+LETTER entry to this table. handleGlfwKey dispatches
-// shortcuts BEFORE the Apple-1 gets the key, so any Ctrl+<letter> listed here
-// shadows the ASCII control code of the same letter and makes it untypeable on
-// the emulated machine. That is why Ctrl+O/S/V/Q (Load/Save/Paste/Quit) were
-// removed: they were eating $0F, $13 (XOFF), $16 and $11 (XON). Every one of
-// those actions is still reachable from the menus (File ▸ Load/Save Memory,
-// Paste Code, Quit) and, for Load, the toolbar. Function-key chords are safe —
-// F1-F10 are not ASCII, so Ctrl+F5 keeps its shortcut.
-const MainWindow_ImGui::Shortcut MainWindow_ImGui::shortcuts[] = {
-    { GLFW_KEY_F5, GLFW_MOD_CONTROL, "Ctrl+F5", &MainWindow_ImGui::hardReset },
-    { GLFW_KEY_F5, 0,                "F5",       &MainWindow_ImGui::reset },
-    { GLFW_KEY_F6, 0,                "F6",       nullptr }, // toggle start/stop
-    { GLFW_KEY_F7, 0,                "F7",       nullptr }, // single-step (stepCpu returns a status string; dispatched below)
-    { GLFW_KEY_F1, 0,                "F1",       nullptr }, // toggle showMemoryViewer
-    { GLFW_KEY_F2, 0,                "F2",       nullptr }, // toggle showMemoryMapGrid
-    { GLFW_KEY_F3, 0,                "F3",       nullptr }, // toggle showDebugger
-    { GLFW_KEY_F10, 0,               "F10",      nullptr }, // toggle UI keyboard-navigation mode
-};
-const int MainWindow_ImGui::shortcutCount = sizeof(shortcuts) / sizeof(shortcuts[0]);
-
+// The binding table itself now lives in ShortcutTable.h — pure data, no GLFW,
+// with the "never a CTRL+letter" invariant asserted above at compile time. What
+// stays here is the plumbing that genuinely needs the live UI: focus guards,
+// autorepeat gating and carrying out each command.
 const char* MainWindow_ImGui::shortcutLabel(int key, int mods)
 {
-    for (int i = 0; i < shortcutCount; i++) {
-        if (shortcuts[i].key == key && shortcuts[i].mods == mods)
-            return shortcuts[i].label;
-    }
-    return nullptr;
+    return pom1::shortcuts::label(key, mods);
 }
+
 void MainWindow_ImGui::handleGlfwChar(unsigned int codepoint)
 {
     // GLFW delivers key(PRESS|REPEAT) → char for the same event; handleGlfwKey
@@ -91,26 +89,22 @@ void MainWindow_ImGui::handleGlfwKey(int key, int scancode, int action, int mods
 
     int activeMods = mods & (GLFW_MOD_CONTROL | GLFW_MOD_SHIFT | GLFW_MOD_ALT | GLFW_MOD_SUPER);
 
-    // Shortcuts: PRESS-only except F7 (CPU single-step allowed to repeat).
-    if (action == GLFW_PRESS || (action == GLFW_REPEAT && key == GLFW_KEY_F7)) {
-        for (int i = 0; i < shortcutCount; i++) {
-            if (shortcuts[i].key != key || shortcuts[i].mods != activeMods)
-                continue;
-
-            if (shortcuts[i].action) {
-                (this->*shortcuts[i].action)();
-            } else if (key == GLFW_KEY_F6) {
-                cpuRunning ? stopCpu() : startCpu();
-            } else if (key == GLFW_KEY_F7) {
-                stepCpu();          // single-step; status string discarded for the key path
-            } else if (key == GLFW_KEY_F1) {
-                showMemoryViewer = !showMemoryViewer;
-            } else if (key == GLFW_KEY_F2) {
-                showMemoryMapGrid = !showMemoryMapGrid;
-            } else if (key == GLFW_KEY_F3) {
-                showDebugger = !showDebugger;
-            } else if (key == GLFW_KEY_F10) {
-                setUiNavMode(!uiNavMode_);   // accessibility: keyboard drives the UI
+    // Shortcuts. Whether a row survives an OS autorepeat is a property of the
+    // row — only hold-to-step wants it — so the table answers that too.
+    if (action == GLFW_PRESS || action == GLFW_REPEAT) {
+        using pom1::shortcuts::Command;
+        if (const auto* b = pom1::shortcuts::find(key, activeMods,
+                                                  action == GLFW_REPEAT)) {
+            switch (b->command) {
+            case Command::HardReset:           hardReset(); break;
+            case Command::SoftReset:           reset(); break;
+            case Command::ToggleRun:           cpuRunning ? stopCpu() : startCpu(); break;
+            case Command::StepCpu:             stepCpu(); break;  // status string discarded here
+            case Command::ToggleMemoryViewer:  showMemoryViewer  = !showMemoryViewer; break;
+            case Command::ToggleMemoryMapGrid: showMemoryMapGrid = !showMemoryMapGrid; break;
+            case Command::ToggleDebugger:      showDebugger      = !showDebugger; break;
+            case Command::ToggleUiNav:         setUiNavMode(!uiNavMode_); break;
+            case Command::None:                break;
             }
             return;
         }
