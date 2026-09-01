@@ -80,10 +80,18 @@ ImVec2 computePresetLayoutExtent(const MachineConfig& cfg, ImVec2 appleScreenFal
 namespace {
 using namespace pom1::mainwindow::detail;
 
+// First of `candidates` that resolves through POM1's single search order
+// (`ResourceLocator.h`). The candidates are alternative NAMES (BASIC.aci vs
+// BASIC.ogg), not alternative places to look — the places are the locator's
+// business, and spelling them here is what used to make a preset find its
+// cassette from the repo root and not from `build/`.
 std::string findFirstExistingPath(std::initializer_list<const char*> candidates)
 {
-    for (const char* path : candidates) {
-        if (path && std::filesystem::exists(path)) return path;
+    const pom1::ResourceLocator res = pom1::ResourceLocator::defaultLocator();
+    for (const char* rel : candidates) {
+        if (!rel) continue;
+        if (const std::filesystem::path p = res.find(rel); !p.empty())
+            return p.string();
     }
     return {};
 }
@@ -467,10 +475,8 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     stagedPresetTapeForceProgramMode = false;
     stagedPresetTapeAutoPlay = false;
     if (cfg.basicType == BasicType::IntegerCassette) {
-        stagedPresetTapePath = findFirstExistingPath({
-            "cassettes/BASIC.aci", "../cassettes/BASIC.aci", "../../cassettes/BASIC.aci",
-            "cassettes/BASIC.ogg", "../cassettes/BASIC.ogg", "../../cassettes/BASIC.ogg",
-        });
+        stagedPresetTapePath =
+            findFirstExistingPath({"cassettes/BASIC.aci", "cassettes/BASIC.ogg"});
         stagedPresetTapeForceProgramMode = true;
         if (stagedPresetTapePath.empty()) {
             pom1::log().warn("POM1",
@@ -479,10 +485,7 @@ void MainWindow_ImGui::applyMachineConfig(int presetIndex)
     } else if (presetId == kDefaultPresetId) {
         // POM1 Multiplexing Fantasy (2026) — shipped default; deck opens with
         // Woz's talk inserted (Play is user-driven). No other preset preloads it.
-        stagedPresetTapePath = findFirstExistingPath({
-            "cassettes/WOZ_talk.mp3", "../cassettes/WOZ_talk.mp3",
-            "../../cassettes/WOZ_talk.mp3",
-        });
+        stagedPresetTapePath = findFirstExistingPath({"cassettes/WOZ_talk.mp3"});
         if (stagedPresetTapePath.empty()) {
             pom1::log().warn("POM1",
                 "WOZ_talk.mp3 not found (expected cassettes/WOZ_talk.mp3)");
@@ -1145,43 +1148,18 @@ std::string windowsPathForPreset(int idx)
 
 /** Shipped under repo `ini_defaults/` (tracked in git) — the curated factory
  *  layout baseline for every preset on a fresh, config-less install. Resolved
- *  cwd-relative first (dev: repo root or `build/`), then exe-relative so the
- *  packaged builds find it regardless of working directory:
- *    Windows   <exe>/ini_defaults/
- *    macOS     <exe>/../Resources/ini_defaults/    (Contents/MacOS → Resources)
- *    AppImage  <exe>/../share/POM1/ini_defaults/   (usr/bin → usr/share/POM1)
- *  Mirrors the cc65 bundle resolution. */
+ *  through POM1's single search order (`ResourceLocator.h`): cwd-relative
+ *  first (dev: repo root or `build/`), then exe-relative so the packaged
+ *  builds find it regardless of working directory — <exe>/ini_defaults/,
+ *  macOS <exe>/../Resources/, AppImage <exe>/../share/POM1/. */
 std::string findIniDefaultsFile(const char* basename)
 {
-    namespace fs = std::filesystem;
-    std::error_code ec;
-    const char* prefixes[] = {
-        "ini_defaults/",
-        "../ini_defaults/",
-        "../../ini_defaults/",
-        "../../../ini_defaults/",
-    };
-    for (const char* pre : prefixes) {
-        const std::string p = std::string(pre) + basename;
-        if (fs::is_regular_file(p, ec))
-            return p;
-    }
-    // pom1::executableDirectory() rather than bench::executableDir(): the two
-    // are deliberate copies of each other (see ResourceLocator.h), and this one
-    // is the emulator's, so an ini_defaults/ lookup does not depend on the
-    // development environment being compiled in.
-    const fs::path exeDir = pom1::executableDirectory();
-    if (!exeDir.empty()) {
-        const fs::path cands[] = {
-            exeDir / "ini_defaults" / basename,
-            exeDir.parent_path() / "Resources" / "ini_defaults" / basename,
-            exeDir.parent_path() / "share" / "POM1" / "ini_defaults" / basename,
-        };
-        for (const fs::path& c : cands)
-            if (fs::is_regular_file(c, ec))
-                return c.string();
-    }
-    return {};
+    // This function used to spell out that whole order by hand — four cwd
+    // prefixes, then executableDirectory() plus the macOS Resources/ and
+    // AppImage share/POM1/ layouts. It IS ResourceLocator's order, so it is now
+    // ResourceLocator's copy of it.
+    return pom1::ResourceLocator::defaultLocator()
+        .find(std::string("ini_defaults/") + basename).string();
 }
 
 bool copyIniDefaultsFileTo(const char* basename, const std::string& destPath)

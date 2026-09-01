@@ -1,5 +1,6 @@
 // POM1 host for the portable bench. See Pom1BenchHost.h.
 #include "Pom1BenchHost.h"
+#include "ResourceLocator.h"
 #include "Pom1BenchTargets.h"
 #include "Pom1BenchCc65.h"
 
@@ -78,11 +79,8 @@ std::string codeTankDevRomReadPath() {
         std::string p = (fs::path(env) / "CODETANKDEV.rom").string();
         if (fs::exists(p, ec)) return p;
     }
-    for (const char* c : {"roms/codetank/CODETANKDEV.rom",
-                          "../roms/codetank/CODETANKDEV.rom",
-                          "../../roms/codetank/CODETANKDEV.rom"})
-        if (fs::exists(c, ec)) return c;
-    return {};
+    return pom1::ResourceLocator::defaultLocator()
+        .find("roms/codetank/CODETANKDEV.rom").string();
 }
 
 // Writable CODETANKDEV.rom target for the asm/C DevBench flash. Prefers the
@@ -95,9 +93,9 @@ std::string codeTankDevRomWritePath() {
         fs::create_directories(env, ec);
         return (fs::path(env) / "CODETANKDEV.rom").string();
     }
-    for (const char* pre : {"roms/codetank", "../roms/codetank", "../../roms/codetank"})
-        if (fs::exists(fs::path(pre), ec)) return (fs::path(pre) / "CODETANKDEV.rom").string();
-    return {};
+    const fs::path dir =
+        pom1::ResourceLocator::defaultLocator().findDirectory("roms/codetank");
+    return dir.empty() ? std::string{} : (dir / "CODETANKDEV.rom").string();
 }
 
 // Flash the asm/C build at `binPath` into the chosen 16 KB bank of
@@ -586,20 +584,16 @@ void Pom1BenchHost::probe() const
     toolchainOk_ = !ca65_.empty() && !ld65_.empty();
     ensureCc65Home(!ca65_.empty() ? ca65_ : cl65_);
 
-    // The Bench's linker cfgs + libraries live under dev/. Release bundles can
-    // ship a dev/ subtree next to the app; probe exe-relative too so it resolves
-    // even though a packaged app chdir'd to a user-data dir at startup.
-    std::vector<std::string> devCandidates = {"dev", "../dev", "../../dev"};
-    if (!exeDir.empty()) {
-        const fs::path e(exeDir);
-        devCandidates.push_back((e / "dev").string());                            // Win ZIP / generic
-        devCandidates.push_back((e.parent_path() / "share" / "POM1" / "dev").string()); // Linux AppImage
-        devCandidates.push_back((e.parent_path() / "Resources" / "dev").string());      // macOS .app
-    }
+    // The Bench's linker cfgs + libraries live under dev/. Release bundles ship
+    // a dev/ subtree next to the app, and a packaged app has chdir'd to a
+    // user-data dir by now — the cwd walk AND the exe-relative layouts
+    // (Win ZIP, macOS Resources/, AppImage share/POM1/) that used to be spelled
+    // out here are exactly ResourceLocator's roots. `dev/cc65` rather than
+    // `dev`: the linker cfgs are what makes a dev/ tree usable.
     std::string& devRoot = devRoot_;
-    devRoot.clear();
-    for (const auto& p : devCandidates)
-        if (fs::exists(fs::path(p) / "cc65", ec)) { devRoot = p; break; }
+    const fs::path devCc65 =
+        pom1::ResourceLocator::defaultLocator().findDirectory("dev/cc65");
+    devRoot = devCc65.empty() ? std::string{} : devCc65.parent_path().string();
     if (!devRoot.empty()) {
         std::string flags;
         // Recurse: nested lib dirs (e.g. lib/games/sokoban, lib/games/chess,
@@ -985,13 +979,8 @@ bench::ExampleLoad Pom1BenchHost::loadExample(int i)
     const P1Ex& e = kP1Examples[i];
 
     if (e.file) {
-        namespace fs = std::filesystem;
-        std::error_code ec;
-        std::string found;
-        for (const char* pre : {"", "../", "../../"}) {
-            const fs::path p = fs::path(pre) / e.data;
-            if (fs::exists(p, ec)) { found = p.string(); break; }
-        }
+        const std::string found =
+            pom1::ResourceLocator::defaultLocator().find(e.data).string();
         if (found.empty()) { r.status = std::string("Example not found (needs dev/): ") + e.data; return r; }
         std::ifstream in(found, std::ios::binary);
         r.source.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -1833,11 +1822,11 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 const fs::path p = fs::path(devRoot_) / "cc65" / t.cfg;
                 if (fs::exists(p, ec)) cfgPath = fs::absolute(p, ec).string();
             }
-            if (cfgPath.empty())
-                for (const char* pre : {"dev/cc65/", "../dev/cc65/", "../../dev/cc65/"}) {
-                    const fs::path p = fs::path(pre) / t.cfg;
-                    if (fs::exists(p, ec)) { cfgPath = fs::absolute(p, ec).string(); break; }
-                }
+            if (cfgPath.empty()) {
+                const fs::path p = pom1::ResourceLocator::defaultLocator()
+                    .find(std::string("dev/cc65/") + t.cfg);
+                if (!p.empty()) cfgPath = fs::absolute(p, ec).string();
+            }
             if (cfgPath.empty()) { r.console = std::string("linker cfg not found (needs dev/): ") + t.cfg + "\n"; r.status = "ld65 cfg missing"; return r; }
         }
         if (!cfgPath.empty() && logMeta.cfgPath.empty())
@@ -2420,11 +2409,10 @@ std::string Pom1BenchHost::browseDir() const
 {
     namespace fs = std::filesystem;
     std::error_code ec;
-    for (const char* p : {"sketchs", "../sketchs", "../../sketchs",
-                          "dev/sketchs", "../dev/sketchs", "../../dev/sketchs"})
-        if (fs::exists(p, ec)) return fs::absolute(p, ec).string();
-    for (const char* p : {"dev", "../dev", "../../dev"})
-        if (fs::exists(p, ec)) return fs::absolute(p, ec).string();
+    const pom1::ResourceLocator res = pom1::ResourceLocator::defaultLocator();
+    for (const char* rel : {"sketchs", "dev/sketchs", "dev"})
+        if (const fs::path p = res.findDirectory(rel); !p.empty())
+            return fs::absolute(p, ec).string();
     return ".";
 }
 

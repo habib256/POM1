@@ -10,6 +10,50 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — plus une seule sonde `../` écrite à la main
+
+`pom1::ResourceLocator` portait l'ordre de recherche unique depuis sa création,
+mais seul `Memory` le recevait : **65 littéraux `"../`** subsistaient dans
+`src/`, dont **52 vraies sondes** réparties sur 20 fichiers — l'UI, les
+dialogues, les presets, la DevBench, les hôtes des éditeurs, `GraphicsCard` et
+`Screen_ImGui`. Chacune remontait le nombre de niveaux que son auteur avait jugé
+suffisant (deux ici, trois là, quatre dans `findIniDefaultsFile`), et c'est
+exactement la dérive que la classe existait pour arrêter.
+
+Toutes passent désormais par `defaultLocator().find()` /
+`.findDirectory()`. Trois choses tombent avec elles :
+
+- **La moitié « à côté de l'exécutable » n'existait que sous `#if
+  defined(_WIN32)`.** `find_app_icon_path`, `find_font_path`,
+  `find_photo_jpeg_path` et `find_about_photo_jpeg_path` recopiaient chacune un
+  bloc `GetModuleFileNameA` — donc sous Linux et macOS, un binaire lancé
+  ailleurs que dans l'arbre n'affichait ni icône, ni police Font Awesome, ni
+  photo, en silence. Le locator connaît ces racines sur les trois plateformes,
+  plus les dispositions empaquetées (`.app/Resources/`, AppImage
+  `share/POM1/`) qu'aucune liste écrite à la main n'avait.
+- **`findIniDefaultsFile` réécrivait le locator en entier** — quatre préfixes
+  cwd puis `executableDirectory()` + `Resources/` + `share/POM1/`. Elle tient
+  maintenant en un appel.
+- **`resolveDataDir`** prenait une liste de sondes ; elle prend un nom.
+
+Cinq `"../` demeurent, et aucun n'est une sonde : le garde-fou de traversée
+côté invité de `MicroSD` (un nom fourni par le 6502 ne doit pas sortir de
+`sdcard/`) et la ligne « dossier parent » des quatre navigateurs de fichiers
+intégrés aux éditeurs portables.
+
+**Nouveau garde-fou `resource_probes_sync`** (`tools/check_resource_probes.py`,
+quatrième de la famille `version_sync` / `imgui_pin_sync` / `doc_paths_sync`) :
+un littéral `"../` dans le C++ de POM1 échoue, sauf aux cinq sites en liste
+blanche — chacun avec sa raison écrite dans le script. C'est le point : cette
+dérive ne revient jamais d'un coup, elle revient un site à la fois, chacun
+localement raisonnable. Vérifié dans les deux sens (le garde-fou déclenche bien
+sur une sonde réintroduite).
+
+Plafonds `architecture_check` abaissés, ce que la règle du cliquet demande :
+`mainwindow_lines` 17 378 → 16 955, `memory_lines` 3990 → 3978. Suite complète :
+**119 tests verts**, et le build `-DPOM1_DEVTOOLS=OFF` compile toujours.
+
+
 ### Changed — la puce A1-SID est construite au branchement, plus à la construction du cœur
 
 `Memory` fabriquait un `pom1::SID` dans son constructeur. libresidfp y calcule

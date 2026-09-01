@@ -13,6 +13,7 @@
 // MachinePresets.h rather than a silent DevBench breakage.
 
 #include "Pom1BenchTargets.h"
+#include "ResourceLocator.h"
 #include "MachinePresets.h"       // the named kPreset* indices — NOT MainWindow_Internal.h,
                                   // which would drag imgui.h into this data TU
 
@@ -364,11 +365,8 @@ std::string codeTankBasicLogoRomReadPath() {
         std::string p = (fs::path(env) / "Codetank_BASIC_LOGO.rom").string();
         if (fs::exists(p, ec)) return p;
     }
-    for (const char* c : {"roms/codetank/Codetank_BASIC_LOGO.rom",
-                          "../roms/codetank/Codetank_BASIC_LOGO.rom",
-                          "../../roms/codetank/Codetank_BASIC_LOGO.rom"})
-        if (fs::exists(c, ec)) return c;
-    return {};
+    return pom1::ResourceLocator::defaultLocator()
+        .find("roms/codetank/Codetank_BASIC_LOGO.rom").string();
 }
 
 std::filesystem::path benchScratchDir(std::error_code& ec)

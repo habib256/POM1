@@ -1,4 +1,5 @@
 #include "Screen_ImGui.h"
+#include "ResourceLocator.h"
 #include "PomRenderer.h"
 #include "Pom1CrtEffects.h"
 #include "PomVersion.h"   // POM1_VERSION_STRING (generated from VERSION)
@@ -134,18 +135,15 @@ ImVec2 Screen_ImGui::computeApple1CellDimensions(ImVec2 charSize)
 
 bool Screen_ImGui::loadCharmap()
 {
-    const std::string searchPaths[] = {
-        "charmap.rom",
-        "roms/charmap.rom",
-        "../roms/charmap.rom"
-    };
-
+    // One search order for POM1's data, in one place (ResourceLocator.h) —
+    // this used to climb one level while the ROM loader climbed another.
+    const pom1::ResourceLocator res = pom1::ResourceLocator::defaultLocator();
     std::ifstream file;
-    for (const auto& path : searchPaths) {
-        file.open(path, std::ios::binary);
-        if (file.is_open()) {
-            break;
-        }
+    for (const char* rel : {"roms/charmap.rom", "charmap.rom"}) {
+        const std::filesystem::path found = res.find(rel);
+        if (found.empty()) continue;
+        file.open(found, std::ios::binary);
+        if (file.is_open()) break;
     }
 
     if (!file.is_open()) {

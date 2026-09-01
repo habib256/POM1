@@ -4,6 +4,7 @@
 // Pom1HgrPaintHost — see Pom1HgrPaintHost.h.
 
 #include "Pom1HgrPaintHost.h"
+#include "ResourceLocator.h"
 
 #include "EmulationController.h"
 #include "HgrPaintModel.h"        // hgrpaint:: geometry constants
@@ -58,9 +59,10 @@ std::string Pom1HgrPaintHost::browseDir() const
 {
     namespace fs = std::filesystem;
     std::error_code ec;
-    for (const char* root : {"sdcard", "../sdcard", "../../sdcard"}) {
-        if (!fs::is_directory(root, ec)) continue;
-        fs::path hgr = fs::path(root) / "HGR";
+    const fs::path root = pom1::ResourceLocator::defaultLocator()
+        .findDirectory("sdcard");
+    if (!root.empty()) {
+        fs::path hgr = root / "HGR";
         if (!fs::is_directory(hgr, ec)) fs::create_directories(hgr, ec);
         fs::path canon = fs::canonical(hgr, ec);
         if (!ec) return canon.string();
@@ -140,14 +142,8 @@ std::vector<hgrpaint::DevSpriteCategory> Pom1HgrPaintHost::devSprites()
     std::error_code ec;
     // Candidate roots: repo-root run (run_emulator.sh), a build/ subdir, and the
     // packaged layout where dev/ sits next to the binary.
-    const char* candidates[] = {
-        "dev/lib/gen2/sprites",
-        "../dev/lib/gen2/sprites",
-        "../../dev/lib/gen2/sprites",
-    };
-    fs::path dir;
-    for (const char* c : candidates)
-        if (fs::is_directory(c, ec)) { dir = c; break; }
+    const fs::path dir =
+        pom1::ResourceLocator::defaultLocator().findDirectory("dev/lib/gen2/sprites");
     if (dir.empty()) return devSpritesCache_;
 
     std::vector<fs::path> files;

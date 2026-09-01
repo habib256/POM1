@@ -19,6 +19,7 @@
 // at each method.
 
 #include "Pom1BenchHost.h"
+#include "ResourceLocator.h"
 #include "Pom1BenchTargets.h"
 #include "LogoProgramLoader.h"        // logo:: — LOGO listing loader
 #include "BasicTokeniserInteger.h"     // ibasic::compile — Integer BASIC ($E000)
@@ -88,9 +89,10 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
 
     namespace fs = std::filesystem;
     std::error_code ec;
-    auto findRom = [&](std::initializer_list<const char*> cands) -> std::string {
-        for (const char* c : cands) if (fs::exists(c, ec)) return c;
-        return {};
+    // Resolve through POM1's single search order (`ResourceLocator.h`) — this
+    // used to take a list of "x", "../x", "../../x" spellings per call site.
+    auto findRom = [](const char* rel) -> std::string {
+        return pom1::ResourceLocator::defaultLocator().find(rel).string();
     };
 
     // 1) For the TMS9918 Applesoft, the interpreter lives in the UPPER bank of the
@@ -193,9 +195,7 @@ bench::BuildResult Pom1BenchHost::injectBasic(int target, const std::string& src
         } else {
             emu->hardReset(/*animateBoot=*/false);
             if (idx == 9) {
-                const std::string rom = findRom({"roms/applesoft-gen2.rom",
-                                                 "../roms/applesoft-gen2.rom",
-                                                 "../../roms/applesoft-gen2.rom"});
+                const std::string rom = findRom("roms/applesoft-gen2.rom");
                 if (rom.empty()) { romErr = "roms/applesoft-gen2.rom not found"; romOk = false; }
                 else romOk = emu->loadInterpreterRom(rom, 0x9800, romErr);
             } else if (idx == 8) {
@@ -489,9 +489,7 @@ bench::BuildResult Pom1BenchHost::injectLogo(int target, const std::string& src,
             r.status = interp + ": ROM not found"; r.ok = false; return r;
         }
     } else {
-        for (const char* c : {"roms/logo-gen2.rom", "../roms/logo-gen2.rom",
-                              "../../roms/logo-gen2.rom"})
-            if (fs::exists(c, ec)) { gen2RomPath = c; break; }
+        gen2RomPath = pom1::ResourceLocator::defaultLocator().find("roms/logo-gen2.rom").string();
         if (gen2RomPath.empty()) {
             r.console = "[bench] " + interp + ": roms/logo-gen2.rom not found.\n"
                         "[bench] aborting injection; machine left unchanged.\n";
