@@ -7,6 +7,7 @@
 
 #include "MainWindow_ImGui.h"
 #include "MainWindow_Internal.h"
+#include "ShortcutTable.h"
 #include "NativeFileDialog.h"
 #include "POM1Build.h"
 
@@ -830,6 +831,10 @@ void MainWindow_ImGui::renderMenuBar()
         // trade real curation for uniformity. What changes is their status:
         // they are now a curated shortcut, not the only way in, so forgetting
         // one no longer strands a window.
+        if (ImGui::MenuItem("Command Palette",
+                            shortcutLabel(pom1::shortcuts::kKeyF9)))
+            openCommandPalette();
+
         if (ImGui::BeginMenu("Windows")) {
             using K = WindowKind;
             struct Group { K kind; const char* label; };
@@ -1734,6 +1739,189 @@ void MainWindow_ImGui::renderStatusBar()
             ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "%s", audioText.c_str());
         }
 
+    }
+    ImGui::End();
+}
+
+// ---------------------------------------------------------------------------
+// Command palette (F9)
+//
+// Derived, never declared: the entries are rebuilt from windowRegistry(),
+// pom1::shortcuts::kBindings and kMachinePresets[] every time it opens, so a new
+// window, key command or profile appears in it the moment it exists. Matching
+// and ranking are pure (CommandPalette.h, pinned by command_palette_smoke); what
+// lives here is the popup and carrying the choice out.
+// ---------------------------------------------------------------------------
+namespace {
+// The three bindings that toggle a REGISTRY WINDOW rather than acting on the
+// machine. Their accelerator belongs on the window's own row — listing "Memory
+// Viewer" twice, once as a window and once as a command, is the kind of
+// duplication this palette exists to avoid.
+struct WindowAccel { pom1::shortcuts::Command cmd; const char* registryKey; };
+constexpr WindowAccel kWindowAccels[] = {
+    { pom1::shortcuts::Command::ToggleMemoryViewer,  "MemoryViewer"  },
+    { pom1::shortcuts::Command::ToggleMemoryMapGrid, "MemoryMapGrid" },
+    { pom1::shortcuts::Command::ToggleDebugger,      "Debugger"      },
+};
+
+const char* accelForRegistryKey(const char* key)
+{
+    for (const WindowAccel& wa : kWindowAccels) {
+        if (std::strcmp(wa.registryKey, key) != 0) continue;
+        for (const auto& b : pom1::shortcuts::kBindings)
+            if (b.command == wa.cmd) return b.label;
+    }
+    return nullptr;
+}
+
+bool commandTogglesAWindow(pom1::shortcuts::Command c)
+{
+    for (const WindowAccel& wa : kWindowAccels)
+        if (wa.cmd == c) return true;
+    return false;
+}
+} // namespace
+
+std::vector<pom1::palette::Entry> MainWindow_ImGui::buildPaletteEntries() const
+{
+    using pom1::palette::Entry;
+    using pom1::palette::Kind;
+    std::vector<Entry> out;
+
+    int row = 0;
+    for (const WindowDescriptor& w : windowRegistry()) {
+        const int idx = row++;
+        // Same two exclusions the Windows menu makes: transient file/config
+        // dialogs are reached from the action that needs them, and a
+        // desktop-only panel does not exist in a browser.
+        if (w.kind == WindowKind::Dialog) continue;
+#if POM1_IS_WASM
+        if (w.desktopOnly) continue;
+#endif
+        Entry e;
+        e.kind  = Kind::Window;
+        e.title = w.title;
+        e.accel = accelForRegistryKey(w.key);
+        e.index = idx;
+        // Listed but greyed when its card is unplugged — hiding a window the
+        // user knows exists reads as a bug (same rule as the Windows menu).
+        e.enabled = (w.gate == pom1::CardId::Invalid) || cardPlugged(w.gate);
+        out.push_back(e);
+    }
+
+    for (int i = 0; i < pom1::shortcuts::kBindingCount; ++i) {
+        const auto& b = pom1::shortcuts::kBindings[i];
+        if (b.command == pom1::shortcuts::Command::ToggleCommandPalette) continue;
+        if (commandTogglesAWindow(b.command)) continue;   // already a window row
+        Entry e;
+        e.kind  = pom1::palette::Kind::Action;
+        e.title = b.name;
+        e.accel = b.label;
+        e.index = i;
+        out.push_back(e);
+    }
+
+    for (int i = 0; i < kMachinePresetCount; ++i) {
+        Entry e;
+        e.kind  = pom1::palette::Kind::Preset;
+        e.title = pom1::machinePresetName(i);
+        e.index = i;
+        e.enabled = (i != activePresetIndex);
+        out.push_back(e);
+    }
+    return out;
+}
+
+void MainWindow_ImGui::openCommandPalette()
+{
+    showCommandPalette = true;
+    paletteQuery_[0] = '\0';
+    paletteCursor_ = 0;
+    paletteFocusPending_ = true;
+}
+
+void MainWindow_ImGui::runPaletteEntry(const pom1::palette::Entry& e)
+{
+    using pom1::palette::Kind;
+    switch (e.kind) {
+    case Kind::Window: {
+        const auto& reg = windowRegistry();
+        if (e.index >= 0 && e.index < static_cast<int>(reg.size()))
+            this->*(reg[static_cast<size_t>(e.index)].show) = true;
+        break;
+    }
+    case Kind::Action:
+        if (e.index >= 0 && e.index < pom1::shortcuts::kBindingCount)
+            runShortcutCommand(pom1::shortcuts::kBindings[e.index].command);
+        break;
+    case Kind::Preset:
+        applyMachineConfig(e.index);
+        break;
+    }
+    showCommandPalette = false;
+}
+
+void MainWindow_ImGui::renderCommandPalette()
+{
+    if (!showCommandPalette) return;
+
+    const ImGuiIO& io = ImGui::GetIO();
+    const float w = std::min(pom1::mainwindow::detail::uiPx(560.0f), io.DisplaySize.x - 40.0f);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.22f),
+                            ImGuiCond_Always, ImVec2(0.5f, 0.0f));
+    ImGui::SetNextWindowSize(ImVec2(w, 0.0f), ImGuiCond_Always);
+    if (!ImGui::Begin("Command Palette", &showCommandPalette,
+                      ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoCollapse |
+                      ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::End();
+        return;
+    }
+
+    const std::vector<pom1::palette::Entry> entries = buildPaletteEntries();
+
+    if (paletteFocusPending_) { ImGui::SetKeyboardFocusHere(); paletteFocusPending_ = false; }
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::InputTextWithHint("##palettequery", "Type to search windows, commands and profiles…",
+                             paletteQuery_, sizeof(paletteQuery_));
+
+    const std::vector<int> ranked = pom1::palette::rank(entries, paletteQuery_);
+    if (paletteCursor_ >= static_cast<int>(ranked.size()))
+        paletteCursor_ = ranked.empty() ? 0 : static_cast<int>(ranked.size()) - 1;
+    if (paletteCursor_ < 0) paletteCursor_ = 0;
+
+    // Arrows move the highlight while the text field keeps focus, so the user
+    // never has to leave the query to pick a row.
+    if (ImGui::IsKeyPressed(ImGuiKey_DownArrow) && !ranked.empty())
+        paletteCursor_ = (paletteCursor_ + 1) % static_cast<int>(ranked.size());
+    if (ImGui::IsKeyPressed(ImGuiKey_UpArrow) && !ranked.empty())
+        paletteCursor_ = (paletteCursor_ + static_cast<int>(ranked.size()) - 1)
+                         % static_cast<int>(ranked.size());
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape)) { showCommandPalette = false; ImGui::End(); return; }
+
+    bool activate = ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
+
+    ImGui::Separator();
+    const float rowH = ImGui::GetTextLineHeightWithSpacing();
+    ImGui::BeginChild("##palettelist", ImVec2(0.0f, rowH * 12.0f), ImGuiChildFlags_Borders);
+    for (int r = 0; r < static_cast<int>(ranked.size()); ++r) {
+        const pom1::palette::Entry& e = entries[static_cast<size_t>(ranked[static_cast<size_t>(r)])];
+        const bool sel = (r == paletteCursor_);
+        if (!e.enabled) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        if (ImGui::Selectable(e.title, sel)) { paletteCursor_ = r; activate = true; }
+        if (!e.enabled) ImGui::PopStyleColor();
+        if (sel && (activate || ImGui::IsWindowAppearing())) ImGui::SetScrollHereY(0.5f);
+        const char* tag = e.kind == pom1::palette::Kind::Window ? "window"
+                        : e.kind == pom1::palette::Kind::Action ? "command" : "profile";
+        ImGui::SameLine();
+        ImGui::TextDisabled("  %s%s%s", tag, e.accel ? "  ·  " : "", e.accel ? e.accel : "");
+    }
+    if (ranked.empty()) ImGui::TextDisabled("  no match");
+    ImGui::EndChild();
+
+    if (activate && !ranked.empty()) {
+        const pom1::palette::Entry& e =
+            entries[static_cast<size_t>(ranked[static_cast<size_t>(paletteCursor_)])];
+        runPaletteEntry(e);
     }
     ImGui::End();
 }

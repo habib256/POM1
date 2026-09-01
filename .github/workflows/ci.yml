@@ -195,33 +195,42 @@ jobs:
         run: tools/ensure_imgui.sh imgui
 
       - name: Build POM1
-        # NOT -DPOM1_WERROR=ON — and the reason is worth keeping, because the
-        # tree is now MUCH closer to holding it than the count suggests.
-        #
-        # MSVC's /W4 was measured over this tree in septembre 2026: 134 distinct
-        # sites. 102 were stb_vorbis, vendored and charged to AudioDevice.cpp
-        # because the .c is #included there; they are silenced at that include
-        # (plus /wd4701 on that one file — 4700+ warnings are decided during code
-        # generation and no pragma reaches that point). The 30 POM1-owned ones
-        # were FIXED, not disabled, and those fixes are permanent: narrowings
+        # -DPOM1_WERROR=ON since septembre 2026. MSVC's /W4 was measured over
+        # this tree first: 134 distinct sites. 102 were stb_vorbis, vendored and
+        # charged to AudioDevice.cpp because the .c is #included there; they are
+        # silenced at that include (plus /wd4701 on that one file — 4700+
+        # warnings are decided during code generation and no pragma reaches that
+        # point). The 30 POM1-owned ones were FIXED, not disabled: narrowings
         # made explicit, four shadowed declarations renamed, inet_ntoa replaced
         # by inet_ntop. One of the shadows was a live defect —
         # hgr_convert_smoke_test's letterbox block handed the converter the outer
         # image, so it tested letterbox bars on a source that has none.
         #
-        # What is left is one class this list did not predict: C4244 raised
-        # INSIDE MSVC's own <xutility>, from a `std::fill<vector_iterator<uint8_t>,
-        # int>` instantiation, charged to pom1_test_devices. POM1's sources
-        # contain no `fill(` at all, so the call site has to be found through the
-        # instantiation backtrace rather than by grep — work that needs a Windows
-        # box, or at least a run that prints the full note chain. Flipping the
-        # flag blind cost three red CI cycles; it goes back on when that class is
-        # measured, not before. /W4 stays applied, so the count lands in the log.
+        # The class that kept the flag off for three red cycles is C4244 raised
+        # inside MSVC's own headers, and the note that used to sit here sent the
+        # search after the wrong one. It said `std::fill<vector_iterator<uint8_t>,
+        # int>` in <xutility> and that POM1 "contains no `fill(` at all" — so the
+        # site supposedly needed an instantiation backtrace and a Windows box.
+        # Measured instead: the diagnostic is <utility>(277), std::pair's
+        # converting constructor, `pair<uint8_t,uint8_t>::pair<int,int>`, and MSVC
+        # names the caller two lines down. Two sites, both reached by grepping for
+        # `pair<uint8_t`:
+        #   tests/concurrent_frontends_smoke_test.cpp — pokeSidRegisters({{0,0x34},…})
+        #   src/sidtrack/SidVoice.cpp — silenceRegisters()'s {REG_V1_CR, 0x00}
+        # Both now spell the value `uint8_t{…}`. Note the first is a TEST source:
+        # /W4 + /WX apply to the test binaries too, which is the point — they
+        # compile the same device sources the app does.
+        #
+        # (Six `std::fill` calls over std::vector<uint8_t> were also given
+        # explicit `static_cast<uint8_t>` values while chasing the old note.
+        # They were NOT the reported class — MSVC never flagged them — but the
+        # casts match the five neighbouring std::fill_n calls and are kept.)
         shell: bash
         run: |
           cmake -S . -B build \
                 -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" \
-                -DVCPKG_TARGET_TRIPLET=x64-windows-static
+                -DVCPKG_TARGET_TRIPLET=x64-windows-static \
+                -DPOM1_WERROR=ON
           cmake --build build --config Release -j
 
       - name: Run ctest
@@ -266,9 +275,17 @@ jobs:
           actions-cache-folder: emsdk-cache
 
       - name: Build the WASM bundle
+        # -DPOM1_WERROR=ON since septembre 2026, closing the last of the three
+        # tiers (Linux and macOS have carried it since août). What kept the
+        # browser build out was five functions that only the NATIVE paths call
+        # -- the .size sidecar reader, the native picker's filter builder and
+        # three cc65 bundle helpers -- each defined unconditionally while its
+        # only caller sat inside a `#if !POM1_IS_WASM`. They are guarded now.
+        # Emscripten is clang, so the flag is -Werror over the same
+        # -Wall -Wextra the other POSIX tiers already gate on.
         run: |
           set -euo pipefail
-          emcmake cmake -S . -B build-wasm-ci -DCMAKE_BUILD_TYPE=Release
+          emcmake cmake -S . -B build-wasm-ci -DCMAKE_BUILD_TYPE=Release -DPOM1_WERROR=ON
           cmake --build build-wasm-ci -j"$(nproc)"
 
       - name: Assert the four deployed outputs exist

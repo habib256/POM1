@@ -35,6 +35,8 @@
 #include "FullscreenExpand.h"
 #include "StagedCardConfiguration.h"
 #include "PresetDecisions.h"
+#include "CommandPalette.h"
+#include "ShortcutTable.h"
 #include "Pom1CrtEffects.h"        // universal shader CRT post-process (opt-in)
 #include "GraphicsCard.h"
 #include "TMS9918.h"
@@ -892,6 +894,21 @@ private:
     void configMemory();
     void about();
     void applyMachineConfig(int presetIndex);
+    // ── Command palette (F9) ──────────────────────────────────────────────
+    // Derived, never declared: its entries are built each frame from
+    // windowRegistry(), pom1::shortcuts::kBindings and kMachinePresets[], so a
+    // new window or profile appears in it the moment it exists. The matching and
+    // ranking are pure (CommandPalette.h, pinned by command_palette_smoke); what
+    // lives here is the popup and carrying the choice out.
+    bool showCommandPalette = false;
+    char paletteQuery_[96] = {0};
+    int  paletteCursor_ = 0;            ///< highlighted row among the ranked ones
+    bool paletteFocusPending_ = false;  ///< take keyboard focus on the frame it opens
+    std::vector<pom1::palette::Entry> buildPaletteEntries() const;
+    void openCommandPalette();
+    void runPaletteEntry(const pom1::palette::Entry& e);
+    void renderCommandPalette();
+
     /// Copy a decided silicon-fidelity bundle into the UI's own flags and push
     /// it to the running machine. The DECISION is pure and lives in
     /// PresetDecisions.h; this is the only place that carries it out, so the
@@ -1148,6 +1165,9 @@ private:
     // pure data: label, command and autorepeat policy per row); this forwarder is
     // what puts a row's accelerator next to a menu item.
     static const char* shortcutLabel(int key, int mods = 0);
+    /// Carry out one shortcut command. The key dispatcher and the command
+    /// palette both go through here, so the effect of a command is written once.
+    void runShortcutCommand(pom1::shortcuts::Command c);
 };
 
 #endif // MAINWINDOW_IMGUI_H

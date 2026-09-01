@@ -28,8 +28,13 @@ int main()
         std::fprintf(stderr, "initial SID configuration failed\n");
         return 1;
     }
-    emu.pokeSidRegisters({{0, 0x34}, {1, 0x12}, {5, 0x11}, {6, 0xF0},
-                          {24, 0x0F}, {4, 0x21}});
+    // uint8_t{} rather than bare literals: the parameter is
+    // vector<pair<uint8_t,uint8_t>>, and MSVC /W4 reports the int->uint8_t
+    // narrowing inside <utility>'s pair constructor (C4244), where no cast at
+    // this call site would otherwise appear.
+    emu.pokeSidRegisters({{uint8_t{0},  uint8_t{0x34}}, {uint8_t{1}, uint8_t{0x12}},
+                          {uint8_t{5},  uint8_t{0x11}}, {uint8_t{6}, uint8_t{0xF0}},
+                          {uint8_t{24}, uint8_t{0x0F}}, {uint8_t{4}, uint8_t{0x21}}});
     emu.startCpu();
 
     std::atomic<bool> start{false};

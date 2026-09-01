@@ -42,7 +42,7 @@ std::vector<std::pair<uint8_t, uint8_t>> noteOffRegisters(uint8_t ctrl) {
 }
 
 std::vector<std::pair<uint8_t, uint8_t>> silenceRegisters() {
-    return {{REG_V1_CR, 0x00}};
+    return {{REG_V1_CR, uint8_t{0}}};
 }
 
 }  // namespace sidtrack

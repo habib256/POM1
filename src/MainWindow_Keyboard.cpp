@@ -35,6 +35,7 @@ static_assert(pom1::shortcuts::kKeyF3  == GLFW_KEY_F3,  "GLFW key drift");
 static_assert(pom1::shortcuts::kKeyF5  == GLFW_KEY_F5,  "GLFW key drift");
 static_assert(pom1::shortcuts::kKeyF6  == GLFW_KEY_F6,  "GLFW key drift");
 static_assert(pom1::shortcuts::kKeyF7  == GLFW_KEY_F7,  "GLFW key drift");
+static_assert(pom1::shortcuts::kKeyF9  == GLFW_KEY_F9,  "GLFW key drift");
 static_assert(pom1::shortcuts::kKeyF10 == GLFW_KEY_F10, "GLFW key drift");
 static_assert(pom1::shortcuts::kKeyA   == GLFW_KEY_A,   "GLFW key drift");
 static_assert(pom1::shortcuts::kKeyZ   == GLFW_KEY_Z,   "GLFW key drift");
@@ -52,6 +53,26 @@ static_assert(!pom1::shortcuts::holdsCtrlLetterChord(),
 const char* MainWindow_ImGui::shortcutLabel(int key, int mods)
 {
     return pom1::shortcuts::label(key, mods);
+}
+
+// The effect of a command, written ONCE. Both callers reach it: the key
+// dispatcher below, and the command palette (which lists the same table). A
+// second copy of this switch is exactly the shape the palette was going to add.
+void MainWindow_ImGui::runShortcutCommand(pom1::shortcuts::Command c)
+{
+    using pom1::shortcuts::Command;
+    switch (c) {
+    case Command::HardReset:            hardReset(); break;
+    case Command::SoftReset:            reset(); break;
+    case Command::ToggleRun:            cpuRunning ? stopCpu() : startCpu(); break;
+    case Command::StepCpu:              stepCpu(); break;  // status string discarded here
+    case Command::ToggleMemoryViewer:   showMemoryViewer  = !showMemoryViewer; break;
+    case Command::ToggleMemoryMapGrid:  showMemoryMapGrid = !showMemoryMapGrid; break;
+    case Command::ToggleDebugger:       showDebugger      = !showDebugger; break;
+    case Command::ToggleUiNav:          setUiNavMode(!uiNavMode_); break;
+    case Command::ToggleCommandPalette: openCommandPalette(); break;
+    case Command::None:                 break;
+    }
 }
 
 void MainWindow_ImGui::handleGlfwChar(unsigned int codepoint)
@@ -92,20 +113,9 @@ void MainWindow_ImGui::handleGlfwKey(int key, int scancode, int action, int mods
     // Shortcuts. Whether a row survives an OS autorepeat is a property of the
     // row — only hold-to-step wants it — so the table answers that too.
     if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-        using pom1::shortcuts::Command;
         if (const auto* b = pom1::shortcuts::find(key, activeMods,
                                                   action == GLFW_REPEAT)) {
-            switch (b->command) {
-            case Command::HardReset:           hardReset(); break;
-            case Command::SoftReset:           reset(); break;
-            case Command::ToggleRun:           cpuRunning ? stopCpu() : startCpu(); break;
-            case Command::StepCpu:             stepCpu(); break;  // status string discarded here
-            case Command::ToggleMemoryViewer:  showMemoryViewer  = !showMemoryViewer; break;
-            case Command::ToggleMemoryMapGrid: showMemoryMapGrid = !showMemoryMapGrid; break;
-            case Command::ToggleDebugger:      showDebugger      = !showDebugger; break;
-            case Command::ToggleUiNav:         setUiNavMode(!uiNavMode_); break;
-            case Command::None:                break;
-            }
+            runShortcutCommand(b->command);
             return;
         }
     }

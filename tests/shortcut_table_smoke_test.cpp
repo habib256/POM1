@@ -42,7 +42,7 @@ int opaque(int v) { volatile int x = v; return x; }
 
 int main()
 {
-    assert(kBindingCount == 8);
+    assert(kBindingCount == 9);
 
     // -----------------------------------------------------------------
     // §1 Every row is usable.
@@ -55,6 +55,8 @@ int main()
         for (const Binding& b : kBindings) {
             assert(b.label && b.label[0]);
             assert(b.description && b.description[0]);
+            assert(b.name && b.name[0] &&
+                   "the palette shows `name`; an empty one is a blank row there");
             assert(b.command != Command::None &&
                    "a row with no command is a key POM1 grabs and then drops");
             // Only modifiers POM1 reasons about. ALT/SUPER are excluded on
@@ -83,7 +85,7 @@ int main()
         // The control case. Without it, this section would pass just as happily
         // against a predicate that always answers "no".
         static constexpr Binding kBad[] = {
-            { 'C', kModControl, "Ctrl+C", Command::SoftReset, "break", false },
+            { 'C', kModControl, "Ctrl+C", Command::SoftReset, "Break", "break", false },
         };
         static_assert(holdsCtrlLetterChord(kBad, 1),
                       "the CTRL+letter check must actually fire");
@@ -92,7 +94,7 @@ int main()
         // And it must not fire on what IS allowed: a function-key chord is not
         // ASCII, which is the whole reason Ctrl+F5 may stay.
         static constexpr Binding kGood[] = {
-            { kKeyF5, kModControl, "Ctrl+F5", Command::HardReset, "hard reset", false },
+            { kKeyF5, kModControl, "Ctrl+F5", Command::HardReset, "Hard reset", "hard reset", false },
         };
         static_assert(!holdsCtrlLetterChord(kGood, 1));
         assert(!holdsCtrlLetterChord(kGood, opaque(1)));
@@ -169,7 +171,7 @@ int main()
             Command::HardReset, Command::SoftReset, Command::ToggleRun,
             Command::StepCpu, Command::ToggleMemoryViewer,
             Command::ToggleMemoryMapGrid, Command::ToggleDebugger,
-            Command::ToggleUiNav,
+            Command::ToggleUiNav, Command::ToggleCommandPalette,
         };
         for (Command c : all) {
             int n = 0;

@@ -10,6 +10,82 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — une palette de commandes (F9), dérivée des tables existantes
+
+Dernière puce du chantier 3. La moitié « menus » était déjà faite et ne
+l'annonçait pas : `MainWindow_Menu.cpp` construit tout le menu *Windows* depuis
+`windowRegistry()`, groupé par `kind`, avec les panneaux de cartes non branchées
+grisés. Restait la palette.
+
+`src/CommandPalette.h` (en-tête pur, ni ImGui ni GLFW) porte la seule chose qui
+soit une décision : ce qu'une requête filtre et dans quel ordre. La liste, elle,
+est **dérivée** — reconstruite à chaque ouverture depuis `windowRegistry()`,
+`pom1::shortcuts::kBindings` et `kMachinePresets[]` — donc une fenêtre, un
+raccourci ou un profil nouveaux y apparaissent sans que personne ne les inscrive
+quelque part. C'est la propriété qui compte : la palette ne peut pas diverger de
+ce que l'application contient.
+
+Détails qui évitent les doublons : les trois raccourcis qui basculent une fenêtre
+du registre (F1/F2/F3) affichent leur accélérateur sur la **ligne de la fenêtre**
+au lieu d'être listés une seconde fois comme commandes ; les fenêtres de type
+`Dialog` sont exclues, comme dans le menu *Windows*, ce qui fait aussi que la
+palette ne se liste pas elle-même.
+
+Au passage, l'effet d'une commande n'est plus écrit qu'**une fois** : le `switch`
+du répartiteur clavier devient `MainWindow_ImGui::runShortcutCommand()`, que la
+palette appelle aussi. Sans cela la palette en aurait ajouté une seconde copie.
+
+Nouveau test **`command_palette_smoke`** (6 sections, ne lie rien). **Il a trouvé
+un vrai défaut du modèle** : `« D e b u g Console »` battait `« Debug Console »`
+sur la requête `debug`, parce que chaque lettre isolée comptait comme un début de
+mot. Un utilisateur qui tape un mot veut le mot : la prime de contiguïté passe
+au-dessus de celle de début de mot.
+
+La palette s'ouvre par **F9** ou depuis la barre de menus. Elle a sa ligne de
+registre — `window_registry_sync` a refusé le drapeau `showCommandPalette` tant
+qu'elle n'existait pas.
+
+### Changed — les cinq tiers de CI passent en warnings-as-errors
+
+Linux et macOS (Metal + OpenGL) portaient la porte depuis août. Windows et WASM
+la portent désormais aussi, et **les deux étaient mal diagnostiqués**.
+
+**Windows.** Ce qui a tenu le drapeau à l'écart pendant trois cycles rouges est
+un C4244 levé *à l'intérieur* d'un en-tête MSVC — et la note qui accompagnait le
+job **envoyait la recherche sur la mauvaise piste**. Elle annonçait
+`std::fill<vector_iterator<uint8_t>, int>` dans `<xutility>`, et affirmait que
+POM1 « ne contient aucun `fill(` », donc que le site exigeait la trace
+d'instanciation et une machine Windows.
+
+Mesuré sur un vrai job Windows : le diagnostic est **`<utility>(277)`, le
+constructeur convertisseur de `std::pair`** — `pair<uint8_t,uint8_t>::pair<int,int>` —
+et MSVC imprime `see reference to function template instantiation` en nommant
+l'appelant deux lignes plus bas. Deux sites, trouvés par un `grep pair<uint8_t` :
+le `pokeSidRegisters({{0, 0x34}, …})` de `concurrent_frontends_smoke_test.cpp` et
+le `{REG_V1_CR, 0x00}` de `silenceRegisters()`. Les deux écrivent désormais
+`uint8_t{…}`. **Le premier est une source de TEST** : `/W4` et `/WX` s'appliquent
+aussi aux binaires de test, ce qui est voulu — ils compilent les mêmes sources de
+périphériques que l'application.
+
+La leçon porte sur la note plus que sur l'avertissement : un diagnostic imputé à
+un en-tête standard nomme quand même son appelant, et une affirmation du type
+« ceci ne peut pas se greper » mérite d'être revérifiée avant de coûter un
+quatrième cycle. (Six `std::fill` sur `std::vector<uint8_t>` ont reçu un
+`static_cast<uint8_t>` explicite pendant la poursuite de l'ancienne note ; MSVC
+ne les a jamais signalés, mais les casts s'alignent sur les cinq `std::fill_n`
+voisins et sont conservés.)
+
+**WASM.** Cinq fonctions que seuls les chemins NATIFS appellent — le lecteur de
+sidecar `.size`, le constructeur de filtres du sélecteur natif et trois
+auxiliaires du bundle cc65 — étaient définies sans condition alors que leurs
+seuls appelants vivaient dans un `#if !POM1_IS_WASM`. Gardes posées sur les
+définitions. (Le décompte annoncé était « deux statiques inutilisées » ; il y en
+avait cinq.)
+
+Coût mesurable : les 11 lignes de gardes font monter `mainwindow_lines` de 16780
+à 16791. C'est le seul type de hausse que ce plafond accepte — une qui nomme ce
+qu'elle achète.
+
 ### Added — les dix croquis LOGO livrés deviennent atteignables (et vérifiés)
 
 `sketchs/logo/` embarque dix programmes tortue **APPLE-1 LOGO V2.6** depuis

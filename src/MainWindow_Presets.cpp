@@ -1080,12 +1080,19 @@ bool copyIniDefaultsFileTo(const char* basename, const std::string& destPath)
 // and the GLFW monitor enumeration.
 using pom1::wingeom::OsWindowGeom;
 
+#if !POM1_IS_WASM
+// Reading a sidecar back is a native-only concern: loadPresetLayout's whole
+// OS-window block is compiled out in the browser, where the canvas size comes
+// from computeWasmCanvasSize instead. WRITING one is not — pregenerateMissing-
+// PresetLayouts seeds .size files on every platform — so saveSizeFile below
+// stays unguarded.
 bool loadSizeFile(int idx, OsWindowGeom& g)
 {
     std::ifstream f(sizePathForPreset(idx));
     if (!f) return false;
     return pom1::wingeom::parseSizeSidecar(f, g);
 }
+#endif
 
 bool saveSizeFile(int idx, const OsWindowGeom& g)
 {
@@ -1401,6 +1408,11 @@ MainWindow_ImGui::windowRegistry()
         // window. Persisting it would re-open the chooser over the machine on
         // every load. Listed (persist=false) so the completeness audit accounts
         // for every show* flag rather than silently omitting this one.
+        // The palette is a Dialog on purpose: K::Dialog rows are omitted from the
+        // Windows menu (they are reached from the action that needs them) and
+        // skipped by buildPaletteEntries, so the palette does not list itself.
+        // persistPresence=false — reopening it on a profile switch would be a bug.
+        { "CommandPalette",       "Command Palette",                           &MW::showCommandPalette,     K::Dialog,      false , &MW::renderCommandPalette },
         { "ProfileChooser",       "Profile Chooser",                           &MW::showProfileChooser,     K::Dialog,      false, nullptr, CardId::Invalid, false, DockSlot::Float, /*resetOnPresetSwitch*/ false },
     };
     return kReg;
