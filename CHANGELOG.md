@@ -10,6 +10,55 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — fidélité du terminal 1976 : PB7 peut se verrouiller sur le balayage
+
+L'affichage de l'Apple-1 n'est pas une mémoire d'écran. Le texte recircule dans
+un registre à décalage balayé au rythme vidéo, donc un caractère ne peut être
+verrouillé que lorsque le balayage atteint le curseur : **PB7 reste occupé
+jusqu'au passage suivant**, pas pendant un intervalle fixe compté depuis
+l'écriture. POM1 utilisait depuis toujours un décompte fixe de `CPU_HZ/60`.
+
+`src/TerminalTiming.h` (en-tête pur, `constexpr`) porte les deux modèles.
+`FixedDelay` reste le défaut — c'est ce sur quoi chaque programme livré et
+chaque image témoin sont validés. `FieldSync` verrouille l'attente sur la trame
+de 60 Hz : **65 × 262 = 17030 cycles**, la période raster résolue avec Uncle
+Bernie dans `doc/GEN2_RELEASE.md` Q4, que le `1/60 s` dérivé de POM1 manquait de
+15 cycles — un écart sans conséquence tant que rien n'y était verrouillé, ce que
+`FieldSync` change précisément.
+
+**Ce qui rend le changement sûr** : sous `FieldSync` l'attente varie avec la
+phase — c'est tout l'intérêt — mais **l'intervalle entre deux écritures ne varie
+pas**. Un programme qui imprime aussi vite que la machine le permet imprime
+toujours exactement un caractère par trame, quelle que soit la phase de départ
+et quel que soit le nombre de cycles brûlés par sa boucle d'attente. Les 60
+caractères par seconde documentés survivent donc au changement de modèle ; seule
+la répartition de l'attente se déplace. C'est la section 3 de
+`terminal_timing_smoke`, et c'est l'assertion qui autorisait à toucher au chemin
+de timing le plus exécuté de la machine.
+
+Accessible par `--display-field-sync` et par une case dans l'inspecteur Silicon
+Strict. **Aucun preset ne l'arme**, contrairement à ses voisins : le modèle est
+*raisonné depuis le schéma, pas mesuré sur une section terminal*. L'en-tête dit
+ce qui est établi, ce qui est arithmétique et ce qui est hypothèse — le point de
+verrouillage est modélisé au bord de trame alors qu'en vrai il suit le curseur
+qui descend l'écran. `TODO.md` porte désormais la confirmation matérielle comme
+tâche, à la place de l'item d'origine.
+
+Deux tests : `terminal_timing_smoke` (5 sections, ne lie rien) pour le modèle, et
+`pia_ddr_smoke` §9 pour le **câblage** — le test pur ne peut pas voir si `Memory`
+consulte réellement le modèle, et cette section distingue les deux par
+construction (après une trame de 17030 cycles, `FixedDelay` est encore occupé,
+`FieldSync` ne l'est jamais).
+
+**Cinq plafonds levés, et c'est dit ici plutôt qu'édité en silence dans le JSON.**
+`memory_public_methods` 188 → 190, `controller_public_methods` 201 → 203, plus
+les trois plafonds de lignes. La première version respectait le gel de `Memory`
+en faisant passer le modèle par un paramètre de constructeur par défaut, comme
+l'avait fait le seam audio ; cela coûte la bascule à chaud, et le mainteneur a
+tranché qu'un knob de fidélité que personne ne peut basculer machine en marche
+ne valait pas la pureté. Un plafond qui bouge sans raison inscrite dans le
+fichier est un cliquet qui cesse de vouloir dire quelque chose.
+
 ### Changed — rendre le dépôt reprenable par quelqu'un d'autre
 
 Mesuré plutôt que supposé : un clone neuf du dépôt, suivi de la procédure

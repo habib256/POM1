@@ -175,7 +175,7 @@ Ces travaux sont ouverts mais ne doivent pas interrompre la consolidation ci-des
 
 - [ ] **Valider le fetch SAT TMS9918 une ligne en avance** `[M · solid]` — mesurer d’abord sur silicium les écritures SAT en zone active, puis modéliser et tester la latence observée.
 - [ ] **Partager le journal `VideoEvents` et le rejeu beam** `[L · solid]` — extraire géométrie/journal hors de `Memory`, faire adopter `BeamClock` à GEN2 puis remplacer le rattrapage eager du TMS9918 ; sérialiser le journal.
-- [ ] **Ajouter la fidélité CRT 1976 optionnelle** `[M · nice]` — streaming du registre à décalage et bruit périodique déterministe, désactivés par défaut et couverts par une référence visuelle.
+- [ ] **Confirmer le modèle de synchro trame sur du matériel réel** `[M · solid]` — `src/TerminalTiming.h` livre `FieldSync` : PB7 reste occupé jusqu'au prochain passage du balayage plutôt qu'un décompte fixe, ce qui est le comportement d'un terminal à registre à décalage. Le débit est préservé (une écriture par trame, épinglé), mais **le point de verrouillage est modélisé au bord de trame alors qu'en vrai il suit le curseur qui descend l'écran**. Confirmer à l'oscilloscope sur une section terminal, ou depuis les notes de timing de Woz ; ni l'un ni l'autre n'est dans cet arbre. Tant que ce n'est pas fait, le modèle reste hors bundle et désactivé par défaut (`--display-field-sync`). Le bruit périodique déterministe reste à faire.
 
 ### Outils et langages
 

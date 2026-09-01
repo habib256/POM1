@@ -253,6 +253,33 @@ void MainWindow_ImGui::renderSiliconStrictWindow()
                 "they fail on cold Apple-1 silicon.");
         }
 
+        ImGui::SeparatorText("Display timing ($D012)");
+        bool fieldSync = displayFieldSyncEnabled;
+        if (ImGui::Checkbox("Terminal field sync (PB7 phase-locked to the video scan)",
+                            &fieldSync)) {
+            displayFieldSyncEnabled = fieldSync;
+            emulation->setDisplayFieldSync(fieldSync);
+            setStatusMessage(fieldSync
+                ? "Display busy phase-locked to the 60 Hz field (17030 cycles)"
+                : "Display busy back to the fixed 17045-cycle countdown", 3.0f);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "Woz's terminal has no framebuffer: the text lives in a\n"
+                "recirculating shift register scanned at the video rate, so a\n"
+                "character can only be latched when the scan reaches the cursor.\n"
+                "PB7 therefore stays busy until the NEXT PASS OF THE SCAN, not\n"
+                "for a fixed interval measured from the write.\n\n"
+                "OFF (default): a fixed countdown of CPU_HZ/60 = 17045 cycles.\n"
+                "ON: busy until the next 60 Hz field boundary (65 x 262 = 17030).\n\n"
+                "Throughput is unchanged either way — consecutive writes stay\n"
+                "exactly one field apart, so the documented 60 characters per\n"
+                "second holds. Only WHERE the wait falls moves.\n\n"
+                "Unlike the other knobs here this one is NOT armed by a Silicon\n"
+                "preset: the field-sync model is reasoned from the schematic,\n"
+                "not measured on a real terminal section.");
+        }
+
         ImGui::SeparatorText("DRAM refresh");
         bool refreshFlag = dramRefreshEnabled;
         if (ImGui::Checkbox("DRAM refresh stall (4/65 cycles stolen from CPU)",

@@ -485,6 +485,13 @@ void MainWindow_ImGui::applyBootCliOverrides()
         emulation->setDramRefreshEnabled(v);
         dramRefreshEnabled = v;
     }
+    if (displayFieldSyncOverride) {
+        // --display-field-sync: no preset ever arms this one, so the flag is
+        // the only way in besides the Silicon Strict inspector's checkbox.
+        const bool v = *displayFieldSyncOverride;
+        emulation->setDisplayFieldSync(v);
+        displayFieldSyncEnabled = v;
+    }
     if (initialExecutionSpeed) {
         executionSpeed = *initialExecutionSpeed;
         emulation->setExecutionSpeedCyclesPerFrame(executionSpeed);
