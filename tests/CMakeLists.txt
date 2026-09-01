@@ -1759,8 +1759,27 @@ if(WIN32)
     target_link_libraries(test_concurrent_frontends PRIVATE ws2_32)
 endif()
 add_test(NAME concurrent_frontends_smoke COMMAND test_concurrent_frontends)
+# REPEAT UNTIL_PASS:3 — this test measures WALL-CLOCK lock hold and wait times,
+# so a shared CI runner can blow its bounds without anything being wrong. Seen
+# on GitHub's Linux runner in septembre 2026: state-hold 279 ms against a 100 ms
+# gate and state-wait 9.3 s against a 5 s one, on a commit that touched nothing
+# in the lock path, with the same commit passing on the next run and `main`
+# green twenty minutes earlier.
+#
+# The retry is the honest fix rather than raising the bounds. The bounds are
+# what the test is FOR — 100 ms is the point at which a held stateMutex parks
+# the audio callback and the render thread, and CLAUDE.md records that it caught
+# exactly that when the SID chip was first built inside the lock. Relaxing them
+# to survive a noisy runner would keep the test green and stop it meaning
+# anything; three independent failures still fail the job, and a real regression
+# does not pass one run in three.
+#
+# It matters beyond CI hygiene: a newcomer whose first pull request goes red on
+# an unrelated flake concludes they broke something. That is a contribution
+# barrier, so it is documented in CONTRIBUTING.md too.
 set_tests_properties(concurrent_frontends_smoke PROPERTIES
     TIMEOUT 30
+    REPEAT UNTIL_PASS:3
     LABELS "concurrency;audio")
 
 # msbasic_smoke -- Microsoft BASIC 6502 on the Apple-1 ($E000, shares the window

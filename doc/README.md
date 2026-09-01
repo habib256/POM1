@@ -12,6 +12,7 @@ to the repo root.
 
 | Doc | For | What |
 |---|---|---|
+| [`CONTRIBUTING.md`](../CONTRIBUTING.md) | contributors | Build and test, the twelve automated gates and the one rule about ceilings, the house rules, how to write a test. |
 | [`ARCHITECTURE.md`](../ARCHITECTURE.md) | contributors | **Start here as a human.** The five concepts, the dependency rule and what enforces it, threads and locks, where a change belongs — and what is deliberately not clean. |
 | [`README.md`](../README.md) | users | Feature tour, the 13 presets (3 DevBench + 10 machines), software library, per-card hardware reference. |
 | [`QUICKSTART.md`](../QUICKSTART.md) | new users | Your first Apple-1 program in 5 minutes (BASIC → Wozmon → the Bench). |
