@@ -102,7 +102,11 @@ def main() -> int:
             if not name.endswith(SUFFIXES):
                 continue
             path = os.path.join(root, name)
-            rel = os.path.relpath(path, REPO)
+            # Forward slashes ALWAYS: os.path.relpath hands back `src\\MicroSD.cpp`
+            # on Windows, so an ALLOWED key written `src/MicroSD.cpp` matched
+            # nothing there and the five legitimate sites were reported as
+            # findings — green on Linux and macOS, red on Windows only.
+            rel = os.path.relpath(path, REPO).replace(os.sep, "/")
             scanned += 1
             findings.extend((rel, n, text) for n, text in scan(path, rel))
 

@@ -156,7 +156,7 @@ struct CardDescriptor {
                              std::string_view variant = {})
         : id(cardId), stableKey(key), uiLabel(label), snapshotTag(tag),
           ranges(addressRanges), rangeCount(addressRangeCount),
-          requires(requiredCards), incompatible(incompatibleCards),
+          dependencies(requiredCards), incompatible(incompatibleCards),
           capabilities(cardCapabilities), variantGroup(variant) {}
 
     CardId id = CardId::Invalid;
@@ -165,7 +165,14 @@ struct CardDescriptor {
     std::string_view snapshotTag;
     std::array<CardAddressRange, 4> ranges{};
     uint8_t rangeCount = 0;
-    CardSet requires;
+    // NOT `requires`: that is a KEYWORD in C++20, and GCC says so under
+    // -Wc++20-compat, which its -Wall includes. With -DPOM1_WERROR=ON (the
+    // Linux CI job) that is an error, and it kept the whole job red for five
+    // days from the commit that introduced this file — clang does not warn, so
+    // macOS stayed green and nothing local reproduced it. The tree is C++17
+    // today; naming a member after a future keyword is a trap that only fires
+    // on the compiler you are not using.
+    CardSet dependencies;
     CardSet incompatible;
     CardCapability capabilities = CardCapability::None;
     std::string_view variantGroup;

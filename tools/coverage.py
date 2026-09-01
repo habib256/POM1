@@ -316,7 +316,8 @@ def main() -> int:
 
     totals = {}
     for entry in data.get("data", [{}])[0].get("files", []):
-        path = os.path.relpath(entry["filename"], REPO)
+        # Forward slashes always — MODULES and IGNORE are written with them.
+        path = os.path.relpath(entry["filename"], REPO).replace(os.sep, "/")
         if IGNORE.search(path) or path.startswith(".."):
             continue
         bucket = totals.setdefault(module_of(path),
