@@ -812,6 +812,19 @@ list(FILTER POM1_OWN_SOURCES EXCLUDE REGEX "\\.(rc|icns)$")
 set_source_files_properties(${POM1_OWN_SOURCES} PROPERTIES
                             COMPILE_OPTIONS "${POM1_WARNING_FLAGS}")
 
+# One file needs one warning off, and it has to be a command-line switch rather
+# than a pragma. AudioDevice.cpp #includes the vendored stb_vorbis.c, which trips
+# C4701 ("potentially uninitialized local"). Warnings in MSVC's 4700+ range are
+# decided during CODE GENERATION — after the whole translation unit is parsed —
+# so no pragma state written in the source reaches the moment of the decision:
+# `warning(push, 0)` around the include and a `disable` placed after the pop were
+# both tried, and both failed on CI in turn. /wd has no state to lose.
+# tests/CMakeLists.txt repeats this because source properties are directory-scoped.
+if(MSVC)
+    set_source_files_properties(${POM1_SRC_DIR}/AudioDevice.cpp PROPERTIES
+                                COMPILE_OPTIONS "${POM1_WARNING_FLAGS};/wd4701")
+endif()
+
 # libresidfp (vendored, third_party/libresidfp). PUBLIC include dir on the
 # static lib propagates ${SRC_DIR}/third_party/libresidfp/src to consumers,
 # so SID.cpp can include "residfp/residfp_defs.h" and the upstream SID.h.
