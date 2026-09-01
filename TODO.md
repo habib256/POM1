@@ -45,15 +45,14 @@ de binaire (−31 %), **27 s → 20 s** de build.
 
 ### 2. Services hôte injectés (1–2 semaines)
 
-L'injection du service audio est livrée (`CHANGELOG.md`). Au passage, la mesure
-qui la justifiait était mal attribuée : dans un binaire de test,
-`AudioDevice(false)` coûte **0,07 ms**, et les ~150 ms d'un cœur hermétique sont
-la **première construction de `pom1::SID`** (tables de filtre libresidfp ;
-0,46 ms pour chaque SID suivant dans le même processus). Le gain réel de
-l'injection est ailleurs et il est mesuré : plus aucun test n'ouvre le
-périphérique audio de l'hôte.
+L'injection du service audio est livrée (`CHANGELOG.md`), et la construction
+paresseuse de `pom1::SID` avec elle : la mesure qui justifiait l'injection était
+mal attribuée — dans un binaire de test, `AudioDevice(false)` coûte **0,07 ms**,
+et les ~120 ms d'un cœur hermétique étaient la **première construction de
+`pom1::SID`**. Les deux gains sont mesurés : plus aucun test n'ouvre le
+périphérique audio de l'hôte, et un cœur nu se construit en 0,3 ms au lieu de
+135 ms (`hermetic_core_smoke` §5).
 
-- [ ] **Amortir la première construction de `pom1::SID`** `[S · nice]` — ~150 ms par processus de test (tables de filtre libresidfp), payés par chaque binaire qui construit un `Memory`. Piste : ne construire la puce qu'au premier branchement de la carte plutôt que dans le constructeur de `Memory`. À mesurer avant : combien de binaires de la suite branchent réellement le SID.
 - [ ] **Étendre `ResourceLocator` aux consommateurs restants** `[S · solid]` — `src/ResourceLocator.h` porte l'ordre de recherche unique et `Memory` le reçoit (`resource_locator_smoke`). Reste à y router les ~60 sondes `../` encore dispersées dans l'UI, le Bench et `GraphicsCard`/`Screen_ImGui`, et à couvrir les ressources web.
 
 Le gel de `Memory` est livré et devient une règle permanente, plus un chantier :

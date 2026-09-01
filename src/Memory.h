@@ -35,6 +35,7 @@
 #include <cstddef>
 #include <utility>
 #include <atomic>
+#include <mutex>            // std::once_flag — lazy SID construction
 
 // ── Cards are held by unique_ptr and forward-declared ────────────────────────
 //
@@ -518,9 +519,9 @@ public:
             && gen2RandomScannerPhase && gen2RandomDramNoise;
     }
 
-    // P-LAB A1-SID Sound Card (MOS 6581/8580)
-    pom1::SID& getSID() { return *sid; }
-    const pom1::SID& getSID() const { return *sid; }
+    // P-LAB A1-SID Sound Card (MOS 6581/8580). Builds the chip on first use.
+    pom1::SID& getSID() { return sidChip(); }
+    const pom1::SID& getSID() const { return sidChip(); }
     void setSIDEnabled(bool b);
     // Claudio Parmigiani's A1-AUDIO Special Edition — same MOS chip but
     // register window mapped at $CC00-$CC1F instead of the prototype's
@@ -671,6 +672,9 @@ public:
     void setCpuForIrq(M6502* c) { cpuForIrq = c; }
 
 private:
+    // Every SID access goes through here, so no caller sees a null `sid`.
+    pom1::SID& sidChip() const;
+
     pom1::CardSet activeCards() const;
     void applyTopologyRelations(pom1::CardId requested, bool enabled);
     void setCardEnabledFromTopology(pom1::CardId card, bool enabled);
@@ -869,7 +873,10 @@ private :
     // that stops the miniaudio callback. That covers the service Memory OWNS;
     // an INJECTED one outlives Memory, which is why ~Memory unregisters its
     // sources explicitly (see Memory.cpp).
-    std::unique_ptr<pom1::SID> sid;
+    // Built on demand by sidChip(), never in the constructor — why, and what
+    // `mutable` + the once_flag buy, is in Memory.cpp beside that function.
+    mutable std::once_flag sidOnce;
+    mutable std::unique_ptr<pom1::SID> sid;
     bool sidEnabled = false;
     bool sidSpecialEditionEnabled = false;
     // `audio` is what the machine talks to and is never null. `ownedAudio`

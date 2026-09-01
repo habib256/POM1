@@ -191,7 +191,7 @@ Memory::Memory(bool initializeAudioHardware, pom1::ResourceLocator locator,
     // via activateCassetteAudioSource() after the synchronous card
     // transaction. Adding the source here would expose a half-configured deck.
     tms9918 = std::make_unique<TMS9918>();
-    sid = std::make_unique<pom1::SID>(static_cast<int>(actualRate));
+    // NOTE: no SID here — sidChip() builds it on first use. See there.
     microSD = std::make_unique<MicroSD>();
     // Where the data lives is the locator's business, not three hand-rolled
     // ../ walks that climbed different distances (see ResourceLocator.h).
@@ -269,10 +269,10 @@ Memory::Memory(bool initializeAudioHardware, pom1::ResourceLocator locator,
     // SID's register window is 32 regs (addr & 0x1F); only regs 0-24 are writable.
     sidBusHandle = bus.registerHandle(
         "SID", {0xC800, 0xCFFF}, /*priority*/ 0,
-        [this](uint16_t a) { return sid->readRegister(a & 0x1F); },
+        [this](uint16_t a) { return sidChip().readRegister(a & 0x1F); },
         [this](uint16_t a, uint8_t v) {
             uint8_t reg = a & 0x1F;
-            if (reg <= 24) sid->writeRegister(reg, v);
+            if (reg <= 24) sidChip().writeRegister(reg, v);
         });
     bus.setEnabled(sidBusHandle, sidEnabled);
 
@@ -284,10 +284,10 @@ Memory::Memory(bool initializeAudioHardware, pom1::ResourceLocator locator,
     // variants (only one can be plugged at a time).
     sidSEBusHandle = bus.registerHandle(
         "SID_SE", {0xCC00, 0xCC1F}, /*priority*/ 0,
-        [this](uint16_t a) { return sid->readRegister(a & 0x1F); },
+        [this](uint16_t a) { return sidChip().readRegister(a & 0x1F); },
         [this](uint16_t a, uint8_t v) {
             uint8_t reg = a & 0x1F;
-            if (reg <= 24) sid->writeRegister(reg, v);
+            if (reg <= 24) sidChip().writeRegister(reg, v);
         });
     bus.setEnabled(sidSEBusHandle, sidSpecialEditionEnabled);
 
@@ -827,7 +827,7 @@ void Memory::initMemory(){
     // audio source, touching ringTail here would race with the audio
     // callback's SPSC drain. Residual samples drain naturally via
     // fillAudioBuffer in a few ms of tail audio.
-    sid->resetChip();
+    if (sid) sid->resetChip();
     microSD->reset();
     // The IEC daughterboard rides on microSD's VIA PORTB — reset its serial-bus
     // FSM too, or it desyncs from the freshly-cleared VIA after a mid-transfer
@@ -1011,7 +1011,7 @@ void Memory::resetMemory(void)
     tms9918->reset();
     // See initMemory() — resetChip() avoids the ringTail race when the
     // SID stays registered as an audio source across hardReset.
-    sid->resetChip();
+    if (sid) sid->resetChip();
     microSD->reset();
     // Keep the IEC daughterboard FSM in sync with the microSD VIA it rides on
     // (see resetMemory) — otherwise an F5 mid-transfer leaves it desynced.
@@ -1722,6 +1722,24 @@ int Memory::getTerminalSpeed() const
     return POM1_CPU_CLOCK_HZ / displayCharDelay;
 }
 
+// The one place a pom1::SID is built, and it is NOT the constructor:
+// libresidfp computes its filter tables there, which costs ~120 ms for the
+// FIRST chip in a process (0,46 ms for every one after it, per process). That
+// was ~96 % of the runtime of every test binary that constructs a bare Memory
+// — 60 of the 68 — and only two of them ever touch the card. `mutable` so the
+// const getSID() can still materialise it; std::call_once because the UI and
+// emulation threads can both be the first to ask. Note the cost has only
+// MOVED: EmulationController's constructor warms the chip on purpose, off any
+// lock, because every site a frontend reaches it from holds stateMutex.
+pom1::SID& Memory::sidChip() const
+{
+    std::call_once(sidOnce, [this] {
+        sid = std::make_unique<pom1::SID>(
+            static_cast<int>(audio->getActualSampleRate()));
+    });
+    return *sid;
+}
+
 void Memory::setSIDEnabled(bool b)
 {
     if (b == sidEnabled) return;
@@ -1730,7 +1748,7 @@ void Memory::setSIDEnabled(bool b)
         // Attach the audio sink BEFORE the emulation starts producing samples
         // (sidEnabled gates advanceCycles). Otherwise the first slice pushes
         // into an undrained ring and the audio callback plays catch-up.
-        audio->addSource(sid.get());
+        audio->addSource(&sidChip());
         sidEnabled = true;
         bus.setEnabled(sidBusHandle, true);
     } else {
@@ -1752,7 +1770,7 @@ void Memory::setSIDSpecialEditionEnabled(bool b)
     if (b) {
         // SE at $CC00-$CC1F is disjoint from the Juke-Box bank latch
         // ($CA00) so the two can coexist — no eviction needed.
-        audio->addSource(sid.get());
+        audio->addSource(&sidChip());
         sidSpecialEditionEnabled = true;
         bus.setEnabled(sidSEBusHandle, true);
     } else {
@@ -2240,7 +2258,7 @@ void Memory::advanceCycles(int cycles)
     // Without this call, libresidfp would produce samples at wallclock
     // 44.1 kHz independent of executionSpeed, decoupling music tempo from
     // CPU speed (Max mode → way too fast, WASM frame drop → too slow).
-    if (sidEnabled || sidSpecialEditionEnabled) sid->advanceCycles(cycles);
+    if (sidEnabled || sidSpecialEditionEnabled) sidChip().advanceCycles(cycles);
 
     // Aggregate /IRQ line — wire-OR of every plugged peripheral's interrupt
     // request. The CPU's setIRQ() takes a level (1 = asserted, 0 = clear),
