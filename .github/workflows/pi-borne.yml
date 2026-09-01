@@ -65,7 +65,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       # Identité du build reportée dans le NOM du paquet. Courte et rattachable :
       # sans elle, tous les paquets d'une même version seraient homonymes et on ne
@@ -195,7 +195,7 @@ jobs:
             echo "| \`$(basename "$TGZ")\` | $(du -h "$TGZ" | cut -f1) | borne **sans bureau** — \`tar -xzf … -C /home/pi/POM1\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: pom1-borne-aarch64
           path: |
