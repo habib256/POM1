@@ -5,7 +5,9 @@
 Machine-neutral **APPLE-1 LOGO V2.6** turtle programs for the POM1 DevBench — the
 LOGO counterpart of `sketchs/basic_applesoft/`. Each `.logo` runs **unchanged on
 both** LOGO cards: the **TMS9918** (CodeTank, `4000R`) and **Uncle Bernie's GEN2
-HGR** (`6000R`). Open one in the Bench and click **Run** — `LogoProgramLoader` pokes
+HGR** (`6000R`). All ten are listed in the Bench's **Examples** popup (the book
+icon) under *LOGO turtle*; they open on the TMS9918 target, and switching Mode to
+*LOGO GEN2 HGR* runs the same source with no edit. Click **Run** — `LogoProgramLoader` pokes
 the `TO … END` procedures straight into the interpreter's procedure table and feeds
 the entry line (no per-character typing). Language reference + tutorials:
 [`APPLE-1_LOGO-2.6-MANUAL.md`](../tms9918/tool_logo/APPLE-1_LOGO-2.6-MANUAL.md).

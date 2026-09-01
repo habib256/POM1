@@ -172,7 +172,6 @@ Ces travaux sont ouverts mais ne doivent pas interrompre la consolidation ci-des
 ### Outils et langages
 
 - [ ] **Étendre le débogage source au C et au WASM** `[M · solid]` — transporter les `.dbg` via cl65/cc65 web et prendre en charge plusieurs points d’arrêt.
-- [ ] **Ajouter les exemples LOGO au popup du Bench** `[S · solid]` — exposer les dix fichiers existants sous un groupe LOGO en un clic.
 - [ ] **Ajouter les variables chaîne au BASIC natif** `[L · nice]` — descripteurs ptr+len, heap, runtime chaîne, expressions typées et tests de pression mémoire.
 
 ### Périphériques
