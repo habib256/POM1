@@ -61,6 +61,14 @@
 #pragma clang diagnostic pop
 #elif defined(_MSC_VER)
 #pragma warning(pop)
+// C4701 ("potentially uninitialized local variable") is a CODE-GENERATION
+// warning: MSVC decides it after the whole translation unit is parsed, so the
+// push/pop bracket above — long since popped by then — does not suppress it,
+// and the first /WX run failed on stb_vorbis.c(4758) despite the bracket. It
+// has to stay disabled for the REST of this file, which is why this line sits
+// after the pop rather than inside the bracket. POM1's own code in this TU is
+// thin miniaudio glue; the gate it gives up is worth the 102 sites it buys.
+#pragma warning(disable: 4701)
 #elif defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif

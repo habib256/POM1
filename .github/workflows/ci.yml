@@ -195,21 +195,20 @@ jobs:
         run: tools/ensure_imgui.sh imgui
 
       - name: Build POM1
-        # No -DPOM1_WERROR=ON here either — same reason as the macOS job, more
-        # so: MSVC's /W4 is a far broader set than GCC's -Wall -Wextra
-        # (signed/unsigned conversions, unreferenced parameters) and has never
-        # been run over this tree. /W4 is applied, so the count lands in the log.
+        # -DPOM1_WERROR=ON since septembre 2026, which closes the third desktop
+        # platform (Linux since the flags went in, macOS since 23 août). It was
+        # off because MSVC's /W4 — a far broader set than GCC's -Wall -Wextra —
+        # had never been run over this tree. It has now: 134 distinct sites, 102
+        # of them stb_vorbis, vendored and charged to AudioDevice.cpp because the
+        # .c is included there, silenced at that include with `warning(push, 0)`
+        # exactly as GCC and clang already were. The 30 POM1-owned ones were
+        # fixed, not disabled: narrowings made explicit, four shadowed
+        # declarations renamed, inet_ntoa replaced by inet_ntop. One of those
+        # shadows was a live defect — hgr_convert_smoke_test's letterbox block
+        # handed the converter the outer image, so it tested letterbox bars on a
+        # source that has none.
         shell: bash
         run: |
-          # -DPOM1_WERROR=ON: the third platform now holds the same line as
-          # Linux. It was left off because MSVC's /W4 set had never been
-          # measured over this tree; it has now — 134 distinct sites, 102 of
-          # them stb_vorbis (vendored, silenced at its include with
-          # `warning(push, 0)` exactly as GCC and clang already were), and 30
-          # in POM1's own code: narrowing conversions made explicit, four
-          # shadowed declarations renamed, and inet_ntoa replaced by inet_ntop.
-          # One of those shadows was a live defect — a letterbox test feeding
-          # the converter the wrong image.
           cmake -S . -B build -DPOM1_WERROR=ON \
                 -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" \
                 -DVCPKG_TARGET_TRIPLET=x64-windows-static
