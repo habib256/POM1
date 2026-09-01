@@ -27,13 +27,35 @@ ENV DEBIAN_FRONTEND=noninteractive
 # — no silent `continuous`/`master`-HEAD drift (the class that flipped appimagetool
 # to an ET_DYN runtime). To update: bump the version/commit and refresh the SHA
 # (a mismatch is a hard build failure, on purpose).
+#
+# A checksum on a MOVING url is not a pin, it is a fuse: there is no version to
+# bump when it blows, only a hunt for a new hash that will go stale in turn. Both
+# AppImage tools were in that state; linuxdeploy blew, and is now on a real tag.
+# See the two blocks below — one fixed, one deliberately not.
 ARG CMAKE_VER=3.27.9
 ARG CMAKE_SHA256=72b01478eeb312bf1a0136208957784fe55a7b587f8d9f9142a7fc9b0b9e9a28
 ARG GLFW_VER=3.3.10
 ARG GLFW_SHA256=4ff18a3377da465386374d8127e7b7349b685288cb8e17122f7e1179f73769d5
 ARG CC65_COMMIT=547d923588d870aacf0b0016c67d0f6a92a70f83
+# linuxdeploy: pinned to an immutable RELEASE TAG, not to `continuous`. It used
+# to be `continuous` + a checksum, which is a contradiction — the URL moves, the
+# checksum cannot, so the only possible outcome is a hard failure with no version
+# to bump. That is exactly what happened: upstream rebuilt the continuous asset on
+# 2026-08-01 (e87ee081 -> 36a2d7e2) and this image stopped building from
+# 2026-08-22, taking the workflow red until 2026-09-01. `1-alpha-20251107-1` is
+# the newest non-prerelease tag; its asset cannot be rewritten under it.
+ARG LINUXDEPLOY_TAG=1-alpha-20251107-1
+ARG LINUXDEPLOY_SHA256=c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
+# appimagetool: STILL on `continuous`, and that is a known, named risk rather than
+# an oversight. The pinned checksum below is the byte-for-byte artifact every POM1
+# AppImage released so far was packaged with, and changing it changes the runtime
+# embedded in what users download — which nothing in CI can verify, only a real
+# release can. So it stays until it breaks. When it does, the answer is already
+# measured: AppImageKit tag 13, asset `obsolete-appimagetool-x86_64.AppImage`
+# (upstream renamed it after the fact), sha256
+# df3baf5ca5facbecfc2f3fa6713c29ab9cefa8fd8c1eac5d283b79cab33e4acb — verified
+# ET_EXEC, which is the property the block below cares about.
 ARG APPIMAGETOOL_SHA256=b90f4a8b18967545fda78a445b27680a1642f1ef9488ced28b65398f2be7add2
-ARG LINUXDEPLOY_SHA256=e87ee0815d109282fdda73e34c2361d64d02b0ffaea3674b18f1fd1f6a687dcf
 
 # --- base tooling + X11/GL dev headers ---------------------------------------
 # bionic's apt archives moved to old-releases.ubuntu.com, but archive.ubuntu.com
@@ -103,7 +125,7 @@ ENV CC65_SHARE_DIR=/opt/cc65-install/share/cc65
 #     picks these up via POM1_APPIMAGE_TOOLS_DIR and calls appimagetool through
 #     AppRun (its bundled libgpgme isn't on bionic).
 RUN mkdir -p /opt/appimage-tools && cd /opt/appimage-tools && \
-    wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage" -O linuxdeploy.AppImage && \
+    wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/${LINUXDEPLOY_TAG}/linuxdeploy-x86_64.AppImage" -O linuxdeploy.AppImage && \
     echo "${LINUXDEPLOY_SHA256}  linuxdeploy.AppImage" | sha256sum -c - && \
     wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -O appimagetool.AppImage && \
     echo "${APPIMAGETOOL_SHA256}  appimagetool.AppImage" | sha256sum -c - && \
