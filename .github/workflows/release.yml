@@ -99,7 +99,7 @@ jobs:
       # the new digest it prints (the `:bionic` tag still moves for convenience).
       BUILDER_IMAGE: ghcr.io/habib256/pom1-bionic-builder@sha256:c44b786517f041f779b082b813e84a17b141db3983fc0b28f2c3e4deedeb4cca
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Log in to GHCR (pull the builder image)
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
@@ -183,7 +183,7 @@ jobs:
             || { echo "ERROR: preset table is empty/truncated (no Fantasy preset)"; exit 1; }
           echo "OK: packaged AppImage launches and lists presets"
 
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: POM1-linux-AppImage
           path: dist/*.AppImage
@@ -216,7 +216,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build POM1 + AppImage in a bookworm arm64 container (GLES, cc65 bundled, strict)
         env:
@@ -296,7 +296,7 @@ jobs:
             || { echo "ERROR: preset table is empty/truncated (no Fantasy preset)"; exit 1; }
           echo "OK: packaged aarch64 AppImage launches and lists presets"
 
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: POM1-raspberry-arm64-AppImage
           path: dist/*.AppImage
@@ -328,7 +328,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Fetch Dear ImGui (pinned)
         run: git clone --depth 1 --branch "$IMGUI_TAG" https://github.com/ocornut/imgui.git
@@ -401,7 +401,7 @@ jobs:
             || { echo "ERROR: preset table is empty/truncated (no Fantasy preset)"; exit 1; }
           echo "OK: packaged .app binary launches and lists presets"
 
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: POM1-macOS-dmg
           path: dist/*.dmg
@@ -413,7 +413,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Fetch Dear ImGui (pinned)
         run: git clone --depth 1 --branch ${{ env.IMGUI_TAG }} https://github.com/ocornut/imgui.git
@@ -557,7 +557,7 @@ jobs:
             || { echo "ERROR: preset table is empty/truncated (no Fantasy preset)"; exit 1; }
           echo "OK: packaged POM1.exe launches and lists presets"
 
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: POM1-Windows-zip
           path: dist/*.zip
@@ -569,7 +569,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref_type == 'tag'
     steps:
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
 
