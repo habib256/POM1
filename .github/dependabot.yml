@@ -1,0 +1,30 @@
+# Keeps the SHA-pinned GitHub Actions current.
+#
+# Every `uses:` in .github/workflows/ names a 40-hex commit, not a tag: a tag is
+# a mutable pointer its owner can move, and these workflows run with the repo's
+# secrets — release.yml builds and publishes the binaries users download. A SHA
+# is the only reference that means "this exact code".
+#
+# The cost of pinning is that nothing updates on its own any more, and a
+# frozen action is its own security problem. That is this file's whole job:
+# Dependabot rewrites the SHA and the trailing `# vX.Y.Z` comment together, so
+# the pin stays readable and the review sees which version it is moving to.
+#
+# tools/check_action_pins.py (ctest `action_pins_sync`) refuses any `uses:`
+# that is not a SHA with that comment, which is what keeps a hand-edited
+# workflow from quietly going back to a floating tag.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
+    groups:
+      # One PR a month for the whole set rather than eight: these are build
+      # infrastructure, they move together, and CI either goes green or it
+      # does not.
+      actions:
+        patterns:
+          - "*"

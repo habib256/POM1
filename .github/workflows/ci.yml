@@ -36,7 +36,7 @@ jobs:
   linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Verify the committed WASM cc65 toolchain is present
         run: tools/verify_wasm_cc65.sh
@@ -130,7 +130,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Install dependencies
         run: brew install glfw
@@ -179,7 +179,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Install GLFW via vcpkg (manifest mode, static triplet)
         # No package argument: the dependency and its pinned version live in the
@@ -234,7 +234,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Verify the committed WASM cc65 toolchain is present
         run: tools/verify_wasm_cc65.sh
@@ -242,7 +242,7 @@ jobs:
       - name: Fetch Dear ImGui (pin from IMGUI_VERSION)
         run: tools/ensure_imgui.sh imgui
 
-      - uses: mymindstorm/setup-emsdk@v14
+      - uses: mymindstorm/setup-emsdk@6ab9eb1bda2574c4ddb79809fc9247783eaf9021 # v14
         with:
           version: latest
           actions-cache-folder: emsdk-cache
@@ -295,7 +295,7 @@ jobs:
 
       - name: Upload smoke screenshot
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: wasm-smoke-screenshot-ci
           path: wasm-smoke.png
@@ -333,7 +333,7 @@ jobs:
             sanitize: thread
     name: sanitizers (${{ matrix.name }})
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Install dependencies
         run: |
@@ -393,7 +393,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Install dependencies
         # libclang-rt-dev carries libFuzzer's runtime; clang alone is not enough.
@@ -420,7 +420,7 @@ jobs:
       # random sampler into something that accumulates reach. Restored
       # best-effort: a cold cache just means this night starts from the seeds.
       - name: Restore fuzz corpus
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: fuzz-corpus
           key: fuzz-corpus-${{ github.run_id }}
@@ -485,7 +485,7 @@ jobs:
 
       - name: Upload findings
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: fuzz-findings
           path: |

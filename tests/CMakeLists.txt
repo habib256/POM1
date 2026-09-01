@@ -2133,6 +2133,21 @@ if(Python3_FOUND)
     set_tests_properties(resource_probes_sync PROPERTIES TIMEOUT 30)
 endif()
 
+# ── Supply chain: actions are pinned to commits ──────────────────────────────
+# Fifth guard of the family. `uses: actions/checkout@v5` is not a version — it
+# is a mutable pointer in someone else's repository, and these workflows carry
+# this repo's secrets (release.yml builds and publishes the binaries users
+# download). Offline on purpose: it holds the SHAPE (40-hex SHA + the version
+# it came from in a comment), never asks GitHub whether the SHA exists.
+# .github/dependabot.yml keeps the pins current.
+if(Python3_FOUND)
+    add_test(NAME action_pins_sync
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/check_action_pins.py"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(action_pins_sync PROPERTIES TIMEOUT 30)
+endif()
+
 # Architecture direction + trend baseline. It rejects a new core/device -> UI
 # include immediately while reporting growth of the known large components and
 # header fan-out. Existing debt is explicit in architecture_baseline.json.

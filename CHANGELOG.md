@@ -10,6 +10,55 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Security — les GitHub Actions sont épinglées au commit
+
+`uses: actions/checkout@v5` ressemble à une version ; ce n'en est pas une. `v5`
+est un pointeur **mutable** dans le dépôt de quelqu'un d'autre, que son
+propriétaire peut déplacer à tout moment — et ces workflows portent les secrets
+du dépôt : `release.yml` construit, signe et publie les binaires que les
+utilisateurs téléchargent, `pages.yml` déploie le site. Une étiquette déplacée,
+c'est du code arbitraire dans le job qui livre le produit.
+
+Les **27 références** des cinq workflows nomment désormais un SHA de 40 hex,
+avec la version d'origine en commentaire — la seule référence qui veuille dire
+« exactement ce code-là ». Huit actions distinctes, résolues via l'API GitHub et
+revérifiées commit par commit :
+
+| action | commit | version |
+|---|---|---|
+| `actions/checkout` | `fbc6f39…` | v5.1.0 |
+| `actions/cache` | `0057852…` | v4.3.0 |
+| `actions/upload-artifact` | `ea165f8…` / `330a01c…` | v4.6.2 / v5.0.0 |
+| `actions/download-artifact` | `634f93c…` | v5.0.0 |
+| `actions/upload-pages-artifact` | `56afc60…` | v3.0.1 |
+| `actions/deploy-pages` | `d6db901…` | v4.0.5 |
+| `mymindstorm/setup-emsdk` | `6ab9eb1…` | v14 |
+
+`upload-artifact` reste volontairement en v4 sur `ci.yml`/`pages.yml` et en v5
+sur `release.yml`/`pi-borne.yml` : épingler n'est pas mettre à jour, et v5
+change de comportement. C'est une décision séparée.
+
+Le coût d'un épinglage, c'est que plus rien ne bouge tout seul — et une action
+gelée est un problème de sécurité à son tour. D'où **`.github/dependabot.yml`**
+(écosystème `github-actions`, mensuel, groupé en une seule PR) : Dependabot
+réécrit le SHA **et** son commentaire ensemble, donc l'épingle reste lisible et
+la relecture voit vers quelle version elle va.
+
+**Nouveau garde-fou `action_pins_sync`** (`tools/check_action_pins.py`,
+cinquième de la famille) : tout `uses:` qui n'est pas un SHA suivi de sa version
+en commentaire échoue. **Hors ligne par construction** — il ne demande jamais à
+GitHub si le SHA existe, un test qui a besoin du réseau est un test qui rougit
+dans le train ; il tient la *forme*, la justesse du SHA étant l'affaire de
+Dependabot et du relecteur. Il refuse aussi un SHA commenté avec deux versions
+différentes selon le fichier (une montée de version à moitié faite). Vérifié
+dans les deux sens : étiquette flottante réintroduite → rouge ; commentaire de
+version retiré → rouge.
+
+Les cinq workflows re-parsent proprement en YAML (27 `uses:` relus, tous des
+SHA — donc le `# vX.Y.Z` est bien un commentaire et non une partie de la
+valeur). Suite complète : **120 tests verts**.
+
+
 ### Changed — plus une seule sonde `../` écrite à la main
 
 `pom1::ResourceLocator` portait l'ordre de recherche unique depuis sa création,
