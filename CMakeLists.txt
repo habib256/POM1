@@ -381,7 +381,10 @@ set(SOURCES
     ${POM1_SRC_DIR}/CassetteDeck_ImGui.cpp
     ${POM1_SRC_DIR}/CardTopology.cpp
     ${POM1_SRC_DIR}/CliDispatcher.cpp
+    ${POM1_SRC_DIR}/CommandPort.cpp
     ${POM1_SRC_DIR}/MachinePresets.cpp
+    ${POM1_SRC_DIR}/PresetFile.cpp
+    ${POM1_SRC_DIR}/PresetLoader.cpp
     ${POM1_SRC_DIR}/MachineCoordinator.cpp
     ${POM1_SRC_DIR}/EmulationController.cpp
     ${POM1_SRC_DIR}/EmulationController_State.cpp

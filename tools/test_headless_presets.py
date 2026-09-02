@@ -48,7 +48,8 @@ STRICT_CONFLICTS = {
 
 
 def list_presets(pom1):
-    out = subprocess.run([pom1, "--list-presets"], capture_output=True, text=True,
+    out = subprocess.run([pom1, "--preset-dir", "", "--list-presets"],
+                         capture_output=True, text=True,
                          encoding="utf-8", errors="replace", timeout=30).stdout
     presets = []
     for m in re.finditer(r"^\s+(\d+):\s+(.*?)\s+\[cards=([^]]*)\]\s*$", out, re.M):
@@ -58,7 +59,10 @@ def list_presets(pom1):
 
 
 def boot(pom1, idx, cycles, *, first_cycle=False, extra_args=(), expect_rejected=False):
-    cmd = [pom1, "--headless", "--preset", str(idx)]
+    # --preset-dir "": this matrix is about the SHIPPED machines. It boots
+    # everything --list-presets reports, so without isolation a broken file in
+    # the developer's own presets/ would turn the repository's suite red.
+    cmd = [pom1, "--preset-dir", "", "--headless", "--preset", str(idx)]
     cmd += list(extra_args)
     if first_cycle:
         cmd += ["--load", f"0x0300:{FIRST_CYCLE_FIXTURE}", "--run", "0x0300"]

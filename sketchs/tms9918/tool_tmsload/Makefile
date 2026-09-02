@@ -9,7 +9,13 @@
 # `#` is a Make comment even in filenames, so build the literal via H.
 H    := \#
 INC  := -I ../../../dev/lib/tms9918
-PAD  := ../../../dev/lib/tms9918/tms9918_pad.asm
+# EXTRA_ASM is the ONE place the modules this sketch assembles are named,
+# and it is written with LITERAL relative paths on purpose: the POM1
+# DevBench reads it without expanding `$(VAR)`, so a bespoke variable
+# here would build one binary under `make` and another in the Bench.
+# Pinned by ctest sketch_manifests_sync.
+EXTRA_ASM := ../../../dev/lib/tms9918/tms9918_pad.asm
+PAD  := $(EXTRA_ASM)
 CFG  := ../../../dev/cc65/apple1_tmsutil.cfg
 OUT  := ../../../sdcard/TMS
 

@@ -99,6 +99,11 @@ public:
     // GUI-free preset application for --headless (no ImGui / ini / window).
     // Mirrors the machine-config essence of applyMachineConfig — see there.
     static void applyHeadlessConfig(EmulationController& emu, int presetIndex);
+    /// Same, for a machine that is not in kMachinePresets[] — an external
+    /// preset file. `fantasy` is the file's own `mode`, since it has no
+    /// PresetId for isFantasyPreset() to answer from.
+    static void applyHeadlessConfig(EmulationController& emu,
+                                    const pom1::MachineConfig& cfg, bool fantasy);
     void setDefaultPresetIndex(int index) { defaultPresetIndex = index; }
     void setTerminalCardOverride(bool enable) { terminalCardOverride = enable; }
     /// Monitor content scale from the windowing system (1.0 = 96 dpi). Seeded

@@ -7,6 +7,10 @@
 // through ImGui geometry stays in MainWindow_Presets.cpp.
 
 #include "MachinePresets.h"
+
+#include <deque>
+#include <string>
+#include <utility>
 #include "CardTopology.h"
 
 namespace pom1 {
@@ -315,15 +319,96 @@ const MachineConfig kMachinePresets[] = {
 
 const int kMachinePresetCount = static_cast<int>(sizeof(kMachinePresets) / sizeof(kMachinePresets[0]));
 
+// ── The external-preset registry ────────────────────────────────────────────
+//
+// Deliberately BELOW kMachinePresets[]: preset_ram_profiles_smoke reads this
+// file as TEXT, anchoring on `const MachineConfig kMachinePresets[]` and
+// parsing forward, so nothing may come between that anchor and the rows.
+//
+// Storage is a deque, not a vector: `MachineConfig` holds `const char*` into
+// these strings and a vector's reallocation would dangle every config handed
+// out before the growth. The strings are copied on registration so a caller may
+// destroy its `ParsedPreset` immediately.
+namespace {
+
+struct ExternalPreset {
+    std::string   name;
+    std::string   description;
+    std::string   codeTankRomPath;
+    MachineConfig config{};
+    TopologyMode  mode = TopologyMode::Strict;
+};
+
+std::deque<ExternalPreset>& externalPresets()
+{
+    static std::deque<ExternalPreset> presets;
+    return presets;
+}
+
+} // namespace
+
+int registerExternalPreset(const MachineConfig& cfg, TopologyMode mode)
+{
+    auto& all = externalPresets();
+    if (static_cast<int>(all.size()) >= kMaxExternalPresets) return -1;
+
+    ExternalPreset entry;
+    entry.name            = cfg.name ? cfg.name : "";
+    entry.description     = cfg.description ? cfg.description : "";
+    entry.codeTankRomPath = cfg.codeTank.romPath ? cfg.codeTank.romPath : "";
+    entry.config          = cfg;
+    entry.mode            = mode;
+    all.push_back(std::move(entry));
+
+    // Rewire the copy's borrowed pointers onto the storage that now owns them.
+    ExternalPreset& stored = all.back();
+    stored.config.name            = stored.name.c_str();
+    stored.config.description     = stored.description.c_str();
+    stored.config.codeTank.romPath = stored.codeTankRomPath.empty()
+                                         ? nullptr : stored.codeTankRomPath.c_str();
+    // An external preset gets the default window arrangement: layout literals
+    // are a shipped profile's business.
+    stored.config.layoutCount = 0;
+    return kMachinePresetCount + static_cast<int>(all.size()) - 1;
+}
+
+void clearExternalPresets()
+{
+    externalPresets().clear();
+}
+
 int machinePresetCount()
 {
-    return kMachinePresetCount;
+    return kMachinePresetCount + static_cast<int>(externalPresets().size());
+}
+
+const MachineConfig* machinePresetAt(int index)
+{
+    if (index < 0) return nullptr;
+    if (index < kMachinePresetCount) return &kMachinePresets[index];
+    const size_t external = static_cast<size_t>(index - kMachinePresetCount);
+    auto& all = externalPresets();
+    if (external >= all.size()) return nullptr;
+    return &all[external].config;
+}
+
+bool machinePresetIsExternal(int index)
+{
+    return index >= kMachinePresetCount && index < machinePresetCount();
+}
+
+TopologyMode machinePresetMode(int index)
+{
+    if (machinePresetIsExternal(index))
+        return externalPresets()[static_cast<size_t>(index - kMachinePresetCount)].mode;
+    return isFantasyPreset(presetIdFromIndex(index)) ? TopologyMode::Fantasy
+                                                     : TopologyMode::Strict;
 }
 
 const char* machinePresetName(int index)
 {
-    if (index < 0 || index >= kMachinePresetCount) return nullptr;
-    return kMachinePresets[index].name;
+    const MachineConfig* cfg = machinePresetAt(index);
+    return cfg ? cfg->name : nullptr;
 }
 
 PresetId presetIdFromIndex(int index)

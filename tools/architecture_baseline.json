@@ -21,13 +21,13 @@
   "metric_ceilings": {
     "controller_lines": 3111,
     "controller_public_methods": 203,
-    "mainwindow_lines": 17056,
-    "memory_lines": 3988,
+    "mainwindow_lines": 17098,
+    "memory_lines": 4041,
     "memory_public_methods": 190,
-    "sources_outside_test_devices": 86
+    "sources_outside_test_devices": 89
   },
   "header_fanout_ceilings": {
-    "EmulationController.h": 15,
+    "EmulationController.h": 18,
     "GraphicsCard.h": 11,
     "MainWindow_ImGui.h": 18,
     "Memory.h": 60

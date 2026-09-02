@@ -743,7 +743,11 @@ void MainWindow_ImGui::render()
         } else if (startupShowsChooser()) {
             showProfileChooser = true;                // opt-in ini/startup chooser
         } else {
-            applyBootConfig(kMachinePresetCount - 1); // default: POM1 Fantasy
+            // NOT `count - 1`: that was "default = last", true only while
+            // kMachinePresets[] was the whole world. One registered external
+            // preset (--preset-file / presets/) and the last index is a user's
+            // file. kDefaultPresetId names the shipped default explicitly.
+            applyBootConfig(pom1::presetIndex(pom1::kDefaultPresetId));
         }
     }
     // --fullscreen (kiosk). Enforced every frame rather than once at boot:

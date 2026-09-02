@@ -294,7 +294,7 @@ Bus-window exclusions are enforced (one P-LAB card at a time, per Parmigiani's r
 
 **P-LAB IEC daughterboard** — Commodore IEC serial bus add-on for the microSD card. Single **SN7406** on the spare 65C22 PORTB pins; no new MMIO. Backed by a virtual **1541** drive on `disks/iec/dev8.d64` (174 848 B). Same SD CARD OS ROM with `@`-prefixed commands (`@DEV`, `@$`, `@L`, `@S`, …). MVP = device 8 only.
 
-**CFFA1** — Rich Dreher's CompactFlash card. 8 KB firmware at `$9000-$AFDF`, ATA/IDE regs `$AFE0-$AFFF`, backed by a host **ProDOS `.po`**. **Mutually exclusive with microSD** (shared `$9000`). Firmware menu with `9006R`; default disk `cfcard/cfcard.po`.
+**CFFA1** — Rich Dreher's CompactFlash card. 8 KB firmware at `$9000-$AFDF`, ATA/IDE regs `$AFE0-$AFFF`, backed by a host **ProDOS `.po`**. **Mutually exclusive with microSD** (shared `$9000`). Firmware menu with `9000R`; default disk `cfcard/cfcard.po`. The firmware has **three** entry points, differing only in where its `Q`(UIT) goes — `$9000` back to the Woz Monitor, `$9003` to BASIC, `$9006` to user code. Prefer `9000R`: on an Apple-1 with no user code to return to, quitting from `9006R` leaves the CPU at `$0000`.
 
 **P-LAB Juke-Box** — memory-mapped flash library acting as an in-address-space program menu. **Flash mode** (16 KB–512 KB, paged) or **EEPROM 28c256** (32 KB, writable via RW jumper). ROM window `$4000-$BFFF` or `$8000-$BFFF`; bank-select latch at `$CA00`. Rebuild via [`build_jukebox_rom.py`](doc/JUKEBOX_ROM_CREATOR/build_jukebox_rom.py).
 

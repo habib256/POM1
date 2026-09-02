@@ -114,6 +114,17 @@ struct CliPlan {
     // Phase-A — consumed by main() before MainWindow_ImGui construction or on
     // the first render frame.
     int                                presetIndex = -1;   // -1 = default
+    // --preset-file PATH: boot a machine described by an external preset file
+    // (src/PresetFile.h) instead of a table row. Deliberately its own flag
+    // rather than an extra index: kMachinePresets[] is read by 57 sites and
+    // renumbering it is the wide refactor TODO.md declines. Wins over --preset.
+    std::string                        presetFilePath;
+    // --preset-dir PATH: where to discover external preset files, instead of
+    // the `presets/` directory ResourceLocator resolves. `--preset-dir ""`
+    // discovers none, which is how a test isolates itself from whatever the
+    // developer keeps in their own presets/ — otherwise one broken file there
+    // would turn the repository's own suite red.
+    std::optional<std::string>         presetDirectory;
     bool                               terminalOverride = false;
     bool                               cpuMax = false;
     bool                               headless = false;   // --headless: run with no GLFW window (CI / scripted; default 64K machine, no preset/card layout)
@@ -127,6 +138,12 @@ struct CliPlan {
     // server (no window manager at all) — one less compositor/WM copy per
     // frame, which is what the Pi 400 is short of.
     bool                               fullscreen = false;
+    // --cmd-port N: open the scripting control channel on localhost:N. Headless
+    // only, dev-only, off by default. One line in, one line out; the verbs
+    // mirror these flags. See src/CommandPort.h and doc/COMMAND_PORT.md — it is
+    // what lets a test harness steer POM1 without sharing the Terminal Card's
+    // keyboard/display wire.
+    std::optional<int>                 commandPort;
     std::optional<int>                 telemetryPort;      // --telemetry-port N: open the dev telemetry side channel on localhost:N (1-65535)
     std::string                        telemetryLogPath;   // --telemetry-log PATH: tee the outbound frame stream to a file (golden-trace); implies enabling the port
     // --dump-gen2-frame / --dump-tms-frame PATH: headless one-shot — render the

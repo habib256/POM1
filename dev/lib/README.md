@@ -14,6 +14,88 @@ per card / peripheral) and by **language track** (assembly `.include`-style libs
 and cc65 **C** runtimes for the same card). A program picks ONE card and ONE
 language and links only that.
 
+## The two video backends are one interface, not two copies
+
+Before anyone sets out to factor the apparent duplication between `gen2/` and
+`tms9918/`: **it is not duplication, and the factoring already happened.**
+
+`bubble.asm` / `gen2_bubble.asm` and `text_bitmap.asm` / `gen2_text_bitmap.asm`
+carry the same public symbols on purpose, and `gen2_logom2.asm` implements the
+whole TMS9918 Mode-2 API — `init_vdp_g2`, `vdp_set_write`, `line_xy`,
+`clear_bitmap`, `plot_set` — on GEN2 HGR. The backend is chosen by **ld65**, for
+the same reason [`gfx/`](gfx/README.md) resolves its per-pixel store at link
+time: Parmigiani's one-board rule means a binary ever talks to one video card,
+so there is nothing to arbitrate at runtime and no indirection to pay.
+
+What that buys is visible in one place. LOGO is **5 426 lines** under
+[`../../sketchs/tms9918/tool_logo/`](../../sketchs/tms9918/tool_logo/); its GEN2
+edition, [`../../sketchs/gen2/tool_logo_gen2/`](../../sketchs/gen2/tool_logo_gen2/),
+is **thirty-one lines** that define `LOGO_GEN2` and `.include` the other. One
+program, two cards.
+
+Two things follow, and both matter to anyone editing these files:
+
+- **The interface is TMS-SHAPED, not merely TMS-named — and that is why it is
+  not renamed.** `gfx/` invents neutral names; this side speaks the TMS9918's
+  VDP vocabulary (`init_vdp_g2`, `vdp_set_write`, `tms9918_pad18`). The
+  temptation is to call that a debt and neutralise it. Measure first: of the
+  routine symbols the two backends share, **five are a bare `rts` on GEN2** —
+  `disable_sprites`, `vdp_set_write`, `vdp_set_read`, `vdp_display_off`,
+  `tms9918_pad18`. They are not video operations with two implementations, they
+  are TMS *hardware ceremony*: `vdp_set_write` programs the chip's
+  auto-increment address latch, and `tms9918_pad18` is an 18-cycle VRAM pacing
+  cushion. HGR has neither. A neutral name — `video_set_write` — would promise
+  that every backend does something, which is false; **the chip's own name tells
+  the truth, and a neutral one would not.** What a third video card would
+  actually cost is not a rename but a decision about those five, and that is
+  worth knowing before the day it arrives.
+- **The DRAWING half is not card-neutral either, and that is the real argument
+  against an assembly `gfx`.** It is tempting to say the interface splits into
+  "drawing, shareable" and "chip ceremony, per-card". It does not. **The screen
+  width sets the ARITHMETIC width.** HGR is 280 px, so a full-width line's `dx`
+  overflows a byte and Bresenham has to run 16-bit; the TMS's 256 fit in eight
+  bits. Measured on the same algorithm by the same author:
+
+  | | dx | source |
+  |---|---|---|
+  | `tms9918m2.asm` `line_xy` | 8-bit | 111 lines |
+  | `gen2_logom2.asm` `line_xy16` | 16-bit | 129 lines (+16 %) |
+
+  And GEN2 has no cheap path to fall back on: its `line_xy` is three
+  instructions (`LDA #0` / `STA ln_x0h` / `STA ln_x1h`) that drop straight into
+  `line_xy16`. The two backends are not one routine with a wrapper — they are
+  two implementations, each using the width its own card needs. A neutral
+  assembly layer would have to pick one, and picking the wider one makes the TMS
+  pay 16-bit arithmetic for a 256-pixel screen.
+
+  **`gfx/` does not disprove this — it pays that price silently.** Look at the
+  signature: `void gfx_plot(unsigned x, unsigned char y)`. The asymmetry is the
+  fossil of exactly this problem — Y stayed 8-bit because 192 fits, X was
+  widened because 280 does not — and the TMS backend carries a 16-bit X for a
+  screen that never needs one. That is affordable inside a C runtime, which is
+  already paying cc65's overhead. It is not affordable in hand-written 6502,
+  which is the whole reason the asm track exists.
+
+- **The two kinds of divergence get two treatments, and the counts say why.**
+  The 280-px width difference is declared in the shared source (20 `.ifdef
+  LOGO_GEN2` blocks); the VDP ceremony is hidden behind the stubs above. The
+  same phenomenon, handled two ways — which looks inconsistent until you count
+  the call sites: **18 of the 24 ceremony calls are `tms9918_pad18` alone**,
+  spread through the interpreter wherever it touches VRAM. Eighteen `.ifndef`
+  blocks in the most delicate part of a 5 426-line file is worse than one `rts`.
+  The stub earns its place; the other four routines (six sites between them)
+  could go either way and are not worth churning.
+- **What genuinely cannot be shared is the 9-bit-X seam.** HGR is 280 px wide,
+  so a full-width run needs `line_xy16` / `plot_set_x16`; the TMS's 256 fits in
+  a byte. That is the only `.ifdef LOGO_GEN2` in the shared source, and each
+  diverging routine says so in its own header.
+
+ctest **`asm_backends_sync`** (`tools/check_asm_backends.py`) holds the contract
+without building anything: every backend symbol the shared source imports must
+be exported by BOTH sides. Nothing else did — a routine added to one backend and
+forgotten in the other fails as an `ld65: Unresolved external` in a build most
+people never run.
+
 ## The two integration models
 
 The single most important thing to know before consuming anything here: a file

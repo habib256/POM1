@@ -289,7 +289,10 @@ constexpr CliFlagHelp kCliFlagHelp[] = {
     {'A', "--help / -h",                        "Print this list and exit."},
     {'A', "--list-presets",                     "Print the machine preset table and exit."},
     {'A', "--preset <N|name> / -p",             "Boot preset: index, or case-insensitive substring."},
+    {'A', "--preset-file <path>",               "Boot a machine described by an external preset file."},
+    {'A', "--preset-dir <path>",                "Where to discover external presets (\"\" for none)."},
     {'A', "--terminal",                         "Force-enable the Terminal Card (127.0.0.1:6502)."},
+    {'A', "--cmd-port <N>",                     "Headless dev-only: scripting control channel on 127.0.0.1:N."},
     {'A', "--telemetry-port <N>",               "Dev-only: telemetry side channel on 127.0.0.1:N."},
     {'A', "--telemetry-log <path>",             "Dev-only: tee the telemetry frame stream to a file."},
     {'A', "--dump-gen2-frame <path>",           "Headless: write the GEN2 HGR framebuffer to a PNG, then exit."},
@@ -396,7 +399,10 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& cleanExitOut)
             for (int p = 0; p < n; ++p) {
                 std::cout << "  " << p << ": " << pom1::machinePresetName(p)
                           << "\t[cards=";
-                const MachineConfig* preset = machinePreset(presetIdFromIndex(p));
+                // machinePresetAt(), not machinePreset(presetIdFromIndex(p)):
+                // an external preset has no PresetId, so the old composition
+                // printed it with an empty card list.
+                const MachineConfig* preset = machinePresetAt(p);
                 bool first = true;
                 if (preset) {
                     // `card`, not `i`: the argv walk this is nested inside owns
@@ -471,6 +477,27 @@ std::optional<CliPlan> parseCli(int argc, char* argv[], bool& cleanExitOut)
         }
         if (arg == "--fullscreen") {
             plan.fullscreen = true;
+            continue;
+        }
+        if (arg == "--preset-dir") {
+            if (!needArg(i, "--preset-dir")) return std::nullopt;
+            plan.presetDirectory = std::string(argv[++i]);
+            continue;
+        }
+        if (arg == "--preset-file") {
+            if (!needArg(i, "--preset-file")) return std::nullopt;
+            plan.presetFilePath = argv[++i];
+            continue;
+        }
+        if (arg == "--cmd-port") {
+            if (!needArg(i, "--cmd-port")) return std::nullopt;
+            int port = 0;
+            if (!parseIntPositive(argv[++i], port) || port < 1 || port > 65535) {
+                logAndFail("--cmd-port expects a TCP port 1-65535");
+                return std::nullopt;
+            }
+            plan.commandPort = port;
+            plan.headless = true;   // the control channel is a headless-only rig
             continue;
         }
         if (arg == "--telemetry-port") {

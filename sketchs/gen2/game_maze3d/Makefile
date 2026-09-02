@@ -12,8 +12,13 @@ PROJECT  := HGR_Maze3D
 OUT_DIR  := ../../../software/Graphic HGR
 LIB      := -I ../../../dev/lib/apple1 -I ../../../dev/lib/gen2
 CFG      := apple1_maze3d_hgr.cfg
-SPRITES  := ../../../dev/lib/tms9918/sprites_trollkind.asm \
-            ../../../dev/lib/tms9918/sprites_characters.asm
+# EXTRA_ASM is the ONE place the modules this sketch assembles are named,
+# and it is written with LITERAL relative paths on purpose: the POM1
+# DevBench reads it without expanding `$(VAR)`, so a bespoke variable
+# here would build one binary under `make` and another in the Bench.
+# Pinned by ctest sketch_manifests_sync.
+EXTRA_ASM := ../../../dev/lib/tms9918/sprites_trollkind.asm ../../../dev/lib/tms9918/sprites_characters.asm
+SPRITES  := $(EXTRA_ASM)
 
 # OUT_DIR_T — space-escaped form for make target/prerequisite positions.
 include ../../../dev/cc65/space.mk

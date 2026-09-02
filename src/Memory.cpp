@@ -27,6 +27,7 @@
 #include <cmath>
 
 #include "Memory.h"
+#include "CardShadowing.h"
 #include "CardTopology.h"
 #include "MemoryImageLoader.h"
 #include "FileBytes.h"
@@ -1334,6 +1335,45 @@ int Memory::loadExtendedAciRom(void)
     return 0;
 }
 
+namespace {
+
+/// Log every plugged card whose bus window sits inside what was just loaded.
+/// Called from BOTH loaders, so the GUI, `--load` and the control channel's
+/// `load` verb get it from one place. It only REPORTS — CardShadowing.h says
+/// why it must not unplug anything, and where the candidates come from.
+void warnIfCardsShadow(const Memory& mem,
+                       const pom1::shadowing::Zone* zones, size_t zoneCount)
+{
+    if (zoneCount == 0) return;
+    pom1::shadowing::Candidate cands[32];
+    std::string_view labels[32];
+    size_t n = 0;
+    for (const Memory::CardSlot& slot : Memory::cardSlots()) {
+        if (n >= 32 || slot.descriptor.id == pom1::CardId::Invalid) continue;
+        if (!slot.isEnabled || !slot.isEnabled(mem)) continue;
+        labels[n] = slot.descriptor.uiLabel;
+        cands[n++] = {slot.descriptor.id, slot.descriptor.capabilities,
+                      slot.descriptor.ranges.data(), slot.descriptor.rangeCount};
+    }
+    pom1::shadowing::Shadow found[8];
+    const size_t total = pom1::shadowing::findShadows(zones, zoneCount, cands, n, found, 8);
+    for (size_t i = 0; i < (total < 8 ? total : 8); ++i) {
+        // Name the card as the Hardware menu does, so the entry to untick is
+        // the one the message names.
+        std::string_view label = "A plugged card";
+        for (size_t k = 0; k < n; ++k)
+            if (cands[k].card == found[i].card) { label = labels[k]; break; }
+        std::ostringstream oss;
+        oss << label << " answers at $" << std::hex << std::uppercase << std::setfill('0')
+            << std::setw(4) << found[i].first << "-$" << std::setw(4) << found[i].last
+            << ", inside the program just loaded - those bytes are the card, not your "
+               "code. Unplug it (Hardware menu, or --disable) if the program misbehaves.";
+        pom1::log().warn("Mem", oss.str());
+    }
+}
+
+} // namespace
+
 int Memory::loadBinary(const char* filename, uint16_t startAddress, int* bytesLoaded)
 {
     if (bytesLoaded) *bytesLoaded = 0;
@@ -1375,6 +1415,12 @@ int Memory::loadBinary(const char* filename, uint16_t startAddress, int* bytesLo
     }
     markPagesDirty(startAddress, fileContent.size());
     if (bytesLoaded) *bytesLoaded = static_cast<int>(fileContent.size());
+    if (!fileContent.empty()) {
+        const pom1::shadowing::Zone zone{
+            startAddress,
+            static_cast<uint16_t>(startAddress + fileContent.size() - 1)};
+        warnIfCardsShadow(*this, &zone, 1);
+    }
     {
         std::ostringstream oss;
         oss << "Binary loaded: " << std::filesystem::path(filename).filename().string()
@@ -1435,7 +1481,14 @@ int Memory::loadHexDump(const char* filename, uint16_t &startAddress, int* bytes
     }
     startAddress = image.startAddress;
     if (bytesLoaded) *bytesLoaded = image.byteCount;
-    if (zones) *zones = image.zones();
+    const std::vector<std::pair<uint16_t,uint16_t>> imageZones = image.zones();
+    if (zones) *zones = imageZones;
+    {
+        std::vector<pom1::shadowing::Zone> shadowZones;
+        shadowZones.reserve(imageZones.size());
+        for (const auto& z : imageZones) shadowZones.push_back({z.first, z.second});
+        warnIfCardsShadow(*this, shadowZones.data(), shadowZones.size());
+    }
     // Hex dumps scatter writes across arbitrary pages; the precise set isn't
     // worth tracking here, so fall back to "everything might have changed".
     // Loading a dump is a user action (rare), not a hot path.

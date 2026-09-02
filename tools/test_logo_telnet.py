@@ -1,248 +1,145 @@
 #!/usr/bin/env python3
-"""
-test_logo_telnet.py -- Smoke test for the P-LAB LOGO interpreter.
+"""test_logo_telnet.py -- Smoke test for the P-LAB LOGO V2.6 interpreter.
 
-Auto-launches POM1 with preset 9 (P-LAB Apple-1 with TMS9918 + CodeTank),
-the Terminal Card on localhost:6502, and the LOGO binary pre-loaded at
-$0280 with reset vector pointing at $0280.
+Boots a headless POM1 on preset 9 (P-LAB Apple-1 with TMS9918 + CodeTank) with
+the BASIC_LOGO cartridge in the lower jumper, starts it with `4000R`, and drives
+the turtle over the scripting control channel.
 
 Verifies:
-  - LOGO banner "P-LAB LOGO V1" appears.
-  - "? " prompt after each command.
-  - TR / FD / REPEAT do not emit "?" (parser error).
-  - BYE returns to Woz Monitor (next prompt is Woz "\\").
+  - the banner "APPLE-1 LOGO V2.6" appears and the "? " prompt follows;
+  - TR / FD / REPEAT / PU / PD are accepted (each answers OK);
+  - an unknown word raises "UNK CMD";
+  - BYE returns to a live Woz Monitor (it answers a memory dump);
+  - the standalone image under software/ runs the same words on its own machine.
 
-POM1 must be built first (cd build && make).
+WHICH LOGO THIS DRIVES
+    Both shipped copies, on the two machines each needs:
 
-Run from repo root:
-  python3 tools/test_logo_telnet.py [--verbose]
+      * the BASIC_LOGO cartridge (preset 9), which CLAUDE.md names as the home
+        of LOGO V2.6 (`-D CODETANK_BUILD`) and which
+        tools/verify_codetank_roms.py gates before any EPROM burn;
+      * the standalone image under software/Graphic TMS9918/, on preset 10 with
+        two cards unplugged (phase 8).
+
+    It used to load `build/TMS_Logo.bin`, built by
+    `software/tms9918/emit_TMS_Logo_txt.py` — neither has existed since the
+    juillet-2026 software/ reorganisation, so the test could not have run even
+    by hand.
+
+    Two things about the standalone image, both found by running it and both
+    the reason phase 8 spells its machine out:
+
+      * it spans $0280-$2D00, so it needs more than the 8 KB that presets 9 and
+        1 give (preset 1 mirrors preset 9 exactly, pinned by
+        preset_ram_profiles_smoke) — on those it prints its banner and runs to
+        PC=$0000;
+      * on preset 10, which has the room, the A1-IO RTC's 65C22 sits at
+        $2000-$200F — INSIDE the program. Rotation words still work; the first
+        drawing word (FD 30) runs to PC=$0000. That is not a defect in the
+        image, it is Parmigiani's one-board rule showing through the
+        Multiplexing Fantasy preset, and `--disable a1io` is the whole fix.
+        Worth knowing because a GUI user meets it too: the auto-plug rule for
+        software/Graphic TMS9918/ evicts storage cards, not the RTC.
+
+The name still says "telnet" because that is what it used to be: it drove the
+Terminal Card on a hardcoded port 6502 and slept between commands. It now runs
+headless over the control channel (tools/pom1_control.py, src/CommandPort.h) on
+a free port, launching and reaping its own emulator, which is what let it into
+ctest as `logo_interpreter`.
+
+Run from anywhere: python3 tools/test_logo_telnet.py [-v]
 """
 from __future__ import annotations
 
-import argparse
-import os
-import select
-import signal
-import socket
-import subprocess
 import sys
-import time
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-LOGO_BIN = REPO_ROOT / "build" / "TMS_Logo.bin"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pom1_control import Checks, Pom1, Pom1Error, REPO_ROOT, skip  # noqa: E402
 
-HOST = "127.0.0.1"
-PORT = 6502
-VERBOSE = False
+LOGO_ROM = REPO_ROOT / "roms" / "codetank" / "Codetank_BASIC_LOGO.rom"
+LOGO_DUMP = REPO_ROOT / "software" / "Graphic TMS9918" / "TMS_Logo_16k.txt"
+VERBOSE = "-v" in sys.argv or "--verbose" in sys.argv
 
-
-def ensure_binaries() -> Path:
-    pom = REPO_ROOT / "build" / "POM1"
-    if not pom.is_file():
-        sys.exit(f"ERROR: {pom} not found - build POM1 first (cd build && make)")
-    if not LOGO_BIN.is_file():
-        sys.exit(
-            f"ERROR: {LOGO_BIN} not found - run python3 software/tms9918/emit_TMS_Logo_txt.py first"
-        )
-    return pom
-
-
-def launch_pom1(log_path: str):
-    exe = ensure_binaries()
-    log = open(log_path, "w")
-    proc = subprocess.Popen(
-        [
-            str(exe),
-            "--preset", "9",
-            "--terminal",
-            "--cpu-max",
-            "--load", f"0280:{LOGO_BIN}",
-        ],
-        stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
-    )
-    time.sleep(3.5)
-    if proc.poll() is not None:
-        sys.exit(f"ERROR: POM1 exited early (code {proc.returncode}); see {log_path}")
-    return proc, log
-
-
-def teardown_pom1(proc, log) -> None:
-    try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-        proc.wait(timeout=5)
-    except Exception:
-        try:
-            proc.kill()
-        except Exception:
-            pass
-    log.close()
-
-
-def recv_avail(sock: socket.socket, total: float = 4.0, idle: float = 0.3) -> str:
-    end = time.time() + total
-    buf = b""
-    while time.time() < end:
-        r, _, _ = select.select([sock], [], [], idle)
-        if r:
-            chunk = sock.recv(65536)
-            if not chunk:
-                break
-            buf += chunk
-        elif buf:
-            break
-    return buf.decode("latin-1", errors="replace")
-
-
-def drain_to_prompt(sock: socket.socket, prompt: str, timeout: float = 6.0) -> str:
-    """Read until the last non-whitespace char is `prompt`, or timeout."""
-    end = time.time() + timeout
-    buf = ""
-    while time.time() < end:
-        chunk = recv_avail(sock, total=1.0, idle=0.25)
-        if chunk:
-            buf += chunk
-        if buf.rstrip().endswith(prompt):
-            return buf
-    return buf
-
-
-def send(sock: socket.socket, payload: str) -> None:
-    if VERBOSE:
-        print(f"  >>> {payload!r}")
-    sock.sendall(payload.encode("ascii"))
-
-
-def vprint(label: str, output: str) -> None:
-    if VERBOSE:
-        print(f"  [{label}] {output[-400:]!r}")
-
-
-class Results:
-    def __init__(self) -> None:
-        self.passed = 0
-        self.failed: list[tuple[str, str]] = []
-
-    def expect(self, name: str, output: str, needle: str) -> bool:
-        if needle.upper() in output.upper():
-            self.passed += 1
-            print(f"  [PASS] {name}")
-            return True
-        self.failed.append((name, f"missing '{needle}'"))
-        print(f"  [FAIL] {name} -- expected '{needle}'")
-        if not VERBOSE:
-            print(f"         tail: {output[-300:]!r}")
-        return False
-
-    def reject(self, name: str, output: str, needle: str) -> bool:
-        if needle not in output:
-            self.passed += 1
-            print(f"  [PASS] {name}")
-            return True
-        self.failed.append((name, f"unexpected '{needle}'"))
-        print(f"  [FAIL] {name} -- got '{needle}'")
-        if not VERBOSE:
-            print(f"         tail: {output[-300:]!r}")
-        return False
-
-    def report(self) -> int:
-        total = self.passed + len(self.failed)
-        print()
-        print("=" * 50)
-        print(f"Results: {self.passed}/{total} PASSED")
-        if self.failed:
-            for name, why in self.failed:
-                print(f"  - {name}: {why}")
-            return 1
-        print("All tests passed!")
-        return 0
+PROMPT = "? "
 
 
 def main() -> int:
-    global VERBOSE
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--verbose", action="store_true")
-    args = parser.parse_args()
-    VERBOSE = args.verbose
+    if not LOGO_ROM.is_file():
+        skip(f"{LOGO_ROM} not found — rebuild with tools/build_codetank_rom.py")
 
-    print("=" * 50)
-    print("P-LAB LOGO -- Turtle interpreter telnet smoke test")
-    print("=" * 50)
+    c = Checks("P-LAB LOGO V2.6 -- turtle interpreter smoke")
 
-    log_path = "/tmp/pom1_logo_test.log"
-    proc, log = launch_pom1(log_path)
+    with Pom1(preset=9, verbose=VERBOSE,
+              extra_args=["--codetank-rom", str(LOGO_ROM),
+                          "--codetank-jumper", "lower"]) as m:
+        # --- 1: the interpreter comes up ---
+        m.monitor()
+        out = m.command("4000R", expect=PROMPT, timeout_ms=10000)
+        c.contains("1.1 banner LOGO V2.6", out, "APPLE-1 LOGO V2.6")
+        c.contains("1.2 first prompt", out, PROMPT)
 
-    results = Results()
-    try:
-        try:
-            sock = socket.create_connection((HOST, PORT), timeout=5)
-        except (ConnectionRefusedError, OSError) as e:
-            print(f"ERROR: cannot connect to {HOST}:{PORT}: {e}")
-            return 1
-        sock.settimeout(10)
+        # Every word anchors on the prompt that follows it, so the captured text
+        # is exactly that word's reply — an error, when it comes, is inside this
+        # window and nowhere else. That is what replaced the sleeps.
+        def word(name, line, *, timeout_ms=10000):
+            out = m.command(line, expect=PROMPT, timeout_ms=timeout_ms)
+            c.contains(name, out, "OK")
+            return out
 
-        # --- 1: banner appears ---
-        time.sleep(1.0)
-        out = recv_avail(sock, total=3.0, idle=0.4)
-        vprint("boot", out)
-        results.expect("1.1 banner LOGO V1", out, "P-LAB LOGO V1")
-        results.expect("1.2 first prompt", out, "? ")
+        word("2.1 TR 90 accepted",         "TR 90")
+        word("3.1 FD 30 accepted",         "FD 30")
+        word("4.1 REPEAT square accepted", "REPEAT 4 [FD 50 TR 90]", timeout_ms=20000)
+        word("5.1 PU accepted",            "PU")
+        word("5.2 PD accepted",            "PD")
 
-        # --- 2: TR 90 (no draw, just rotation) ---
-        send(sock, "TR 90\r")
-        out = drain_to_prompt(sock, "? ", timeout=4.0)
-        vprint("TR 90", out)
-        results.reject("2.1 TR 90 no error", out, "?\r")
-        results.expect("2.2 prompt back after TR", out, "? ")
+        # --- 6: an unknown word must be refused, not silently accepted ---
+        # Anchored on the message, NOT on the prompt: LOGO prefixes its error
+        # with "? " ("ZZZZ 1\r? UNK CMD\r? "), so a prompt anchor matches that
+        # prefix and stops one word short of the very thing being asserted.
+        # Re-sync on the real prompt afterwards so step 7 starts clean.
+        out = m.command("ZZZZ 1", expect="UNK CMD", timeout_ms=8000)
+        c.contains("6.1 unknown word -> UNK CMD", out, "UNK CMD")
+        m.expect(PROMPT, timeout_ms=4000)
 
-        # --- 3: FD 30 (forward) ---
-        send(sock, "FD 30\r")
-        out = drain_to_prompt(sock, "? ", timeout=4.0)
-        vprint("FD 30", out)
-        results.reject("3.1 FD 30 no error", out, "?\r")
+        # --- 7: BYE hands control back to the Monitor ---
+        # Asserted by the Monitor ANSWERING, not by a "\" prompt: the original
+        # harness waited for a backslash, but the Apple-1 only echoes one on the
+        # Monitor's escape/error path — BYE jumps straight into GETLINE
+        # ($FF2C), which prints nothing at all. A machine that answers a memory
+        # dump is the stronger claim anyway.
+        m.command("BYE")
+        out = m.command("FF00.FF03", expect="FF00: D8 58", timeout_ms=8000)
+        c.contains("7.1 BYE returns to a live Woz Monitor", out, "FF00: D8 58")
 
-        # --- 4: REPEAT 4 [FD 50 TR 90] (square) ---
-        send(sock, "REPEAT 4 [FD 50 TR 90]\r")
-        out = drain_to_prompt(sock, "? ", timeout=8.0)
-        vprint("square", out)
-        results.reject("4.1 REPEAT square no error", out, "?\r")
-        results.expect("4.2 prompt back after square", out, "? ")
+    # --- Phase 8: the standalone image under software/ ---
+    # A different machine, so a second instance. Preset 10 is the only shipped
+    # TMS9918 profile with room for a $0280-$2D00 program; CodeTank comes off
+    # because its cart would autostart its own menu over this, and the A1-IO RTC
+    # because its VIA occupies $2000-$200F, inside the program.
+    if not LOGO_DUMP.is_file():
+        print(f"\nPhase 8: skipped — {LOGO_DUMP} not found")
+        return c.summary()
 
-        # --- 5: PU + FD 10 + PD (pen flag round-trip) ---
-        send(sock, "PU\r")
-        out = drain_to_prompt(sock, "? ", timeout=3.0)
-        vprint("PU", out)
-        results.reject("5.1 PU no error", out, "?\r")
-        send(sock, "PD\r")
-        out = drain_to_prompt(sock, "? ", timeout=3.0)
-        vprint("PD", out)
-        results.reject("5.2 PD no error", out, "?\r")
+    print("\nPhase 8: the standalone image on preset 10")
+    with Pom1(preset=10, disable=["codetank", "a1io"], verbose=VERBOSE,
+              extra_args=["--load", f"0280:{LOGO_DUMP}"]) as m:
+        out = m.expect(PROMPT, timeout_ms=15000)
+        c.contains("8.1 standalone banner LOGO V2.6", out, "APPLE-1 LOGO V2.6")
+        c.excludes("8.2 rotation accepted",
+                   m.command("TR 90", expect=PROMPT, timeout_ms=10000), "?\r")
+        # The word that fails when the RTC shadows the program.
+        c.excludes("8.3 drawing accepted",
+                   m.command("FD 30", expect=PROMPT, timeout_ms=10000), "?\r")
+        c.ok("8.4 the interpreter is still running, not at $0000",
+             m.pc() >= 0x0280, f"pc=${m.pc():04X}")
 
-        # --- 6: bogus command -> '?' error ---
-        send(sock, "ZZZZ 1\r")
-        out = drain_to_prompt(sock, "? ", timeout=3.0)
-        vprint("ZZZZ", out)
-        results.expect("6.1 unknown -> '?'", out, "?\r")
-
-        # --- 7: BYE -> Woz Monitor '\' prompt ---
-        send(sock, "BYE\r")
-        out = drain_to_prompt(sock, "\\", timeout=4.0)
-        vprint("BYE", out)
-        results.expect("7.1 BYE returns to Woz '\\'", out, "\\")
-
-    except Exception as e:
-        print(f"ERROR: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        try:
-            sock.close()
-        except Exception:
-            pass
-        teardown_pom1(proc, log)
-
-    return results.report()
+    return c.summary()
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Pom1Error as e:
+        print(f"\nHARNESS ERROR: {e}")
+        sys.exit(1)

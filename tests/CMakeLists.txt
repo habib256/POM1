@@ -1415,6 +1415,29 @@ target_include_directories(test_sprite_asm_export PRIVATE
 add_test(NAME sprite_asm_export_smoke COMMAND test_sprite_asm_export)
 set_tests_properties(sprite_asm_export_smoke PROPERTIES TIMEOUT 5)
 
+# sprite_catalogues_smoke -- the 32 SHIPPED catalogues, read with the real
+# parser. sprite_asm_export_smoke pins the GRAMMAR against a hand-written
+# fixture; nothing read the FILES. They are a data format with three parties --
+# ca65 .include's them, both sprite editors parse them, and
+# tools/build_hgr_sprites.py generates the HGR half from the TMS half -- and the
+# two readers fail differently: ca65 stops and says so, the C++ parser silently
+# DROPS what it cannot read. Section 4 pins the generator's contract without
+# running it: each HGR catalogue must still name the same sprites, in the same
+# order, as its TMS master.
+#
+# devtools: its subject is the sprite editors' Dev library (src/{hgr,tms}sprite).
+add_executable(test_sprite_catalogues
+    sprite_catalogues_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/hgrsprite/HgrSpriteAsmExport.cpp
+    ${CMAKE_SOURCE_DIR}/src/tmssprite/TmsSpriteAsmExport.cpp
+)
+target_include_directories(test_sprite_catalogues PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/hgrsprite
+    ${CMAKE_SOURCE_DIR}/src/tmssprite)
+add_test(NAME sprite_catalogues_smoke
+         COMMAND test_sprite_catalogues "${CMAKE_SOURCE_DIR}")
+set_tests_properties(sprite_catalogues_smoke PROPERTIES TIMEOUT 20)
+
 # -- Beeper SFX data-layer smoke test -----------------------------------------
 # Pins the 1-bit beeper SFX model + SfxModel<->ca65 round-trip (formatSfxAsm /
 # parseSfxAsm) in exactly the dev/lib/beep table format beep_sfx.asm plays.
@@ -2065,6 +2088,58 @@ if(Python3_FOUND)
     set_tests_properties(bbs_autodial PROPERTIES
                          TIMEOUT 120 SKIP_RETURN_CODE 77)
 
+    # ── preset_file_boot — a machine POM1 does not ship, booted ──────────────
+    # The end-to-end half of the external preset format: preset_file_smoke
+    # proves the parser turns text into the right MachineConfig, this proves the
+    # emulator then BOOTS it and that a bad description boots nothing at all.
+    # Also the first test where both halves of TODO.md's "d'application à
+    # plateforme" meet — the machine is DEFINED from outside (--preset-file) and
+    # DRIVEN from outside (--cmd-port).
+    add_test(NAME preset_file_boot
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/test_preset_file_boot.py"
+                     --pom1 "$<TARGET_FILE:pom1_imgui>"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(preset_file_boot PROPERTIES
+                         TIMEOUT 240 SKIP_RETURN_CODE 77 RUN_SERIAL TRUE)
+
+    # ── The seven card harnesses, over the scripting control channel ─────────
+    # These were `tools/test_*_telnet.py`: good tests — the SD CARD OS command
+    # set, the IEC bus, the Juke-Box Program Manager, CFFA1, LOGO, the ACI tape
+    # round-trip — that never ran. Each hardcoded the Terminal Card's port 6502
+    # (so they fought any POM1 the developer had open, and each other), none
+    # passed --headless, three expected the operator to have launched POM1 by
+    # hand, and between them they carried forty time.sleep() calls standing in
+    # for "has the machine got there yet?". `--cmd-port` (src/CommandPort.h)
+    # closes all four: a free port per run, a connection that IS the readiness
+    # handshake, and `expect` blocking on the emulated display.
+    #
+    # emulator lane, deliberately: their subject is card firmware on the
+    # emulated machine. None compiles a devtools source and none drives cc65.
+    #
+    # Each skips with 77 when its fixture is absent (the .d64, the CodeTank
+    # ROM, the ProDOS image, the Juke-Box ROM, the cassette).
+    foreach(harness_spec
+            "iec_daughterboard;test_iec_telnet.py;120"
+            "logo_interpreter;test_logo_telnet.py;120"
+            "sdcard_subdir_navigation;test_sdcard_subdir_navigation_telnet.py;120"
+            "cffa1_compactflash;test_cffa1_telnet.py;180"
+            "aci_cassette_roundtrip;test_aci_telnet.py;300"
+            "jukebox_program_manager;test_jukebox_telnet.py;240"
+            "sdcard_os_commands;test_sdcard_os_telnet.py;300")
+        list(GET harness_spec 0 harness_name)
+        list(GET harness_spec 1 harness_script)
+        list(GET harness_spec 2 harness_timeout)
+        add_test(NAME ${harness_name}
+                 COMMAND ${Python3_EXECUTABLE}
+                         "${CMAKE_SOURCE_DIR}/tools/${harness_script}"
+                         --pom1 "$<TARGET_FILE:pom1_imgui>"
+                 WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+        set_tests_properties(${harness_name} PROPERTIES
+                             TIMEOUT ${harness_timeout} SKIP_RETURN_CODE 77
+                             RUN_SERIAL TRUE)
+    endforeach()
+
     # ── size_report_smoke — tools/size_report.py + the DevBench archive link ──
     # Devtools: its subject is the DevBench link model, so an emulator-only
     # build does not declare it (see the POM1_DEVTOOLS blocks above).
@@ -2638,6 +2713,133 @@ target_include_directories(test_staged_card_configuration PRIVATE ${CMAKE_SOURCE
 add_test(NAME staged_card_configuration_smoke COMMAND test_staged_card_configuration)
 set_tests_properties(staged_card_configuration_smoke PROPERTIES TIMEOUT 10)
 
+# rewind_seek_cost_smoke -- what a rewind seek must NOT do. Scrubbing the
+# timeline restores one snapshot per mouse-move, and every restore used to walk
+# all eighteen card rows calling each setter unconditionally -- which re-reads
+# ROM files from disk. Worse, FLAGS is written after MEM, so those reloads
+# landed on top of the memory the snapshot had just restored.
+add_executable(test_rewind_seek_cost
+    rewind_seek_cost_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController_State.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController_Machine.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController_Cards.cpp
+    ${CMAKE_SOURCE_DIR}/src/RewindBuffer.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotPublisher.cpp
+    ${CMAKE_SOURCE_DIR}/src/KeyboardController.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_rewind_seek_cost PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_rewind_seek_cost PRIVATE libresidfp_static)
+if(WIN32)
+    target_link_libraries(test_rewind_seek_cost PRIVATE ws2_32)
+endif()
+add_test(NAME rewind_seek_cost_smoke COMMAND test_rewind_seek_cost)
+set_tests_properties(rewind_seek_cost_smoke PROPERTIES
+                     TIMEOUT 120 SKIP_RETURN_CODE 77)
+
+# asm_backends_sync -- seventh guard of the family, and the second to police
+# dev/. LOGO runs on TWO cards from ONE source: sketchs/tms9918/tool_logo is
+# 5426 lines, sketchs/gen2/tool_logo_gen2 is THIRTY-ONE that define LOGO_GEN2
+# and .include it. What makes that work is a link-time backend --
+# dev/lib/tms9918/tms9918m2.asm and dev/lib/gen2/gen2_logom2.asm exporting the
+# same symbols -- the same arrangement dev/lib/gfx/ uses for the C runtimes.
+# Nothing but the link held that contract: add a routine to one side and forget
+# the other, and the failure is an `ld65: Unresolved external` in a build most
+# people never run.
+if(Python3_Interpreter_FOUND)
+    add_test(NAME asm_backends_sync
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/check_asm_backends.py"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(asm_backends_sync PROPERTIES TIMEOUT 60)
+endif()
+
+# sketch_manifests_sync -- sixth guard of the version_sync / imgui_pin_sync /
+# doc_paths_sync / cli_flags_sync / resource_probes_sync family, and the first
+# to police dev/ + sketchs/ rather than src/.
+#
+# A sketch could be described in .sketch.json, in a Makefile, in both, or in
+# neither, and which regime it was in could not be told without opening it:
+# measured before this guard, 36 / 5 / 10 / 6. That is not tidiness.
+# Pom1BenchCc65::probeAsmProject reads BOTH and reads the Makefile LITERALLY
+# (no $(VAR) expansion), so a sketch naming its config as `CFG :=` -- which the
+# probe does not read -- built one way under `make` and another in the DevBench,
+# from the same source. tool_diapo and tool_tmsload were doing exactly that.
+if(Python3_Interpreter_FOUND)
+    add_test(NAME sketch_manifests_sync
+             COMMAND ${Python3_EXECUTABLE}
+                     "${CMAKE_SOURCE_DIR}/tools/check_sketch_manifests.py"
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(sketch_manifests_sync PROPERTIES TIMEOUT 60)
+endif()
+
+# preset_registry_smoke -- the dynamic preset table. kMachinePresets[] used to
+# BE the table; external preset files made that too narrow, so it became a
+# registry (built-ins first, user machines appended). Pins that built-ins keep
+# their indices — ini/preset_NN.size is keyed by index — and that the two
+# assumptions the old table allowed are dead: "default = last", and asking
+# isFantasyPreset(presetIdFromIndex(i)) whether a machine multiplexes.
+add_executable(test_preset_registry
+    preset_registry_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/MachinePresets.cpp
+    ${CMAKE_SOURCE_DIR}/src/PresetFile.cpp
+    ${CMAKE_SOURCE_DIR}/src/CardTopology.cpp
+)
+target_include_directories(test_preset_registry PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME preset_registry_smoke COMMAND test_preset_registry)
+set_tests_properties(preset_registry_smoke PROPERTIES TIMEOUT 20)
+
+# preset_file_smoke -- the external machine-preset format. Asserts on the
+# RESULTING MACHINE, never on the parser's internals, which is what TODO.md
+# asked for. Links two files: the format and the topology policy it validates
+# against. That the format's card vocabulary IS `--enable`'s is asserted in
+# cli_dispatcher_smoke, where that parser is already linked.
+add_executable(test_preset_file
+    preset_file_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/PresetFile.cpp
+    ${CMAKE_SOURCE_DIR}/src/CardTopology.cpp
+)
+target_include_directories(test_preset_file PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME preset_file_smoke COMMAND test_preset_file)
+set_tests_properties(preset_file_smoke PROPERTIES TIMEOUT 20)
+
+# card_shadowing_smoke -- which card windows a load must be warned about.
+# Pure: links nothing. Its section 3 is the control that keeps the warning worth
+# reading -- a video card's window is a framebuffer, and loading a picture into
+# it is the point, not a collision.
+add_executable(test_card_shadowing card_shadowing_smoke_test.cpp)
+target_include_directories(test_card_shadowing PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME card_shadowing_smoke COMMAND test_card_shadowing)
+set_tests_properties(card_shadowing_smoke PROPERTIES TIMEOUT 10)
+
+# command_port_smoke -- the scripting control channel's verb layer, driven
+# directly with no socket in the binary. See tests/command_port_smoke_test.cpp
+# for why (a test that listened on a port would fight a running POM1, the exact
+# defect TerminalCard::setEnabled exists to fix). The seven telnet harnesses
+# registered further down exercise the same verbs end to end.
+add_executable(test_command_port
+    command_port_smoke_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/CommandPort.cpp
+    ${CMAKE_SOURCE_DIR}/src/CliDispatcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/MachinePresets.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController_State.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController_Machine.cpp
+    ${CMAKE_SOURCE_DIR}/src/EmulationController_Cards.cpp
+    ${CMAKE_SOURCE_DIR}/src/RewindBuffer.cpp
+    ${CMAKE_SOURCE_DIR}/src/SnapshotPublisher.cpp
+    ${CMAKE_SOURCE_DIR}/src/KeyboardController.cpp
+    ${POM1_TEST_CORE_SOURCES}
+)
+target_include_directories(test_command_port PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_command_port PRIVATE libresidfp_static)
+if(WIN32)
+    target_link_libraries(test_command_port PRIVATE ws2_32)
+endif()
+add_test(NAME command_port_smoke COMMAND test_command_port)
+set_tests_properties(command_port_smoke PROPERTIES TIMEOUT 60)
+
 # The Linux native file picker's WAIT. POM1 forks zenity/kdialog from the
 # render thread, so a blocking wait froze the window for the whole life of the
 # dialog and GNOME reported "POM1 is not responding". Pins that the wait pumps
@@ -2677,6 +2879,9 @@ set_tests_properties(wifi_modem_smoke PROPERTIES TIMEOUT 15)
 add_executable(test_cli_dispatcher
     cli_dispatcher_smoke_test.cpp
     ${CMAKE_SOURCE_DIR}/src/CliDispatcher.cpp
+    # The external preset format, so testPresetFileCardVocabulary() can hold its
+    # card names against this very parser rather than against a copy of them.
+    ${CMAKE_SOURCE_DIR}/src/PresetFile.cpp
     ${CMAKE_SOURCE_DIR}/src/MachinePresets.cpp
     ${CMAKE_SOURCE_DIR}/src/EmulationController.cpp
     ${CMAKE_SOURCE_DIR}/src/EmulationController_State.cpp

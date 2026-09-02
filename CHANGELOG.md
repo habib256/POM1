@@ -10,6 +10,428 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — la question assembleur est tranchée : il n'y a rien à factoriser
+
+Quatrième et dernier item du plan sur `dev/`, posé comme **une mesure, pas un
+chantier**. Résultat : **aucune routine n'est écrite deux fois** entre `gen2/` et
+`tms9918/`, et c'est encore une de mes affirmations qui tombe.
+
+J'avais écrit qu'« il n'existe pas d'équivalent assembleur à `gfx/` ».
+`dev/lib/gen2/gen2_logom2.asm` implémente **toute l'API Mode-2 du TMS9918** —
+`init_vdp_g2`, `vdp_set_write`, `line_xy`, `clear_bitmap`, `plot_set` — sur GEN2
+HGR, et le backend est choisi **par ld65**. C'est exactement l'arrangement de
+`gfx`, pour la même raison : la règle Parmigiani veut qu'un binaire ne parle
+jamais qu'à une carte, donc il n'y a rien à arbitrer à l'exécution.
+
+Les « doublons » que j'avais relevés — `bubble.asm` / `gen2_bubble.asm`,
+`text_bitmap.asm` / `gen2_text_bitmap.asm` — sont les deux côtés d'une interface,
+et chacun le dit dans son propre en-tête (*« Drop-in replacement … same public
+symbol »*). Ce qu'ils ne partagent pas est documenté sur place : HGR fait 280 px,
+donc un tracé pleine largeur demande un X sur neuf bits (`line_xy16`,
+`plot_set_x16`) là où les 256 du TMS tiennent sur huit.
+
+**La preuve tient en un chiffre.** LOGO fait **5 426 lignes** sous
+`sketchs/tms9918/tool_logo/` ; son édition GEN2 en fait **trente et une** — elle
+définit `LOGO_GEN2` et `.include` l'autre. Un programme, deux cartes.
+
+Une seule différence de fond subsiste avec `gfx`, et c'est un choix plutôt qu'une
+dette : **l'interface porte le vocabulaire de l'une des deux cartes** (le VDP du
+TMS9918), et GEN2 le parle, là où `gfx` invente des noms neutres. Ça ne coûte
+rien aujourd'hui et coûterait un renommage le jour où une troisième carte vidéo
+arrive.
+
+**`asm_backends_sync`** (`tools/check_asm_backends.py`) est le septième garde de
+la famille et le deuxième à surveiller `dev/`. Il tient le contrat sans rien
+compiler : les **21** symboles de backend que le source partagé importe doivent
+être exportés des **deux** côtés, et les **5** du seam 9 bits par le seul GEN2.
+Rien ne le tenait — ajouter une routine d'un côté et l'oublier de l'autre échoue
+en `ld65: Unresolved external`, dans une compilation que presque personne ne
+lance. Vérifié dans les deux sens : retirer `disable_sprites` de l'export GEN2 le
+fait rougir en nommant le symbole et la carte.
+
+La décision est écrite dans `dev/lib/README.md`, à l'endroit où quelqu'un
+arriverait pour « factoriser la duplication ».
+
+### Fixed — le même sprite s'appelait `rat` dans un éditeur et `_fauna_rat` dans l'autre
+
+Troisième item du plan sur `dev/`. Il partait d'une affirmation fausse de ma
+part — j'avais écrit que le format des catalogues de sprites n'avait « aucune
+description écrite, aucun test ». **`sprite_asm_export_smoke` l'épingle depuis le
+début** : aller-retour exportateur↔analyseur pour les quatre géométries,
+assainisseur de noms, et l'analyseur tenu contre une fixture de catalogue.
+
+Ce qui manquait n'était pas la grammaire mais son application aux **fichiers
+livrés** : rien ne lisait les 32 catalogues. Et c'est là que les lecteurs
+divergent dangereusement — ca65 s'arrête sur un fichier malformé et le dit,
+l'analyseur C++ **écarte en silence** ce qu'il ne reconnaît pas. Un sprite perdu
+sur une ligne `.byte` mal tapée devient un catalogue qui affiche 22 entrées là où
+son en-tête en annonce 23, sans que rien ne proteste.
+
+**`sprite_catalogues_smoke`** lit les 32 fichiers avec le vrai analyseur et
+exige : le nombre de sprites que chaque fichier annonce lui-même, la géométrie de
+sa famille (48 o en HGR, 32 en TMS), aucun nom vide ni dupliqué — et **le contrat
+du générateur**, sans le lancer : chaque catalogue HGR doit encore nommer les
+mêmes sprites, dans le même ordre, que le master TMS dont `tools/build_hgr_sprites.py`
+l'a tiré. Modifier un master et oublier de régénérer est la dérive que ça attrape,
+et elle est invisible autrement : les deux fichiers s'analysent très bien
+séparément.
+
+**Un défaut d'interface est tombé au passage.** Les masters TMS émettent deux
+étiquettes par sprite — `chess_king_pat:` et l'alias appelable depuis C
+`_chess_king_pat:`. L'analyseur consommait le commentaire de slot sur la
+première, donc la seconde se rabattait sur l'étiquette : le même sprite
+s'appelait `rat` dans la bibliothèque Dev de l'éditeur HGR et `_fauna_rat` dans
+celle de l'éditeur TMS. Des étiquettes consécutives sont désormais traitées comme
+des **alias** — reconnus par la convention cc65 exacte (la même étiquette avec un
+souligné initial, sans octet entre les deux), pas par un « la précédente n'avait
+pas d'octets » qui attrapait aussi l'étiquette de base ouvrant chaque fichier. Un
+nouveau commentaire de slot prime toujours.
+
+Une dérive de documentation corrigée : `sprites_emotes.asm` annonçait 12 sprites
+et en contient 14 — son jumeau généré annonçait bien 14.
+
+### Added — le premier micro-test d'un pilote périphérique, et les trois raisons qu'il n'y en avait aucun
+
+Deuxième item du plan sur `dev/`. Cinq bibliothèques pilotant du matériel —
+`a1io/`, `sd/`, `wifi/`, `gt6144/`, `text40/` — n'avaient aucun micro-test. En
+essayant d'en écrire un, la cause s'est révélée triple, et chaque couche devait
+tomber avant que la première ligne de test puisse tourner :
+
+1. **La liste d'includes du harnais était figée** et ne les contenait pas :
+   `ca65` ne trouvait même pas leur propre `.inc`. Elle reçoit désormais aussi le
+   répertoire de chaque module qu'un pilote nomme — un nouveau module ne demande
+   plus d'édition.
+2. **Un seul des deux modèles d'intégration était implémenté.** `dev/lib/README.md`
+   dit qu'un fichier arrive soit comme objet compilé séparément, soit par
+   `.include` textuel — et *tous* les pilotes périphériques sont du second type.
+   `.import` n'y trouve aucun export, et `LIBS:` en lierait une seconde copie. La
+   clé `INCLUDES:` est ce modèle manquant.
+3. **Un pilote ne pouvait utiliser que ce que son preset branchait.** `ENABLE:`
+   et `ARGS:` lèvent ça — et `ARGS: --rtc-freeze` est ce qui rend une horloge
+   assertable : une horloge qui avance n'a pas de valeur attendue.
+
+**`t16_a1io_rtc.s`** est le premier bénéficiaire. Il fige l'horloge au
+2026-09-02 14:37:51, lit les six registres date/heure par `a1io_read_reg` — la
+primitive unique dont dépend tout le jeu de registres — et affirme les six
+valeurs exactes ($0E $25 $33 $02 $09 $1A). Les registres sont **binaires**, pas
+BCD : une carte qui se mettrait à émettre du BCD y écrirait $14/$37/$51 et chaque
+octet bougerait. Les lectures sont faites **deux fois**, la seconde passe partant
+en milieu de cycle de diffusion, pour qu'un lecteur qui ne fonctionnerait qu'à la
+phase 0 échoue.
+
+Vérifié dans les deux sens : décaler l'instant figé d'une heure fait rougir le
+test en montrant `0f` où `0e` est attendu, et retirer `ENABLE: a1io` le fait
+rougir sur une boîte aux lettres entièrement vide.
+
+Une règle compagnon vient avec `INCLUDES:`, et `micro.cfg` la documentait déjà :
+le `main` d'un pilote doit être dans le segment **`ENTRY`**. Le code d'une
+bibliothèque incluse atterrit dans `CODE`, donc un `main` en `CODE` se retrouve
+derrière elle et `--run 0300` entre dans la bibliothèque au lieu du test.
+
+**Ce que ça laisse.** L'objectif du plan était dix pilotes ; il en arrive un,
+parce que le déblocage a coûté le gros du temps. Les suivants sont maintenant
+mécaniques pour les libs dont l'effet est observable en RAM — mais deux
+constatations sont à écrire plutôt qu'à contourner : `text40/`, `apple1/print*`
+et `gt6144/` n'écrivent que vers l'affichage ou vers un port sans relecture, donc
+la boîte aux lettres RAM ne peut rien en dire ; il leur faudrait un second
+observable, la capture d'écran headless. Et l'en-tête de `gt6144.asm` dit
+lui-même *« STATUS: not yet adopted — migrate them or retire it »* : ce module
+n'a aucun consommateur.
+
+### Fixed — un croquis, un manifeste : la DevBench et `make` construisaient parfois deux binaires
+
+Premier item du plan sur `dev/`. Un croquis pouvait être décrit dans
+`.sketch.json`, dans un `Makefile`, dans les deux, ou dans aucun — et savoir
+lequel demandait de l'ouvrir. Mesuré avant : **36 / 5 / 10 / 6** sur 57.
+
+Ce n'est pas une question de rangement. `Pom1BenchCc65::probeAsmProject` lit les
+**deux**, et lit le Makefile **littéralement** — `LOAD_CFG` et `EXTRA_ASM` sans
+expansion de `$(VAR)`. Conséquence trouvée en mesurant : `tool_diapo` et
+`tool_tmsload` déclarent leur configuration de lien sous `CFG :=`, que la sonde
+ne lit pas. Ils se construisaient donc avec `apple1_tmsutil.cfg` sous `make` et
+avec le `codetank.cfg` de la cible dans la DevBench — **deux binaires depuis la
+même source**.
+
+- **Les 57 croquis ont un `.sketch.json`.** Neuf ont été écrits. Les six qui
+  n'avaient aucun manifeste reçoivent `profile` + `language` sans `cfg` : ils
+  prennent la valeur par défaut de leur cible, comme avant — l'omission est
+  désormais une déclaration, pas un silence.
+- **`EXTRA_ASM` devient le vocabulaire unique.** Six Makefiles nommaient leurs
+  modules sous une variable maison (`PAD`, `SPRITES`, `ENGINE`) que la DevBench
+  ne sait pas lire. Ils déclarent maintenant `EXTRA_ASM` en chemins **littéraux**
+  et la recette en dérive (`$(notdir …)`, `vpath`), donc la liste existe une
+  seule fois. Les quatre binaires reconstruits sont **byte-identiques**.
+- **`sketch_manifests_sync`** (`tools/check_sketch_manifests.py`) est le sixième
+  garde de la famille `version_sync` / `imgui_pin_sync` / `doc_paths_sync` /
+  `cli_flags_sync` / `resource_probes_sync`, et le premier à surveiller `dev/` et
+  `sketchs/` plutôt que `src/`. Il exige un manifeste par croquis, vérifie que
+  chaque chemin nommé existe, et — là où un Makefile décrit aussi la
+  construction — que les deux nomment **les mêmes fichiers**. Vérifié dans les
+  deux sens : réintroduire l'ancienne `cfg` de `tool_diapo` le fait échouer en
+  nommant les deux valeurs.
+
+Une distinction que la mesure a imposée : un Makefile qui ne déclare **aucune**
+variable de build n'est pas un second manifeste, c'est un script. Celui de
+`a2port_buzzard_bait` ne fait que désassembler puis réassembler sa source pour
+prouver la fidélité du portage ; il ne décrit aucune construction dont on
+puisse désaccorder. Six croquis sont dans ce cas et le garde les compte à part
+plutôt que de leur réclamer une déclaration sans objet.
+
+**Deux dérives préexistantes sont remontées d'un simple rebuild**, et sont
+passées dans `TODO.md` plutôt que corrigées à l'aveugle : `sdcard/TMS/DIAPO#060300`
+livré fait 580 octets là où sa source en produit 600, et le `make verify` de
+`a2port_buzzard_bait` — la seule preuve que ce portage Apple II est fidèle —
+échoue à l'octet 1908.
+
+### Added — le coût d'un seek rewind, mesuré puis épinglé
+
+`TODO.md` portait *« éviter les reconfigurations au seek rewind — ne pas
+réappliquer cartes et ROM lorsque les flags sont inchangés »*. Le soupçon était
+raisonnable : scruter la frise restaure un snapshot par mouvement de souris, et
+chaque restauration finit par la section `FLAGS`, qui parcourt les dix-huit
+lignes de `Memory::cardSlots()` en appelant le setter de chaque carte — des
+setters dont le commentaire dit qu'ils « reconfigurent les gestionnaires de bus
+et les miroirs ROM de chaque carte ».
+
+**Mesuré, ce n'est pas le cas.** Un seek sur une topologie inchangée ne lit
+**aucune** ROM, et coûte **741 µs** — 4,4 % d'une trame à 60 Hz. La garde
+existait déjà, et à **cinq** endroits plutôt qu'un : dix des quinze setters
+sortent tôt sur un drapeau inchangé, `TerminalCard::setEnabled` fait son propre
+`exchange(on) == on` donc aucune socket n'est reliée, `setMicroSDEnabled` ne
+recharge que si `sdCardOsPresent()` dit la fenêtre vide, et les branches
+destructrices sont gardées par `snapshotRestoreInProgress`. L'item était périmé.
+
+Le test reste, parce que c'est précisément le genre d'invariant qui mérite d'en
+avoir un : il est tenu par cinq mécanismes répartis dans quatre fichiers et rien
+ne l'affirmait. Et il protège plus tranchant que le coût — **`FLAGS` est écrit
+après `MEM`**, donc tout ce qu'un setter fait à la mémoire pendant une
+restauration atterrit **par-dessus** les 64 Ko que le snapshot vient de remettre.
+Un futur setter qui viderait sa fenêtre sans consulter
+`snapshotRestoreInProgress` effacerait de la RAM restaurée, et seulement pendant
+un rewind : la pire sorte de défaut à trouver à la main.
+
+Quatre sections, dont deux contrôles : que les seeks ont réellement **bougé** la
+machine (sinon la première section passerait aussi si `rewindSeekTo` devenait un
+no-op), et qu'un seek qui **change** la topologie recâble bien la carte — sans
+disque, la ROM venant du `MEM` du snapshot.
+
+### Changed — la table de presets devient un registre
+
+`kMachinePresets[]` était **la** table : treize lignes, indices 0 à 12, et chaque
+consommateur indexait dedans. Les presets externes rendaient ça trop étroit.
+C'est maintenant un registre — les treize livrés d'abord, les machines de
+l'utilisateur ajoutées derrière — et `--preset`, `--list-presets`, le menu
+Hardware → Preset et la DevBench atteignent les deux sortes par **un seul**
+accesseur, `machinePresetAt(int)`.
+
+```
+$ POM1 --list-presets
+  ...
+  12: POM1 Apple-1 Multiplexing Fantasy (2026)   [cards=aci,sid,microsd,wifi,terminal,xaci]
+  13: TMS9918 + microSD (externe)                [cards=tms9918,microsd,codetank]
+```
+
+`src/PresetLoader.{h,cpp}` fait la découverte : la seule étape impure entre deux
+pures (`ResourceLocator` dit où chercher, `PresetFile` dit ce qu'un preset
+signifie). Elle **trie par nom de fichier**, parce que l'indice qu'obtient un
+preset est la clé sous laquelle sa disposition de fenêtres est rangée
+(`ini/preset_NN.size`, `ini/imgui_preset_NN.ini`) ; un fichier qui ne s'analyse
+pas n'occupe **aucun** indice, donc en ajouter un cassé ne renumérote pas les
+bons qui le suivent. `--preset-dir <chemin>` change le répertoire et
+`--preset-dir ""` n'en découvre aucun — c'est ainsi que `headless_preset_matrix`
+reste un test des machines livrées plutôt que de ce que le développeur garde
+dans son `presets/`.
+
+**Deux hypothèses sont mortes, toutes deux épinglées par `preset_registry_smoke`.**
+
+- *« défaut = dernier »* n'était vrai que tant que la table était le monde
+  entier : avec un preset externe enregistré, `count - 1` est un fichier
+  utilisateur. `kDefaultPresetId` nomme le défaut livré, et le seul site qui
+  reposait sur l'ancienne règle est corrigé. L'invariant qui comptait vraiment —
+  « le défaut est le dernier **intégré** » — tient toujours.
+- **`isFantasyPreset(presetIdFromIndex(i))` n'est plus la façon de demander si
+  une machine multiplexe.** Un preset externe n'a pas de `PresetId`, donc cette
+  composition répond *strict* en silence pour une machine dont le fichier dit
+  `mode = fantasy`. `machinePresetMode(int)` répond pour les deux sortes, et la
+  §5 du test affirme la mauvaise réponse **à côté** de la bonne pour que le piège
+  ne revienne pas inaperçu.
+
+**Sur l'ampleur, et sur une estimation que j'avais donnée deux fois pour décliner
+ce travail :** `kMachinePresets[` apparaît 57 fois, mais seulement **13** sont de
+vrais sites d'indexation et seulement **9** reçoivent un indice venu de
+l'utilisateur — le reste est déclarations, commentaires, tests, et recherches par
+constante nommée, prouvablement dans les bornes. Un décompte de mentions n'est
+pas un décompte de couplages, et l'écart valait ici la différence entre « grand
+refactor » et un après-midi. `mainwindow_lines` monte de 17071 à 17098 et
+`sources_outside_test_devices` de 88 à 89 ; les deux sont nommés dans `CLAUDE.md`.
+
+### Added — une machine décrite dans un fichier, et démarrée
+
+`--preset-file <chemin>` démarre une machine décrite hors du code, au lieu d'une
+ligne de `kMachinePresets[]`. Avec `--cmd-port`, la paire que `TODO.md` appelait
+« d'application à plateforme » est complète : POM1 se **pilote** de l'extérieur
+et se **configure** de l'extérieur, sans recompiler.
+
+```
+pom1-preset 1
+name = Ma machine
+cards = codetank, microsd
+ram = 32
+basic = applesoft-lite
+mode = fantasy
+```
+
+`src/PresetFile.h` est l'analyseur, **pur** : du texte entre, une machine et des
+diagnostics sortent — pas de système de fichiers, pas de `Memory`, pas de
+journal, même règle de seam que `MemoryImageLoader.h`. C'est ce qui permet à
+`preset_file_smoke` d'affirmer sur la **machine obtenue** et non sur le texte
+source, ce que demandait le TODO.
+
+**Il ne renumérote rien** : les treize indices, leurs `PresetId` et toutes leurs
+épingles sont intacts. (La table est devenue un registre dans l'entrée
+ci-dessus, écrite ensuite ; les presets externes y sont aussi adressables par
+indice.) Le drapeau est
+son propre chemin, et `ParsedPreset::toMachineConfig()` fait rejoindre aux deux
+sortes de preset la même route — `applyHeadlessConfig` s'est scindé en une forme
+qui lit la table et une qui applique une `MachineConfig`, plutôt que de recopier
+les vingt-cinq lignes qui construisent une `CardConfigurationRequest`.
+
+Quatre décisions valent d'être connues :
+
+- **Les noms de cartes sont exactement ceux de `--enable`**, alias compris, et
+  `cli_dispatcher_smoke` tient les deux tables l'une contre l'autre — deux
+  orthographes du même jeu de cartes est la dérive que ce projet attrape sans
+  cesse, et un format de fichier est le pire endroit où la découvrir.
+- **Les dépendances sont fermées avant validation** : `cards = codetank` obtient
+  `tms9918` et n'est pas ensuite rejeté pour un conflit qu'il n'a jamais écrit.
+- **Le mode est dans le fichier** (`mode = fantasy`), parce qu'un preset externe
+  n'a pas de `PresetId` d'où `isFantasyPreset()` tirerait sa réponse. Il gouverne
+  aussi les `--enable`/`--disable` empilés par-dessus.
+- **Une clé ou une carte inconnue est une ERREUR** qui refuse le preset entier, et
+  un fichier refusé ne démarre **rien** : se rabattre sur une machine par défaut
+  ferait tourner le programme de l'utilisateur sur du matériel qu'il n'a pas
+  décrit. `cards = tms9819` ne doit jamais démarrer une autre machine en silence.
+
+`preset_file_boot` fait la preuve de bout en bout — une machine que POM1 ne livre
+pas (TMS9918 + CodeTank + microSD, 32 Ko, Applesoft Lite) démarre, ses fenêtres
+de cartes répondent vraiment, et chacun des six refus sort en code non nul sans
+démarrer de machine. `mainwindow_lines` monte de 17056 à 17071 et
+`sources_outside_test_devices` de 87 à 88, les deux nommés dans `CLAUDE.md`.
+
+### Added — un chargement dit quelle carte répond à l'intérieur du programme
+
+Suite directe de la conversion LOGO ci-dessous. `TMS_Logo_16k.txt` couvre
+`$0280-$2D00` ; sur le preset « Multiplexing Fantasy » le 65C22 de l'A1-IO RTC
+répond à `$2000-$200F`, seize octets **au milieu du programme**. Les mots de
+rotation de LOGO passent, le premier mot qui trace part à `PC=$0000`. La machine
+a raison — c'est la règle Parmigiani, que ce preset casse exprès — mais rien ne
+le disait : le chargement annonçait un succès et le programme mourait plus tard,
+ailleurs.
+
+POM1 le dit maintenant. `src/CardShadowing.h` est la décision, pure (`card_shadowing_smoke`
+ne lie rien) ; `Memory::loadBinary` et `Memory::loadHexDump` l'appellent, donc le
+*Load Memory* de la GUI, `--load` et le verbe `load` du canal de contrôle
+partagent un seul avertissement. Les candidats viennent de `Memory::cardSlots()`,
+jamais d'une seconde table, et le message nomme la carte par son libellé de
+registre — celui de l'entrée à décocher dans le menu Hardware.
+
+**Il avertit, il n'évince pas, et c'est le cœur de la décision.** POM1 évince
+déjà des cartes avant un chargement graphique (`evictStorageCards`), et
+généraliser en « évince ce qui recouvre » serait le mauvais réflexe : sur une
+machine GEN2 le framebuffer **est** `$2000-$3FFF`, et y charger une image est
+tout l'intérêt de la carte. Une règle incapable de distinguer « cette carte
+masque mon code » de « cette carte est la destination de mes données » ne doit
+pas agir sur la différence. Le discriminant est `CardCapability::Video`, déjà
+présent dans le registre. Vérifié dans les deux sens : l'avertissement se
+déclenche sur le cas rapporté, et se tait quand la RTC est débranchée, quand une
+image HGR est chargée dans le framebuffer GEN2, et sur un programme ordinaire en
+RAM.
+
+`memory_lines` monte de 3988 à 4041 — le helper et ses deux points d'appel, un
+par chargeur. `memory_public_methods` ne bouge pas (190) : le gel porte sur la
+façade, et un helper de fichier qui parcourt un registre que `Memory` possède
+déjà n'en est pas.
+
+### Added — un canal de contrôle, et sept suites de tests qui sortent du placard
+
+`--cmd-port N` ouvre un **canal de scripting** sur `127.0.0.1:N` : une ligne de
+requête, une ligne de réponse (`OK …` / `ERR …`). Les verbes reprennent ceux de
+la ligne de commande — `load`, `run`, `step`, `break`, `snapshot-save` — plus
+ceux qu'un lancement unique ne peut pas exprimer : `key`, `expect`, `screen`,
+`peek`, `poke`, `reset`, `cycles`. Headless uniquement, réservé au
+développement, lié à la boucle locale seulement, sans versionnement : c'est de
+la plomberie de test, pas une API. Protocole → [`doc/COMMAND_PORT.md`](doc/COMMAND_PORT.md),
+implémentation → `src/CommandPort.{h,cpp}`, client Python →
+`tools/pom1_control.py`.
+
+**Ce que ça débloque, mesuré.** POM1 n'avait qu'une seule voie de pilotage à
+chaud : la socket telnet de la Terminal Card, qui transporte *sur le même fil*
+les frappes et l'écho `$D012`. Sept harnesses en vivaient — SD CARD OS, bus IEC,
+Program Manager du Juke-Box, CFFA1, LOGO, aller-retour cassette ACI — soit
+**2 977 lignes de Python écrites, déboguées, et jamais exécutées** : port 6502 en
+dur (donc en conflit avec tout POM1 ouvert par le développeur, et entre elles),
+aucune ne passait `--headless`, trois exigeaient qu'un humain ait lancé
+l'émulateur, et à elles toutes elles portaient **quarante `time.sleep()`** tenant
+lieu de « la machine y est-elle arrivée ? ». Les sept tournent maintenant dans
+`ctest -L emulator`, **en 48 s, pour 198 assertions**. `expect` bloque sur
+l'affichage émulé ; plus une seule attente à l'aveugle.
+
+**Ce que la conversion a trouvé.** Chaque harness cachait au moins un défaut, du
+sien ou de l'émulateur :
+
+- **`--tape` et `--save-tape` n'existaient pas en headless.** Consommés
+  uniquement sur le chemin GUI, ignorés en silence par `runHeadless` : un
+  `--headless --tape x` tournait platine vide, et un `--save-tape` enregistrait
+  une cassette entière avant de la jeter. Corrigé — préchargement avant les
+  verbes de phase C (comme le GUI), et flush sur **chacune** des trois sorties
+  headless.
+- **CFFA1 : mauvais point d'entrée.** Le firmware en a trois, qui ne diffèrent
+  que par la destination de QUIT — `$9000` moniteur, `$9003` BASIC, `$9006` code
+  utilisateur. Le harness entrait en `$9006` puis affirmait que QUIT revenait au
+  moniteur, c'est-à-dire la seule chose que cette entrée promet de ne pas faire ;
+  la machine finissait à `PC=$0000`. **Les cinq endroits qui conseillaient
+  `9006R` disent maintenant `9000R`** — `README.md`, les deux lignes de
+  l'inspecteur matériel, le tutoriel et le message de statut au branchement —
+  et les trois entrées sont expliquées là où il y a la place.
+- **Trois jeux d'attentes périmés.** Le catalogue Juke-Box (STARTREK est passé de
+  E à G, cinq programmes remplacés), l'image `cfcard.po` (volume `ULTIMATE.A1`,
+  plus `/CFFA1`), et la page 2 du Juke-Box, que le harness croyait miroir d'une
+  28c256 mono-page alors que la ROM livrée fait 256 Ko et seize vraies pages. Le
+  catalogue est désormais **analysé** au lieu d'être figé : ce qui est vérifié,
+  c'est la forme que le firmware promet, pas une liste régénérée à chaque build.
+- **LOGO pointait sur un fichier disparu** (`build/TMS_Logo.bin` et son
+  générateur, partis à la réorganisation de `software/` en juillet 2026) — le
+  test ne pouvait pas tourner, même à la main. Il pilote maintenant **les deux**
+  copies livrées : la cartouche BASIC_LOGO sur le preset 9, et l'image autonome
+  `TMS_Logo_16k.txt` sur le preset 10. Cette dernière a d'abord semblé cassée —
+  bannière puis `PC=$0000` au premier mot de tracé — et ne l'est pas : elle
+  couvre `$0280-$2D00` et le VIA de l'A1-IO RTC occupe `$2000-$200F`, en plein
+  milieu. La règle Parmigiani qui transparaît sur un preset « fantasy » ;
+  `--disable a1io` suffit, et la phase 8 du harness nomme la machine et la
+  raison.
+- **`BYE` ne rend pas d'anti-slash.** L'ancien test attendait l'invite `\` du
+  moniteur ; LOGO saute directement dans GETLINE (`$FF2C`), qui n'imprime rien.
+  L'assertion est maintenant que le moniteur *répond*, ce qui est plus fort.
+
+**Sur l'architecture.** `controller_public_methods` **ne bouge pas** (203) : tout
+le canal passe par des méthodes de façade qui avaient déjà un autre appelant, et
+les verbes fichiers réutilisent le vocabulaire du `CliDispatcher`. Deux plafonds
+montent, tous deux nommés dans `CLAUDE.md` : `sources_outside_test_devices`
+86 → 87 (`CommandPort.cpp`) et le fan-out de `EmulationController.h` 15 → 17 (le
+canal et son test). Pinné par `command_port_smoke`, qui pilote `execute()` sans
+socket — un test qui écouterait sur un port se battrait avec le POM1 du
+développeur, exactement le défaut que `TerminalCard::setEnabled` a corrigé.
+
+**Un piège de pile, pour mémoire.** `sizeof(EmulationSnapshot)` fait 260 Ko et un
+`std::thread` reçoit 512 Ko sur macOS ; le compilateur réserve la trame de
+*toutes* les branches de `execute()` à l'entrée, donc les quatre verbes qui
+voulaient un snapshot dépassaient la pile entière et la **première** requête
+venue — `ping` compris — mourait dans `___chkstk_darwin` sur SIGBUS, avant
+d'émettre un octet. Les snapshots sont sur le tas. `CLAUDE.md` documentait déjà
+ce piège et l'outil qui le trouve depuis une autre machine
+(`clang -Wframe-larger-than=32768`).
+
+
 ### Changed — le journal de commutateurs appartient enfin à la carte
 
 Dernier déplacement du chantier beam. Le journal par trame — l'enregistrement des

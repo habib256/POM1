@@ -1,5 +1,5 @@
 ; ============================================================================
-; sprites_emotes.asm  --  12 expression sprites (16x16, TMS9918 sprite mode)
+; sprites_emotes.asm  --  14 sprites (16x16, TMS9918 sprite mode)
 ; derived: dev/lib/gen2/sprites/sprites_emotes_hgr.asm -- after editing this master rerun:
 ;   python3 tools/build_hgr_sprites.py --only emotes
 ; ----------------------------------------------------------------------------

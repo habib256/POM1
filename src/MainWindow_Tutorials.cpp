@@ -862,7 +862,7 @@ void MainWindow_ImGui::renderTutorialCFFA1Window()
         tutStep(2, "Boot the firmware");
         ImGui::TextWrapped(
             "Wozmon prompt:");
-        tutCode("9006R");
+        tutCode("9000R");
         ImGui::TextWrapped(
             "CFFA1 firmware prints a menu: LOAD / SAVE / CAT / FORMAT.");
 

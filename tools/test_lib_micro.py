@@ -35,9 +35,16 @@ catches unpadded back-to-back access, not marginal 9-16c pacing.
 
 Driver header contract (comment lines, ';' for .s / '*' or '//' for .c):
     POM1-LIB-MICRO-TEST          required marker
-    LIBS:  path ...              lib sources, relative to dev/lib
-                                 (.s tests: assembled+linked; .c tests:
-                                 handed to cl65 with the driver)
+    LIBS:  path ...              MODEL B libs, relative to dev/lib: separately
+                                 compiled and linked (.c tests: handed to cl65
+                                 with the driver). The module must .export.
+    INCLUDES: path ...           MODEL A libs (dev/lib/README.md's other
+                                 integration model): the driver .include's them
+                                 textually, so they are NOT compiled separately
+                                 — this only puts their directory on ca65's -I.
+                                 Every peripheral driver (a1io, sd, wifi,
+                                 gt6144, text40) is model A, which is why none
+                                 of them had a micro-test before this key.
     CFG:   micro.cfg             linker cfg (relative to dev/lib/test/micro
                                  for .s, to dev/lib for .c)
     PRESET: 1                    --preset index (default 1)
@@ -49,6 +56,12 @@ Driver header contract (comment lines, ';' for .s / '*' or '//' for .c):
     LOAD/RUN: 0300               load/entry address (default 0300; gen2 .c: 6000)
     STEPS: 120000                --step budget (instructions; driver spins
                                  at the end, so bigger is merely slower)
+    ENABLE: a1io,rtc             extra cards to plug (--enable). Without this a
+                                 driver could only use what its preset happens
+                                 to carry, which is why every peripheral lib
+                                 (a1io, sd, wifi, gt6144) had no test at all.
+    ARGS:  --rtc-freeze "..."    verbatim extra flags. --rtc-freeze is why it
+                                 exists: a clock that ticks cannot be asserted.
     EXPECT: ADDR B0 B1 ...       hex bytes expected at ADDR (repeatable)
 
 Exit codes: 0 all green, 1 failures, 77 skip (cc65 missing).
@@ -64,6 +77,7 @@ a machine, the binary under test cannot.
 import argparse
 import os
 import re
+import shlex
 import shutil
 import struct
 import subprocess
@@ -80,6 +94,11 @@ POM1_BIN = None
 LIB_DIR = REPO / "dev" / "lib"
 
 # ca65 include path for the .s drivers (textual .include + macro packs).
+# Baseline include dirs. A driver also gets the directory of every module it
+# names in LIBS (see build_asm) — without that, this list WAS the reason
+# a1io/, sd/, wifi/, gt6144/ and text40/ had no micro-test: not that they were
+# untestable, but that ca65 could not find their own `.inc` from here, and the
+# list had to be hand-edited for each new module.
 ASM_INCLUDE_DIRS = [
     LIB_DIR / "apple1",
     LIB_DIR / "tms9918",
@@ -107,6 +126,9 @@ class TestSpec:
         self.load = 0x0300
         self.run = 0x0300
         self.steps = 200000
+        self.includes: list[str] = []
+        self.enable: list[str] = []
+        self.args: list[str] = []
         self.expects: list[tuple[int, bytes]] = []
         self.marker = False
         self._parse()
@@ -117,12 +139,24 @@ class TestSpec:
             line = re.sub(r"^[;/*\s]+", "", raw).strip()
             if line.startswith("POM1-LIB-MICRO-TEST"):
                 self.marker = True
-            m = re.match(r"(LIBS|CFG|PRESET|MODE|LOAD|RUN|STEPS|EXPECT):\s*(.*)", line)
+            m = re.match(r"(LIBS|INCLUDES|CFG|PRESET|MODE|LOAD|RUN|STEPS|EXPECT|ENABLE|ARGS):\s*(.*)", line)
             if not m:
                 continue
             key, val = m.group(1), m.group(2).strip()
             if key == "LIBS":
                 self.libs = val.split()
+            elif key == "INCLUDES":
+                # dev/lib's OTHER integration model. dev/lib/README.md is
+                # explicit that a file reaches a program in one of two ways —
+                # a separately-compiled object ld65 can dead-strip (LIBS), or a
+                # TEXTUAL .include with no separate compilation. This harness
+                # only ever implemented the first, so a model-A module could not
+                # be tested at all: `.import` finds no export, and putting it in
+                # LIBS links a second copy. That is why every model-A peripheral
+                # driver — a1io, sd, wifi, gt6144, text40 — had no micro-test.
+                # INCLUDES puts the module's directory on ca65's -I and leaves
+                # the driver to .include it, which is how a real program uses it.
+                self.includes = val.split()
             elif key == "CFG":
                 self.cfg = val
             elif key == "PRESET":
@@ -135,6 +169,16 @@ class TestSpec:
                 self.run = int(val, 16)
             elif key == "STEPS":
                 self.steps = int(val)
+            elif key == "ENABLE":
+                # Cards the driver needs that its preset does not plug. Without
+                # this every micro-test was confined to what preset 1 happens to
+                # carry, which is why the peripheral drivers (a1io, sd, wifi,
+                # gt6144) had no test at all — not because they are untestable.
+                self.enable = [c for c in re.split(r"[,\s]+", val) if c]
+            elif key == "ARGS":
+                # Verbatim extra flags. `--rtc-freeze` is the reason it exists:
+                # a clock that ticks cannot be asserted, and a frozen one can.
+                self.args = shlex.split(val)
             elif key == "EXPECT":
                 parts = val.split()
                 addr = int(parts[0], 16)
@@ -158,7 +202,15 @@ def run_cmd(cmd, cwd=None):
 def build_asm(spec: TestSpec, workdir: Path) -> Path:
     objs = []
     inc = []
-    for d in ASM_INCLUDE_DIRS:
+    dirs = list(ASM_INCLUDE_DIRS)
+    for lib in spec.libs + spec.includes:       # each module's own directory
+        d = (LIB_DIR / lib).parent
+        if d not in dirs:
+            dirs.append(d)
+    for inc_lib in spec.includes:               # model A: must exist, never linked
+        if not (LIB_DIR / inc_lib).exists():
+            raise RuntimeError(f"INCLUDES entry not found: {LIB_DIR / inc_lib}")
+    for d in dirs:
         inc += ["-I", str(d)]
     for i, lib in enumerate(spec.libs):
         src = LIB_DIR / lib
@@ -237,6 +289,9 @@ def run_pom1(spec: TestSpec, artefact: Path, workdir: Path):
     snap = workdir / "out.snap"
     png = workdir / "scratch.png"        # exit ticket only, never inspected
     cmd = [POM1_BIN, "--headless", "--preset", spec.preset, "--silicon-strict"]
+    if spec.enable:
+        cmd += ["--enable", ",".join(spec.enable)]
+    cmd += spec.args
     if spec.mode == "codetank":
         cmd += ["--codetank-rom", artefact, "--codetank-jumper", "lower",
                 "--run", "4000"]

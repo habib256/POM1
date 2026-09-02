@@ -29,6 +29,7 @@
 #include <cstdint>
 #include <string>
 
+#include "CardTopology.h"
 #include "CardTypes.h"
 #include "CodeTank.h"
 #include "JukeBox.h"
@@ -134,13 +135,72 @@ struct MachineConfig {
 extern const MachineConfig kMachinePresets[];
 extern const int kMachinePresetCount;
 
-/// Number of entries in kMachinePresets[]. Free-function form so the CLI can
-/// read the table without linking the UI; MainWindow_ImGui::getPresetCount()
-/// forwards here.
+// ── The preset REGISTRY ─────────────────────────────────────────────────────
+//
+// `kMachinePresets[]` is the thirteen machines POM1 ships, and it stays exactly
+// that: a `constexpr`-shaped table, indices 0-12, one `PresetId` each, parsed as
+// TEXT by preset_ram_profiles_smoke and indexed by name from
+// `kPresetCC65Bench` and friends. None of that moves.
+//
+// What the registry adds is EXTERNAL machines — preset files (src/PresetFile.h)
+// the user wrote — appended after the built-ins and addressable by index like
+// any other preset, so the Hardware menu, the profile chooser, `--preset` and
+// the DevBench all reach them through one accessor instead of two code paths.
+//
+// Three rules the rest of the codebase depends on:
+//
+//   * BUILT-INS KEEP THEIR INDICES. External presets start at
+//     `kMachinePresetCount` and never renumber a shipped one. `ini/preset_NN.size`
+//     and `ini/imgui_preset_NN.ini` are keyed by index, so a shipped profile's
+//     saved layout must not migrate onto a different machine because the user
+//     dropped a file in `presets/`.
+//   * "DEFAULT = LAST" IS DEAD, and `kDefaultPresetId` replaces it. It was true
+//     only while the table was the whole world; with one external preset
+//     registered, `count - 1` is a user's file rather than POM1 Fantasy. The one
+//     site that relied on it is fixed.
+//   * `presetIdFromIndex()` RETURNS `Invalid` FOR AN EXTERNAL INDEX, because an
+//     external preset has no stable identity — nothing may key behaviour off a
+//     `PresetId` it did not check. `machinePresetMode()` is what answers the one
+//     question `isFantasyPreset()` used to, for both kinds.
+//
+// Registration order IS index order. `PresetLoader` sorts by filename so a given
+// `presets/` directory always yields the same indices.
+
+/// Total presets addressable by index: the built-in table plus every registered
+/// external machine. Free-function form so the CLI can read it without linking
+/// the UI; MainWindow_ImGui::getPresetCount() forwards here.
 int machinePresetCount();
+
+/// The machine at `index`, built-in or external, or nullptr when out of range.
+/// THIS is what a caller holding a user-supplied index must use —
+/// `kMachinePresets[index]` is only safe for an index that came from a named
+/// constant.
+const MachineConfig* machinePresetAt(int index);
 
 /// Name of preset `index`, or nullptr when out of range.
 const char* machinePresetName(int index);
+
+/// True when `index` names a registered external machine rather than a table row.
+bool machinePresetIsExternal(int index);
+
+/// The bus mode preset `index` runs in. Built-ins answer from their `PresetId`;
+/// an external preset carries its own, because it has none. Every caller that
+/// used to ask `isFantasyPreset(presetIdFromIndex(i))` must ask this instead —
+/// that composition silently answers "strict" for an external index.
+TopologyMode machinePresetMode(int index);
+
+/// Append an external machine. `cfg`'s `name`, `description` and
+/// `codeTank.romPath` are COPIED into stable storage and rewired, so the caller
+/// may destroy its source. Returns the new index, or -1 when the registry is
+/// full (`kMaxExternalPresets`).
+int registerExternalPreset(const MachineConfig& cfg, TopologyMode mode);
+
+/// Drop every external machine. Built-ins are untouched.
+void clearExternalPresets();
+
+/// Bound on the registry. A menu is a list a human reads; past this the
+/// directory is not a preset collection but a mistake.
+inline constexpr int kMaxExternalPresets = 64;
 
 PresetId presetIdFromIndex(int index);
 const MachineConfig* machinePreset(PresetId id);

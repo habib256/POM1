@@ -16,6 +16,7 @@
 // asynchronous CPU between the jump and the first synchronous step.
 
 #include "CliDispatcher.h"
+#include "PresetFile.h"
 #include "EmulationController.h"
 #include "EmulationSnapshot.h"
 #include "MachinePresets.h"
@@ -418,11 +419,36 @@ void testPrintAndExitFlags()
     assert(!cleanExit);
 }
 
+// The external preset format (src/PresetFile.h) accepts card names, and they
+// must be `--enable`'s — including its aliases. Two spellings of the same card
+// set is the drift this project keeps catching, and a file format is the worst
+// place to discover it. Asserted HERE rather than in preset_file_smoke because
+// this is where the real CLI parser is already linked; that test stays pure.
+void testPresetFileCardVocabulary()
+{
+    for (std::string_view name : pom1::presetfile::knownCardNames()) {
+        bool cleanExit = false;
+        auto plan = parse({"--enable", std::string(name)}, &cleanExit);
+        assert(plan.has_value());
+        assert(plan->cardOverrides.size() == 1);
+        assert(plan->cardOverrides[0].enable);
+    }
+    // …and in the other direction, every card `--enable` names that IS a card
+    // (Krusader is a ROM payload with no CardId) is a name the format takes.
+    for (const char* name : {"aci", "sid", "sid-se", "microsd", "sdcard", "tms9918",
+                             "tms", "a1io-rtc", "a1io", "rtc", "hgr", "gen2", "cffa1",
+                             "cffa", "wifi", "modem", "terminal", "jukebox", "codetank",
+                             "pr40", "printer", "gt6144", "swtpc", "iec", "xaci",
+                             "extended-aci", "aci2"})
+        assert(pom1::presetfile::cardIdFromName(name) != pom1::CardId::Invalid);
+}
+
 } // namespace
 
 int main()
 {
     testPresetTable();
+    testPresetFileCardVocabulary();
     testPresetSelection();
     testDeferredActions();
     testRunThenStepNeverStartsAsyncCpu();
