@@ -198,10 +198,22 @@ FilterModelConfig8580::FilterModelConfig8580() :
 // race between these builders. The trigger macro is defined there; this file
 // sees it through the shared header include order, so re-derive it locally
 // rather than depend on that.
-#if (defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)) \
-    || defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__) \
-    || (defined(__has_feature) && (__has_feature(thread_sanitizer) \
-                                   || __has_feature(address_sanitizer)))
+// NESTED, never `defined(__has_feature) && __has_feature(...)` in one
+// expression: the C preprocessor does NOT short-circuit, so on a compiler
+// without __has_feature the second operand expands to `0(thread_sanitizer)`
+// and the build dies at the `#if`. That is exactly how this patch broke the
+// GCC/Linux job on its first push.
+#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
+#  define POM1_RESIDFP_SEQ_8580 1
+#elif defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
+#  define POM1_RESIDFP_SEQ_8580 1
+#elif defined(__has_feature)
+#  if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
+#    define POM1_RESIDFP_SEQ_8580 1
+#  endif
+#endif
+
+#if defined(POM1_RESIDFP_SEQ_8580)
     // POM1 vendored patch: WASM single-threaded build cannot construct
     // std::thread. Run sequentially (see same patch in FilterModelConfig6581.cpp).
     filterSummer();
