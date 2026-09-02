@@ -2050,8 +2050,13 @@ if(Python3_FOUND)
                      --run 0xE000 --after-cycles 2000000
                      --golden "${CMAKE_SOURCE_DIR}/tests/gfx/hgr_testcard_gen2.png"
              WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    # TIMEOUT sits ABOVE the harness's own --timeout (90 s) on purpose: the
+    # capture takes ~1 s, so anything near either bound is a hang, and the one
+    # that fires should be the harness — it is the only one that can print what
+    # POM1 said and reap the child. ctest's remains the backstop for a python
+    # that wedges itself.
     set_tests_properties(gfx_regress_gen2_testcard PROPERTIES
-                         TIMEOUT 60 SKIP_RETURN_CODE 77)
+                         TIMEOUT 120 SKIP_RETURN_CODE 77)
 
     # ── headless_preset_matrix — boot every preset with no display ────────────
     # The widest test in the suite for its cost: every preset first runs a
