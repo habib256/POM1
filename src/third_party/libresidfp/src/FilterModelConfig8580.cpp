@@ -193,7 +193,15 @@ FilterModelConfig8580::FilterModelConfig8580() :
         buildResonanceTable(opampModel, resGain);
     };
 
-#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
+// Same POM1 patch as FilterModelConfig6581.cpp, and for the same two reasons:
+// a single-threaded WASM build cannot construct std::thread, and TSan reports a
+// race between these builders. The trigger macro is defined there; this file
+// sees it through the shared header include order, so re-derive it locally
+// rather than depend on that.
+#if (defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)) \
+    || defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__) \
+    || (defined(__has_feature) && (__has_feature(thread_sanitizer) \
+                                   || __has_feature(address_sanitizer)))
     // POM1 vendored patch: WASM single-threaded build cannot construct
     // std::thread. Run sequentially (see same patch in FilterModelConfig6581.cpp).
     filterSummer();

@@ -31,6 +31,19 @@
 #include <cmath>
 #include <cstdint>
 
+// Sequential-table trigger. Kept next to the patch it drives rather than in a
+// build file: this file is vendored, and a reader who wonders why six threads
+// became one loop must find the answer without leaving it.
+#if (defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)) \
+    || defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
+#  define POM1_RESIDFP_SEQUENTIAL_TABLES 1
+#elif defined(__has_feature)
+#  if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
+#    define POM1_RESIDFP_SEQUENTIAL_TABLES 1
+#  endif
+#endif
+
+
 #if defined(HAVE_CXX20) && defined(__cpp_lib_jthread)
 #  define HAVE_JTHREADS
 #endif
@@ -275,11 +288,21 @@ FilterModelConfig6581::FilterModelConfig6581() :
         }
     };
 
-#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
-    // POM1 vendored patch: WASM single-threaded build cannot construct
-    // std::thread (it throws system_error "thread constructor failed").
-    // Run the six table builders sequentially — slower at boot but the
-    // only option without -pthread + cross-origin isolation.
+// POM1 vendored patch — two reasons to build the tables sequentially.
+//
+//   1. A WASM single-threaded build cannot construct std::thread at all (it
+//      throws system_error "thread constructor failed"). No -pthread, no
+//      cross-origin isolation, no choice.
+//   2. ThreadSanitizer reports a data race between these builders — two
+//      4-byte writes to the same address inside the shared config object,
+//      from two of the six threads. It aborts the process, which is how the
+//      nightly `sanitizers (thread)` job died in headless_preset_matrix:
+//      POM1 constructs a SID before it boots any preset, so EVERY sanitized
+//      run hit it and the job could never reach the code it exists to check.
+//      Whether the race is real or an artefact of how these lambdas share
+//      the object is upstream's question; taking the path upstream already
+//      ships is how POM1 stops paying for it.
+#if defined(POM1_RESIDFP_SEQUENTIAL_TABLES)
     filterSummer();
     filterMixer();
     filterGain();
