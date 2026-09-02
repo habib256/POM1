@@ -769,6 +769,33 @@ uint8_t CassetteDevice::readTapeInput()
     if (leaderRewind || playbackArmed) {
         armPlaybackAtStart();
     }
+
+    // A tape that is IN but not ROLLING is the silent failure this warning
+    // exists for. `C500R` then `RX RX` on Uncle Bernie's Extended ACI, with
+    // codebrk.aiff loaded through File > Load Tape — which loads and does NOT
+    // press PLAY, unlike the CLI's --tape — leaves the ACI read routine
+    // polling here forever against a flat input. The machine prints nothing,
+    // never returns to the Monitor, and looks broken. POM1 knows all three
+    // facts at this exact point: something is reading $C081, a tape is in the
+    // deck, and the deck is stopped. Say so.
+    //
+    // Counted in POLLS, not cycles: the read loop is a tight BIT/BPL, so a
+    // real read reaches five figures in a blink while a program that merely
+    // probes the port once on startup never gets close. Latched, so a long
+    // wait warns once rather than every microsecond, and released as soon as
+    // the tape rolls — pressing PLAY re-arms it for the next episode.
+    if (loadedTapeReady && !playbackActive && !playbackArmed && !rewinding) {
+        if (++stoppedTapePolls == kStoppedTapePollWarning) {
+            pom1::log().warn("ACI",
+                "the program is reading the cassette but the deck is STOPPED — "
+                "a tape is loaded and PLAY has not been pressed. The CLI's "
+                "--tape starts playback; File > Load Tape does not. Press PLAY "
+                "on the cassette deck.");
+        }
+    } else {
+        stoppedTapePolls = 0;
+    }
+
     lastTapeInputCycle = currentCycle;
     return inputLevel ? 0x80 : 0x00;
 }

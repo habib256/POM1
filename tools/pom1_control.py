@@ -345,6 +345,18 @@ class Pom1:
     def cycles(self, n: int) -> None:
         self.cmd(f"cycles {n}")
 
+    # -- cassette deck -----------------------------------------------------
+
+    def tape(self, path: str | os.PathLike) -> None:
+        """Insert a tape WITHOUT pressing PLAY — what the GUI's Load Tape does.
+        The CLI's --tape auto-plays; this reproduces the other one."""
+        self.cmd(f"tape {path}")
+
+    def tape_play(self) -> None:   self.cmd("tape-play")
+    def tape_stop(self) -> None:   self.cmd("tape-stop")
+    def tape_rewind(self) -> None: self.cmd("tape-rewind")
+    def tape_eject(self) -> None:  self.cmd("tape-eject")
+
     # -- convenience -------------------------------------------------------
 
     def monitor(self, settle_ms: int = 4000) -> None:

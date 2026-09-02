@@ -49,6 +49,52 @@ SOURCE_SUFFIXES = {".asm", ".s", ".c"}
 MAKE_VARS = ("LOAD_CFG", "EXTRA_ASM", "CFG", "INC", "LIB")
 
 
+
+# ── The DevBench auto-link contract ──────────────────────────────────────────
+#
+# A sketch that names no `cfg` builds through the Bench's auto-link: it scans
+# the source for symbols it knows and pulls the matching dev/lib/tms9918 module
+# in (Pom1BenchHost.cpp, kTmsLibSyms). That table is hand-maintained, so a
+# sketch can import a symbol nothing in it provides and fail at ld65 — which is
+# exactly what TMS_RogueDiag.asm did: `init_vdp_g1`, `vdp_set_write`, `vdp_hi`
+# and `vdp_lo` all unresolved, because the table lacked three of them and the
+# fourth was skipped by a "defined locally" probe that matched a COMMENT.
+#
+# This asserts the contract: for a sketch on the auto-link path, every symbol it
+# imports must be reachable from the modules that table would select.
+
+ASM_TABLE_RE = re.compile(r'\{\s*"([a-z_0-9]+)",\s*"(tms9918[a-z_0-9.]*\.asm)"')
+BENCH_HOST = ROOT / "src" / "Pom1BenchHost.cpp"
+TMS_LIB = ROOT / "dev" / "lib" / "tms9918"
+
+
+def strip_asm_comments(text: str) -> str:
+    """ca65 comments start at ';'. Reading them as code is the bug this guard
+    exists for, so every scan below runs on the stripped text."""
+    return "\n".join(line.split(";", 1)[0] for line in text.splitlines())
+
+
+def asm_symbols(text: str, kind: str) -> set[str]:
+    out: set[str] = set()
+    for m in re.finditer(rf"(?m)^\s*\.{kind}(?:zp)?\s+([^;\n]*)", text):
+        for sym in m.group(1).split(","):
+            sym = sym.strip()
+            if re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*", sym):
+                out.add(sym)
+    return out
+
+
+def autolink_table() -> dict[str, str]:
+    if not BENCH_HOST.is_file():
+        return {}
+    return dict(ASM_TABLE_RE.findall(BENCH_HOST.read_text(errors="replace")))
+
+
+def module_exports(name: str) -> set[str]:
+    f = TMS_LIB / name
+    return asm_symbols(f.read_text(errors="replace"), "export") if f.is_file() else set()
+
+
 def make_vars(path: Path) -> dict[str, str]:
     """Read the declarative half of a Makefile the way the DevBench does:
     literally, first assignment wins, backslash continuations folded, and NO
@@ -173,6 +219,53 @@ def main() -> int:
             problems.append(f"{rel}: the two manifests disagree on the assembled "
                             f"modules — {'; '.join(detail)}")
 
+    # ── auto-link reachability ───────────────────────────────────────────
+    table = autolink_table()
+    autolinked = 0
+    for d in sorted(p for p in SKETCHES.glob("*/*") if p.is_dir()):
+        sidecar = d / ".sketch.json"
+        if not sidecar.is_file():
+            continue
+        try:
+            spec = json.loads(sidecar.read_text())
+        except json.JSONDecodeError:
+            continue
+        # Only the auto-link path: a sketch that names a cfg (or a Makefile that
+        # does) states its own modules and is checked above.
+        if spec.get("cfg") or spec.get("extraAsm") or (d / "Makefile").is_file():
+            continue
+        if spec.get("language") != "asm" or spec.get("profile") != "tms9918":
+            continue
+
+        imports: set[str] = set()
+        own: set[str] = set()
+        for f in d.iterdir():
+            if f.suffix not in (".asm", ".s"):
+                continue
+            code = strip_asm_comments(f.read_text(errors="replace"))
+            imports |= asm_symbols(code, "import")
+            own |= asm_symbols(code, "export")
+        if not imports:
+            continue
+        autolinked += 1
+
+        mods = {table[s] for s in imports if s in table}
+        if mods:
+            mods.add("tms9918_pad.asm")     # every module JSRs the pad itself
+        available: set[str] = set()
+        for m in mods:
+            available |= module_exports(m)
+        unresolved = sorted(imports - available - own)
+        if unresolved:
+            problems.append(
+                f"{d.relative_to(ROOT)}: builds through the DevBench auto-link, "
+                f"but {', '.join(unresolved)} " +
+                ("is" if len(unresolved) == 1 else "are") +
+                " reachable from no module its table would select — ld65 will "
+                f"report {'it' if len(unresolved) == 1 else 'them'} unresolved. "
+                f"Add the symbol to kTmsLibSyms in src/Pom1BenchHost.cpp, or give "
+                f"the sketch a cfg + extraAsm.")
+
     if problems:
         print("sketch_manifests_sync: FAIL")
         for p in problems:
@@ -186,7 +279,8 @@ def main() -> int:
     print(f"OK: {checked} sketches, all with a .sketch.json "
           f"({with_cfg} naming a linker config, {cross_checked} cross-checked "
           f"against a sibling Makefile, {scripts} whose Makefile is a script "
-          f"rather than a second manifest).")
+          f"rather than a second manifest, {autolinked} resolved through the "
+          f"DevBench auto-link table).")
     return 0
 
 

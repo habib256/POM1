@@ -85,6 +85,9 @@ OK bye
 | `load <addr> <path>` | `OK <bytes>` | extension-routed exactly like `--load` |
 | `run <addr>` | `OK` | |
 | `snapshot-save/-load <path>` | `OK` | |
+| `tape <path>` | `OK` | inserts a tape and does **not** press PLAY — see §5b |
+| `tape-play` / `tape-stop` | `OK` | the deck's transport |
+| `tape-rewind` / `tape-eject` | `OK` | |
 
 Every refusal is an `ERR` with a reason. Nothing clamps silently: `peek 0300
 257` is refused rather than truncated, because a short read reported as success
@@ -111,6 +114,20 @@ Two rules a harness has to know:
 
 A failed `expect` consumes nothing and reports the unmatched tail, so a timeout
 says what the machine was actually printing.
+
+## 5b. `tape` loads and does NOT play — on purpose
+
+There are two ways a tape reaches the deck and they differ in one button. The
+CLI's `--tape` presses PLAY; the GUI's *File ▸ Load Tape* does not — it loads,
+says *"Tape loaded"*, opens the deck and stops. That difference is invisible
+until a program needs pulses: `C500R` then `RX RX` on Uncle Bernie's Extended
+ACI spins in the ACI ROM at `$C1xx` forever, printing nothing, because the tape
+is in but not rolling.
+
+`tape <path>` reproduces the GUI's state, which is the only reason it exists —
+a verb that quietly pressed PLAY could not express the bug. `status` reports
+both halves (`tape=in|out`, `play=0|1`) because neither is visible from RAM.
+`tools/test_aci_telnet.py` scenario D pins the failure and the one-button fix.
 
 ## 5. `key` is literal, unlike `--paste`
 

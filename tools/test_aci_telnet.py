@@ -17,6 +17,10 @@ Scenarios:
               emulator down so --save-tape flushes the capture to disk.
   C. ROUND -- preload the .aci that B produced into a FRESH instance, drive
               READ, and assert the bytes come back identical.
+  D. DECK   -- a tape that is IN but not ROLLING loads nothing and says
+              nothing. The CLI's --tape presses PLAY; the GUI's Load Tape does
+              not, and that difference is what makes `C500R` / `RX RX` look
+              broken. Pins both the failure and the one-button fix.
 
 The name still says "telnet" because that is what it used to be: it drove the
 Terminal Card on a hardcoded port 6502, planting and reading its test pattern
@@ -176,6 +180,67 @@ def scenario_roundtrip(c: Checks) -> None:
                   f"{diffs[:12]}{' ...' if len(diffs) > 12 else ''}")
 
 
+CODEBRK_TAPE = REPO_ROOT / "cassettes" / "codebrk.aiff"
+
+
+def scenario_tape_not_rolling(c: Checks) -> None:
+    """D: a tape that is IN but not ROLLING loads nothing, and says nothing.
+
+    Reported from the GUI: `C500R` then `RX RX` on Uncle Bernie's Extended ACI,
+    and Codebreaker never came up. The emulator is right — what differs is the
+    two ways a tape gets into the deck. The CLI's `--tape` presses PLAY;
+    `File > Load Tape` does NOT (MainWindow_FileDialogs.cpp loads it, says
+    "Tape loaded", opens the deck, and stops). With no pulses arriving, the ACI
+    read loop spins in $C1xx forever and prints nothing at all.
+
+    Reproduced here through the control channel's `tape` verb, which loads
+    without playing precisely so this state is expressible.
+    """
+    print("\n=== Scenario D: a tape that is in but not rolling ===")
+    with Pom1(preset=11, verbose=VERBOSE) as m:          # 11 = GEN2 HGR, Extended ACI on
+        c.ok("D.1 the deck starts empty", m.status()["tape"] == "out")
+        m.tape(CODEBRK_TAPE)
+        st = m.status()
+        c.ok("D.2 the tape is in", st["tape"] == "in")
+        c.ok("D.3 …and PLAY is NOT pressed — this is the GUI's state",
+             st["play"] == "0", f"play={st['play']}")
+
+        m.monitor()
+        m.screen_clear()
+        m.type_line("C500R")
+        time.sleep(0.8)
+        m.type_line("RX RX")
+        got = wait_for(lambda: "ENTER YOUR CHOICE" in m.screen().upper(), timeout_s=8.0)
+        c.ok("D.4 nothing loads while the tape is stopped", not got, m.screen()[-120:])
+        # And the shape of the failure: parked in the ACI ROM, waiting for
+        # pulses that never come.
+        pc = m.pc()
+        c.ok("D.5 the CPU is stuck in the ACI ROM ($C100-$C1FF)",
+             0xC100 <= pc <= 0xC1FF, f"pc=${pc:04X}")
+        # POM1 must SAY so. It knows all three facts at the moment it blocks:
+        # something is reading $C081, a tape is loaded, the deck is stopped.
+        # Exactly once — a warning repeated every microsecond is noise.
+        warned = [l for l in open(m.log_path).read().splitlines()
+                  if "deck is STOPPED" in l]
+        c.ok("D.6 POM1 says the deck is stopped", len(warned) == 1,
+             f"{len(warned)} warning(s)")
+        c.ok("D.7 …and tells the user to press PLAY",
+             warned and "PLAY" in warned[0], warned[:1])
+
+        # PLAY is the whole fix.
+        m.tape_play()
+        got = wait_for(lambda: "ENTER YOUR CHOICE" in m.screen().upper(),
+                       timeout_s=40.0, poll_s=0.5)
+        c.ok("D.8 pressing PLAY loads Codebreaker", got, m.screen()[-160:])
+        c.ok("D.9 …and the CPU left the ACI ROM", not (0xC100 <= m.pc() <= 0xC1FF),
+             f"pc=${m.pc():04X}")
+        # The warning is not repeated once the tape rolls.
+        again = [l for l in open(m.log_path).read().splitlines()
+                 if "deck is STOPPED" in l]
+        c.ok("D.10 the warning is not repeated after PLAY", len(again) == 1,
+             f"{len(again)} warning(s)")
+
+
 def main() -> int:
     if not APPLE50TH_TAPE.is_file():
         skip(f"{APPLE50TH_TAPE} not found")
@@ -185,6 +250,10 @@ def main() -> int:
         scenario_load(c)
         if scenario_save(c):
             scenario_roundtrip(c)
+        if CODEBRK_TAPE.is_file():
+            scenario_tape_not_rolling(c)
+        else:
+            print(f"\n=== Scenario D: skipped — {CODEBRK_TAPE} not found ===")
     finally:
         if not KEEP_TAPE and SAVED_TAPE.exists():
             SAVED_TAPE.unlink()
