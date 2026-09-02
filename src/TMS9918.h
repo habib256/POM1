@@ -319,6 +319,24 @@ public:
     static constexpr int kHBlankLenText = 404;     // VDP ticks
     static constexpr int kHBlankLenGfx  = 312;     // VDP ticks
 
+    static constexpr int kCyclesPerFrame = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ;
+    // Total NTSC scanlines, VBlank included. Named because it appeared as a
+    // bare 262 in three places — beamGeometry() and two hand-rolled copies of
+    // the cycle→line division that pom1::rawLineAt now owns.
+    static constexpr int kTotalScanlines = 262;
+    // Active display covers 192 of the 262 NTSC scanlines; the remaining 70
+    // are VBlank. Sized in CPU cycles so requiredAccessCycles() can decide
+    // whether the beam is currently scanning visible pixels (window = strict)
+    // or in VBlank (window = relaxed). Driven by frameCycleCounter, NOT by
+    // statusReg bit 7 — that flag is sticky-until-readControl, so software
+    // that never polls $CC01 (e.g. Galaga) leaves it set indefinitely and
+    // would otherwise free-pass every cycle as "VBlank".
+    //
+    // NOTE it is the LAST cycle of the last active line, not the first cycle of
+    // VBlank: the expression floors where the line boundary ceils, so the two
+    // differ by one. Pinned by tms9918_per_scanline.
+    static constexpr int kActiveDisplayCycles = (kCyclesPerFrame * kScreenHeight) / kTotalScanlines;
+
 private:
     // Display mode helpers — write into pixel buffer
     static void renderGraphicsI  (uint32_t* pixels, const Snapshot& s, uint32_t backdrop);
@@ -549,15 +567,6 @@ private:
     // slot-table + D28 timing. The constant is no longer applied anywhere.
     static constexpr int kMinActiveDrainCycles = 9;   // unused — see note above
 
-    static constexpr int kCyclesPerFrame = POM1_CPU_CYCLES_PER_FRAME_1X_60HZ;
-    // Active display covers 192 of the 262 NTSC scanlines; the remaining 70
-    // are VBlank. Sized in CPU cycles so requiredAccessCycles() can decide
-    // whether the beam is currently scanning visible pixels (window = strict)
-    // or in VBlank (window = relaxed). Driven by frameCycleCounter, NOT by
-    // statusReg bit 7 — that flag is sticky-until-readControl, so software
-    // that never polls $CC01 (e.g. Galaga) leaves it set indefinitely and
-    // would otherwise free-pass every cycle as "VBlank".
-    static constexpr int kActiveDisplayCycles = (kCyclesPerFrame * 192) / 262;
 };
 
 #endif // TMS9918_H

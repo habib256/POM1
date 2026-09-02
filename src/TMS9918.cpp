@@ -650,7 +650,12 @@ void TMS9918::advanceCycles(int cycles)
     // mid-frame R7/R1/VRAM changes propagate progressively (rainbow demos /
     // raster split). Top border is painted at frame start, bottom at line 192.
     {
-        const int totalScanlineNow = (int)((int64_t)frameCycleCounter * 262 / kCyclesPerFrame);
+        // The cycle→line division lives in the shared beam clock now, not in a
+        // hand-rolled copy here. rawLineAt clamps frameCycleCounter to one
+        // frame where this used to run past it (the wrap happens further down),
+        // which is invisible: both answers are then folded onto kScreenHeight
+        // by the std::min just below.
+        const int totalScanlineNow = pom1::rawLineAt(beamGeometry(), frameCycleCounter);
         const int activeNow = std::min(totalScanlineNow, kScreenHeight);
 
         advanceSpriteScanTo(activeNow);
@@ -1355,7 +1360,7 @@ void TMS9918::renderUpToBeam(int targetLine, int targetX)
 pom1::BeamGeometry TMS9918::beamGeometry() const
 {
     return pom1::BeamGeometry{
-        kCyclesPerFrame, 262, kScreenHeight, kScreenWidth,
+        kCyclesPerFrame, kTotalScanlines, kScreenHeight, kScreenWidth,
         kVdpTicksPerCpuCycle, kVdpTicksPerLine, kActiveLeftTick, kTicksPerPixel
     };
 }
@@ -2008,8 +2013,7 @@ void TMS9918::deserialize(pom1::SnapshotReader& r)
     // (renderUpToBeam only advances forward, so a cursor ahead of the restored
     // beam ignored every line until the next frame rollover).
     {
-        const int totalScanlineNow =
-            (int)((int64_t)frameCycleCounter * 262 / kCyclesPerFrame);
+        const int totalScanlineNow = pom1::rawLineAt(beamGeometry(), frameCycleCounter);
         beamRenderLine = std::min(totalScanlineNow, (int)kScreenHeight);
         beamRenderX    = 0;
         topBorderPainted    = true;   // rebuild below repaints all borders

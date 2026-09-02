@@ -10,6 +10,38 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — le TMS9918 rejoint l'horloge partagée, et un décalage d'un cycle est épinglé
+
+Suite immédiate de l'adoption GEN2 ci-dessous. `TMS9918.cpp` construisait déjà
+une `pom1::BeamGeometry` et appelait `beamPosAt` pour le rattrapage de faisceau,
+mais portait **à côté deux copies écrites à la main** de la même division
+cycle→ligne (`frameCycleCounter * 262 / kCyclesPerFrame`), plus un `262` en dur
+dans la géométrie elle-même. Les trois sites passent par `pom1::rawLineAt` et une
+constante nommée `kTotalScanlines`. Aucun changement de comportement : `rawLineAt`
+écrête à une trame là où le calcul inline pouvait la dépasser, ce qui est invisible
+car les deux résultats sont ensuite repliés sur `kScreenHeight` par le `std::min`
+qui suit.
+
+**Un décalage d'un cycle, trouvé en épinglant la relation.**
+`kActiveDisplayCycles` est le **dernier cycle de la ligne 191**, pas le premier de
+la VBlank : l'expression prend le plancher là où la frontière de ligne prend le
+plafond. `renderBeamCatchUp` testant `>= kActiveDisplayCycles`, ce cycle unique de
+la dernière ligne active est traité comme de la VBlank par le rattrapage.
+**Délibérément laissé tel quel** — le renderer est épinglé par une image témoin,
+la ligne est de toute façon committée entière au `advanceCycles` suivant, et
+« corriger » un cas sur 17 062 dans un chemin calibré coûterait plus qu'il ne
+rapporte. Épinglé par `tms9918_per_scanline` pour que ça reste un écart connu
+plutôt qu'une incohérence inexpliquée.
+
+Les constantes de temps NTSC (`kCyclesPerFrame`, `kTotalScanlines`,
+`kActiveDisplayCycles`) rejoignent le bloc « Public timing constants » qui
+existait déjà à côté d'elles.
+
+**Ce qui n'est PAS fait**, et le `TODO.md` le dit maintenant : le commit
+progressif par ligne de `advanceCycles` n'est pas devenu un `renderUntil(beam)`
+paresseux. Ce n'est pas évident — le commit progressif est précisément ce qui rend
+visibles les changements mi-trame — et cela méritera sa propre décision.
+
 ### Changed — le GEN2 adopte l'horloge beam partagée
 
 POM1 a deux moteurs vidéo cycle-exacts et ils calculaient chacun leur position
