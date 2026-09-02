@@ -10,6 +10,44 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Added — un rewind rejoue-t-il vraiment le faisceau ? Maintenant c'est prouvé
+
+Les bascules de commutateurs mi-trame du GEN2 vivent dans un journal par trame,
+sérialisé dans le snapshot (`GEN2VID`, v5+) précisément pour qu'une restauration
+ne les perde pas. `MemorySnapshot.cpp` l'écrit noir sur blanc : sans lui, une
+trame à split restaurée « perd ses bascules par ligne et affiche le simple
+verrou de fin de trame ».
+
+**Rien ne testait cette affirmation.** Les tests de snapshot vérifient que la
+section EXISTE et que son nom n'entre pas en collision ; les tests beam rendent
+des splits mais n'en sauvegardent jamais un. La seule chose pour laquelle la
+sérialisation avait été écrite n'était pas vérifiée.
+
+`gen2_journal_snapshot_smoke` journalise une bascule TEXT mi-trame, la publie au
+basculement de trame, prend un snapshot, restaure dans une machine neuve, et
+compare **les pixels rendus**. Sa §4 est un **contrôle** : elle re-rend la
+machine restaurée journal jeté et exige que l'image change — sans quoi tout le
+test passerait aussi contre un snapshot qui aurait perdu le journal.
+
+**Ce contrôle a servi deux fois**, et c'est l'argument pour en écrire :
+
+- la page texte était remplie de `$20` — un espace **inverse**, donc un bloc
+  blanc plein, pixel pour pixel identique au remplissage HGR tous bits à un
+  qu'il était censé contraster. Le test ne distinguait pas les deux modes.
+  L'espace normal est `$A0` ;
+- la phase du scanner GEN2 est **aléatoire à l'allumage** (fidélité silicium),
+  donc le split tombait sur une ligne différente à chaque exécution. Le test la
+  fige comme le fait le chemin headless de la CLI, et **dérive** la ligne du
+  split depuis le journal au lieu de la supposer — affirmer contre une ligne
+  codée en dur, c'eût été affirmer contre mon arithmétique plutôt que contre la
+  machine.
+
+Cinq exécutions consécutives, résultat identique.
+
+Fan-out `GraphicsCard.h` 10 → 11 et `Memory.h` 59 → 60 : un test dont le sujet
+est « un snapshot de cette machine rejoue-t-il le faisceau de cette carte ? » ne
+peut pas s'écrire sans inclure les deux.
+
 ### Changed — le TMS9918 rejoint l'horloge partagée, et un décalage d'un cycle est épinglé
 
 Suite immédiate de l'adoption GEN2 ci-dessous. `TMS9918.cpp` construisait déjà
