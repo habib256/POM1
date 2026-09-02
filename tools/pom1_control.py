@@ -217,18 +217,26 @@ class Pom1:
             return ""
 
     def close(self) -> None:
+        quit_sock = self._sock
         if self._file is not None:
             try:
-                self._file.close()
+                self._file.flush()
             except OSError:
                 pass
             self._file = None
-        if self._sock is not None:
+        if self.proc.poll() is None:
+            # Ask it to leave through the channel FIRST. On Windows
+            # `send_signal(SIGTERM)` is TerminateProcess — the process dies on
+            # the spot and POM1's shutdown work never runs, which is how
+            # `--save-tape` produced no file there while passing everywhere
+            # else. `quit` sets the headless stop flag and lets the driver
+            # finish, on every platform.
             try:
-                self._sock.close()
-            except OSError:
+                if quit_sock is not None:
+                    quit_sock.sendall(b"quit\n")
+                    self.proc.wait(timeout=10)
+            except Exception:
                 pass
-            self._sock = None
         if self.proc.poll() is None:
             try:
                 self.proc.send_signal(signal.SIGTERM)
@@ -239,6 +247,12 @@ class Pom1:
                     self.proc.wait(timeout=5)
                 except Exception:
                     pass
+        if quit_sock is not None:
+            try:
+                quit_sock.close()
+            except OSError:
+                pass
+            self._sock = None
         try:
             self._log.close()
         except Exception:
