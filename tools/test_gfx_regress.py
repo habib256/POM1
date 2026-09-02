@@ -48,6 +48,24 @@ def find_pom1(explicit):
         d = parent
 
 
+def dump_child(out, err):
+    """Print the tail of POM1's own output. Bounded: a hung emulator can have
+    logged a great deal, and only the end of it says where it stopped."""
+    for label, blob in (("stdout", out), ("stderr", err)):
+        if not blob:
+            continue
+        text = blob.decode("utf-8", "replace") if isinstance(blob, bytes) else blob
+        lines = text.strip().splitlines()
+        if not lines:
+            continue
+        shown = lines[-40:]
+        elided = len(lines) - len(shown)
+        print(f"  --- POM1 {label} ({len(lines)} lines"
+              + (f", last {len(shown)}" if elided else "") + ") ---")
+        for line in shown:
+            print("  | " + line)
+
+
 def sha(path):
     with open(path, "rb") as f:
         return hashlib.sha256(f.read()).hexdigest()
@@ -67,6 +85,10 @@ def main():
                     help="wall-clock settle instead of --after-cycles (non-deterministic; debug only)")
     ap.add_argument("--pom1", default=None, help="path to POM1 (else $POM1, else build/POM1)")
     ap.add_argument("--update", action="store_true", help="regenerate the golden, then exit 0")
+    ap.add_argument("--timeout", type=int, default=90,
+                    help="seconds to wait for the capture (default 90). Must stay BELOW the "
+                         "ctest TIMEOUT: whoever fires first owns the diagnosis, and only this "
+                         "one can print what POM1 said.")
     args = ap.parse_args()
 
     pom1 = find_pom1(args.pom1)
@@ -89,10 +111,28 @@ def main():
         else:
             cmd += ["--dump-after-cycles", str(args.after_cycles)]
 
-        rc = subprocess.run(cmd, stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL).returncode
+        # Capture the child's output rather than discarding it, and bound the
+        # wait. Both halves are the same lesson, learned on a Windows CI job
+        # that hung this capture for 61 s where it normally takes 1.1 s: with
+        # DEVNULL and no timeout, ctest killed *python* and the report said
+        # only "Timeout" — POM1's own log, the one artefact that could say
+        # where it stopped, had been thrown away, and the emulator it left
+        # behind was never reaped. A harness that cannot explain its own
+        # failure costs a CI cycle every time it fires.
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True,
+                                  timeout=args.timeout)
+            rc, child_out, child_err = proc.returncode, proc.stdout, proc.stderr
+        except subprocess.TimeoutExpired as e:
+            print(f"FAIL: POM1 capture did not finish within {args.timeout}s "
+                  f"(normally ~1 s) — child killed")
+            print("  cmd: " + " ".join(cmd))
+            dump_child(e.stdout, e.stderr)
+            return 1
         if rc != 0 or not os.path.exists(out) or os.path.getsize(out) == 0:
             print(f"FAIL: POM1 capture failed (rc={rc})")
+            print("  cmd: " + " ".join(cmd))
+            dump_child(child_out, child_err)
             return 1
 
         if args.update:
