@@ -10,6 +10,26 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — un échantillon non fini peut être FABRIQUÉ à partir d'échantillons finis
+
+Trouvé par le job de fuzzing nocturne (`pcm/crash-e086c0e6…`, un AIFF-C `fl32`
+de 502 octets) : le parseur annonçait *« 5 non-finite sample(s) replaced with
+silence »* et laissait pourtant **un** échantillon non fini dans sa sortie.
+
+`sanitize()` s'appliquait à chaque **canal**, jamais au **mixage**. Or le
+mixage additionne les canaux : deux flottants proches du haut de la plage —
+`3,0e38 + 3,0e38` — passent chacun `isfinite()` et somment à l'infini. Le
+parseur promettait donc d'avoir retiré ce qu'il venait de créer. Un NaN qui
+franchit cette barrière atteint le décodeur de pulsations, où **toute**
+comparaison contre lui est fausse : la cassette se lit comme une ligne plate et
+POM1 annonce « no detectable cassette signal », ce qui ne dit rien du vrai
+problème.
+
+Les deux parseurs — WAV et AIFF — avaient la même faille et sont corrigés
+ensemble. `pcm_file_smoke` gagne une §13 qui construit le cas dans les deux
+conteneurs ; retirer le correctif la fait rougir.
+
+
 ### Added — la question assembleur est tranchée : il n'y a rien à factoriser
 
 Quatrième et dernier item du plan sur `dev/`, posé comme **une mesure, pas un

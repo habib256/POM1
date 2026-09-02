@@ -23,7 +23,9 @@
 //   §10 a rejected parse yields no samples, and unsupported widths are refused
 //       BEFORE any frame is decoded;
 //   §11 the sample rate must be plausible — found by fuzzing;
-//   §12 NaN and infinity in a float container become silence — found by fuzzing.
+//   §12 NaN and infinity in a float container become silence — found by fuzzing;
+//   §13 …and a non-finite sample BUILT from finite channels by the mixdown —
+//       also found by fuzzing, and the per-channel scrub alone missed it.
 
 #include "PcmFile.h"
 
@@ -433,6 +435,49 @@ int main()
         const PcmAudio b = parseAiffPcm(av.data(), av.size());
         assert(b.ok && b.mono.size() == 1 && b.mono[0] == 0.0f);
         assert(!b.warning.empty());
+    }
+
+    // -----------------------------------------------------------------
+    // §13 A non-finite sample can be BUILT from finite ones. Scrubbing each
+    //     channel is not enough: the mixdown SUMS them, and two floats near
+    //     the top of the range add to infinity. Every channel passes
+    //     isfinite() and the frame that comes out does not — so the parser
+    //     promised to have removed what it had just created.
+    //
+    //     Found by the nightly fuzz job, as an AIFF-C fl32 file
+    //     (pcm/crash-e086c0e6…): five samples scrubbed, and one still
+    //     non-finite in the output. The fix sanitizes the MIX as well, which
+    //     is why the counts below include the frame.
+    // -----------------------------------------------------------------
+    {
+        const float huge = 3.0e38f;                 // finite; 2 x huge is not
+        assert(std::isfinite(huge));
+        std::vector<uint8_t> d(8);
+        std::memcpy(d.data() + 0, &huge, 4);
+        std::memcpy(d.data() + 4, &huge, 4);
+
+        // WAV: one STEREO frame whose two finite channels overflow when summed.
+        // Format 3 = IEEE float; format 1 would read these bytes as integers.
+        const auto v = wav(3, 2, 44100, 32, d);
+        const PcmAudio a = parseWavPcm(v.data(), v.size());
+        assert(a.ok && a.mono.size() == 1);
+        assert(std::isfinite(a.mono[0]));
+        assert(a.mono[0] == 0.0f);                  // silenced, like any other
+        assert(!a.warning.empty());                 // and reported
+
+        // AIFF-C fl32, big-endian, same shape.
+        std::vector<uint8_t> ad(8);
+        uint8_t le[4];
+        std::memcpy(le, &huge, 4);
+        for (int f = 0; f < 2; ++f) {
+            ad[f * 4 + 0] = le[3]; ad[f * 4 + 1] = le[2];
+            ad[f * 4 + 2] = le[1]; ad[f * 4 + 3] = le[0];
+        }
+        const auto bv = aiff(2, 1, 32, 44100, ad, "fl32");   // 2 channels, 1 frame
+        const PcmAudio c = parseAiffPcm(bv.data(), bv.size());
+        assert(c.ok && c.mono.size() == 1);
+        assert(std::isfinite(c.mono[0]) && c.mono[0] == 0.0f);
+        assert(!c.warning.empty());
     }
 
     std::printf("pcm_file_smoke: OK\n");

@@ -182,7 +182,12 @@ PcmAudio parseWavPcm(const std::uint8_t* bytes, std::size_t size,
                 mixed += sanitize(f, badSamples);
             }
         }
-        out.mono.push_back(mixed / static_cast<float>(channels));
+        // Sanitize the MIX, not only each channel. Two finite channels can
+        // sum to a non-finite value — 3.4e38 + 3.4e38 overflows float — so a
+        // per-channel scrub leaves a NaN/Inf in the output it just promised to
+        // have removed. Found by the nightly fuzz job (pcm/crash-e086c0e6…, an
+        // AIFF-C fl32 file): 5 samples scrubbed, and one still non-finite.
+        out.mono.push_back(sanitize(mixed / static_cast<float>(channels), badSamples));
     }
     noteBadSamples(badSamples, out.warning);
 
@@ -301,7 +306,12 @@ PcmAudio parseAiffPcm(const std::uint8_t* bytes, std::size_t size,
             }
             mixed += value;
         }
-        out.mono.push_back(mixed / static_cast<float>(channels));
+        // Sanitize the MIX, not only each channel. Two finite channels can
+        // sum to a non-finite value — 3.4e38 + 3.4e38 overflows float — so a
+        // per-channel scrub leaves a NaN/Inf in the output it just promised to
+        // have removed. Found by the nightly fuzz job (pcm/crash-e086c0e6…, an
+        // AIFF-C fl32 file): 5 samples scrubbed, and one still non-finite.
+        out.mono.push_back(sanitize(mixed / static_cast<float>(channels), badSamples));
     }
     noteBadSamples(badSamples, out.warning);
 
