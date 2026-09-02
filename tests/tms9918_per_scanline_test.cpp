@@ -23,6 +23,7 @@
 
 #include "TMS9918.h"
 #include "CpuClock.h"
+#include "BeamClock.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -355,6 +356,45 @@ int main()
                    "PhaseI: sprite still drawn on the split line — mode change latched to line end"); ++assertions;
         mustBeTrue(active[81 * 256 + 113] != white,
                    "PhaseI: next line is Text mode — sprite engine off (seamless split applied)"); ++assertions;
+    }
+
+    // -----------------------------------------------------------------
+    // The chip's timing constants and the SHARED beam clock agree.
+    //
+    // TMS9918.cpp used to carry two hand-rolled copies of the cycle->line
+    // division (`frameCycleCounter * 262 / kCyclesPerFrame`) beside the
+    // pom1::BeamGeometry it also builds. They are one function now
+    // (pom1::rawLineAt), and this pins the relationship the chip's OTHER
+    // timing constant has to it, so a change to either representation is
+    // caught rather than silently drifting.
+    // -----------------------------------------------------------------
+    {
+        const pom1::BeamGeometry g{
+            TMS9918::kCyclesPerFrame, TMS9918::kTotalScanlines,
+            TMS9918::kScreenHeight,   TMS9918::kScreenWidth,
+            21, 1368, 0, 4 };   // tick fields: only the line division matters here
+
+        // Frame geometry, stated once so a renumbering is visible.
+        mustBeTrue(TMS9918::kTotalScanlines == 262, "NTSC frame is 262 lines"); ++assertions;
+        mustBeTrue(TMS9918::kScreenHeight == 192,   "192 of them are active"); ++assertions;
+
+        // The line division walks 0..261 across the frame and folds nothing.
+        mustBeTrue(pom1::rawLineAt(g, 0) == 0, "frame starts on line 0"); ++assertions;
+        mustBeTrue(pom1::rawLineAt(g, TMS9918::kCyclesPerFrame) == TMS9918::kTotalScanlines,
+                   "the frame end maps to the line count"); ++assertions;
+
+        // kActiveDisplayCycles is the LAST cycle of the last active line, not
+        // the first cycle of VBlank — the two differ by one because the
+        // constant floors where the line boundary ceils. renderBeamCatchUp
+        // tests `>= kActiveDisplayCycles`, so that single cycle of line 191 is
+        // treated as VBlank by the catch-up. Deliberately left as it is: the
+        // renderer is pinned by a golden image and the line is committed whole
+        // on the next advanceCycles anyway. Pinned here so it stays a known
+        // one-cycle skew rather than becoming an unexplained mismatch.
+        mustBeTrue(pom1::rawLineAt(g, TMS9918::kActiveDisplayCycles) == TMS9918::kScreenHeight - 1,
+                   "kActiveDisplayCycles still sits on the last active line"); ++assertions;
+        mustBeTrue(pom1::rawLineAt(g, TMS9918::kActiveDisplayCycles + 1) == TMS9918::kScreenHeight,
+                   "VBlank begins exactly one cycle later"); ++assertions;
     }
 
     std::printf("tms9918_per_scanline: all %d assertions passed\n", assertions);
