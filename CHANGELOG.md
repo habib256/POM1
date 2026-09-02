@@ -10,6 +10,40 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Fixed — le job TSan mourait avant d'atteindre le code de POM1
+
+Le job nocturne `sanitizers (thread)` échouait sur deux tests. Le premier était
+un vrai défaut, et il n'était pas dans POM1.
+
+**`headless_preset_matrix`** rapportait *« FAIL preset 6 prompt F000R missing
+KRUSADER »*. La sonde est pourtant déterministe en cycles, donc l'instrumentation
+n'aurait pas dû changer son résultat. Reproduit localement : ThreadSanitizer
+signale une **course de données dans libresidfp vendu** —
+`FilterModelConfig6581` lance six threads pour bâtir ses tables de filtre, et
+deux d'entre eux écrivent 4 octets à la même adresse. Le processus avorte, donc
+la bannière n'arrivait jamais.
+
+Et comme `EmulationController` construit la puce SID **avant** de démarrer le
+moindre preset, chaque exécution instrumentée la rencontrait : le job ne pouvait
+jamais atteindre le code qu'il existe pour vérifier.
+
+Le chemin séquentiel existait déjà — c'est un correctif POM1 vendu, écrit pour
+le WASM mono-thread qui ne peut pas construire de `std::thread`. Sa condition
+couvre maintenant aussi les builds instrumentés, dans les deux fichiers de
+configuration de filtre. Vérifié : sortie 0, zéro avertissement TSan, bannière
+Krusader présente. Que la course soit réelle ou un artefact du partage entre ces
+lambdas est une question pour l'amont ; prendre le chemin que l'amont fournit
+déjà est la façon dont POM1 cesse de la payer.
+
+**`concurrent_frontends_smoke`** mesurait un maintien de verrou de 416 ms contre
+un plafond de 100. Ces bornes comptent du temps mural, et TSan instrumente
+chaque accès mémoire et chaque verrou : le même test non instrumenté mesure
+18-68 ms. C'est le faux rouge exact que la note du test décrit déjà pour
+`maxStateWaitNs`, et la raison pour laquelle `tests/CMakeLists.txt` met déjà
+tous les délais à l'échelle ×30 pour ce build. Les trois plafonds suivent, d'un
+facteur volontairement plus large que le 6× observé : ils sont là pour attraper
+une RÉGRESSION de ce que POM1 contrôle, pas pour mesurer l'instrumentation.
+
 ### Fixed — un échantillon non fini peut être FABRIQUÉ à partir d'échantillons finis
 
 Trouvé par le job de fuzzing nocturne (`pcm/crash-e086c0e6…`, un AIFF-C `fl32`

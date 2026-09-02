@@ -15,6 +15,35 @@
 #include <thread>
 #include <vector>
 
+// ── The gates, and why they move under a sanitizer ──────────────────────────
+//
+// These bound WALL-CLOCK time, and a sanitizer multiplies wall-clock time
+// without anything in POM1 changing: ThreadSanitizer instruments every memory
+// access and every lock operation. The nightly `sanitizers (thread)` job
+// measured a max HOLD of 416 ms against this 100 ms line while the same test on
+// an uninstrumented build measures 18-68 ms — a false red of exactly the family
+// the maxStateWaitNs note below already describes, and the same reason
+// tests/CMakeLists.txt scales every declared TIMEOUT x30 for that build.
+//
+// So the gates scale too. The factor is deliberately larger than the 6x
+// observed, because the point of these bounds is to catch a REGRESSION in what
+// POM1 controls, not to measure the instrumentation.
+#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
+#  define POM1_SANITIZED_BUILD 1
+#elif defined(__has_feature)
+#  if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
+#    define POM1_SANITIZED_BUILD 1
+#  endif
+#endif
+#if defined(POM1_SANITIZED_BUILD)
+constexpr uint64_t kSanitizerSlack = 10;
+#else
+constexpr uint64_t kSanitizerSlack = 1;
+#endif
+constexpr uint64_t kMaxStateWaitNs      = 5000000000ULL * kSanitizerSlack;
+constexpr uint64_t kMaxStateHoldNs      =  100000000ULL * kSanitizerSlack;
+constexpr uint64_t kMaxAudioCallbackNs  =   50000000ULL * kSanitizerSlack;
+
 int main()
 {
     EmulationController emu(nullptr, /*initializeAudioHardware=*/false);
@@ -132,9 +161,9 @@ int main()
         // What stays gated is what POM1 itself controls, and both have room:
         // max HOLD measured 18-68 ms against 100, and the audio callback 7-33
         // µs against 50 ms.
-        realtime.maxStateWaitNs > 5000000000ULL ||
-        realtime.maxStateHoldNs > 100000000ULL ||
-        realtime.maxAudioCallbackNs > 50000000ULL) {
+        realtime.maxStateWaitNs > kMaxStateWaitNs ||
+        realtime.maxStateHoldNs > kMaxStateHoldNs ||
+        realtime.maxAudioCallbackNs > kMaxAudioCallbackNs) {
         std::fprintf(stderr,
                      "concurrency gate failed: renders=%llu callbacks=%llu "
                      "finite=%llu invalid=%llu state-wait=%lluns "
