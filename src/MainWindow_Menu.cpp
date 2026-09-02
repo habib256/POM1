@@ -882,8 +882,10 @@ void MainWindow_ImGui::renderMenuBar()
         if (ImGui::BeginMenu("Presets")) {
             auto presetItem = [&](int i) {
                 char ramLabel[24];
-                std::snprintf(ramLabel, sizeof(ramLabel), "%d KB RAM", kMachinePresets[i].ramKB);
-                if (ImGui::MenuItem(kMachinePresets[i].name, ramLabel))
+                const pom1::MachineConfig* entry = pom1::machinePresetAt(i);
+                if (!entry) return;
+                std::snprintf(ramLabel, sizeof(ramLabel), "%d KB RAM", entry->ramKB);
+                if (ImGui::MenuItem(entry->name, ramLabel))
                     applyMachineConfig(i);
             };
             // Re-open the full-screen boot profile chooser mid-session — a
@@ -1111,7 +1113,7 @@ void MainWindow_ImGui::renderToolbar()
         if (ImGui::Button(ICON_FA_HARD_DRIVE, btnSize)) {
             const bool want = !cardPlugged(pom1::CardId::Cffa1);
             setCardPlugged(pom1::CardId::Cffa1, want);
-            setStatusMessage(want ? "CFFA1 CompactFlash plugged - type 9006R"
+            setStatusMessage(want ? "CFFA1 CompactFlash plugged - type 9000R"
                                   : "CFFA1 CompactFlash unplugged", 2.0f);
         }
         ImGui::PopStyleColor();

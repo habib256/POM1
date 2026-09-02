@@ -100,8 +100,13 @@ std::vector<AsmSprite> parseSpritesAsm(const std::string& text, size_t minBytes)
     AsmSprite cur;
     bool haveCur = false;
     std::string pendingName;        // from the most recent "; slot ... -- name" comment
+    std::string prevLabel;          // raw previous label, for the alias rule below
     auto flush = [&]() {
         if (haveCur && cur.bytes.size() >= minBytes) {
+            // The slot name is released only now, and only if THIS sprite is
+            // the one that took it — so a second label naming the same sprite
+            // still gets it, while the next sprite falls back to its own label.
+            if (!pendingName.empty() && cur.name == pendingName) pendingName.clear();
             cur.bytes.resize(minBytes);
             out.push_back(std::move(cur));
         }
@@ -127,13 +132,49 @@ std::vector<AsmSprite> parseSpritesAsm(const std::string& text, size_t minBytes)
         std::string code = trim(sc == std::string::npos ? t : t.substr(0, sc));
         std::string label;
         if (isLabel(code, label)) {
+            // Consecutive labels with no `.byte` between them are ALIASES of
+            // one sprite: the TMS masters emit `chess_king_pat:` and the
+            // cc65-callable `_chess_king_pat:` back to back. Keeping the name
+            // already chosen is what stops the alias — an implementation
+            // detail — from becoming the name shown in the editor's Dev
+            // library, which is how sprites_chess ended up listed as
+            // "_chess_king" while its generated HGR twin said "chess_king".
+            // An alias is precisely the cc65 convention: the SAME label with a
+            // leading underscore, back to back, with no bytes between. Testing
+            // only "a previous label produced no bytes" was too loose — every
+            // catalogue opens with a base label (`chess_hgr_data:`) that has no
+            // bytes either, and the first real sprite inherited ITS name.
+            const bool aliasOfPrevious =
+                haveCur && cur.bytes.empty() && !prevLabel.empty() &&
+                (label == "_" + prevLabel || prevLabel == "_" + label);
+            const std::string keep = cur.name;
+            // The raw label, captured BEFORE the `_pat` strip below mutates it —
+            // otherwise prevLabel holds "chess_king" and the next line's
+            // "_chess_king_pat" never matches "_" + prevLabel.
+            const std::string rawLabel = label;
+            // Clearing pendingName HERE was wrong for a catalogue that gives a
+            // sprite two labels — the TMS masters emit both `fauna_rat_pat:`
+            // and the cc65-callable alias `_fauna_rat_pat:` — because the
+            // second label found the slot comment already consumed and fell
+            // back to the label. The same sprite was then called "rat" in the
+            // HGR editor's Dev library and "_fauna_rat" in the TMS one.
+            // Consecutive labels with no `.byte` between them are ALIASES:
+            // the name is released only when a sprite that actually took it is
+            // emitted (see flush()).
             flush();
-            if (!pendingName.empty()) { cur.name = pendingName; pendingName.clear(); }
+            // A NEW slot comment always wins: it is how a catalogue names the
+            // sprite that follows, and the base label (`demo_hgr_data:`) that
+            // opens every file is a label with no bytes, so the alias rule
+            // would otherwise hand its name to the first real sprite.
+            if (!pendingName.empty() && pendingName != keep) { cur.name = pendingName; }
+            else if (aliasOfPrevious && !keep.empty()) { cur.name = keep; }
+            else if (!pendingName.empty()) { cur.name = pendingName; }
             else {
                 if (label.size() > 4 && label.compare(label.size() - 4, 4, "_pat") == 0)
                     label.resize(label.size() - 4);
                 cur.name = label;
             }
+            prevLabel = rawLabel;
             haveCur = true;
             continue;
         }

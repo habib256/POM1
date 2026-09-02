@@ -155,6 +155,17 @@ using pom1::isFantasyPreset;
 using pom1::kDefaultPresetId;
 using pom1::kMachinePresets;
 using pom1::kMachinePresetCount;
+// The registry accessors. `kMachinePresets[i]` is only safe for an index
+// that came from a named constant; anything holding a user-supplied one
+// goes through machinePresetAt(), and anything asking "does this machine
+// multiplex?" through machinePresetMode() — isFantasyPreset() answers
+// from a PresetId, and an external preset has none.
+using pom1::machinePresetAt;
+using pom1::machinePresetCount;
+using pom1::machinePresetMode;
+using pom1::machinePresetIsExternal;
+using pom1::registerExternalPreset;
+using pom1::clearExternalPresets;
 using pom1::kPresetCC65Bench;
 using pom1::kPresetTMS9918Bench;
 using pom1::kPresetGen2Bench;

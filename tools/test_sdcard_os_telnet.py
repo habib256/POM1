@@ -1,844 +1,418 @@
 #!/usr/bin/env python3
-"""
-test_sdcard_os_telnet.py -- Test complet du SD CARD OS via Terminal Card telnet.
+"""test_sdcard_os_telnet.py -- P-LAB microSD "SD CARD OS" firmware, end to end.
 
-Pre-requis :
-  - POM1 en cours d'execution avec microSD + Terminal Card actifs
-    (preset "Replica 1", "P-LAB Apple 1" ou "POM1 Full")
-  - Le Terminal Card ecoute sur localhost:6502
+Boots a headless POM1 on preset 8 (P-LAB Apple-1 with microSD & Applesoft Lite),
+seeds a fixture tree under sdcard/, starts the firmware with `8000R` and
+exercises the whole command set over the scripting control channel.
 
-Usage :
-  python3 tools/test_sdcard_os_telnet.py [--setup] [--cleanup] [--verbose]
+Phases:
+  1. read-only commands: ?, HELP, PWD, DIR, LS, TYPE, DUMP, MOUNT, BAS, TEST
+  2. directory navigation: CD (relative, absolute, .., fuzzy, trailing slash)
+  3. file reads: LOAD (exact / fuzzy / tagged / missing), DUMP, READ, RUN
+  4. file writes: MKDIR, RMDIR, MD/RD, DEL/RM, WRITE, SAVE -- each checked on
+     the HOST filesystem, not only in the firmware's reply
+  5. EXIT and re-entry
+  6. error cases, including the two path-traversal escapes
 
-  --setup    Prepare les donnees de test dans sdcard/ avant de lancer les tests
-  --cleanup  Nettoie les artefacts de test apres execution
-  --verbose  Affiche la sortie brute de chaque commande
+The fixtures are created here and removed afterwards, so the test does not
+depend on what sdcard/ happens to hold — that directory ships as a copy of
+Claudio Parmigiani's real card and its layout is not ours to pin.
+
+The name still says "telnet" because that is what it used to be: it drove the
+Terminal Card on a hardcoded port 6502 and, like the CFFA1 and Juke-Box
+harnesses, expected the operator to have POM1 already running with the right
+preset. It now runs headless over the control channel (tools/pom1_control.py,
+src/CommandPort.h) on a free port, launching and reaping its own emulator,
+which is what let it into ctest as `sdcard_os_commands`.
+
+Run from anywhere: python3 tools/test_sdcard_os_telnet.py [-v]
 """
 from __future__ import annotations
 
-import argparse
-import os
-import select
-import shutil
-import socket
-import struct
 import sys
 import time
+from pathlib import Path
 
-HOST = "127.0.0.1"
-PORT = 6502
-CTRL_R = 18
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pom1_control import Checks, Pom1, Pom1Error, REPO_ROOT  # noqa: E402
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
-SDCARD_PATH = os.path.join(PROJECT_DIR, "sdcard")
+SDCARD = REPO_ROOT / "sdcard"
+VERBOSE = "-v" in sys.argv or "--verbose" in sys.argv
 
-# 6502 program: prints "OK" + CR via Woz Monitor ECHO ($FFEF), then JMP $FF00
-# LDA #$CF; JSR $FFEF; LDA #$CB; JSR $FFEF; LDA #$8D; JSR $FFEF; JMP $FF00
+PROMPT = ">"          # SD CARD OS prompt is "<path]>" — ">" is its tail
+ROOT_PROMPT = "/>"
+
+# Prints "OK" + CR through the Woz Monitor's ECHO, then returns to the Monitor.
 SMALL_PROGRAM = bytes([
-    0xA9, 0xCF, 0x20, 0xEF, 0xFF,  # LDA #'O'|$80, JSR ECHO
-    0xA9, 0xCB, 0x20, 0xEF, 0xFF,  # LDA #'K'|$80, JSR ECHO
-    0xA9, 0x8D, 0x20, 0xEF, 0xFF,  # LDA #CR|$80,  JSR ECHO
-    0x4C, 0x00, 0xFF,              # JMP $FF00
+    0xA9, 0xCF, 0x20, 0xEF, 0xFF,   # LDA #'O'|$80 ; JSR ECHO
+    0xA9, 0xCB, 0x20, 0xEF, 0xFF,   # LDA #'K'|$80 ; JSR ECHO
+    0xA9, 0x8D, 0x20, 0xEF, 0xFF,   # LDA #CR |$80 ; JSR ECHO
+    0x4C, 0x00, 0xFF,               # JMP $FF00
 ])
 
-VERBOSE = False
+# Fixtures are removed by PATH, one by one, and directories only when this
+# harness created them.
+#
+# The version this replaces ended its run with
+#     for d in ("TESTDIR", "EMPTYDIR", ..., "HGR"): shutil.rmtree(d)
+# and sdcard/HGR/ is a SHIPPED directory holding nine committed HGR images
+# (Lezard, UBERNIE, alien, dragon, gobelin, maze3D, ours, tiger, N001). Running
+# the test deleted them from the working tree. Nobody had noticed, for the
+# reason this whole conversion exists: the test never ran. A harness may only
+# remove what it made.
+FIXTURE_FILES = (
+    Path("HELLO.TXT"), Path("SMALL#060300"), Path("TESTBIN"),
+    Path("DELME.TXT"), Path("DELME2.TXT"), Path("WTEST"), Path("STEST#060400"),
+    Path("TESTDIR") / "FILE1#F10800",
+    Path("NOTEMPTY") / "KEEP.TXT",
+    Path("HGR") / "N000#062000",
+    Path("HGR") / "PIC#062000",
+    Path("HGR") / "DELTAG#060280",
+)
+
+# Removed only if empty, deepest first — so a shipped sibling, or anything the
+# firmware created that we did not, survives.
+FIXTURE_DIRS = (
+    Path("TESTDIR") / "SUB1", Path("TESTDIR"),
+    Path("EMPTYDIR"), Path("NOTEMPTY"),
+    Path("NEWDIR"), Path("TEMPDIR"), Path("MDTEST"), Path("A"),
+    Path("HGR"),
+)
 
 
-# ---------------------------------------------------------------------------
-# Test data setup / cleanup
-# ---------------------------------------------------------------------------
-
-def prepare_test_data() -> None:
-    """Create test files and directories in sdcard/."""
-    print("Preparing test data in", SDCARD_PATH)
-
-    # Root-level text file for TYPE
-    with open(os.path.join(SDCARD_PATH, "HELLO.TXT"), "w") as f:
-        f.write("HELLO WORLD FROM APPLE 1\r\n")
-        f.write("THIS IS A TEST FILE\r\n")
-
-    # Small 6502 binary (tagged)
-    with open(os.path.join(SDCARD_PATH, "SMALL#060300"), "wb") as f:
-        f.write(SMALL_PROGRAM)
-
-    # 256 bytes sequential for READ/DUMP tests
-    with open(os.path.join(SDCARD_PATH, "TESTBIN"), "wb") as f:
-        f.write(bytes(range(256)))
-
-    # Files for DEL/RM tests
+def prepare_fixtures() -> None:
+    (SDCARD / "HELLO.TXT").write_text("HELLO WORLD FROM APPLE 1\r\n"
+                                      "THIS IS A TEST FILE\r\n")
+    (SDCARD / "SMALL#060300").write_bytes(SMALL_PROGRAM)
+    (SDCARD / "TESTBIN").write_bytes(bytes(range(256)))
     for name in ("DELME.TXT", "DELME2.TXT"):
-        with open(os.path.join(SDCARD_PATH, name), "w") as f:
-            f.write("DELETE ME\r\n")
+        (SDCARD / name).write_text("DELETE ME\r\n")
 
-    # TESTDIR with sub-directory and a BASIC-tagged file
-    testdir = os.path.join(SDCARD_PATH, "TESTDIR")
-    os.makedirs(os.path.join(testdir, "SUB1"), exist_ok=True)
-    with open(os.path.join(testdir, "FILE1#F10800"), "wb") as f:
-        f.write(b"\x00" * 16)
+    (SDCARD / "TESTDIR" / "SUB1").mkdir(parents=True, exist_ok=True)
+    (SDCARD / "TESTDIR" / "FILE1#F10800").write_bytes(b"\x00" * 16)
+    (SDCARD / "EMPTYDIR").mkdir(exist_ok=True)
+    (SDCARD / "NOTEMPTY").mkdir(exist_ok=True)
+    (SDCARD / "NOTEMPTY" / "KEEP.TXT").write_text("KEEP\r\n")
 
-    # EMPTYDIR for RMDIR success test
-    os.makedirs(os.path.join(SDCARD_PATH, "EMPTYDIR"), exist_ok=True)
-
-    # NOTEMPTY for RMDIR failure test
-    notempty = os.path.join(SDCARD_PATH, "NOTEMPTY")
-    os.makedirs(notempty, exist_ok=True)
-    with open(os.path.join(notempty, "KEEP.TXT"), "w") as f:
-        f.write("KEEP\r\n")
-
-    # HGR sub-directory with tagged binary fixtures. The sdcard ships now comes
-    # directly from Claudio Parmigiani's real card and has a different layout;
-    # we create our own HGR here so the test is self-contained regardless of
-    # upstream sdcard reorganisations. 8 KB each, tagged to load at $2000.
-    hgrdir = os.path.join(SDCARD_PATH, "HGR")
-    os.makedirs(hgrdir, exist_ok=True)
+    # HGR ships with nine images of its own; these two are ours, and phase 1
+    # asserts against them by name rather than against whatever the card holds.
+    hgr = SDCARD / "HGR"
+    hgr.mkdir(exist_ok=True)
     for name in ("N000#062000", "PIC#062000"):
-        with open(os.path.join(hgrdir, name), "wb") as f:
-            f.write(b"\xAA" * 8192)
+        (hgr / name).write_bytes(b"\xAA" * 8192)
+    # For the DEL-by-display-name regression (4.17): on disk DELTAG#060280,
+    # typed as `DEL DELTAG`.
+    (hgr / "DELTAG#060280").write_bytes(b"\x00" * 16)
+
+
+def cleanup_fixtures() -> None:
+    for rel in FIXTURE_FILES:
+        p = SDCARD / rel
+        if p.is_file():
+            p.unlink()
+    for rel in FIXTURE_DIRS:
+        p = SDCARD / rel
+        if p.is_dir() and not any(p.iterdir()):
+            p.rmdir()
+
+
+class Sd:
+    """The firmware, driven one command at a time.
+
+    WAITING ON THE PROMPT IS NOT A SUBSTRING SEARCH. The SD CARD OS prompt is
+    the current path followed by '>' — "/>", "/HGR>" — and a DIR listing is
+    full of lines ending in "<DIR>". Anchoring on ">" therefore matched the
+    FIRST directory entry and returned a one-line "listing", after which every
+    later assertion read the previous command's leftovers. What identifies a
+    prompt is not the character but its POSITION: it is what the machine has
+    printed when it has stopped printing. So this waits for the output to go
+    quiet AND end in '>'. Still a condition rather than a clock — the old
+    harness's fixed read_t of 8 to 15 seconds per command is what this replaces
+    — and it costs one cheap `screen` round-trip every 50 ms.
+    """
+
+    def __init__(self, m: Pom1) -> None:
+        self.m = m
+
+    def _wait_prompt(self, timeout_ms: int, quiet_ms: int = 250) -> str:
+        deadline = time.time() + timeout_ms / 1000.0
+        last, stable_since = None, time.time()
+        while time.time() < deadline:
+            cur = self.m.screen()
+            if cur != last:
+                last, stable_since = cur, time.time()
+            elif (cur.rstrip().endswith(">")
+                  and (time.time() - stable_since) * 1000 >= quiet_ms):
+                return cur
+            time.sleep(0.05)
+        raise Pom1Error(
+            f"SD CARD OS never came back to a prompt within {timeout_ms}ms; "
+            f"saw: {(last or '')[-300:]!r}")
+
+    def enter(self, timeout_ms: int = 20000) -> str:
+        self.m.monitor()
+        self.m.screen_clear()
+        self.m.type_line("8000R")
+        return self._wait_prompt(timeout_ms)
+
+    def cmd(self, line: str, timeout_ms: int = 20000) -> str:
+        self.m.screen_clear()
+        self.m.type_line(line)
+        return self._wait_prompt(timeout_ms)
+
+
+def recover_from_test(sd: "Sd", m: Pom1, attempts: int = 8) -> None:
+    """Get the firmware back after the TEST loop.
+
+    The MCU needs its idle timeout to drop out of TEST_ECHO, and until it does
+    every SD command answers "?I/O ERROR". **A prompt is not evidence that it is
+    back**: the firmware prints one over the error, so both an unconditional
+    sleep and a wait-for-prompt let the harness march on — which is what made
+    the whole of phases 2-4 fail with I/O errors, reproducibly but not every
+    run. Re-enter and probe with a command whose success is unambiguous, until
+    it succeeds. A condition, not a clock, like everywhere else here.
+    """
+    for _ in range(attempts):
+        out = sd.enter()
+        if "?I/O ERROR" not in out.upper() and ROOT_PROMPT in out:
+            probe = sd.cmd("PWD")
+            if "?I/O ERROR" not in probe.upper():
+                return
+        time.sleep(0.5)
+    raise Pom1Error("SD CARD OS never left TEST_ECHO after the TEST loop")
 
-    # Tagged fixture for the DEL-by-display-name regression test (4.10b).
-    # On disk: DELTAG#060280; user types `DEL DELTAG` (display name only).
-    with open(os.path.join(hgrdir, "DELTAG#060280"), "wb") as f:
-        f.write(b"\x00" * 16)
-
-    print("Test data ready.")
-
-
-def cleanup_test_data() -> None:
-    """Remove test artifacts from sdcard/."""
-    print("Cleaning up test data...")
-    for name in ("HELLO.TXT", "SMALL#060300", "TESTBIN", "DELME.TXT", "DELME2.TXT",
-                 "WTEST", "STEST#060400"):
-        p = os.path.join(SDCARD_PATH, name)
-        if os.path.exists(p):
-            os.remove(p)
-    for d in ("TESTDIR", "EMPTYDIR", "NOTEMPTY", "NEWDIR", "TEMPDIR", "MDTEST", "HGR"):
-        p = os.path.join(SDCARD_PATH, d)
-        if os.path.isdir(p):
-            shutil.rmtree(p)
-    print("Cleanup done.")
-
-
-# ---------------------------------------------------------------------------
-# Telnet helpers
-# ---------------------------------------------------------------------------
-
-def recv_avail(sock: socket.socket, total: float = 4.0, idle: float = 0.3) -> str:
-    """Read all available data with timeout. Returns decoded string."""
-    end = time.time() + total
-    buf = b""
-    while time.time() < end:
-        r, _, _ = select.select([sock], [], [], idle)
-        if r:
-            chunk = sock.recv(65536)
-            if not chunk:
-                break
-            buf += chunk
-        elif buf:
-            break
-    text = buf.decode("latin-1", errors="replace")
-    return text
-
-
-def send_line(sock: socket.socket, cmd: str, wait: float = 0.3, read_t: float = 5.0) -> str:
-    """Send command + CR, wait, read response."""
-    sock.sendall((cmd + "\r").encode("ascii"))
-    time.sleep(wait)
-    return recv_avail(sock, total=read_t, idle=0.4)
-
-
-def send_ctrl(sock: socket.socket, byte: int) -> None:
-    """Send a control byte."""
-    sock.sendall(bytes([byte & 0xFF]))
-
-
-def enter_sdcard_os(sock: socket.socket) -> str:
-    """Reset Apple 1 and enter SD CARD OS. Returns captured output."""
-    # CTRL-R to reset
-    send_ctrl(sock, CTRL_R)
-    time.sleep(0.9)
-    out = recv_avail(sock, total=2.0)
-
-    # Send 8000R to enter SD CARD OS
-    out += send_line(sock, "8000R", wait=0.5, read_t=4.0)
-    return out
-
-
-def enter_woz_monitor(sock: socket.socket) -> str:
-    """Exit SD CARD OS back to Woz Monitor."""
-    return send_line(sock, "EXIT", wait=0.3, read_t=3.0)
-
-
-# ---------------------------------------------------------------------------
-# Test framework
-# ---------------------------------------------------------------------------
-
-class TestResults:
-    def __init__(self):
-        self.passed: list[str] = []
-        self.failed: list[tuple[str, str]] = []
-
-    def check(self, name: str, output: str, expected: str) -> bool:
-        """Check that expected substring is in output (case-insensitive)."""
-        if expected.upper() in output.upper():
-            self.passed.append(name)
-            print(f"  [PASS] {name}")
-            return True
-        else:
-            self.failed.append((name, f"Expected '{expected}' not found"))
-            print(f"  [FAIL] {name} -- expected '{expected}'")
-            if VERBOSE:
-                print(f"         Output: {output[-300:]!r}")
-            return False
-
-    def check_not(self, name: str, output: str, unexpected: str) -> bool:
-        """Check that unexpected substring is NOT in output."""
-        if unexpected.upper() not in output.upper():
-            self.passed.append(name)
-            print(f"  [PASS] {name}")
-            return True
-        else:
-            self.failed.append((name, f"Unexpected '{unexpected}' found"))
-            print(f"  [FAIL] {name} -- unexpected '{unexpected}'")
-            return False
-
-    def check_host_exists(self, name: str, path: str, should_exist: bool) -> bool:
-        """Check host filesystem for existence."""
-        exists = os.path.exists(path)
-        if exists == should_exist:
-            self.passed.append(name)
-            print(f"  [PASS] {name}")
-            return True
-        else:
-            verb = "exist" if should_exist else "not exist"
-            self.failed.append((name, f"Expected path to {verb}: {path}"))
-            print(f"  [FAIL] {name} -- expected path to {verb}: {path}")
-            return False
-
-    def report(self) -> int:
-        total = len(self.passed) + len(self.failed)
-        print(f"\n{'='*50}")
-        print(f"Results: {len(self.passed)}/{total} PASSED")
-        if self.failed:
-            print(f"\nFailed tests:")
-            for name, reason in self.failed:
-                print(f"  - {name}: {reason}")
-            return 1
-        return 0
-
-
-def vprint(label: str, output: str) -> None:
-    """Print output if verbose mode is on."""
-    if VERBOSE:
-        print(f"    [{label}] {output[-400:]!r}")
-
-
-# ---------------------------------------------------------------------------
-# Test phases
-# ---------------------------------------------------------------------------
-
-def phase0_connectivity(sock: socket.socket, results: TestResults) -> bool:
-    """Phase 0: Verify connectivity and enter SD CARD OS."""
-    print("\nPhase 0: Connectivity")
-
-    # 0.1 TCP connection + welcome banner
-    out = recv_avail(sock, total=1.5)
-    vprint("banner", out)
-    results.check("0.1 TCP connection & banner", out, "POM1")
-
-    # 0.2 Enter SD CARD OS
-    out = enter_sdcard_os(sock)
-    vprint("sdcard_os", out)
-    ok = results.check("0.2 Enter SD CARD OS", out, "SD CARD OS")
-    return ok
-
-
-def phase1_readonly(sock: socket.socket, results: TestResults) -> None:
-    """Phase 1: Read-only commands."""
-    print("\nPhase 1: Read-Only Commands")
-
-    # 1.1 ? command list (ROM reads /HELP/COMMANDS.TXT from SD card)
-    out = send_line(sock, "?", read_t=6.0)
-    vprint("?", out)
-    results.check("1.1 ? command list", out, "COMMANDS")
-
-    # 1.2 HELP SAVE (ROM reads /HELP/SAVE.TXT)
-    out = send_line(sock, "HELP SAVE", read_t=6.0)
-    vprint("HELP SAVE", out)
-    results.check("1.2 HELP SAVE shows syntax", out, "SYNTAX")
-    results.check("1.2b HELP SAVE mentions SAVE", out, "SAVE FILENAME")
-
-    # 1.3 HELP DIR (ROM reads /HELP/DIR.TXT)
-    out = send_line(sock, "HELP DIR", read_t=6.0)
-    vprint("HELP DIR", out)
-    results.check("1.3 HELP DIR shows syntax", out, "SYNTAX")
-
-    # 1.4 PWD at root
-    out = send_line(sock, "PWD")
-    vprint("PWD", out)
-    results.check("1.4 PWD at root", out, "/")
-
-    # 1.5 DIR at root
-    out = send_line(sock, "DIR", read_t=8.0)
-    vprint("DIR", out)
-    results.check("1.5 DIR lists HGR", out, "HGR")
-
-    # 1.6 LS at root
-    out = send_line(sock, "LS", read_t=8.0)
-    vprint("LS", out)
-    results.check("1.6 LS shows directories", out, "HGR")
-
-    # 1.7 DIR HGR
-    out = send_line(sock, "DIR HGR", read_t=8.0)
-    vprint("DIR HGR", out)
-    results.check("1.7 DIR HGR shows files", out, "N000")
-    results.check("1.7b DIR HGR shows type", out, "BIN")
-
-    # 1.8 LS HGR
-    out = send_line(sock, "LS HGR", read_t=8.0)
-    vprint("LS HGR", out)
-    results.check("1.8 LS HGR shows files", out, "8192")
-
-    # 1.9 TEST — ROM sends bytes 0x00-0xFF to MCU, MCU echoes each XOR 0xFF.
-    # ROM displays '*' after each full pass of 256 bytes. User presses ESC to exit.
-    sock.sendall(("TEST" + "\r").encode("ascii"))
-    time.sleep(0.3)
-    out = recv_avail(sock, total=3.0, idle=0.3)
-    vprint("TEST start", out)
-    results.check("1.9 TEST command starts", out, "TESTING")
-    # Wait for at least one '*' (one full 256-byte pass verified)
-    if "*" not in out:
-        out += recv_avail(sock, total=4.0, idle=0.5)
-    results.check("1.9b TEST shows verified pass", out, "*")
-    results.check_not("1.9c TEST no transfer error", out, "TRANSFER ERROR")
-    # Send ESC to exit the test loop cleanly (like real hardware)
-    send_ctrl(sock, 0x1B)  # ESC
-    time.sleep(0.3)
-    extra = recv_avail(sock, total=3.0, idle=0.5)
-    vprint("TEST after ESC", extra)
-    combined = out + extra
-    # If not back at prompt, reset and re-enter SD CARD OS.
-    # Wait for MCU idle timeout (~0.5s) so TEST_ECHO clears before re-entry.
-    if "/>" not in combined:
-        send_ctrl(sock, CTRL_R)
-        time.sleep(1.0)
-        recv_avail(sock, total=2.0, idle=0.5)
-        out = send_line(sock, "8000R", wait=0.5, read_t=4.0)
-        vprint("TEST recovery", out)
-
-    # 1.10 TYPE HELLO.TXT
-    out = send_line(sock, "TYPE HELLO.TXT", read_t=8.0)
-    vprint("TYPE", out)
-    results.check("1.10 TYPE HELLO.TXT", out, "HELLO WORLD")
-
-    # 1.11 DUMP SMALL#060300
-    out = send_line(sock, "DUMP SMALL#060300", read_t=8.0)
-    vprint("DUMP", out)
-    # The hex dump should show A9 (first byte of LDA #$CF)
-    results.check("1.11 DUMP shows hex data", out, "A9")
-
-    # 1.12 MOUNT
-    out = send_line(sock, "MOUNT", read_t=4.0)
-    vprint("MOUNT", out)
-    # MOUNT should not produce an error
-    results.check_not("1.12 MOUNT no error", out, "ERROR")
-
-    # 1.13 BAS (no BASIC program loaded)
-    out = send_line(sock, "BAS", read_t=4.0)
-    vprint("BAS", out)
-    # Might show LOMEM/HIMEM or "NO BASIC PROGRAM" -- either is valid
-    has_lomem = "LOMEM" in out.upper()
-    has_no_basic = "NO BASIC" in out.upper()
-    if has_lomem or has_no_basic:
-        results.passed.append("1.13 BAS command")
-        print("  [PASS] 1.13 BAS command")
-    else:
-        results.failed.append(("1.13 BAS command", "Neither LOMEM nor NO BASIC found"))
-        print("  [FAIL] 1.13 BAS command")
-
-    # 1.14 MOUNT resets directory — navigate away first, then MOUNT, verify PWD
-    send_line(sock, "CD HGR")
-    out = send_line(sock, "MOUNT", read_t=4.0)
-    vprint("MOUNT from HGR", out)
-    results.check_not("1.14 MOUNT no error", out, "ERROR")
-    out = send_line(sock, "PWD")
-    vprint("PWD after MOUNT", out)
-    results.check("1.14b MOUNT resets to root", out, "/")
-
-    # 1.15 DIR format: long format shows display name, size, type, $addr
-    out = send_line(sock, "DIR HGR", read_t=8.0)
-    vprint("DIR HGR format", out)
-    results.check("1.15 DIR shows BIN type", out, "BIN")
-    results.check("1.15b DIR shows $addr", out, "$2000")
-    results.check("1.15c DIR shows size", out, "8192")
-
-    # 1.16 LS format: short format shows <DIR> prefix for directories
-    out = send_line(sock, "LS", read_t=8.0)
-    vprint("LS format", out)
-    results.check("1.16 LS shows <DIR> prefix", out, "<DIR>")
-
-    # 1.17 TYPE full file content (test 1.10 only checks first line)
-    out = send_line(sock, "TYPE HELLO.TXT", read_t=8.0)
-    vprint("TYPE full", out)
-    results.check("1.17 TYPE shows second line", out, "THIS IS A TEST FILE")
-
-
-def phase2_navigation(sock: socket.socket, results: TestResults) -> None:
-    """Phase 2: Directory navigation."""
-    print("\nPhase 2: Directory Navigation")
-
-    # Make sure we're at root after MOUNT
-    send_line(sock, "CD /", read_t=3.0)
-
-    # 2.1 CD HGR
-    out = send_line(sock, "CD HGR")
-    vprint("CD HGR", out)
-    results.check_not("2.1 CD HGR no error", out, "NOT FOUND")
-
-    # 2.2 PWD after CD
-    out = send_line(sock, "PWD")
-    vprint("PWD", out)
-    results.check("2.2 PWD shows /HGR", out, "/HGR")
-
-    # 2.3 DIR in HGR
-    out = send_line(sock, "DIR", read_t=8.0)
-    vprint("DIR in HGR", out)
-    results.check("2.3 DIR in HGR shows PIC", out, "PIC")
-
-    # 2.4 CD .. (parent)
-    out = send_line(sock, "CD ..")
-    vprint("CD ..", out)
-    results.check_not("2.4 CD .. no error", out, "NOT FOUND")
-
-    # 2.5 PWD back at root
-    out = send_line(sock, "PWD")
-    vprint("PWD root", out)
-    results.check("2.5 PWD back at root", out, "/")
-
-    # 2.6 CD nested: TESTDIR/SUB1
-    send_line(sock, "CD TESTDIR")
-    out = send_line(sock, "CD SUB1")
-    vprint("CD SUB1", out)
-    out = send_line(sock, "PWD")
-    vprint("PWD nested", out)
-    results.check("2.6 Nested CD to /TESTDIR/SUB1", out, "/TESTDIR/SUB1")
-
-    # 2.7 CD / (absolute root)
-    out = send_line(sock, "CD /")
-    out = send_line(sock, "PWD")
-    vprint("PWD after CD /", out)
-    results.check("2.7 CD / returns to root", out, "/")
-
-    # 2.8 CD hgr (lowercase, fuzzy match)
-    out = send_line(sock, "CD hgr")
-    vprint("CD hgr fuzzy", out)
-    results.check_not("2.8 CD hgr fuzzy no error", out, "NOT FOUND")
-    out = send_line(sock, "PWD")
-    results.check("2.8b fuzzy resolves to /HGR", out, "/HGR")
-    send_line(sock, "CD /")  # return to root
-
-    # 2.9 CD to non-existent directory
-    out = send_line(sock, "CD NOSUCHDIR")
-    vprint("CD NOSUCHDIR", out)
-    results.check("2.9 CD NOSUCHDIR error", out, "PATH NOT FOUND")
-
-    # 2.10 CD absolute path from subdirectory
-    send_line(sock, "CD HGR")
-    out = send_line(sock, "CD /TESTDIR")
-    vprint("CD /TESTDIR from HGR", out)
-    results.check_not("2.10 CD /TESTDIR no error", out, "NOT FOUND")
-    out = send_line(sock, "PWD")
-    results.check("2.10b PWD shows /TESTDIR", out, "/TESTDIR")
-    send_line(sock, "CD /")  # return to root
-
-    # 2.11 CD with trailing slash
-    out = send_line(sock, "CD HGR/")
-    vprint("CD HGR/", out)
-    results.check_not("2.11 CD HGR/ no error", out, "NOT FOUND")
-    out = send_line(sock, "PWD")
-    results.check("2.11b CD HGR/ resolves", out, "/HGR")
-    send_line(sock, "CD /")
-
-    # 2.12 Multiple CD .. from deeply nested directory
-    send_line(sock, "CD TESTDIR")
-    send_line(sock, "CD SUB1")
-    out = send_line(sock, "PWD")
-    results.check("2.12 start at /TESTDIR/SUB1", out, "/TESTDIR/SUB1")
-    send_line(sock, "CD ..")
-    out = send_line(sock, "PWD")
-    results.check("2.12b CD .. to /TESTDIR", out, "/TESTDIR")
-    send_line(sock, "CD ..")
-    out = send_line(sock, "PWD")
-    results.check("2.12c CD .. to root", out, "/")
-
-
-def phase3_file_read(sock: socket.socket, results: TestResults) -> None:
-    """Phase 3: File read operations."""
-    print("\nPhase 3: File Read Operations")
-
-    # Ensure we're at root
-    send_line(sock, "CD /")
-
-    # 3.1 LOAD PIC (exact match, in HGR)
-    send_line(sock, "CD HGR")
-    out = send_line(sock, "LOAD PIC", read_t=15.0)
-    vprint("LOAD PIC", out)
-    results.check("3.1 LOAD PIC found", out, "FOUND")
-    results.check("3.1b LOAD PIC filename", out, "PIC#062000")
-
-    # 3.2 LOAD N00 (fuzzy prefix match)
-    out = send_line(sock, "LOAD N00", read_t=15.0)
-    vprint("LOAD N00", out)
-    results.check("3.2 LOAD N00 fuzzy match", out, "FOUND")
-    results.check("3.2b matched N000", out, "N000")
-
-    # 3.3 LOAD non-existent
-    out = send_line(sock, "LOAD NONEXIST", read_t=4.0)
-    vprint("LOAD NONEXIST", out)
-    results.check("3.3 LOAD NONEXIST error", out, "FILE NOT FOUND")
-
-    # 3.4 DUMP TESTBIN — verify actual file content (bytes 0x00..0xFF)
-    send_line(sock, "CD /")
-    out = send_line(sock, "DUMP TESTBIN", wait=0.5, read_t=15.0)
-    vprint("DUMP TESTBIN", out)
-    results.check_not("3.4 DUMP TESTBIN no error", out, "?")
-    results.check("3.4b DUMP shows start bytes", out, "00 01 02")
-    results.check("3.4c DUMP shows 0x80 region", out, "80 81 82")
-
-    # 3.4d READ TESTBIN to $0400 (load to memory, no content visible)
-    # Drain any remaining DUMP output first
-    recv_avail(sock, total=1.5, idle=0.5)
-    out = send_line(sock, "READ TESTBIN 0400", read_t=8.0)
-    vprint("READ TESTBIN", out)
-    results.check_not("3.4d READ TESTBIN no error", out, "?")
-
-    # 3.5 RUN SMALL (executes program that prints OK)
-    out = send_line(sock, "RUN SMALL", wait=0.5, read_t=8.0)
-    vprint("RUN SMALL", out)
-    results.check("3.5 RUN SMALL found", out, "FOUND")
-    # After RUN, the program prints OK and jumps to Woz Monitor
-    # We need to wait for the OK output and the Woz prompt
-    extra = recv_avail(sock, total=4.0)
-    vprint("RUN SMALL extra", extra)
-    combined = out + extra
-    results.check("3.5b RUN SMALL prints OK", combined, "OK")
-
-    # Re-enter SD CARD OS
-    out = send_line(sock, "8000R", wait=0.5, read_t=4.0)
-    vprint("re-enter SDCARD OS", out)
-
-    # 3.6 LOAD with full tagged filename
-    send_line(sock, "CD /")
-    out = send_line(sock, "LOAD SMALL#060300", read_t=8.0)
-    vprint("LOAD SMALL#060300", out)
-    results.check("3.6 LOAD with tag found", out, "FOUND")
-    results.check("3.6b LOAD tag filename", out, "SMALL#060300")
-
-    # 3.7 READ in subdirectory (relative path resolution)
-    send_line(sock, "CD HGR")
-    out = send_line(sock, "READ PIC#062000 2000", read_t=15.0)
-    vprint("READ PIC in HGR", out)
-    results.check_not("3.7 READ in subdir no error", out, "?")
-    send_line(sock, "CD /")
-
-
-def phase4_file_write(sock: socket.socket, results: TestResults) -> None:
-    """Phase 4: File write/modify operations."""
-    print("\nPhase 4: File Write Operations")
-
-    # Ensure we're at root
-    send_line(sock, "CD /")
-
-    # 4.1 MKDIR NEWDIR
-    out = send_line(sock, "MKDIR NEWDIR")
-    vprint("MKDIR NEWDIR", out)
-    results.check_not("4.1 MKDIR NEWDIR no error", out, "ERROR")
-    results.check_host_exists("4.1b NEWDIR on host", os.path.join(SDCARD_PATH, "NEWDIR"), True)
-
-    # Verify via LS
-    out = send_line(sock, "LS", read_t=8.0)
-    results.check("4.1c NEWDIR in LS", out, "NEWDIR")
-
-    # 4.2 MKDIR NEWDIR again (duplicate)
-    out = send_line(sock, "MKDIR NEWDIR")
-    vprint("MKDIR NEWDIR dup", out)
-    results.check("4.2 MKDIR duplicate error", out, "ALREADY EXISTS")
-
-    # 4.15 MKDIR nested path (should fail — no recursive create)
-    out = send_line(sock, "MKDIR A/B")
-    vprint("MKDIR A/B", out)
-    results.check("4.15 MKDIR nested fails", out, "FAILED")
-
-    # 4.3 RMDIR EMPTYDIR (success)
-    out = send_line(sock, "RMDIR EMPTYDIR")
-    vprint("RMDIR EMPTYDIR", out)
-    results.check_not("4.3 RMDIR EMPTYDIR no error", out, "ERROR")
-    results.check_host_exists("4.3b EMPTYDIR removed", os.path.join(SDCARD_PATH, "EMPTYDIR"), False)
-
-    # 4.4 RMDIR NOTEMPTY (should fail)
-    out = send_line(sock, "RMDIR NOTEMPTY")
-    vprint("RMDIR NOTEMPTY", out)
-    results.check("4.4 RMDIR NOTEMPTY error", out, "NOT EMPTY")
-
-    # 4.5 RMDIR non-existent
-    out = send_line(sock, "RMDIR XYZNODIR")
-    vprint("RMDIR XYZNODIR", out)
-    results.check("4.5 RMDIR non-existent error", out, "PATH NOT FOUND")
-
-    # 4.6 MD / RD aliases
-    out = send_line(sock, "MD TEMPDIR")
-    vprint("MD TEMPDIR", out)
-    results.check_host_exists("4.6 MD TEMPDIR created", os.path.join(SDCARD_PATH, "TEMPDIR"), True)
-    out = send_line(sock, "RD TEMPDIR")
-    vprint("RD TEMPDIR", out)
-    results.check_host_exists("4.6b RD TEMPDIR removed", os.path.join(SDCARD_PATH, "TEMPDIR"), False)
-
-    # 4.7 DEL DELME.TXT
-    out = send_line(sock, "DEL DELME.TXT")
-    vprint("DEL DELME.TXT", out)
-    results.check_host_exists("4.7 DEL DELME.TXT", os.path.join(SDCARD_PATH, "DELME.TXT"), False)
-
-    # 4.8 RM DELME2.TXT (alias)
-    out = send_line(sock, "RM DELME2.TXT")
-    vprint("RM DELME2.TXT", out)
-    results.check_host_exists("4.8 RM DELME2.TXT", os.path.join(SDCARD_PATH, "DELME2.TXT"), False)
-
-    # 4.9 DEL non-existent
-    out = send_line(sock, "DEL NOSUCHFILE")
-    vprint("DEL NOSUCHFILE", out)
-    results.check("4.9 DEL non-existent error", out, "FILE NOT FOUND")
-
-    # 4.10 DEL on directory
-    out = send_line(sock, "DEL HGR")
-    vprint("DEL HGR", out)
-    results.check("4.10 DEL directory error", out, "IS A DIRECTORY")
-
-    # 4.10b DEL by display name on a tagged file (regression: cmdDel used to
-    # require an exact filename match, so `DEL PIC` failed when the file on
-    # disk was `PIC#062000`. Now falls back to fuzzyMatchFilename like LOAD.)
-    deltag_path = os.path.join(SDCARD_PATH, "HGR", "DELTAG#060280")
-    results.check_host_exists("4.10b fixture present", deltag_path, True)
-    send_line(sock, "CD HGR")
-    out = send_line(sock, "DEL DELTAG")
-    vprint("DEL DELTAG (fuzzy)", out)
-    results.check_not("4.10b DEL fuzzy no error", out, "FILE NOT FOUND")
-    results.check_host_exists("4.10c DELTAG#060280 removed", deltag_path, False)
-    send_line(sock, "CD /")
-
-    # 4.11 WRITE via Woz Monitor
-    # Exit to Woz Monitor, write data, come back
-    out = enter_woz_monitor(sock)
-    vprint("EXIT", out)
-
-    # Poke "HELLO" (48 45 4C 4C 4F) at $0400
-    out = send_line(sock, "0400: 48 45 4C 4C 4F", wait=0.3, read_t=3.0)
-    vprint("poke data", out)
-
-    # Re-enter SD CARD OS
-    out = send_line(sock, "8000R", wait=0.5, read_t=4.0)
-    vprint("re-enter", out)
-
-    out = send_line(sock, "WRITE WTEST 0400 0404", read_t=6.0)
-    vprint("WRITE WTEST", out)
-    results.check_not("4.11 WRITE WTEST no error", out, "?")
-
-    # Verify on host
-    wtest_path = os.path.join(SDCARD_PATH, "WTEST")
-    results.check_host_exists("4.11b WTEST exists", wtest_path, True)
-    if os.path.exists(wtest_path):
-        with open(wtest_path, "rb") as f:
-            data = f.read()
-        if data == b"HELLO":
-            results.passed.append("4.11c WTEST content correct")
-            print("  [PASS] 4.11c WTEST content correct")
-        else:
-            results.failed.append(("4.11c WTEST content", f"Expected b'HELLO', got {data!r}"))
-            print(f"  [FAIL] 4.11c WTEST content -- got {data!r}")
-
-    # 4.14 WRITE overwrite — memory at $0400 still has "HELLO", overwrite with 3 bytes
-    out = send_line(sock, "WRITE WTEST 0400 0402", read_t=6.0)
-    vprint("WRITE WTEST overwrite", out)
-    results.check_not("4.14 WRITE overwrite no error", out, "?")
-    if os.path.exists(wtest_path):
-        with open(wtest_path, "rb") as f:
-            data = f.read()
-        if data == b"HEL":
-            results.passed.append("4.14b overwrite content correct")
-            print("  [PASS] 4.14b overwrite content correct")
-        else:
-            results.failed.append(("4.14b overwrite content", f"Expected b'HEL', got {data!r}"))
-            print(f"  [FAIL] 4.14b overwrite content -- got {data!r}")
-
-    # 4.12 SAVE STEST 0400 0404 (binary with tag)
-    out = send_line(sock, "SAVE STEST 0400 0404", read_t=6.0)
-    vprint("SAVE STEST", out)
-    results.check_not("4.12 SAVE STEST no error", out, "?")
-    results.check_host_exists("4.12b STEST#060400 exists",
-                               os.path.join(SDCARD_PATH, "STEST#060400"), True)
-
-    # 4.13 Cleanup created files via SD CARD OS
-    send_line(sock, "DEL WTEST", read_t=3.0)
-    send_line(sock, "DEL STEST#060400", read_t=3.0)
-    send_line(sock, "RMDIR NEWDIR", read_t=3.0)
-
-
-def phase5_exit_reentry(sock: socket.socket, results: TestResults) -> None:
-    """Phase 5: EXIT and re-entry."""
-    print("\nPhase 5: EXIT and Re-entry")
-
-    # 5.1 EXIT
-    out = send_line(sock, "EXIT", wait=0.5, read_t=3.0)
-    # Woz Monitor prompt (\) may arrive with a small delay
-    out += recv_avail(sock, total=2.0, idle=0.3)
-    vprint("EXIT", out)
-    results.check("5.1 EXIT prints BYE", out, "BYE")
-
-    # 5.2 Re-enter SD CARD OS
-    out = send_line(sock, "8000R", wait=0.5, read_t=4.0)
-    vprint("8000R", out)
-    results.check("5.2 Re-enter SD CARD OS", out, "SD CARD OS")
-
-
-def phase6_errors(sock: socket.socket, results: TestResults) -> None:
-    """Phase 6: Error cases."""
-    print("\nPhase 6: Error Cases")
-
-    # 6.1 Empty command
-    out = send_line(sock, "", read_t=3.0)
-    vprint("empty cmd", out)
-    results.check_not("6.1 Empty command no crash", out, "ERROR")
-
-    # 6.2 Unknown command — ROM v1.3 echoes the input with ?? appended
-    out = send_line(sock, "XYZZY", read_t=4.0)
-    vprint("XYZZY", out)
-    results.check("6.2 Unknown command rejected", out, "??")
-
-    # 6.3 LOAD without argument
-    out = send_line(sock, "LOAD", read_t=4.0)
-    vprint("LOAD no arg", out)
-    results.check("6.3 LOAD missing filename", out, "MISSING")
-
-    # 6.4 DEL without argument
-    out = send_line(sock, "DEL", read_t=4.0)
-    vprint("DEL no arg", out)
-    results.check("6.4 DEL missing filename", out, "MISSING")
-
-    # 6.5 Path traversal CD ../../etc
-    out = send_line(sock, "CD ../../etc")
-    vprint("CD traversal", out)
-    results.check("6.5 Path traversal blocked", out, "PATH NOT FOUND")
-
-    # 6.6 DIR non-existent path
-    out = send_line(sock, "DIR NOSUCHPATH", read_t=4.0)
-    vprint("DIR NOSUCH", out)
-    results.check("6.6 DIR non-existent path", out, "PATH NOT FOUND")
-
-    # 6.7 RMDIR on a file
-    out = send_line(sock, "RMDIR HELLO.TXT")
-    vprint("RMDIR file", out)
-    results.check("6.7 RMDIR on file", out, "NOT A DIRECTORY")
-
-    # 6.8 Path traversal via TYPE (sandbox security)
-    out = send_line(sock, "TYPE ../../etc/passwd", read_t=4.0)
-    vprint("TYPE traversal", out)
-    results.check_not("6.8 TYPE traversal no passwd", out, "root:")
-    # resolveHostPath clamps to sdcard root (a directory) -> error
-    has_error = ("?" in out or "IS A DIRECTORY" in out.upper()
-                 or "FILE NOT FOUND" in out.upper() or "ERROR" in out.upper())
-    if has_error:
-        results.passed.append("6.8b TYPE traversal error response")
-        print("  [PASS] 6.8b TYPE traversal error response")
-    else:
-        results.failed.append(("6.8b TYPE traversal", "No error response"))
-        print("  [FAIL] 6.8b TYPE traversal -- no error response")
-
-    # 6.9 HELP for unknown command — ROM validates command name before reading file
-    out = send_line(sock, "HELP NOSUCHCMD", read_t=6.0)
-    vprint("HELP NOSUCHCMD", out)
-    results.check("6.9 HELP unknown cmd error", out, "UNKNOWN COMMAND")
-
-    # 6.10 READ nonexistent file (distinct from LOAD nonexistent in 3.3)
-    out = send_line(sock, "READ NOSUCHFILE 0400", read_t=4.0)
-    vprint("READ NOSUCH", out)
-    results.check("6.10 READ nonexistent", out, "FILE NOT FOUND")
-
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def main() -> int:
-    global VERBOSE
+    if not SDCARD.is_dir():
+        SDCARD.mkdir(parents=True)
 
-    parser = argparse.ArgumentParser(description="Test SD CARD OS via Terminal Card telnet")
-    parser.add_argument("--setup", action="store_true", help="Prepare test data before testing")
-    parser.add_argument("--cleanup", action="store_true", help="Clean up test artifacts after testing")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Show raw output")
-    args = parser.parse_args()
+    cleanup_fixtures()      # from a previous failed run
+    prepare_fixtures()
 
-    VERBOSE = args.verbose
-
-    if args.setup:
-        prepare_test_data()
-
-    # Verify test data exists
-    if not os.path.exists(os.path.join(SDCARD_PATH, "HELLO.TXT")):
-        print("ERROR: Test data not found. Run with --setup first.", file=sys.stderr)
-        return 2
-
-    print("=" * 50)
-    print("SD CARD OS Test Suite")
-    print(f"Target: {HOST}:{PORT}")
-    print("=" * 50)
-
-    results = TestResults()
-
+    c = Checks("SD CARD OS -- full command set")
     try:
-        sock = socket.create_connection((HOST, PORT), timeout=10)
-    except OSError as e:
-        print(f"\nERROR: Cannot connect to {HOST}:{PORT} ({e})")
-        print("Make sure POM1 is running with Terminal Card + microSD enabled.")
-        return 2
+        with Pom1(preset=8, verbose=VERBOSE) as m:
+            sd = Sd(m)
 
-    try:
-        # Phase 0: Connectivity
-        if not phase0_connectivity(sock, results):
-            print("\nABORT: Cannot enter SD CARD OS. Check emulator state.")
-            return results.report()
+            # ---------------- Phase 0 ----------------
+            print("\nPhase 0: firmware entry")
+            out = sd.enter()
+            c.contains("0.1 SD CARD OS banner", out, "SD CARD OS")
+            c.contains("0.2 prompt at root", out, ROOT_PROMPT)
 
-        # Phase 1: Read-only commands
-        phase1_readonly(sock, results)
+            # ---------------- Phase 1: read-only ----------------
+            print("\nPhase 1: read-only commands")
+            c.contains("1.1 ? lists commands", sd.cmd("?"), "COMMANDS")
+            out = sd.cmd("HELP SAVE")
+            c.contains("1.2 HELP SAVE shows syntax", out, "SYNTAX")
+            c.contains("1.3 HELP SAVE mentions SAVE FILENAME", out, "SAVE FILENAME")
+            c.contains("1.4 HELP DIR shows syntax", sd.cmd("HELP DIR"), "SYNTAX")
+            c.contains("1.5 PWD at root", sd.cmd("PWD"), "/")
+            c.contains("1.6 DIR lists HGR", sd.cmd("DIR"), "HGR")
+            c.contains("1.7 LS lists HGR", sd.cmd("LS"), "HGR")
+            out = sd.cmd("DIR HGR")
+            c.contains("1.8 DIR HGR shows N000", out, "N000")
+            c.contains("1.9 DIR HGR shows the BIN type", out, "BIN")
+            c.contains("1.10 DIR HGR shows the load address", out, "$2000")
+            c.contains("1.11 DIR HGR shows the size", out, "8192")
+            c.contains("1.12 LS HGR shows the size", sd.cmd("LS HGR"), "8192")
+            c.contains("1.13 LS marks directories", sd.cmd("LS"), "<DIR>")
 
-        # Phase 2: Directory navigation
-        phase2_navigation(sock, results)
+            # TEST loops until ESC: the ROM sends 0x00-0xFF to the MCU, which
+            # echoes each byte XOR 0xFF, and a '*' marks each verified pass.
+            m.screen_clear()
+            m.type_line("TEST")
+            out = m.expect("TESTING", timeout_ms=8000)
+            c.contains("1.14 TEST starts", out, "TESTING")
+            star = m.try_expect("*", 8000)
+            c.ok("1.15 TEST verifies a full 256-byte pass", star is not None,
+                 "no '*' within 8 s")
+            c.excludes("1.16 TEST reports no transfer error",
+                       (star or "") + m.screen(), "TRANSFER ERROR")
+            m.key("\x1b")               # ESC leaves the loop
+            recover_from_test(sd, m)
 
-        # Phase 3: File read operations
-        phase3_file_read(sock, results)
+            out = sd.cmd("TYPE HELLO.TXT")
+            c.contains("1.17 TYPE shows the first line", out, "HELLO WORLD")
+            c.contains("1.18 TYPE shows the second line", out, "THIS IS A TEST FILE")
+            c.contains("1.19 DUMP shows hex bytes", sd.cmd("DUMP SMALL#060300"), "A9")
+            c.excludes("1.20 MOUNT reports no error", sd.cmd("MOUNT"), "ERROR")
+            out = sd.cmd("BAS")
+            c.ok("1.21 BAS answers", "LOMEM" in out.upper() or "NO BASIC" in out.upper(),
+                 repr(out))
+            # MOUNT must reset the working directory to the root.
+            sd.cmd("CD HGR")
+            c.excludes("1.22 MOUNT from a subdir reports no error", sd.cmd("MOUNT"), "ERROR")
+            c.contains("1.23 MOUNT returns to root", sd.cmd("PWD"), "/")
 
-        # Phase 4: File write operations
-        phase4_file_write(sock, results)
+            # ---------------- Phase 2: navigation ----------------
+            print("\nPhase 2: directory navigation")
+            sd.cmd("CD /")
+            c.excludes("2.1 CD HGR accepted", sd.cmd("CD HGR"), "NOT FOUND")
+            c.contains("2.2 PWD shows /HGR", sd.cmd("PWD"), "/HGR")
+            c.contains("2.3 DIR in HGR shows PIC", sd.cmd("DIR"), "PIC")
+            c.excludes("2.4 CD .. accepted", sd.cmd("CD .."), "NOT FOUND")
+            c.contains("2.5 PWD back at root", sd.cmd("PWD"), "/")
+            sd.cmd("CD TESTDIR")
+            sd.cmd("CD SUB1")
+            c.contains("2.6 nested CD reaches /TESTDIR/SUB1", sd.cmd("PWD"), "/TESTDIR/SUB1")
+            c.contains("2.7 CD .. climbs to /TESTDIR", sd.cmd("CD ..") + sd.cmd("PWD"),
+                       "/TESTDIR")
+            sd.cmd("CD ..")
+            c.contains("2.8 CD .. climbs to the root", sd.cmd("PWD"), "/")
+            c.excludes("2.9 fuzzy CD hgr accepted", sd.cmd("CD hgr"), "NOT FOUND")
+            c.contains("2.10 fuzzy CD resolves to /HGR", sd.cmd("PWD"), "/HGR")
+            sd.cmd("CD /")
+            c.contains("2.11 CD to a missing directory is refused",
+                       sd.cmd("CD NOSUCHDIR"), "PATH NOT FOUND")
+            sd.cmd("CD HGR")
+            c.excludes("2.12 absolute CD /TESTDIR accepted", sd.cmd("CD /TESTDIR"), "NOT FOUND")
+            c.contains("2.13 PWD shows /TESTDIR", sd.cmd("PWD"), "/TESTDIR")
+            sd.cmd("CD /")
+            c.excludes("2.14 trailing-slash CD HGR/ accepted", sd.cmd("CD HGR/"), "NOT FOUND")
+            c.contains("2.15 CD HGR/ resolves to /HGR", sd.cmd("PWD"), "/HGR")
+            sd.cmd("CD /")
 
-        # Phase 5: EXIT and re-entry
-        phase5_exit_reentry(sock, results)
+            # ---------------- Phase 3: reads ----------------
+            print("\nPhase 3: file reads")
+            sd.cmd("CD HGR")
+            out = sd.cmd("LOAD PIC", timeout_ms=25000)
+            c.contains("3.1 LOAD PIC found", out, "FOUND")
+            c.contains("3.2 LOAD PIC names the tagged file", out, "PIC#062000")
+            out = sd.cmd("LOAD N00", timeout_ms=25000)
+            c.contains("3.3 LOAD N00 fuzzy-matches", out, "FOUND")
+            c.contains("3.4 fuzzy match resolved to N000", out, "N000")
+            c.contains("3.5 LOAD of a missing file is refused",
+                       sd.cmd("LOAD NONEXIST"), "FILE NOT FOUND")
+            sd.cmd("CD /")
 
-        # Phase 6: Error cases
-        phase6_errors(sock, results)
+            out = sd.cmd("DUMP TESTBIN", timeout_ms=30000)
+            c.contains("3.6 DUMP shows the first bytes", out, "00 01 02")
+            c.contains("3.7 DUMP reaches the $80 region", out, "80 81 82")
+            m.poke(0x0400, [0xFF] * 8)
+            sd.cmd("READ TESTBIN 0400", timeout_ms=20000)
+            c.ok("3.8 READ landed the file's bytes at $0400",
+                 m.peek(0x0400, 4) == bytes([0x00, 0x01, 0x02, 0x03]),
+                 f"got {m.peek(0x0400, 4).hex(' ')}")
 
-    except (BrokenPipeError, ConnectionResetError) as e:
-        print(f"\nConnection lost: {e}")
+            # RUN loads and executes; the program prints OK and returns to the
+            # Monitor, so the SD CARD OS prompt does not come back on its own.
+            m.screen_clear()
+            m.type_line("RUN SMALL")
+            out = m.expect("FOUND", timeout_ms=15000)
+            c.contains("3.9 RUN SMALL found the program", out, "FOUND")
+            c.ok("3.10 RUN SMALL executed and printed OK",
+                 m.try_expect("OK", 10000) is not None, repr(m.screen()))
+
+            sd.enter()
+            out = sd.cmd("LOAD SMALL#060300", timeout_ms=15000)
+            c.contains("3.11 LOAD by full tagged name found", out, "FOUND")
+            c.contains("3.12 LOAD by tagged name echoes it", out, "SMALL#060300")
+            sd.cmd("CD HGR")
+            m.poke(0x2000, [0x00] * 4)
+            sd.cmd("READ PIC#062000 2000", timeout_ms=30000)
+            c.ok("3.13 READ in a subdirectory landed at $2000",
+                 m.peek(0x2000, 4) == bytes([0xAA] * 4),
+                 f"got {m.peek(0x2000, 4).hex(' ')}")
+            sd.cmd("CD /")
+
+            # ---------------- Phase 4: writes ----------------
+            print("\nPhase 4: file writes")
+            c.excludes("4.1 MKDIR NEWDIR reports no error", sd.cmd("MKDIR NEWDIR"), "ERROR")
+            c.ok("4.2 NEWDIR exists on the host", (SDCARD / "NEWDIR").is_dir())
+            c.contains("4.3 NEWDIR appears in LS", sd.cmd("LS"), "NEWDIR")
+            c.contains("4.4 MKDIR of an existing name is refused",
+                       sd.cmd("MKDIR NEWDIR"), "ALREADY EXISTS")
+            c.contains("4.5 MKDIR does not create nested paths",
+                       sd.cmd("MKDIR A/B"), "FAILED")
+            c.excludes("4.6 RMDIR EMPTYDIR reports no error", sd.cmd("RMDIR EMPTYDIR"), "ERROR")
+            c.ok("4.7 EMPTYDIR removed on the host", not (SDCARD / "EMPTYDIR").exists())
+            c.contains("4.8 RMDIR of a non-empty directory is refused",
+                       sd.cmd("RMDIR NOTEMPTY"), "NOT EMPTY")
+            c.contains("4.9 RMDIR of a missing directory is refused",
+                       sd.cmd("RMDIR XYZNODIR"), "PATH NOT FOUND")
+            sd.cmd("MD TEMPDIR")
+            c.ok("4.10 MD alias creates the directory", (SDCARD / "TEMPDIR").is_dir())
+            sd.cmd("RD TEMPDIR")
+            c.ok("4.11 RD alias removes it", not (SDCARD / "TEMPDIR").exists())
+            sd.cmd("DEL DELME.TXT")
+            c.ok("4.12 DEL removes the host file", not (SDCARD / "DELME.TXT").exists())
+            sd.cmd("RM DELME2.TXT")
+            c.ok("4.13 RM alias removes the host file", not (SDCARD / "DELME2.TXT").exists())
+            c.contains("4.14 DEL of a missing file is refused",
+                       sd.cmd("DEL NOSUCHFILE"), "FILE NOT FOUND")
+            c.contains("4.15 DEL of a directory is refused",
+                       sd.cmd("DEL HGR"), "IS A DIRECTORY")
+
+            # Regression: cmdDel used to demand an exact filename, so `DEL PIC`
+            # failed on a file stored as PIC#062000. It now falls back to the
+            # same fuzzy match LOAD uses.
+            deltag = SDCARD / "HGR" / "DELTAG#060280"
+            c.ok("4.16 DELTAG fixture present", deltag.is_file())
+            sd.cmd("CD HGR")
+            c.excludes("4.17 DEL by display name accepted", sd.cmd("DEL DELTAG"),
+                       "FILE NOT FOUND")
+            c.ok("4.18 DELTAG#060280 removed on the host", not deltag.exists())
+            sd.cmd("CD /")
+
+            # WRITE / SAVE take their bytes from RAM. poke plants them directly
+            # instead of exiting to the Monitor to type them in.
+            m.poke(0x0400, b"HELLO")
+            sd.cmd("WRITE WTEST 0400 0404", timeout_ms=15000)
+            wtest = SDCARD / "WTEST"
+            c.ok("4.19 WTEST written to the host", wtest.is_file())
+            c.ok("4.20 WTEST holds the right bytes",
+                 wtest.is_file() and wtest.read_bytes() == b"HELLO",
+                 f"got {wtest.read_bytes()!r}" if wtest.is_file() else "missing")
+            sd.cmd("WRITE WTEST 0400 0402", timeout_ms=15000)
+            c.ok("4.21 WRITE overwrites in place",
+                 wtest.is_file() and wtest.read_bytes() == b"HEL",
+                 f"got {wtest.read_bytes()!r}" if wtest.is_file() else "missing")
+            sd.cmd("SAVE STEST 0400 0404", timeout_ms=15000)
+            c.ok("4.22 SAVE writes a tagged file",
+                 (SDCARD / "STEST#060400").is_file())
+            sd.cmd("DEL WTEST")
+            sd.cmd("DEL STEST#060400")
+            sd.cmd("RMDIR NEWDIR")
+
+            # ---------------- Phase 5: exit and re-entry ----------------
+            print("\nPhase 5: EXIT and re-entry")
+            m.screen_clear()
+            m.type_line("EXIT")
+            c.contains("5.1 EXIT says BYE", m.expect("BYE", timeout_ms=8000), "BYE")
+            c.contains("5.2 8000R re-enters the firmware", sd.enter(), "SD CARD OS")
+
+            # ---------------- Phase 6: error cases ----------------
+            print("\nPhase 6: error cases")
+            c.excludes("6.1 an empty command is harmless", sd.cmd(""), "ERROR")
+            c.contains("6.2 an unknown command is rejected", sd.cmd("XYZZY"), "??")
+            c.contains("6.3 LOAD without a filename", sd.cmd("LOAD"), "MISSING")
+            c.contains("6.4 DEL without a filename", sd.cmd("DEL"), "MISSING")
+            c.contains("6.5 CD path traversal is blocked",
+                       sd.cmd("CD ../../etc"), "PATH NOT FOUND")
+            c.contains("6.6 DIR of a missing path", sd.cmd("DIR NOSUCHPATH"), "PATH NOT FOUND")
+            c.contains("6.7 RMDIR on a file is refused",
+                       sd.cmd("RMDIR HELLO.TXT"), "NOT A DIRECTORY")
+            out = sd.cmd("TYPE ../../etc/passwd")
+            c.excludes("6.8 TYPE traversal leaks no host file", out, "root:")
+            c.ok("6.9 TYPE traversal is answered with an error",
+                 any(k in out.upper() for k in ("?", "IS A DIRECTORY",
+                                                "FILE NOT FOUND", "ERROR")),
+                 repr(out))
+            c.contains("6.10 HELP for an unknown command",
+                       sd.cmd("HELP NOSUCHCMD"), "UNKNOWN COMMAND")
+            c.contains("6.11 READ of a missing file",
+                       sd.cmd("READ NOSUCHFILE 0400"), "FILE NOT FOUND")
     finally:
-        try:
-            sock.close()
-        except Exception:
-            pass
+        cleanup_fixtures()
 
-    rc = results.report()
-
-    if args.cleanup:
-        cleanup_test_data()
-
-    return rc
+    return c.summary()
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Pom1Error as e:
+        print(f"\nHARNESS ERROR: {e}")
+        cleanup_fixtures()
+        sys.exit(1)

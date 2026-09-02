@@ -9,6 +9,30 @@ runs it headless inside POM1, and asserts **real values** read back from a RAM
 "result mailbox" — no golden hashes, no rendering. Registered as the CMake test
 `lib_micro_tests` (skips `77` without cc65 or `build/POM1`).
 
+## Why the peripheral drivers had no test
+
+Not because they are untestable. `a1io/`, `sd/`, `wifi/`, `gt6144/` and
+`text40/` had no driver here because **three separate things in this harness
+stopped at the same place**, and each had to be fixed before the first one
+could run:
+
+1. **The include list was hardcoded** (`ASM_INCLUDE_DIRS`) and did not contain
+   them, so `ca65` could not even find their own `.inc`. It now also gets the
+   directory of every module a driver names, so a new module needs no edit here.
+2. **Only ONE of the two integration models was implemented.** `dev/lib/README.md`
+   is explicit that a file arrives either as a separately-compiled object
+   (`LIBS:`) or as a textual `.include` — and *every* peripheral driver is the
+   second kind. `.import` finds no export in them and `LIBS:` would link a
+   second copy. The `INCLUDES:` key is that missing model.
+3. **A driver could only use what its preset happened to plug.** `ENABLE:` and
+   `ARGS:` fix that — and `ARGS: --rtc-freeze` is what makes a clock assertable
+   at all, since a ticking one has no expected value.
+
+One companion rule comes with `INCLUDES:`, and `micro.cfg` already documented
+it: put the driver's `main` in **`.segment "ENTRY"`**. An included lib's code
+lands in `CODE`, so a `main` in `CODE` sits behind it and `--run 0300` enters
+the library instead of the test.
+
 ## How a run works
 
 `tools/test_lib_micro.py` exploits POM1's headless CLI executing its verbs in

@@ -159,8 +159,9 @@ namespace md = pom1::mainwindow::detail;
 
 static bool presetUsesAciProgramOutput(int presetIndex)
 {
-    if (presetIndex < 0 || presetIndex >= md::kMachinePresetCount) return false;
-    const md::MachineConfig& cfg = md::kMachinePresets[presetIndex];
+    const md::MachineConfig* cfgPtr = md::machinePresetAt(presetIndex);
+    if (!cfgPtr) return false;
+    const md::MachineConfig& cfg = *cfgPtr;
     return cfg.hasCard(pom1::CardId::Aci) &&
            cfg.basicType != md::BasicType::IntegerCassette;
 }

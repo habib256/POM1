@@ -13,7 +13,12 @@
 # GEN2_Chess.asm (the .sketch.json wires the cfg + engine + CHESS_SMART_EVAL).
 
 PROJECT  := GEN2_Chess
-ENGINE   := ../../../dev/lib/games/chess
+# EXTRA_ASM is the ONE place the modules this sketch assembles are named,
+# and it is written with LITERAL relative paths on purpose: the POM1
+# DevBench reads it without expanding `$(VAR)`, so a bespoke variable
+# here would build one binary under `make` and another in the Bench.
+# Pinned by ctest sketch_manifests_sync.
+EXTRA_ASM := ../../../dev/lib/games/chess/chess_engine.asm
 OUT_DIR  := ../../../software/Graphic HGR
 LIB      := -I ../../../dev/lib/apple1 -I ../../../dev/lib/games/chess -I ../../../dev/lib/gen2
 CFG      := apple1_gen2_chess.cfg
@@ -27,15 +32,19 @@ ifeq ($(CC65_BIN),)
 $(error cc65 not found on PATH. Install with: apt-get install cc65 / brew install cc65, or set CC65_BIN)
 endif
 
-OBJS := GEN2_Chess.o chess_engine.o
+# Objects and rules DERIVED from EXTRA_ASM — vpath lets make find the sources
+# wherever they live, so the module list exists exactly once.
+EXTRA_OBJS := $(notdir $(EXTRA_ASM:.asm=.o))
+vpath %.asm $(sort $(dir $(EXTRA_ASM)))
+OBJS := GEN2_Chess.o $(EXTRA_OBJS)
 
 .PHONY: all clean
 all: $(OUT_DIR_T)/$(PROJECT).txt
 
 GEN2_Chess.o: GEN2_Chess.asm apple1_gen2_chess.cfg
 	ca65 $(LIB) $(DEFS) GEN2_Chess.asm -o GEN2_Chess.o
-chess_engine.o: $(ENGINE)/chess_engine.asm
-	ca65 $(LIB) $(DEFS) $(ENGINE)/chess_engine.asm -o chess_engine.o
+$(EXTRA_OBJS): %.o: %.asm
+	ca65 $(LIB) $(DEFS) $< -o $@
 
 $(PROJECT).rawbin: $(OBJS) $(CFG)
 	ld65 -C $(CFG) $(OBJS) -o $(PROJECT).rawbin

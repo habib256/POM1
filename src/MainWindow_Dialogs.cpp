@@ -1417,7 +1417,7 @@ void MainWindow_ImGui::renderHardwareReferenceWindow()
                 "8 KB firmware ROM and just enough of the ATA/IDE register set (READ SECTOR, "
                 "WRITE SECTOR, SET FEATURE) to run the firmware and ProDOS disk images.");
             hwHeading("Particularities");
-            hwKeyValue("ROM:", "$9000-$AFDF (ID bytes $CF/$FA at $AFDC/$AFDD). Entry: 9006R.");
+            hwKeyValue("ROM:", "$9000-$AFDF (ID bytes $CF/$FA at $AFDC/$AFDD). Entry: 9000R.");
             hwKeyValue("Registers:", "$AFE0-$AFFF. A4 is undecoded, so $AFE0 mirrors $AFF0.");
             hwKeyValue("Disk image:", "cfcard/cfcard.po (ProDOS). Auto-mounted at boot when present.");
             hwKeyValue("Pairs with:", "Applesoft Lite (CFFA1) at $E000-$FFFF via the preset.");
@@ -1786,7 +1786,7 @@ void MainWindow_ImGui::renderSoftwareReferenceWindow()
             hwKeyValue("Entry:", "8000R to jump into the SD CARD OS firmware.");
             hwHeading("CFFA1");
             hwKeyValue("Image:", "cfcard/cfcard.po (ProDOS). Probed up three parent dirs at boot.");
-            hwKeyValue("Entry:", "9006R - lands in the CFFA1 firmware.");
+            hwKeyValue("Entry:", "9000R - opens the firmware, Q returns here. 9003R quits to BASIC, 9006R to user code (=$0000 on a bare Apple-1).");
         }
 
         if (ImGui::CollapsingHeader("Writing 6502 with cc65", ImGuiTreeNodeFlags_DefaultOpen)) {

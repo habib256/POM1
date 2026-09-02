@@ -17,6 +17,11 @@
 // pull in imgui_impl_metal instead.
 #include "PomRenderer.h"
 #include "CliDispatcher.h"
+#include "CommandPort.h"
+#include "FileBytes.h"
+#include "PresetFile.h"
+#include "PresetLoader.h"
+#include "ResourceLocator.h"
 #include "X11ErrorGuard.h"
 #include "NativeFileDialog.h"
 #include "MainWindow_ImGui.h"
@@ -570,6 +575,15 @@ public:
         if (text_.size() < 65536) text_.push_back(c);
     }
 
+    /// Everything the machine has written to $D012 this session, verbatim
+    /// (bit 7 already stripped by Memory). This is what the scripting control
+    /// channel's `expect` waits on — see src/CommandPort.h.
+    std::string rawText() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return std::string(text_.begin(), text_.end());
+    }
+
     std::string escapedText() const
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -700,6 +714,21 @@ static void runCyclesWithTimedPastes(EmulationController& emu, uint64_t totalCyc
         emu.runCyclesSync(totalCycles - done);
 }
 
+/// Flush --save-tape. On the GUI side this lives in ~MainWindow_ImGui, which
+/// SIGINT/SIGTERM reach by closing the GLFW window; the headless driver has no
+/// window, so every one of its exits calls this instead. Without it
+/// `--headless --save-tape x` recorded a full cassette and then dropped it.
+static void saveTapeOnExit(EmulationController& emu, const pom1::CliPlan& plan)
+{
+    if (plan.saveTapePath.empty()) return;
+    std::string err;
+    if (emu.saveTape(plan.saveTapePath, err))
+        pom1::log().info("POM1", "Saved cassette capture to " + plan.saveTapePath);
+    else
+        pom1::log().error("POM1", "Failed to save cassette to '" +
+                                  plan.saveTapePath + "': " + err);
+}
+
 static int runHeadless(pom1::CliPlan& plan)
 {
     pom1::log().info("POM1", "headless mode — no window (Ctrl-C / SIGTERM to exit)");
@@ -717,12 +746,51 @@ static int runHeadless(pom1::CliPlan& plan)
     // no GUI deferred plug — then explicit --enable/--disable overrides, then
     // the --terminal override. So `--headless --preset 11` plugs GEN2 + 48K for
     // an HGR game test, with no display.
-    if (plan.presetIndex >= 0)
+    // An external preset (--preset-file) wins over a table row: the user named
+    // a specific machine file. It travels the SAME applyHeadlessConfig path a
+    // built-in does — see PresetFile.h's toMachineConfig().
+    pom1::presetfile::ParsedPreset external;
+    if (!plan.presetFilePath.empty()) {
+        std::vector<uint8_t> raw;
+        std::string readError;
+        if (!pom1::readFileBounded(plan.presetFilePath,
+                                   pom1::presetfile::kMaxPresetFileBytes,
+                                   "preset file", raw, readError)) {
+            pom1::log().error("Preset", readError);
+            return 2;
+        }
+        external = pom1::presetfile::parsePreset(
+            std::string(raw.begin(), raw.end()), plan.presetFilePath);
+        for (const auto& d : external.diagnostics) {
+            const std::string where = d.line > 0 ? " (line " + std::to_string(d.line) + ")"
+                                                 : std::string();
+            if (d.severity == pom1::presetfile::Diagnostic::Severity::Error)
+                pom1::log().error("Preset", d.message + where);
+            else
+                pom1::log().warn("Preset", d.message + where);
+        }
+        if (!external.ok) {
+            // A refused preset boots NOTHING. Falling back to a default machine
+            // would run the user's program on hardware they did not describe,
+            // which is the failure mode this format's strictness exists to
+            // prevent in the first place.
+            pom1::log().error("Preset", "--preset-file rejected; not booting a "
+                                        "machine the file did not describe");
+            return 2;
+        }
+        const pom1::MachineConfig cfg = external.toMachineConfig();
+        MainWindow_ImGui::applyHeadlessConfig(
+            emu, cfg, external.mode == pom1::TopologyMode::Fantasy);
+    } else if (plan.presetIndex >= 0) {
         MainWindow_ImGui::applyHeadlessConfig(emu, plan.presetIndex);
+    }
+    // --enable/--disable are gated in the machine's own mode, so a fantasy
+    // preset file can be amended with a card a strict bus would refuse.
     const pom1::TopologyMode overrideMode =
-        plan.presetIndex >= 0 &&
-        pom1::isFantasyPreset(pom1::presetIdFromIndex(plan.presetIndex))
-            ? pom1::TopologyMode::Fantasy : pom1::TopologyMode::Strict;
+        external.ok
+            ? external.mode
+            : (plan.presetIndex >= 0 ? pom1::machinePresetMode(plan.presetIndex)
+                                     : pom1::TopologyMode::Strict);
     for (const auto& o : plan.cardOverrides) {
         if (!applyHeadlessCardOverride(emu, o.card, o.enable, overrideMode)) {
             pom1::log().error("CLI", "card override rejected by topology policy");
@@ -798,8 +866,43 @@ static int runHeadless(pom1::CliPlan& plan)
             pom1::log().info("CodeTank", "--codetank-rom loaded: " + plan.codeTankRomPath);
     }
 
+    // Cassette preload (--tape). The GUI consumes this in finalizeDeferred-
+    // CardChanges(); the headless driver never did, so `--headless --tape x`
+    // silently ran with an empty deck — the ACI harness's LOAD scenario failed
+    // with the target still holding its sentinels and nothing in the log to say
+    // why. Same order as the GUI: the deck is loaded and rolling BEFORE the
+    // phase-C verbs, so a --load/--run that expects a tape finds one.
+    if (!plan.initialTapePath.empty()) {
+        std::string err;
+        if (emu.loadTape(plan.initialTapePath, err)) {
+            if (plan.initialTapeAutoPlay) emu.playTape();
+            pom1::log().info("POM1", "Preloaded cassette: " + plan.initialTapePath);
+        } else {
+            pom1::log().error("POM1", "Failed to preload cassette '" +
+                                      plan.initialTapePath + "': " + err);
+        }
+    }
+
     // Phase-C deferred verbs (load / run / paste / step / sd-* / rtc / snapshot / break).
     pom1::runDeferredActions(plan.deferredActions, emu);
+
+    // Scripting control channel (--cmd-port). Opened LAST, after the machine is
+    // fully configured and the deferred verbs have run: a harness that gets a
+    // connection therefore knows the machine is ready, which is the handshake
+    // the seven telnet harnesses approximated with time.sleep(3). It must
+    // outlive nothing — stop() joins its thread before `emu` goes away.
+    std::unique_ptr<pom1::CommandPort> commandPort;
+    if (plan.commandPort) {
+        pom1::CommandPort::Hooks hooks;
+        hooks.screenText  = [&display] { return display.rawText(); };
+        hooks.requestQuit = [] { g_headlessStop.store(true); };
+        commandPort = std::make_unique<pom1::CommandPort>(emu, std::move(hooks));
+        std::string err;
+        if (!commandPort->start(static_cast<uint16_t>(*plan.commandPort), err)) {
+            pom1::log().error("Cmd", "--cmd-port: " + err);
+            return 2;   // a harness that cannot steer must not run blind
+        }
+    }
 
     // Graphics-regression capture: let the loaded program render a settled
     // frame, snapshot it, render the card's framebuffer with no display, write a
@@ -857,6 +960,7 @@ static int runHeadless(pom1::CliPlan& plan)
             ok &= dumpRgbaPng("TMS9918", plan.dumpTmsPath, snap.tms9918.framebuffer.data(),
                               TMS9918::kFullWidth, TMS9918::kFullHeight);
         }
+        saveTapeOnExit(emu, plan);
         return ok ? 0 : 1;
     }
 
@@ -889,6 +993,7 @@ static int runHeadless(pom1::CliPlan& plan)
         pom1::log().info("POM1", msg);
         pom1::log().info("POM1", "headless display capture: " +
                                  display.escapedText());
+        saveTapeOnExit(emu, plan);
         return 0;
     }
 
@@ -897,6 +1002,7 @@ static int runHeadless(pom1::CliPlan& plan)
     while (!g_headlessStop.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
+    saveTapeOnExit(emu, plan);
     pom1::log().info("POM1", "headless shutdown");
     return 0;
 }
@@ -928,6 +1034,24 @@ int main(int argc, char* argv[])
     // dispatcher answered a print-and-leave flag (--help, --list-presets);
     // in that case main exits 0 without opening a window.
     bool cliCleanExit = false;
+    // External preset files, BEFORE the command line is parsed: --list-presets
+    // prints from the registry and --preset resolves names against it, so a
+    // user's machine must already be in it. One place for both frontends.
+    //
+    // --preset-dir is read straight off argv here rather than from the plan,
+    // for the same reason: the plan does not exist yet, and --list-presets
+    // exits inside parseCli. `--preset-dir ""` discovers nothing, which is how
+    // a test isolates itself from the developer's own presets/.
+    {
+        const char* presetDir = nullptr;
+        for (int a = 1; a + 1 < argc; ++a)
+            if (std::string(argv[a]) == "--preset-dir") presetDir = argv[a + 1];
+        if (presetDir)
+            pom1::loadExternalPresetsFrom(presetDir);
+        else
+            pom1::loadExternalPresets(pom1::ResourceLocator::defaultLocator());
+    }
+
     auto parsedPlan = pom1::parseCli(argc, argv, cliCleanExit);
     if (cliCleanExit) return 0;
     if (!parsedPlan) return 1;

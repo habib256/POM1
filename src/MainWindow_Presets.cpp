@@ -136,7 +136,9 @@ void MainWindow_ImGui::defaultOsWindowSize(int presetIndex, int& outW, int& outH
     outW = windowedWidth;
     outH = windowedHeight;
     if (presetIndex < 0 || presetIndex >= kMachinePresetCount) return;
-    const MachineConfig& cfg = kMachinePresets[presetIndex];
+    const MachineConfig* cfgPtr = machinePresetAt(presetIndex);
+    if (!cfgPtr) return;
+    const MachineConfig& cfg = *cfgPtr;
 
     ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
     const ImVec2 charSize = ImGui::CalcTextSize("M");
@@ -180,7 +182,9 @@ void MainWindow_ImGui::computeWasmCanvasSize(int presetIndex, int& outW, int& ou
     outW = wasmCanvasPixelW;
     outH = wasmCanvasPixelH;
     if (presetIndex < 0 || presetIndex >= kMachinePresetCount) return;
-    const MachineConfig& cfg = kMachinePresets[presetIndex];
+    const MachineConfig* cfgPtr = machinePresetAt(presetIndex);
+    if (!cfgPtr) return;
+    const MachineConfig& cfg = *cfgPtr;
 
     ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
     const ImVec2 charSize = ImGui::CalcTextSize("M");
@@ -249,7 +253,9 @@ void MainWindow_ImGui::applySiliconFidelity(const pom1::presets::SiliconFidelity
 void MainWindow_ImGui::applyMachineConfig(int presetIndex)
 {
     if (presetIndex < 0 || presetIndex >= kMachinePresetCount) return;
-    const MachineConfig& cfg = kMachinePresets[presetIndex];
+    const MachineConfig* cfgPtr = machinePresetAt(presetIndex);
+    if (!cfgPtr) return;
+    const MachineConfig& cfg = *cfgPtr;
     const PresetId presetId = presetIdFromIndex(presetIndex);
     const CardSet presetCards = cfg.enabledCards();
 
@@ -957,12 +963,22 @@ void MainWindow_ImGui::launchLanguageFromChooser(int benchLang, int benchMachine
 // EmulationController setters; the preset config is already mutex-consistent.
 void MainWindow_ImGui::applyHeadlessConfig(EmulationController& emu, int presetIndex)
 {
-    if (presetIndex < 0 || presetIndex >= kMachinePresetCount) return;
-    const MachineConfig& cfg = kMachinePresets[presetIndex];
+    if (!machinePresetAt(presetIndex)) return;
+    // A built-in preset knows whether it multiplexes from its identity; an
+    // external one (--preset-file, src/PresetFile.h) has no PresetId and says
+    // so in the file. Both then take the SAME path below — a second way to
+    // apply a machine is exactly the duplication PresetDecisions.h exists to
+    // prevent.
+    applyHeadlessConfig(emu, *machinePresetAt(presetIndex),
+                        machinePresetMode(presetIndex) == pom1::TopologyMode::Fantasy);
+}
+
+void MainWindow_ImGui::applyHeadlessConfig(EmulationController& emu,
+                                           const MachineConfig& cfg, bool fantasy)
+{
     pom1::log().info("POM1", std::string("headless preset: ") + cfg.name +
                      " (" + std::to_string(cfg.ramKB) + "K)");
 
-    const bool fantasy = isFantasyPreset(presetIdFromIndex(presetIndex));
     // Headless = tests / golden-image regression / CI: force the deterministic
     // GEN2 cold state (documented latch + zeroed DRAM + cycleCounter=0 + fixed
     // xorshift seed) regardless of the preset's Fantasy bit. The GUI path
@@ -1522,7 +1538,9 @@ void MainWindow_ImGui::resetActivePresetLayout()
 {
     const int idx = activePresetIndex;
     if (idx < 0 || idx >= kMachinePresetCount) return;
-    const MachineConfig& cfg = kMachinePresets[idx];
+    const MachineConfig* cfgPtr = machinePresetAt(idx);
+    if (!cfgPtr) return;
+    const MachineConfig& cfg = *cfgPtr;
 
     ImGui::ClearIniSettings();                 // wipe live window settings store
     std::error_code ec;
@@ -1654,7 +1672,9 @@ void MainWindow_ImGui::pregenerateMissingPresetLayouts()
         const bool sizeExists = fs::exists(sizePath, ec);
         if (iniExists && sizeExists) continue;
 
-        const MachineConfig& cfg = kMachinePresets[idx];
+        const MachineConfig* cfgPtr = machinePresetAt(idx);
+    if (!cfgPtr) return;
+    const MachineConfig& cfg = *cfgPtr;
 
         // Write the .ini file with one [Window][...] section per layout entry.
         if (!iniExists) {

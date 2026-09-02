@@ -1,0 +1,11 @@
+{
+  "profile": "tms9918",
+  "language": "asm",
+  "cfg": "dev/codetank/bank_cfgs/apple1_maze3d_codetank_bank.cfg",
+  "extraAsm": [
+    "dev/lib/tms9918/tms9918_pad.asm",
+    "dev/lib/tms9918/sprites_trollkind.asm",
+    "dev/lib/tms9918/sprites_characters.asm"
+  ],
+  "incDirs": ["dev/lib/apple1", "dev/lib/tms9918"]
+}

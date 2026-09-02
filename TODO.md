@@ -25,9 +25,15 @@ contribuer : [`CONTRIBUTING.md`](CONTRIBUTING.md). Invariants et pièges :
 
 ## Où en est le projet
 
-129 tests verts en ~2 min, deux oracles CPU cycle-exacts, quatre campagnes de
+137 tests verts en ~3,5 min, deux oracles CPU cycle-exacts, quatre campagnes de
 fuzzing dont deux ont trouvé de vrais défauts, ordre des verrous prouvé, cinq
 tiers de CI en warnings-as-errors. Un clone neuf compile et passe la suite.
+
+Les sept harnesses telnet — 2 977 lignes de Python écrites, déboguées et jamais
+exécutées — sont dans la porte de sortie depuis l'arrivée du canal de contrôle
+`--cmd-port` : 48 s, 198 assertions, plus un seul `sleep`. Leur conversion a
+trouvé six défauts, dont `--tape`/`--save-tape` absents du chemin headless. Voir
+`CHANGELOG.md`.
 
 Les trois chantiers structurants sont **clos** :
 
@@ -56,10 +62,14 @@ bas de ce fichier, avec la raison et la condition de réactivation.
 
 Le travail qu'on peut réellement terminer, par ordre de rendement.
 
+- [ ] **Donner un second observable aux micro-tests** `[M · solid]` — `tools/test_lib_micro.py` ne lit qu'une boîte aux lettres en RAM, donc il ne peut rien dire des bibliothèques dont l'effet est un affichage ou une écriture sans relecture : `text40/`, `apple1/print*`, `gt6144/`. POM1 capture déjà le texte de l'écran en headless (`headless display capture:` dans le journal, et le verbe `screen` du canal de contrôle). Exposer cette capture au harnais — un en-tête `EXPECT-SCREEN:` — rendrait ces trois-là testables ; c'est ce qui manque pour finir l'item « dix micro-tests ».
+- [ ] **Trancher le sort de `dev/lib/gt6144/`** `[S · nice]` — son propre en-tête dit *« STATUS: not yet adopted — both demos still carry inline copies; migrate them onto this module or retire it »*. Deux ans que le module attend son premier consommateur. Migrer `gt6144_demo_hello` et `gt6144_demo_life` dessus, ou le retirer — mais pas le laisser en dette.
+- [ ] **Corriger la dérive de `sdcard/TMS/DIAPO#060300`** `[S · solid]` — l'artefact livré fait 580 octets, une reconstruction depuis `sketchs/tms9918/tool_diapo/` en produit 600. Le binaire embarqué n'a pas été bâti depuis la source présente. Rebâtir et recommiter, ou retrouver pourquoi la source a divergé — mais les deux ne peuvent pas rester en désaccord.
+- [ ] **`a2port_buzzard_bait` : son propre `make verify` est rouge** `[S · solid]` — le Makefile désassemble puis réassemble `buzzard_bait.s` pour prouver que le portage est fidèle, et la comparaison échoue à l'octet 1908. Ce contrôle est la seule preuve que ce portage Apple II est correct ; tant qu'il est rouge, il ne prouve rien.
+- [ ] **Générer la recette des croquis au lieu de la recopier** `[M · nice]` — suite de `sketch_manifests_sync` : le manifeste est désormais unique et gardé, mais les 19 Makefiles répètent encore la recette (`ca65` ; boucle sur `EXTRA_ASM` ; `ld65`), 42 % de lignes identiques. `dev/cc65/space.mk` montre que le mécanisme d'inclusion partagée existe déjà. Un `dev/cc65/sketch.mk` inclus par chaque croquis retirerait la recette ; ce qui reste bespoke (les étapes `emit_*_txt.py`, les vérifications maison) resterait local.
 - [ ] **Décider du packaging** `[S · solid]` — la mesure ci-dessus est là, il reste à trancher : release unique avec outillage (statu quo), ou build « émulateur seul » pour la borne et le WASM. Deux points à traiter avec la décision : les jobs de `release.yml` embarquent cc65 inconditionnellement, et le préchargement WASM de `dev/` + `sketchs/` (~310 Ko) n'est utile qu'à la DevBench — les deux ne coûtent rien tant que `POM1_DEVTOOLS=ON` reste le défaut de release.
 - [ ] **Charger paresseusement les cassettes WASM** `[S · nice]` — retirer du téléchargement initial les 2,5 Mo de `cassettes/`, notamment `WOZ_talk.mp3` ; ne pas complexifier le chargement de `cfcard.po` sans mesure justifiant le gain.
 - [ ] **Intégrer le bootloader `flowenol/apple1-serial`** `[S · solid]` — choisir explicitement Terminal Card ou variante ACIA et réutiliser le pipeline de chargement pur.
-- [ ] **Éviter les reconfigurations au seek rewind** `[S · nice]` — ne pas réappliquer cartes et ROM lorsque les flags sont inchangés.
 - [ ] **Automatiser la porte de sortie de consolidation** `[S · solid]` — réunir warnings-as-errors sur trois OS, matrice headless, navigateur WASM, sanitizers, fuzz smoke, couverture et bundle de diagnostic dans une checklist release.
 
 ## 2. Le beau travail — à construire
@@ -67,16 +77,17 @@ Le travail qu'on peut réellement terminer, par ordre de rendement.
 Rien ici n'est bloquant, tout y est du vrai artisanat, et chacun peut être pris
 isolément.
 
-- [ ] **Charger des presets externes validés** `[M · nice]` — format versionné, validation par `CardTopology`, table C++ de repli et tests sur le résultat plutôt que sur le texte source.
-- [ ] **Ajouter un IPC de scripting à l’exécution** `[M · nice]` — `--cmd-fd` ou socket locale portant les verbes CLI sans mélanger contrôle, clavier et affichage telnet.
 - [ ] **Ajouter les variables chaîne au BASIC natif** `[L · nice]` — descripteurs ptr+len, heap, runtime chaîne, expressions typées et tests de pression mémoire.
 - [ ] **Ajouter un périphérique SpeakJet/TTS optionnel** `[M · nice]` — router l’UART vers un backend TTS injecté sans dupliquer 6522/6551 ni rendre le service obligatoire.
 - [ ] **Étendre le débogage source au C et au WASM** `[M · solid]` — transporter les `.dbg` via cl65/cc65 web et prendre en charge plusieurs points d’arrêt.
 
-> **Presets externes + IPC de scripting, pris ensemble**, font passer POM1
-> d'application à plateforme : des machines définies par l'utilisateur, validées
-> par `CardTopology`, et un pilotage externe. C'est le levier le plus direct pour
-> que quelqu'un d'autre construise *sur* POM1 plutôt que de seulement l'utiliser.
+> **La paire est livrée.** `--cmd-port` pilote POM1 de l'extérieur, `--preset-file`
+> le configure de l'extérieur : une machine définie par l'utilisateur, validée
+> par `CardTopology`, démarrée et pilotée sans recompiler. `preset_file_boot`
+> est le premier test où les deux moitiés se rencontrent. Ce qui reste est de
+> l'exposition (le menu GUI) et une décision : les deux mécanismes ont été
+> construits pour la CI, sans versionnement d'API côté canal ; les stabiliser
+> pour des tiers se tranche séparément.
 
 ## 3. À trancher, pas à coder — chacun attend une mesure
 
