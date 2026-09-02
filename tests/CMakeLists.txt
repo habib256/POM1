@@ -545,6 +545,18 @@ target_include_directories(test_gen2_beam_geometry PRIVATE ${CMAKE_SOURCE_DIR}/s
 add_test(NAME gen2_beam_geometry_smoke COMMAND test_gen2_beam_geometry)
 set_tests_properties(gen2_beam_geometry_smoke PROPERTIES TIMEOUT 10)
 
+# -- Does a rewind actually replay the beam? -----------------------------------
+# The GEN2 journal is serialised into the snapshot (GEN2VID, v5+) precisely so a
+# restore keeps a frame's mid-line flips. Nothing tested that: the snapshot tests
+# check the section EXISTS, the beam tests render splits but never save one. This
+# saves a split frame, restores it, and compares the rendered pixels -- with a
+# control that drops the journal and asserts the picture changes, so the test
+# cannot pass against a snapshot that lost it.
+pom1_add_smoke_test(test_gen2_journal_snapshot gen2_journal_snapshot_smoke_test.cpp
+    gen2_journal_snapshot_smoke)
+target_sources(test_gen2_journal_snapshot PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/GraphicsCard.cpp)
+
 # -- GEN2 horizontal mid-scanline splits ---------------------------------------
 # Bernie's flagship release-card feature (port of POM2 horizontal_split):
 # TEXT columns alternating with HGR columns on the SAME scanline at the
