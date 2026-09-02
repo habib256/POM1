@@ -25,7 +25,7 @@ contribuer : [`CONTRIBUTING.md`](CONTRIBUTING.md). Invariants et pièges :
 
 ## Où en est le projet
 
-127 tests verts en ~2 min, deux oracles CPU cycle-exacts, quatre campagnes de
+129 tests verts en ~2 min, deux oracles CPU cycle-exacts, quatre campagnes de
 fuzzing dont deux ont trouvé de vrais défauts, ordre des verrous prouvé, cinq
 tiers de CI en warnings-as-errors. Un clone neuf compile et passe la suite.
 
@@ -43,6 +43,11 @@ Les trois chantiers structurants sont **clos** :
    de lignes ; le module `ui` passe de 2,4 % à 3,9 % sur 14 468 lignes, les neuf
    autres modules inchangés. Ce qui reste non couvert dessine.
 
+Le **chantier beam** est clos lui aussi : les deux moteurs vidéo partagent une
+horloge (`src/BeamClock.h`, équivalence prouvée sur 37 310 cycles), le journal de
+commutateurs appartient à `Gen2VideoScanner`, et un rewind rejoue réellement le
+faisceau — prouvé au pixel par `gen2_journal_snapshot_smoke`, contrôle compris.
+
 Les grands refactors d'architecture planifiés puis écartés (`PeripheralManager`,
 `CpuRunner`, `StateManager`, migration panneau par panneau) sont documentés en
 bas de ce fichier, avec la raison et la condition de réactivation.
@@ -57,28 +62,33 @@ Le travail qu'on peut réellement terminer, par ordre de rendement.
 - [ ] **Éviter les reconfigurations au seek rewind** `[S · nice]` — ne pas réappliquer cartes et ROM lorsque les flags sont inchangés.
 - [ ] **Automatiser la porte de sortie de consolidation** `[S · solid]` — réunir warnings-as-errors sur trois OS, matrice headless, navigateur WASM, sanitizers, fuzz smoke, couverture et bundle de diagnostic dans une checklist release.
 
-## 2. Le beau travail — grand, cadré, pas urgent
+## 2. Le beau travail — à construire
 
-Ce qui reste d'intéressant. Rien ici n'est bloquant ; tout y est du vrai
-artisanat d'émulation ou d'outillage, et chacun peut être pris isolément.
+Rien ici n'est bloquant, tout y est du vrai artisanat, et chacun peut être pris
+isolément.
 
-- [ ] **Décider si le TMS9918 doit passer à un `renderUntil(beam)` paresseux** `[M · nice]` — dernier point ouvert du chantier beam, et c'est une DÉCISION avant d'être un travail. Tout le reste est fait (`CHANGELOG.md`) : les deux moteurs partagent une horloge, le journal appartient à `Gen2VideoScanner`, et un rewind rejoue le faisceau — prouvé au pixel, contrôle compris. Reste que `TMS9918::advanceCycles` committe les lignes complètes au fil du balayage plutôt que de rendre à la demande. Ce n'est pas évidemment un défaut : ce commit progressif est précisément ce qui rend visibles les changements mi-trame dont vivent les démos raster, et le renderer est calibré par image témoin. À trancher avec une mesure — coût du rendu progressif contre gain d'un rendu paresseux — pas au jugé.
-- [ ] **Confirmer le modèle de synchro trame sur du matériel réel** `[M · solid]` — `src/TerminalTiming.h` livre `FieldSync` : PB7 reste occupé jusqu'au prochain passage du balayage plutôt qu'un décompte fixe, ce qui est le comportement d'un terminal à registre à décalage. Le débit est préservé (une écriture par trame, épinglé), mais **le point de verrouillage est modélisé au bord de trame alors qu'en vrai il suit le curseur qui descend l'écran**. Confirmer à l'oscilloscope sur une section terminal, ou depuis les notes de timing de Woz ; ni l'un ni l'autre n'est dans cet arbre. Tant que ce n'est pas fait, le modèle reste hors bundle et désactivé par défaut (`--display-field-sync`). Le bruit périodique déterministe reste à faire.
-- [ ] **Valider le fetch SAT TMS9918 une ligne en avance** `[M · solid]` — mesurer d’abord sur silicium les écritures SAT en zone active, puis modéliser et tester la latence observée.
 - [ ] **Charger des presets externes validés** `[M · nice]` — format versionné, validation par `CardTopology`, table C++ de repli et tests sur le résultat plutôt que sur le texte source.
 - [ ] **Ajouter un IPC de scripting à l’exécution** `[M · nice]` — `--cmd-fd` ou socket locale portant les verbes CLI sans mélanger contrôle, clavier et affichage telnet.
 - [ ] **Ajouter les variables chaîne au BASIC natif** `[L · nice]` — descripteurs ptr+len, heap, runtime chaîne, expressions typées et tests de pression mémoire.
 - [ ] **Ajouter un périphérique SpeakJet/TTS optionnel** `[M · nice]` — router l’UART vers un backend TTS injecté sans dupliquer 6522/6551 ni rendre le service obligatoire.
 - [ ] **Étendre le débogage source au C et au WASM** `[M · solid]` — transporter les `.dbg` via cl65/cc65 web et prendre en charge plusieurs points d’arrêt.
 
-> **Un point de départ concret pour le rejeu beam** : `src/BeamClock.h` existe
-> déjà, pur et testable, et son propre en-tête nomme ce qui manque — « GEN2 keeps
-> its own absolute-cycle journal today; it can adopt this geometry once the
-> journal/replay path is unified ». Le TMS9918 l'utilise, le GEN2 non. Faire
-> adopter `BeamClock` au GEN2 **sans toucher au format de snapshot** est un
-> premier pas isolé, vérifiable par les images témoins existantes.
+> **Presets externes + IPC de scripting, pris ensemble**, font passer POM1
+> d'application à plateforme : des machines définies par l'utilisateur, validées
+> par `CardTopology`, et un pilotage externe. C'est le levier le plus direct pour
+> que quelqu'un d'autre construise *sur* POM1 plutôt que de seulement l'utiliser.
 
-## 3. Entretien — n'a de sens que si le développement continue
+## 3. À trancher, pas à coder — chacun attend une mesure
+
+Ces trois-là ressemblent à des tâches et n'en sont pas : coder d'abord
+reviendrait à choisir sans preuve. Ils figurent ici pour que personne ne les
+prenne pour du travail en attente.
+
+- [ ] **Décider si le TMS9918 doit passer à un `renderUntil(beam)` paresseux** `[M · nice]` — dernier point ouvert du chantier beam, et c'est une DÉCISION avant d'être un travail. Tout le reste est fait (`CHANGELOG.md`) : les deux moteurs partagent une horloge, le journal appartient à `Gen2VideoScanner`, et un rewind rejoue le faisceau — prouvé au pixel, contrôle compris. Reste que `TMS9918::advanceCycles` committe les lignes complètes au fil du balayage plutôt que de rendre à la demande. Ce n'est pas évidemment un défaut : ce commit progressif est précisément ce qui rend visibles les changements mi-trame dont vivent les démos raster, et le renderer est calibré par image témoin. À trancher avec une mesure — coût du rendu progressif contre gain d'un rendu paresseux — pas au jugé.
+- [ ] **Confirmer le modèle de synchro trame sur du matériel réel** `[M · solid]` — `src/TerminalTiming.h` livre `FieldSync` : PB7 reste occupé jusqu'au prochain passage du balayage plutôt qu'un décompte fixe, ce qui est le comportement d'un terminal à registre à décalage. Le débit est préservé (une écriture par trame, épinglé), mais **le point de verrouillage est modélisé au bord de trame alors qu'en vrai il suit le curseur qui descend l'écran**. Confirmer à l'oscilloscope sur une section terminal, ou depuis les notes de timing de Woz ; ni l'un ni l'autre n'est dans cet arbre. Tant que ce n'est pas fait, le modèle reste hors bundle et désactivé par défaut (`--display-field-sync`). Le bruit périodique déterministe reste à faire.
+- [ ] **Valider le fetch SAT TMS9918 une ligne en avance** `[M · solid]` — mesurer d’abord sur silicium les écritures SAT en zone active, puis modéliser et tester la latence observée.
+
+## 4. Entretien — n'a de sens que si le développement continue
 
 **Si le projet s'arrête, cette section est caduque.** Ce sont des investissements
 dans la vitesse d'un développement futur, pas dans la qualité de ce qui est
@@ -94,7 +104,7 @@ livré : rien ici ne corrige un défaut ni n'ajoute une capacité.
 - [ ] **Optimiser les deltas rewind TMS9918** `[M · nice]` — dirty-tracking des pages VRAM, seulement après profilage du coût de capture.
 - [ ] **Produire l’artefact Pi `cortex-a72` avec PGO en CI** `[M · nice]` — entraîner sur runner ARM64 et conserver l’AppImage aarch64 générique.
 
-## 4. Hors de portée sans quelque chose — ou quelqu'un — d'autre
+## 5. Hors de portée sans quelque chose — ou quelqu'un — d'autre
 
 - [ ] **Valider la borne sur un Raspberry Pi réel** `[S · solid]` — vérifier démarrage kiosk, GLSL, audio à `POM1_AUDIO_LATENCY=120`, plein écran sans WM et restauration correcte par `--uninstall`.
 - [ ] 🚫 **Chargeur TurboType 57 600 bauds** `[M · solid]` — attendre la spécification détaillée et une ROM/binaire du dropper d'Uncle Bernie ; à réception, implémenter parser `.TUR`/`.APL`, injection 8 bits sans écho, CRC, sentinelle et retour Woz Monitor. C'est le plus réjouissant des items bloqués : charger à 57 600 bauds dans une machine de 1976.
