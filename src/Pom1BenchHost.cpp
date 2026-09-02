@@ -1885,16 +1885,57 @@ bench::BuildResult Pom1BenchHost::build(int target, const std::string& src, cons
                 { "wait_5s_trigger",  "tms9918_5strigger.asm" },
                 { "vdp_write_a",      "tms9918_helpers.asm"   },
                 { "vdp_set_write_xy", "tms9918_helpers.asm"   },
+                // The VDP access primitives themselves. They were missing, so
+                // a program that points the chip at VRAM without calling one
+                // of the two init routines linked nothing at all.
+                { "vdp_set_write",    "tms9918m1.asm"         },
+                { "vdp_set_read",     "tms9918m1.asm"         },
+                { "vdp_hi",           "tms9918m1.asm"         },
+                { "vdp_lo",           "tms9918m1.asm"         },
+                { "clear_name_table", "tms9918m1.asm"         },
+                { "wipe_all_vram",    "tms9918m1.asm"         },
+                { "disable_sprites",  "tms9918m1.asm"         },
             };
+            // Both tests run on a COMMENT-STRIPPED copy. Searching the raw
+            // text made a comment decide the link: TMS_RogueDiag.asm says
+            // "; ... same init path as Rogue (lib init_vdp_g1: 8 Mode-1 ...",
+            // the `sym + ":"` probe found that colon, concluded the symbol was
+            // defined locally, and dropped tms9918m1.asm — taking init_vdp_g1,
+            // vdp_set_write, vdp_hi and vdp_lo down with it. And a local
+            // definition is a LABEL, which starts a line; matching `sym:`
+            // anywhere would also fire on `JSR sym` followed by a colon in a
+            // trailing comment.
+            std::string code;
+            code.reserve(src.size());
+            for (size_t i = 0, n = src.size(); i < n; ) {
+                const size_t eol = src.find('\n', i);
+                const size_t end = (eol == std::string::npos) ? n : eol;
+                const size_t semi = src.find(';', i);
+                const size_t cut = (semi != std::string::npos && semi < end) ? semi : end;
+                code.append(src, i, cut - i);
+                code.push_back('\n');
+                if (eol == std::string::npos) break;
+                i = eol + 1;
+            }
+            auto definedLocally = [&code](const std::string& sym) {
+                const std::string needle = sym + ":";
+                for (size_t at = code.find(needle); at != std::string::npos;
+                     at = code.find(needle, at + 1)) {
+                    size_t b = at;                       // only whitespace before it?
+                    while (b > 0 && (code[b - 1] == ' ' || code[b - 1] == '\t')) --b;
+                    if (b == 0 || code[b - 1] == '\n') return true;
+                }
+                return false;
+            };
+
             std::vector<std::string> mods;
             auto addMod = [&](const std::string& f) {
                 for (const auto& m : mods) if (m == f) return;
                 mods.push_back(f);
             };
             for (const auto& ls : kTmsLibSyms) {
-                if (src.find(ls.sym) == std::string::npos) continue;
-                if (src.find(std::string(ls.sym) + ":") != std::string::npos)
-                    continue;                       // defined locally — skip
+                if (code.find(ls.sym) == std::string::npos) continue;
+                if (definedLocally(ls.sym)) continue;   // a real label — skip
                 addMod(ls.file);
             }
             // m1/m2/5strigger/helpers all JSR the pad themselves.
