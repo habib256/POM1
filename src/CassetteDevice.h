@@ -316,6 +316,15 @@ private:
     // evolving away from the other.
     void armPlaybackAtStart();
 
+    /// Consecutive $C081 polls made while a tape is loaded and the deck is
+    /// stopped. See readTapeInput(): this is how POM1 notices that a program
+    /// is waiting for pulses nobody is playing.
+    uint32_t stoppedTapePolls = 0;
+    /// ~0.2 s of a tight BIT/BPL read loop at 1 MHz. High enough that a program
+    /// probing $C081 once cannot trip it, low enough that the user is still
+    /// looking at the screen when it fires.
+    static constexpr uint32_t kStoppedTapePollWarning = 20000;
+
 private:
     bool audioAvailable = false;
     bool hardwareAccurateLiveAudio = false;

@@ -48,6 +48,7 @@ constexpr size_t kMaxKeyBytes = 4096;
 constexpr const char* kVerbs =
     "ping status help quit | key expect screen screen-clear | "
     "reset hardreset start stop step cycles break | "
+    "tape tape-play tape-stop tape-rewind tape-eject | "
     "peek poke load run snapshot-save snapshot-load";
 
 std::vector<std::string> splitWords(const std::string& s)
@@ -254,6 +255,11 @@ std::string CommandPort::execute(const std::string& line)
         s += " p=$" + hexByte(snap->statusRegister);
         s += std::string(" running=") + (snap->cpuRunning ? "1" : "0");
         s += " ram=" + std::to_string(snap->ramSizeKB);
+        // The deck, because "is a tape in, and is it rolling?" is exactly the
+        // question that separates a program that will load from one that will
+        // spin forever in the ACI read loop — and it is invisible from RAM.
+        s += std::string(" tape=") + (snap->cassetteLoadedTape ? "in" : "out");
+        s += std::string(" play=") + (snap->cassettePlaybackActive ? "1" : "0");
         return s;
     }
 
@@ -408,6 +414,25 @@ std::string CommandPort::execute(const std::string& line)
         if (!ok) return "ERR load: " + (err.empty() ? std::string("failed") : err);
         return "OK " + std::to_string(bytes);
     }
+
+    // ---- cassette deck ----------------------------------------------------
+    // `tape <path>` LOADS AND DOES NOT PLAY, deliberately: that is what the
+    // GUI's File > Load Tape does (MainWindow_FileDialogs.cpp — it loads, says
+    // "Tape loaded", opens the deck, and stops), whereas the CLI's --tape
+    // auto-plays. Reproducing the GUI's state is the whole reason these verbs
+    // exist; a verb that quietly pressed PLAY could not.
+    if (verb == "tape") {
+        const std::string path = tailAfter(line, 1);
+        if (path.empty()) return "ERR usage: tape <path>";
+        std::string err;
+        if (!emu_.loadTape(path, err))
+            return "ERR tape: " + (err.empty() ? std::string("failed") : err);
+        return "OK";
+    }
+    if (verb == "tape-play")   { emu_.playTape();   return "OK"; }
+    if (verb == "tape-stop")   { emu_.stopTape();   return "OK"; }
+    if (verb == "tape-rewind") { emu_.rewindTape(); return "OK"; }
+    if (verb == "tape-eject")  { emu_.ejectTape();  return "OK"; }
 
     if (verb == "run") {
         uint32_t addr = 0;
