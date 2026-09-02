@@ -43,6 +43,11 @@ PROMPT = ">"          # SD CARD OS prompt is "<path]>" — ">" is its tail
 ROOT_PROMPT = "/>"
 
 # Prints "OK" + CR through the Woz Monitor's ECHO, then returns to the Monitor.
+# Fuzzy-match fixture. The prefix must be unique within sdcard/HGR — see
+# prepare_fixtures(), which refuses to run if it is not.
+FUZZY_FIXTURE = "ZFUZZ#062000"
+FUZZY_PREFIX = "ZFU"
+
 SMALL_PROGRAM = bytes([
     0xA9, 0xCF, 0x20, 0xEF, 0xFF,   # LDA #'O'|$80 ; JSR ECHO
     0xA9, 0xCB, 0x20, 0xEF, 0xFF,   # LDA #'K'|$80 ; JSR ECHO
@@ -65,7 +70,7 @@ FIXTURE_FILES = (
     Path("DELME.TXT"), Path("DELME2.TXT"), Path("WTEST"), Path("STEST#060400"),
     Path("TESTDIR") / "FILE1#F10800",
     Path("NOTEMPTY") / "KEEP.TXT",
-    Path("HGR") / "N000#062000",
+    Path("HGR") / FUZZY_FIXTURE,
     Path("HGR") / "PIC#062000",
     Path("HGR") / "DELTAG#060280",
 )
@@ -98,8 +103,19 @@ def prepare_fixtures() -> None:
     # asserts against them by name rather than against whatever the card holds.
     hgr = SDCARD / "HGR"
     hgr.mkdir(exist_ok=True)
-    for name in ("N000#062000", "PIC#062000"):
+    for name in (FUZZY_FIXTURE, "PIC#062000"):
         (hgr / name).write_bytes(b"\xAA" * 8192)
+    # The fuzzy-match test (3.3) types a PREFIX and expects one answer. The
+    # first fixture was N000, and sdcard/HGR SHIPS N001 — so `LOAD N00` matched
+    # whichever the directory happened to yield first: mine on macOS, the
+    # shipped one on Linux. A prefix that collides with the card's own contents
+    # is not a fixture, it is a coin toss; this asserts uniqueness instead of
+    # assuming it.
+    clashes = [p.name for p in hgr.iterdir()
+               if p.name.upper().startswith(FUZZY_PREFIX) and p.name != FUZZY_FIXTURE]
+    if clashes:
+        sys.exit(f"ERROR: {FUZZY_PREFIX!r} also matches shipped file(s) "
+                 f"{clashes} — pick a fixture name nothing in sdcard/HGR shares")
     # For the DEL-by-display-name regression (4.17): on disk DELTAG#060280,
     # typed as `DEL DELTAG`.
     (hgr / "DELTAG#060280").write_bytes(b"\x00" * 16)
@@ -211,7 +227,7 @@ def main() -> int:
             c.contains("1.6 DIR lists HGR", sd.cmd("DIR"), "HGR")
             c.contains("1.7 LS lists HGR", sd.cmd("LS"), "HGR")
             out = sd.cmd("DIR HGR")
-            c.contains("1.8 DIR HGR shows N000", out, "N000")
+            c.contains("1.8 DIR HGR shows the fixture", out, FUZZY_FIXTURE.split("#")[0])
             c.contains("1.9 DIR HGR shows the BIN type", out, "BIN")
             c.contains("1.10 DIR HGR shows the load address", out, "$2000")
             c.contains("1.11 DIR HGR shows the size", out, "8192")
@@ -279,9 +295,10 @@ def main() -> int:
             out = sd.cmd("LOAD PIC", timeout_ms=25000)
             c.contains("3.1 LOAD PIC found", out, "FOUND")
             c.contains("3.2 LOAD PIC names the tagged file", out, "PIC#062000")
-            out = sd.cmd("LOAD N00", timeout_ms=25000)
-            c.contains("3.3 LOAD N00 fuzzy-matches", out, "FOUND")
-            c.contains("3.4 fuzzy match resolved to N000", out, "N000")
+            out = sd.cmd(f"LOAD {FUZZY_PREFIX}", timeout_ms=25000)
+            c.contains("3.3 a prefix fuzzy-matches", out, "FOUND")
+            c.contains("3.4 …to the one file that shares it", out,
+                       FUZZY_FIXTURE.split("#")[0])
             c.contains("3.5 LOAD of a missing file is refused",
                        sd.cmd("LOAD NONEXIST"), "FILE NOT FOUND")
             sd.cmd("CD /")
