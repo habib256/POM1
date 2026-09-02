@@ -10,6 +10,28 @@ is `git log`; the user-facing feature tour is `README.md`; open work lives in
 
 ## [Unreleased]
 
+### Changed — le journal de commutateurs appartient enfin à la carte
+
+Dernier déplacement du chantier beam. Le journal par trame — l'enregistrement des
+bascules mode/page mi-ligne que le renderer rejoue pour découper une trame —
+vivait dans `Memory`, qui ne possède aucun timing vidéo, alors que tout le reste
+de l'état de la carte vivait dans `Gen2VideoScanner`. Il y est désormais, à côté
+du compteur de cycles qui date ses entrées et de l'état d'affichage que ses
+entrées modifient : `journalEvent` / `publishFrame` / `resetJournal` /
+`restorePublishedFrame`.
+
+**Relocalisation pure** : les octets `GEN2VID` du snapshot sont inchangés, et les
+deux accesseurs publics de `Memory` se contentent de transmettre — donc
+`memory_public_methods` ne bouge pas. `memory_lines` descend de **4012 à 3988**
+et le plafond suit : c'est le sens dans lequel ce cliquet est censé aller.
+
+Le chantier beam est clos à une décision près, et `TODO.md` la formule comme
+telle plutôt que comme une tâche : faut-il que `TMS9918::advanceCycles` passe
+d'un commit progressif par ligne à un `renderUntil(beam)` paresseux ? Ce n'est
+pas évidemment un défaut — ce commit progressif est précisément ce qui rend
+visibles les changements mi-trame dont vivent les démos raster, et le renderer
+est calibré par image témoin. À trancher avec une mesure, pas au jugé.
+
 ### Added — un rewind rejoue-t-il vraiment le faisceau ? Maintenant c'est prouvé
 
 Les bascules de commutateurs mi-trame du GEN2 vivent dans un journal par trame,

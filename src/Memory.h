@@ -205,10 +205,10 @@ public:
     // the published set each publish; re-rendering the same frame is safe
     // (POM2 model — Memory republishes at each video-frame boundary).
     const std::vector<Gen2VideoScanner::Event>& gen2PublishedVideoEvents(void) const {
-        return gen2PublishedEvents;
+        return gen2Scanner.publishedEvents();
     }
     Gen2VideoScanner::DisplayState gen2PublishedFrameStartState(void) const {
-        return gen2PublishedFrameStart;
+        return gen2Scanner.publishedFrameStart();
     }
 
     // Frame-atomic GEN2 framebuffer latch (beam-accuracy Phase A): a copy of the
@@ -823,21 +823,14 @@ private :
     bool gen2RandomScannerPhase = true;   // vertical scanner cycle counter random
     bool gen2RandomDramNoise    = true;   // 8 KB framebuffer DRAM mt19937 vs zeroed
     Gen2VideoScanner gen2Scanner;         // GEN2 release video address generator (floating bus)
-    // GEN2 soft-switch journal — recording half (current video frame) and
-    // published half (last completed frame). See gen2PublishedVideoEvents().
-    // A runaway program could flip a switch on every cycle; past the cap the
-    // journal collapses to "no events at the current state" (the renderer's
-    // fast path), which is the right degradation for a saturated frame.
-    static constexpr size_t kGen2MaxEventsPerFrame = 4096;
-    std::vector<Gen2VideoScanner::Event> gen2RecordingEvents;
-    std::vector<Gen2VideoScanner::Event> gen2PublishedEvents;
-    Gen2VideoScanner::DisplayState gen2RecordingFrameStart{};
-    Gen2VideoScanner::DisplayState gen2PublishedFrameStart{};
+    // The GEN2 soft-switch journal lives in Gen2VideoScanner now — beside the
+    // cycle counter that dates its entries and the display state they mutate.
+    // Memory only forwards it (gen2PublishedVideoEvents /
+    // gen2PublishedFrameStartState above).
     std::array<uint8_t, 0x4000> gen2BeamLatchBuf{};   // $2000-$5FFF working latch, updated per scanline at beam time
     std::array<uint8_t, 0x4000> gen2FrameLatchBuf{};  // the beam latch FROZEN at the V-blank rollover (what the renderer reads)
     uint8_t gen2SoftSwitchRead(uint16_t address);
     void gen2LatchScanline(int line);   // beam-accuracy Phase B: latch one scanline (both pages)
-    void resetGen2VideoEventJournal();
     std::unordered_set<uint32_t> oorWarned;  // key = (addr<<1)|isWrite; capped at 64
     void checkOutOfRangeAccess(uint16_t address, bool isWrite);
     bool writeInRom = false;   // ROM windows write-protected by default (see initMemory)

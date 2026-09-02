@@ -2,6 +2,8 @@
 #define GEN2VIDEOSCANNER_H
 
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 #include "BeamClock.h"
 
@@ -136,6 +138,64 @@ public:
         };
     }
 
+    // ── Soft-switch journal ────────────────────────────────────────────────
+    //
+    // The per-frame record of mid-line mode/page flips that the renderer
+    // replays to split a frame. It lived in `Memory` — which owns no video
+    // timing of its own — while every other piece of this card's state lived
+    // here; moving it puts the journal beside the cycle counter that dates its
+    // entries and the display state its entries mutate. Pure relocation: the
+    // snapshot's GEN2VID bytes are unchanged, and Memory's public accessors
+    // forward here.
+    //
+    // Two halves: RECORDING is the frame in flight, PUBLISHED is the last one
+    // completed. The renderer only ever sees the published half, so it always
+    // gets a whole, self-consistent frame.
+
+    /// A runaway program could flip a switch on every cycle. Past this cap the
+    /// journal collapses to "no events, at the current state" — the renderer's
+    /// fast path, which is the right degradation for a saturated frame.
+    static constexpr size_t kMaxEventsPerFrame = 4096;
+
+    /// Record one flip at its absolute emulator cycle.
+    void journalEvent(uint64_t emuCycle, EventKind kind, bool value)
+    {
+        if (recordingEvents_.size() >= kMaxEventsPerFrame) {
+            recordingEvents_.clear();
+            recordingFrameStart_ = display;
+        } else {
+            recordingEvents_.push_back({emuCycle, kind, value});
+        }
+    }
+
+    /// Frame rollover: the recording half becomes the published one.
+    void publishFrame()
+    {
+        publishedEvents_     = std::move(recordingEvents_);
+        recordingEvents_.clear();
+        publishedFrameStart_ = recordingFrameStart_;
+        recordingFrameStart_ = display;
+    }
+
+    /// Drop both halves and re-seat them on the current display state.
+    void resetJournal()
+    {
+        recordingEvents_.clear();
+        publishedEvents_.clear();
+        recordingFrameStart_ = display;
+        publishedFrameStart_ = recordingFrameStart_;
+    }
+
+    const std::vector<Event>& publishedEvents() const { return publishedEvents_; }
+    const DisplayState& publishedFrameStart() const   { return publishedFrameStart_; }
+
+    /// Snapshot restore: reinstate a published frame recorded elsewhere.
+    void restorePublishedFrame(std::vector<Event> events, const DisplayState& frameStart)
+    {
+        publishedEvents_     = std::move(events);
+        publishedFrameStart_ = frameStart;
+    }
+
     /// The visible window: 40 display bytes per line, opening at horizontal
     /// cycle 25 (the first 25 cycles of a line are horizontal blanking), over
     /// 192 live scanlines.
@@ -215,6 +275,10 @@ public:
 private:
     uint64_t     cycleCounter  = 0;
     uint64_t     linesPerFrame = kLinesPerFrame;
+    std::vector<Event> recordingEvents_;
+    std::vector<Event> publishedEvents_;
+    DisplayState       recordingFrameStart_{};
+    DisplayState       publishedFrameStart_{};
     uint32_t     noiseState    = 0x1D872B41u;   // arbitrary non-zero seed
     DisplayState display{};
 };

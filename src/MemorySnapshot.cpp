@@ -460,14 +460,14 @@ void Memory::writeSnapshotSections(pom1::SnapshotWriter& w, const M6502* cpu) co
         // end-of-frame latch until the program flips a switch again. The
         // event emuCycles are absolute and the renderer maps them modulo the
         // frame, so they stay valid against the restored cycle counter.
-        const std::vector<Gen2VideoScanner::Event>& ev = gen2PublishedEvents;
+        const std::vector<Gen2VideoScanner::Event>& ev = gen2Scanner.publishedEvents();
         w.writeU32(static_cast<uint32_t>(ev.size()));
         for (const Gen2VideoScanner::Event& e : ev) {
             w.writeU64(e.emuCycle);
             w.writeU8(static_cast<uint8_t>(e.kind));
             w.writeU8(e.value ? 1 : 0);
         }
-        const Gen2VideoScanner::DisplayState& fs = gen2PublishedFrameStart;
+        const Gen2VideoScanner::DisplayState& fs = gen2Scanner.publishedFrameStart();
         w.writeU8(fs.textMode  ? 1 : 0);
         w.writeU8(fs.mixedMode ? 1 : 0);
         w.writeU8(fs.page2     ? 1 : 0);
@@ -614,7 +614,7 @@ bool Memory::readSnapshotSections(pom1::SnapshotReader& r, std::string& error, M
             // pre-restore cycle stream — and rebase both frame-start states to
             // the restored latch. The current partial frame re-accumulates from
             // here; the next V-blank rollover republishes it.
-            resetGen2VideoEventJournal();
+            gen2Scanner.resetJournal();
             // v5+: restore the published journal (last completed frame) so the
             // renderer replays the mid-line flips of a beam-split scene right
             // away instead of falling back to the end-of-frame latch. Pre-v5
@@ -623,7 +623,7 @@ bool Memory::readSnapshotSections(pom1::SnapshotReader& r, std::string& error, M
                 const uint32_t n = r.readU32();
                 // The record path collapses the journal at kGen2MaxEventsPerFrame,
                 // so a larger count is corruption — reject before reserving.
-                if (n > kGen2MaxEventsPerFrame) {
+                if (n > Gen2VideoScanner::kMaxEventsPerFrame) {
                     error = "corrupt snapshot: GEN2VID event count "
                           + std::to_string(n);
                     r.fail();
@@ -643,8 +643,7 @@ bool Memory::readSnapshotSections(pom1::SnapshotReader& r, std::string& error, M
                 fs.mixedMode = r.readU8() != 0;
                 fs.page2     = r.readU8() != 0;
                 fs.hiRes     = r.readU8() != 0;
-                gen2PublishedEvents     = std::move(ev);
-                gen2PublishedFrameStart = fs;
+                gen2Scanner.restorePublishedFrame(std::move(ev), fs);
             }
             continue;
         }

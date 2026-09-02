@@ -497,12 +497,7 @@ uint8_t Memory::gen2SoftSwitchRead(uint16_t address)
     // for the in-flight instruction (POM2 pushVideoEventLocked idiom).
     const uint64_t emuCycle = gen2Scanner.cycle()
         + (cpuForIrq ? static_cast<uint64_t>(cpuForIrq->getCurrentInstructionCycles()) : 0u);
-    if (gen2RecordingEvents.size() >= kGen2MaxEventsPerFrame) {
-        gen2RecordingEvents.clear();
-        gen2RecordingFrameStart = st;
-    } else {
-        gen2RecordingEvents.push_back({emuCycle, kind, value});
-    }
+    gen2Scanner.journalEvent(emuCycle, kind, value);
 
     // HST0 in D7 (sampled at the access cycle). The low 7 bits are the
     // floating data bus, which Bernie's spec says software must NEVER rely on.
@@ -529,14 +524,6 @@ void Memory::setGen2DisplayMode(bool grMode, bool page2)
     gen2SoftSwitchRead(0xC252);                     // MIXED off -> full screen
     gen2SoftSwitchRead(page2 ? 0xC255 : 0xC254);    // PAGE2 / PAGE1
     gen2SoftSwitchRead(grMode ? 0xC256 : 0xC257);   // LORES / HIRES
-}
-
-void Memory::resetGen2VideoEventJournal()
-{
-    gen2RecordingEvents.clear();
-    gen2PublishedEvents.clear();
-    gen2RecordingFrameStart = gen2Scanner.displayState();
-    gen2PublishedFrameStart = gen2RecordingFrameStart;
 }
 
 pom1::CardSet Memory::activeCards() const
@@ -913,7 +900,7 @@ void Memory::setHgrFramebufferAttached(bool e)
         // cycles that only make sense within one continuous power-on session.
         // The soft-switch latch itself is left alone (Bernie: RESET never
         // touches it; POM1 keeps whatever state the latch held).
-        resetGen2VideoEventJournal();
+        gen2Scanner.resetJournal();
     }
     if (e && !wasAttached) {
         // Cold plug: re-seed the soft-switch latch + xorshift noise + scanner
@@ -2236,10 +2223,7 @@ void Memory::advanceCycles(int cycles)
         }
 
         if (cyc1 / cpf != before) {
-            gen2PublishedEvents = std::move(gen2RecordingEvents);
-            gen2RecordingEvents.clear();
-            gen2PublishedFrameStart = gen2RecordingFrameStart;
-            gen2RecordingFrameStart = gen2Scanner.displayState();
+            gen2Scanner.publishFrame();
             // Freeze the just-completed frame's per-scanline latch as the PUBLISHED
             // frame. The working latch (gen2BeamLatchBuf) is a moving target: read
             // mid-sweep (the SnapshotPublisher fires at slice boundaries, not frame
