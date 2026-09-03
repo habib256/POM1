@@ -2057,9 +2057,11 @@ if(Python3_FOUND)
     # That cost is charged to whichever test runs first, and it happens to be
     # the one measuring a 1 s capture.
     #
-    # Measured over 23 Windows CI jobs: 20 between 1.1 s and 2.2 s, two at
-    # 8.5 s and 9.3 s, one past 61 s. The tail is real and belongs to this test
-    # alone — `headless_preset_matrix` launches POM1 thirteen more times right
+    # Measured over 24 Windows CI jobs: 20 between 1.1 s and 2.2 s, then 5.7 s,
+    # 8.5 s, 9.3 s and one past 61 s — one job in six. The 5.7 s is the first
+    # reading taken after the harness started printing its duration on a PASS,
+    # which is how quickly an invisible distribution becomes an obvious one.
+    # The tail belongs to this test alone — `headless_preset_matrix` launches POM1 thirteen more times right
     # behind it and never shows it. At 60 s this had the TIGHTEST budget of any
     # POM1-launching test (the others carry 120 to 600) while being the one
     # paying for all of them; 120 s puts it in line with its neighbours.
