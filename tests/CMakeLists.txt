@@ -2050,11 +2050,23 @@ if(Python3_FOUND)
                      --run 0xE000 --after-cycles 2000000
                      --golden "${CMAKE_SOURCE_DIR}/tests/gfx/hgr_testcard_gen2.png"
              WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-    # TIMEOUT sits ABOVE the harness's own --timeout (90 s) on purpose: the
-    # capture takes ~1 s, so anything near either bound is a hang, and the one
-    # that fires should be the harness — it is the only one that can print what
-    # POM1 said and reap the child. ctest's remains the backstop for a python
-    # that wedges itself.
+    # THIS IS THE FIRST TEST IN THE SUITE THAT EXECUTES THE POM1 BINARY — the
+    # seven `--pom1` sites all come after it — so it absorbs the whole cold
+    # start of a freshly linked executable, which on Windows means the
+    # on-first-execute virus scan plus paging the exe and its DLLs off disk.
+    # That cost is charged to whichever test runs first, and it happens to be
+    # the one measuring a 1 s capture.
+    #
+    # Measured over 23 Windows CI jobs: 20 between 1.1 s and 2.2 s, two at
+    # 8.5 s and 9.3 s, one past 61 s. The tail is real and belongs to this test
+    # alone — `headless_preset_matrix` launches POM1 thirteen more times right
+    # behind it and never shows it. At 60 s this had the TIGHTEST budget of any
+    # POM1-launching test (the others carry 120 to 600) while being the one
+    # paying for all of them; 120 s puts it in line with its neighbours.
+    #
+    # It sits ABOVE the harness's own --timeout (90 s) so the harness fires
+    # first: it is the only one of the two that can print what POM1 said and
+    # reap the child. ctest's remains the backstop for a python that wedges.
     set_tests_properties(gfx_regress_gen2_testcard PROPERTIES
                          TIMEOUT 120 SKIP_RETURN_CODE 77)
 

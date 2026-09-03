@@ -31,6 +31,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
+
+# Past this, say so even on a PASS: see the note at the print site.
+SLOW_CAPTURE_SECONDS = 5.0
 
 
 def find_pom1(explicit):
@@ -119,6 +123,7 @@ def main():
         # where it stopped, had been thrown away, and the emulator it left
         # behind was never reaped. A harness that cannot explain its own
         # failure costs a CI cycle every time it fires.
+        started = time.monotonic()
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True,
                                   timeout=args.timeout)
@@ -129,8 +134,9 @@ def main():
             print("  cmd: " + " ".join(cmd))
             dump_child(e.stdout, e.stderr)
             return 1
+        elapsed = time.monotonic() - started
         if rc != 0 or not os.path.exists(out) or os.path.getsize(out) == 0:
-            print(f"FAIL: POM1 capture failed (rc={rc})")
+            print(f"FAIL: POM1 capture failed (rc={rc}) after {elapsed:.1f}s")
             print("  cmd: " + " ".join(cmd))
             dump_child(child_out, child_err)
             return 1
@@ -147,7 +153,19 @@ def main():
 
         got, want = sha(out), sha(args.golden)
         if got == want:
-            print(f"PASS: {args.card} frame matches golden ({got[:16]})")
+            print(f"PASS: {args.card} frame matches golden ({got[:16]}) "
+                  f"in {elapsed:.1f}s")
+            # Report the slow tail on a PASS too. This test is the first in the
+            # suite to execute the POM1 binary, so it pays the cold start the
+            # other seven POM1-launching tests never see — on Windows that is
+            # the on-first-execute virus scan plus paging the exe off disk.
+            # Measured over 23 CI jobs: 1.1-2.2 s normally, 8.5 and 9.3 s twice.
+            # A number only printed on failure is a distribution nobody can see
+            # until it crosses a threshold, which is how a 60 s budget survived
+            # under a 9 s observation.
+            if elapsed > SLOW_CAPTURE_SECONDS:
+                print(f"  NOTE: that is well past the ~1 s this capture costs "
+                      f"warm — first POM1 launch of the suite, cold binary.")
             return 0
         print(f"FAIL: {args.card} frame differs from golden\n"
               f"  got : {got[:16]}\n  want: {want[:16]}\n"
